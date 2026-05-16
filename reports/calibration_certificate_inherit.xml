@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Inherit do template nativo engc.calibration adicionando QR+token+hash
+         para verificação pública. Só aparece se houver afr.qualificacao linkada
+         (engc_calibration_id) com certificado emitido. -->
+    <template id="calibration_certificate_template_inherit_qualif"
+              inherit_id="engc_os.calibration_certificate_template"
+              name="Calibration Certificate + Qualificacao Verify">
+        <xpath expr="(//div[hasclass('row')])[last()]" position="after">
+            <t t-set="qualif"
+               t-value="env['afr.qualificacao'].sudo().search([('engc_calibration_id', '=', o.id)], limit=1)"/>
+            <t t-if="qualif and qualif.certificate_token">
+                <br/>
+                <div style="border:1px solid #ddd; padding:12px; background:#f8f9fa;">
+                    <div class="row">
+                        <div class="col-3 text-center">
+                            <img t-att-src="'/report/barcode/?type=QR&amp;value=%s&amp;width=180&amp;height=180' % qualif.certificate_verify_url"
+                                 alt="QR Verificação"
+                                 style="max-width:180px;"/>
+                        </div>
+                        <div class="col-9">
+                            <strong>Certificado Digital Verificável</strong><br/>
+                            <small>
+                                Escaneie o QR ou acesse:<br/>
+                                <a t-att-href="qualif.certificate_verify_url">
+                                    <span t-esc="qualif.certificate_verify_url"/>
+                                </a>
+                            </small>
+                            <br/><br/>
+                            <strong>Qualificação:</strong>
+                            <span t-esc="qualif.name"/><br/>
+                            <strong>Emitido em:</strong>
+                            <span t-field="qualif.certificate_issued_at"
+                                  t-options="{'widget': 'datetime'}"/><br/>
+                            <strong>Hash SHA-256:</strong>
+                            <div style="font-family:monospace; font-size:9px; word-break:break-all; color:#666;">
+                                <span t-esc="qualif.certificate_hash"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </xpath>
+    </template>
+</odoo>

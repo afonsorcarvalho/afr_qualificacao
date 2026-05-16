@@ -87,6 +87,13 @@
                         class="oe_highlight"
                         context="{'default_qualificacao_id': active_id}"
                     />
+                    <button
+                        name="action_print_certificate"
+                        type="object"
+                        string="Imprimir Certificado"
+                        class="oe_highlight"
+                        attrs="{'invisible': [('certificate_token', '=', False)]}"
+                    />
                     <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,approved,rejected,cancelled"/>
                 </header>
                 <sheet>
@@ -224,6 +231,20 @@
                                     <field name="state"/>
                                 </tree>
                             </field>
+                        </page>
+                        <page string="Certificado" attrs="{'invisible': [('certificate_token', '=', False)]}">
+                            <group>
+                                <group>
+                                    <field name="certificate_issued_at" readonly="1"/>
+                                    <field name="certificate_token" readonly="1"/>
+                                </group>
+                                <group>
+                                    <field name="certificate_verify_url" readonly="1" widget="url"/>
+                                </group>
+                            </group>
+                            <group>
+                                <field name="certificate_hash" readonly="1"/>
+                            </group>
                         </page>
                         <page string="Comercial">
                             <group>

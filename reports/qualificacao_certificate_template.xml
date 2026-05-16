@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Certificado de Qualificação (QI/QO/QD/QS) — Calibração usa template engc.calibration -->
+    <template id="qualificacao_certificate_template">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <style>
+                        .qualif-watermark {
+                            margin-top: 280px;
+                            width: 100%;
+                            color: red;
+                            position: absolute;
+                            text-align: center;
+                            font-size: 100px;
+                            opacity: 0.18;
+                            -webkit-transform: rotate(-30deg);
+                            transform: rotate(-30deg);
+                            z-index: 1000;
+                        }
+                        .qualif-verify-box {
+                            border: 1px solid #ddd;
+                            padding: 12px;
+                            margin-top: 20px;
+                            background: #f8f9fa;
+                        }
+                        .qualif-hash {
+                            font-family: monospace;
+                            font-size: 9px;
+                            word-break: break-all;
+                            color: #666;
+                        }
+                    </style>
+
+                    <t t-if="o.state != 'approved'">
+                        <div class="qualif-watermark"><span>SEM VALIDADE</span></div>
+                    </t>
+
+                    <div class="page">
+                        <h3 class="text-center">
+                            Certificado de Qualificação<br/>
+                            <span t-field="o.name"/>
+                        </h3>
+                        <br/>
+
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Cliente:</strong> <span t-field="o.partner_id"/><br/>
+                                <strong>Equipamento:</strong> <span t-field="o.equipment_id"/><br/>
+                                <strong>Tipo:</strong> <span t-field="o.qualification_type"/><br/>
+                            </div>
+                            <div class="col-6">
+                                <strong>Data Planejada:</strong>
+                                <span t-field="o.planned_date" t-options="{'widget': 'date'}"/><br/>
+                                <strong>Data Execução:</strong>
+                                <span t-field="o.execution_date" t-options="{'widget': 'date'}"/><br/>
+                                <strong>Responsável:</strong> <span t-field="o.responsible_id"/><br/>
+                                <strong>Aprovador:</strong> <span t-field="o.approver_id"/><br/>
+                            </div>
+                        </div>
+
+                        <br/>
+                        <h4>Etapas de Qualificação</h4>
+                        <table class="table table-sm table-bordered" t-if="o.step_ids">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Etapa</th>
+                                    <th>Critério</th>
+                                    <th>Resultado</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr t-foreach="o.step_ids" t-as="step">
+                                    <td><span t-field="step.sequence"/></td>
+                                    <td><span t-field="step.name"/></td>
+                                    <td><span t-field="step.acceptance_criteria"/></td>
+                                    <td><span t-field="step.result_notes"/></td>
+                                    <td><span t-field="step.approved"/></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p t-if="not o.step_ids"><em>Sem etapas registradas.</em></p>
+
+                        <!-- QD: tabela de ciclos -->
+                        <t t-if="o.qualification_type == 'performance' and o.cycle_ids">
+                            <h4>Ciclos Executados (QD)</h4>
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Sequência</th>
+                                        <th>Status</th>
+                                        <th>Executado em</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="o.cycle_ids" t-as="cyc">
+                                        <td><span t-field="cyc.cycle_type_id"/></td>
+                                        <td><span t-field="cyc.sequence"/></td>
+                                        <td><span t-field="cyc.state"/></td>
+                                        <td><span t-field="cyc.executed_date" t-options="{'widget': 'date'}"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- Calibração (fallback sem engc.calibration): malhas internas -->
+                        <t t-if="o.qualification_type == 'calibration' and o.malha_ids">
+                            <h4>Malhas de Calibração</h4>
+                            <p t-if="not o.engc_calibration_id">
+                                <em>Calibração registrada sem framework metrológico vinculado.
+                                Pontos de medição (incerteza/erro) não disponíveis neste certificado.</em>
+                            </p>
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Grandeza</th>
+                                        <th>Sequência</th>
+                                        <th>Instrumento (S/N)</th>
+                                        <th>Status</th>
+                                        <th>Executado em</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="o.malha_ids" t-as="m">
+                                        <td><span t-field="m.malha_type_id"/></td>
+                                        <td><span t-field="m.sensor_kind_id"/></td>
+                                        <td><span t-field="m.sequence"/></td>
+                                        <td><span t-field="m.sensor_serial"/></td>
+                                        <td><span t-field="m.state"/></td>
+                                        <td><span t-field="m.executed_date" t-options="{'widget': 'date'}"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- Desvios -->
+                        <t t-if="o.deviation_ids">
+                            <h4>Desvios Identificados</h4>
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Título</th>
+                                        <th>Descrição</th>
+                                        <th>Ação Corretiva</th>
+                                        <th>Resolvido</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr t-foreach="o.deviation_ids" t-as="dev">
+                                        <td><span t-field="dev.name"/></td>
+                                        <td><span t-field="dev.description"/></td>
+                                        <td><span t-field="dev.corrective_action"/></td>
+                                        <td><span t-field="dev.resolved"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- Observações -->
+                        <div t-if="o.notes">
+                            <h4>Observações</h4>
+                            <div t-field="o.notes"/>
+                        </div>
+
+                        <!-- QR + Hash de verificação -->
+                        <div class="qualif-verify-box" t-if="o.certificate_token">
+                            <div class="row">
+                                <div class="col-3 text-center">
+                                    <img t-att-src="'/report/barcode/?type=QR&amp;value=%s&amp;width=180&amp;height=180' % o.certificate_verify_url"
+                                         alt="QR Verificação"
+                                         style="max-width:180px;"/>
+                                </div>
+                                <div class="col-9">
+                                    <strong>Certificado Digital Verificável</strong><br/>
+                                    <small>
+                                        Escaneie o QR code ou acesse:<br/>
+                                        <a t-att-href="o.certificate_verify_url">
+                                            <span t-field="o.certificate_verify_url"/>
+                                        </a>
+                                    </small>
+                                    <br/><br/>
+                                    <strong>Emitido em:</strong>
+                                    <span t-field="o.certificate_issued_at"
+                                          t-options="{'widget': 'datetime'}"/><br/>
+                                    <strong>Hash SHA-256:</strong>
+                                    <div class="qualif-hash">
+                                        <span t-field="o.certificate_hash"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div t-if="not o.certificate_token" class="alert alert-warning">
+                            Certificado ainda não emitido (aprove a qualificação primeiro).
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Template público de página de verificação de certificado.
+         Usa portal layout (sem login obrigatório). -->
+    <template id="certificate_verify_template" name="Verificação de Certificado de Qualificação">
+        <t t-call="portal.frontend_layout">
+            <div class="container py-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-4">Verificação de Certificado de Qualificação</h2>
+
+                        <t t-if="status == 'not_found'">
+                            <div class="alert alert-danger">
+                                <h4 class="alert-heading">Certificado não encontrado</h4>
+                                <p>Token inválido ou inexistente.</p>
+                                <p><small><strong>Token consultado:</strong>
+                                    <code t-esc="token or '—'"/></small></p>
+                            </div>
+                        </t>
+
+                        <t t-if="status == 'pending'">
+                            <div class="alert alert-warning">
+                                <h4 class="alert-heading">Certificado ainda não emitido</h4>
+                                <p>A qualificação <strong t-esc="qualif.name"/>
+                                    encontra-se em status
+                                    <em t-esc="qualif.state"/>.
+                                </p>
+                                <p>O certificado é emitido apenas após a aprovação técnica.</p>
+                            </div>
+                        </t>
+
+                        <t t-if="status == 'tampered'">
+                            <div class="alert alert-danger">
+                                <h4 class="alert-heading">⚠ Certificado adulterado</h4>
+                                <p>O conteúdo desta qualificação foi modificado após a emissão
+                                   do certificado. O hash SHA-256 atual não corresponde ao
+                                   hash congelado no momento da aprovação.</p>
+                                <hr/>
+                                <p><strong>Hash esperado (congelado):</strong>
+                                    <code style="word-break:break-all;" t-esc="expected_hash"/></p>
+                                <p><strong>Hash atual (recomputado):</strong>
+                                    <code style="word-break:break-all;" t-esc="current_hash"/></p>
+                            </div>
+                        </t>
+
+                        <t t-if="status == 'valid'">
+                            <div class="alert alert-success">
+                                <h4 class="alert-heading">✓ Certificado válido</h4>
+                                <p>A integridade do conteúdo desta qualificação foi confirmada.</p>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title" t-esc="qualif.name"/>
+                                    <table class="table table-sm">
+                                        <tr>
+                                            <th style="width:30%">Cliente</th>
+                                            <td t-esc="qualif.partner_id.name"/>
+                                        </tr>
+                                        <tr>
+                                            <th>Equipamento</th>
+                                            <td t-esc="qualif.equipment_id.display_name"/>
+                                        </tr>
+                                        <tr>
+                                            <th>Tipo</th>
+                                            <td><span t-field="qualif.qualification_type"/></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Data de Execução</th>
+                                            <td>
+                                                <span t-field="qualif.execution_date"
+                                                      t-options="{'widget': 'date'}"/>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Aprovador</th>
+                                            <td t-esc="qualif.approver_id.name or '—'"/>
+                                        </tr>
+                                        <tr>
+                                            <th>Status</th>
+                                            <td><span t-field="qualif.state"/></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Emitido em</th>
+                                            <td>
+                                                <span t-field="qualif.certificate_issued_at"
+                                                      t-options="{'widget': 'datetime'}"/>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Hash SHA-256</th>
+                                            <td>
+                                                <code style="word-break:break-all; font-size:11px;"
+                                                      t-esc="qualif.certificate_hash"/>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

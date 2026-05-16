@@ -9,7 +9,10 @@ https://docxtpl.readthedocs.io/en/latest/usage.html
 """
 
 import base64
+import hashlib
+import json
 import os
+import uuid
 from tempfile import NamedTemporaryFile
 
 from odoo import api, fields, models, _
@@ -256,6 +259,175 @@ class AfrQualificacao(models.Model):
         readonly=True,
     )
 
+    # ------------------------------------------------------------------
+    # F4.3 — Certificado: hash imutável + token UUID + QR público
+    # ------------------------------------------------------------------
+    certificate_token = fields.Char(
+        string="Token de Verificação",
+        copy=False,
+        readonly=True,
+        index=True,
+        help=(
+            "UUID4 hex gerado ao approval. Usado na URL pública de "
+            "verificação do certificado: /qualificacao/verify/<token>."
+        ),
+    )
+    certificate_hash = fields.Char(
+        string="Hash SHA-256",
+        copy=False,
+        readonly=True,
+        help=(
+            "Hash SHA-256 hex (64 chars) do snapshot dos campos técnicos + "
+            "sub-records, congelado ao approval. Validação recomputa e "
+            "compara — qualquer alteração pós-approval = certificado adulterado."
+        ),
+    )
+    certificate_issued_at = fields.Datetime(
+        string="Emissão do Certificado",
+        copy=False,
+        readonly=True,
+        help="Datetime em que hash + token foram congelados (no approval).",
+    )
+    certificate_verify_url = fields.Char(
+        compute="_compute_certificate_verify_url",
+        string="URL Pública de Verificação",
+    )
+
+    @api.depends("certificate_token")
+    def _compute_certificate_verify_url(self):
+        ICP = self.env["ir.config_parameter"].sudo()
+        base = ICP.get_param("web.base.url", default="")
+        # Inclui ?db=<dbname> para evitar fallhar com db_filter em ambientes
+        # multi-db (pula 404 quando primeiro DB não tem o módulo). Override
+        # via config param 'afr_qualificacao.verify_url_db' (set para ""
+        # se deployment single-db sem db_filter).
+        db_param = ICP.get_param(
+            "afr_qualificacao.verify_url_db",
+            default=self.env.cr.dbname,
+        )
+        for rec in self:
+            if rec.certificate_token:
+                url = "%s/qualificacao/verify/%s" % (base, rec.certificate_token)
+                if db_param:
+                    url += "?db=%s" % db_param
+                rec.certificate_verify_url = url
+            else:
+                rec.certificate_verify_url = False
+
+    def _snapshot_for_hash(self):
+        """Serializa estado técnico em JSON estável p/ hash SHA-256.
+
+        Inclui: identidade, partner, equipamento, tipo, approval, state +
+        sub-records (cycles/malhas com state, type, sequence, executed).
+        Mudança em qualquer um destes = hash diferente na revalidação.
+        """
+        self.ensure_one()
+        cycles = sorted([
+            {
+                "id": c.id,
+                "type_id": c.cycle_type_id.id,
+                "type": c.cycle_type_id.name,
+                "sequence": c.sequence,
+                "state": c.state,
+                "executed_date": c.executed_date.isoformat() if c.executed_date else None,
+            }
+            for c in self.cycle_ids
+        ], key=lambda d: (d["type_id"] or 0, d["sequence"], d["id"]))
+        malhas = sorted([
+            {
+                "id": m.id,
+                "type_id": m.malha_type_id.id,
+                "type": m.malha_type_id.name,
+                "sensor_kind": m.sensor_kind_id.name if m.sensor_kind_id else None,
+                "sequence": m.sequence,
+                "sensor_serial": m.sensor_serial or "",
+                "state": m.state,
+                "executed_date": m.executed_date.isoformat() if m.executed_date else None,
+                "engc_calibration_measurement_id": m.engc_calibration_measurement_id.id
+                or None,
+            }
+            for m in self.malha_ids
+        ], key=lambda d: (d["type_id"] or 0, d["sequence"], d["id"]))
+        snapshot = {
+            "id": self.id,
+            "name": self.name,
+            "partner": self.partner_id.name or "",
+            "partner_id": self.partner_id.id or 0,
+            "equipment": self.equipment_id.display_name or "",
+            "equipment_serial": self.equipment_id.serial_number or "",
+            "qualification_type": self.qualification_type,
+            "execution_date": self.execution_date.isoformat()
+            if self.execution_date else None,
+            "approver": self.approver_id.login if self.approver_id else None,
+            "state": self.state,
+            "company_id": self.company_id.id,
+            "cycles": cycles,
+            "malhas": malhas,
+            "engc_calibration_id": self.engc_calibration_id.id or None,
+        }
+        return snapshot
+
+    def _compute_certificate_hash(self):
+        """Calcula SHA-256 hex do snapshot JSON estável (sort_keys + ensure_ascii)."""
+        self.ensure_one()
+        payload = json.dumps(
+            self._snapshot_for_hash(),
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def _issue_certificate(self):
+        """Gera token + congela hash + marca issued_at. Idempotente: skip se já emitido."""
+        self.ensure_one()
+        if self.certificate_token and self.certificate_hash:
+            return
+        self.write({
+            "certificate_token": uuid.uuid4().hex,
+            "certificate_hash": self._compute_certificate_hash(),
+            "certificate_issued_at": fields.Datetime.now(),
+        })
+
+    def verify_certificate(self):
+        """Recomputa hash atual e compara com hash congelado.
+
+        Retorna dict: {valid: bool, expected_hash, current_hash, issued_at}.
+        Usado pelo controller público /qualificacao/verify/<token>.
+        """
+        self.ensure_one()
+        current = self._compute_certificate_hash()
+        return {
+            "valid": bool(self.certificate_hash) and current == self.certificate_hash,
+            "expected_hash": self.certificate_hash,
+            "current_hash": current,
+            "issued_at": self.certificate_issued_at,
+        }
+
+    def action_print_certificate(self):
+        """Dispara o report QWeb apropriado.
+
+        - Calibração COM engc_calibration_id linkada: usa report nativo
+          engc_os (mostra certificado metrológico completo + bloco QR/hash).
+        - Calibração SEM link: fallback usa template próprio
+          (mostra afr.qualificacao.malha internas + QR/hash). Útil enquanto
+          técnico ainda não preencheu engc.calibration ou pra qualifs
+          standalone sem framework metrológico.
+        - Outros tipos: sempre template próprio.
+        """
+        self.ensure_one()
+        if not self.certificate_token:
+            raise UserError(_(
+                "Certificado ainda não emitido. Aprove a qualificação primeiro."
+            ))
+        if self.qualification_type == "calibration" and self.engc_calibration_id:
+            return self.env.ref(
+                "engc_os.report_engc_os_calibration_certificate"
+            ).report_action(self.engc_calibration_id)
+        return self.env.ref(
+            "afr_qualificacao.action_report_qualificacao_certificate"
+        ).report_action(self)
+
     @api.constrains("execution_date", "planned_date")
     def _check_dates(self):
         """Garante que a data de execução não seja anterior ao planejamento."""
@@ -377,12 +549,13 @@ class AfrQualificacao(models.Model):
         return True
 
     def action_mark_approved(self):
-        """Altera o status para 'Aprovada' e propaga qty_delivered nas linhas SO."""
+        """Altera o status para 'Aprovada', emite certificado e propaga qty_delivered."""
         for record in self:
             record.state = "approved"
             record.execution_date = record.execution_date or fields.Date.context_today(
                 self
             )
+            record._issue_certificate()
             record._propagate_qty_delivered()
         return True
 
