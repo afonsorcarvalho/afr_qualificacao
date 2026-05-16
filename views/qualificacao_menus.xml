@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Menus criados conforme a documentação oficial:
+    https://www.odoo.com/documentation/16.0/pt_BR/developer/reference/addons/actions.html
+-->
+<odoo>
+    <menuitem
+        id="menu_afr_qualificacao_root"
+        name="Qualificações"
+      
+        sequence="40"
+        groups="afr_qualificacao.group_afr_qualificacao_user"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_records"
+        name="Registros"
+        parent="menu_afr_qualificacao_root"
+        action="afr_qualificacao.action_afr_qualificacao"
+        sequence="10"
+        groups="afr_qualificacao.group_afr_qualificacao_user"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_deviation"
+        name="Desvios"
+        parent="menu_afr_qualificacao_root"
+        action="afr_qualificacao.action_afr_qualificacao_deviation"
+        sequence="20"
+        groups="afr_qualificacao.group_afr_qualificacao_user"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_config"
+        name="Configurações"
+        parent="menu_afr_qualificacao_root"
+        sequence="90"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_type_config"
+        name="Tipos de Qualificação (QI/QO/QS)"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_afr_qualificacao_type_config"
+        sequence="10"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_cycle_type"
+        name="Tipos de Ciclo (QD)"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_cycle_type"
+        sequence="20"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_malha_type"
+        name="Tipos de Malha (Calib)"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_malha_type"
+        sequence="30"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_sensor_kind"
+        name="Grandezas (Sensor Kinds)"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_sensor_kind"
+        sequence="40"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_config_template"
+        name="Templates de Configuração"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_config_template"
+        sequence="50"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+</odoo>
+

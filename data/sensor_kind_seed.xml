@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="sensor_kind_temperature" model="afr.qualificacao.sensor.kind">
+        <field name="name">Temperatura</field>
+        <field name="code">TEMP</field>
+        <field name="unit">°C</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="sensor_kind_pressure" model="afr.qualificacao.sensor.kind">
+        <field name="name">Pressão</field>
+        <field name="code">PRESS</field>
+        <field name="unit">Pa</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="sensor_kind_humidity" model="afr.qualificacao.sensor.kind">
+        <field name="name">Umidade</field>
+        <field name="code">HUM</field>
+        <field name="unit">% UR</field>
+        <field name="sequence">30</field>
+    </record>
+    <record id="sensor_kind_mass" model="afr.qualificacao.sensor.kind">
+        <field name="name">Massa</field>
+        <field name="code">MASS</field>
+        <field name="unit">g</field>
+        <field name="sequence">40</field>
+    </record>
+    <record id="sensor_kind_flow" model="afr.qualificacao.sensor.kind">
+        <field name="name">Fluxo</field>
+        <field name="code">FLOW</field>
+        <field name="unit">L/min</field>
+        <field name="sequence">50</field>
+    </record>
+</odoo>

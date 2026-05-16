@@ -1,0 +1,128 @@
+"""Setup compartilhado dos testes do fluxo quote-first."""
+
+from odoo.tests.common import TransactionCase
+
+
+class AfrQualificacaoTestCommon(TransactionCase):
+    """Fixtures: cliente + 2 equips + 2 cycle_types + 4 malha_types + 3 type.configs."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.company = cls.env.company
+
+        # Categoria de equipamento
+        cls.category = cls.env["engc.equipment.category"].create({
+            "name": "Test-Autoclave",
+        })
+
+        # Helpers básicos engc_os
+        cls.means = cls.env["engc.equipment.means.of.aquisition"].search([], limit=1)
+        if not cls.means:
+            cls.means = cls.env["engc.equipment.means.of.aquisition"].create({"name": "Compra"})
+        cls.location = cls.env["engc.equipment.location"].search([], limit=1)
+        if not cls.location:
+            cls.location = cls.env["engc.equipment.location"].create({"name": "Sala T"})
+        cls.marca = cls.env["engc.equipment.marca"].search([], limit=1)
+        if not cls.marca:
+            cls.marca = cls.env["engc.equipment.marca"].create({"name": "MarcaT"})
+
+        # Produtos serviço
+        Product = cls.env["product.product"]
+        cls.product_qi = Product.create({
+            "name": "Test QI", "type": "service",
+            "invoice_policy": "delivery", "list_price": 1000,
+        })
+        cls.product_qo = Product.create({
+            "name": "Test QO", "type": "service",
+            "invoice_policy": "delivery", "list_price": 1200,
+        })
+        cls.product_qs = Product.create({
+            "name": "Test QS", "type": "service",
+            "invoice_policy": "delivery", "list_price": 800,
+        })
+        cls.product_qd_cmax = Product.create({
+            "name": "Test Ciclo CMax", "type": "service",
+            "invoice_policy": "delivery", "list_price": 700,
+        })
+        cls.product_qd_cmin = Product.create({
+            "name": "Test Ciclo CMin", "type": "service",
+            "invoice_policy": "delivery", "list_price": 500,
+        })
+        cls.product_malha_temp = Product.create({
+            "name": "Test Malha Temp", "type": "service",
+            "invoice_policy": "delivery", "list_price": 400,
+        })
+        cls.product_malha_press = Product.create({
+            "name": "Test Malha Press", "type": "service",
+            "invoice_policy": "delivery", "list_price": 450,
+        })
+
+        # Catálogo técnico
+        cls.sensor_temp = cls.env["afr.qualificacao.sensor.kind"].search(
+            [("code", "=", "TEMP")], limit=1
+        )
+        cls.sensor_press = cls.env["afr.qualificacao.sensor.kind"].search(
+            [("code", "=", "PRESS")], limit=1
+        )
+        cls.cycle_cmax = cls.env["afr.qualificacao.cycle.type"].create({
+            "name": "Test Carga Max", "code": "TQD-CMAX",
+            "product_id": cls.product_qd_cmax.id,
+            "equipment_category_id": cls.category.id,
+        })
+        cls.cycle_cmin = cls.env["afr.qualificacao.cycle.type"].create({
+            "name": "Test Carga Min", "code": "TQD-CMIN",
+            "product_id": cls.product_qd_cmin.id,
+            "equipment_category_id": cls.category.id,
+        })
+        cls.malha_temp = cls.env["afr.qualificacao.malha.type"].create({
+            "name": "Test Malha T", "code": "TMLH-T",
+            "product_id": cls.product_malha_temp.id,
+            "sensor_kind_id": cls.sensor_temp.id,
+            "equipment_category_id": cls.category.id,
+        })
+        cls.malha_press = cls.env["afr.qualificacao.malha.type"].create({
+            "name": "Test Malha P", "code": "TMLH-P",
+            "product_id": cls.product_malha_press.id,
+            "sensor_kind_id": cls.sensor_press.id,
+        })
+
+        # Type configs QI/QO/QS
+        TC = cls.env["afr.qualificacao.type.config"]
+        for qt, prod in (
+            ("installation", cls.product_qi),
+            ("operational", cls.product_qo),
+            ("software", cls.product_qs),
+        ):
+            existing = TC.search([("qualification_type", "=", qt), ("company_id", "=", cls.company.id)], limit=1)
+            if existing:
+                existing.service_product_id = prod.id
+                existing.default_unit_price = prod.list_price
+            else:
+                TC.create({
+                    "qualification_type": qt,
+                    "service_product_id": prod.id,
+                    "default_unit_price": prod.list_price,
+                    "company_id": cls.company.id,
+                })
+
+        # Cliente + equips
+        cls.partner = cls.env["res.partner"].create({
+            "name": "Test Hospital", "customer_rank": 1,
+        })
+        cls.equip1 = cls.env["engc.equipment"].create({
+            "client_id": cls.partner.id,
+            "category_id": cls.category.id,
+            "model": "TestModel1", "serial_number": "TSN-001",
+            "means_of_aquisition_id": cls.means.id,
+            "location_id": cls.location.id,
+            "marca_id": cls.marca.id,
+        })
+        cls.equip2 = cls.env["engc.equipment"].create({
+            "client_id": cls.partner.id,
+            "category_id": cls.category.id,
+            "model": "TestModel2", "serial_number": "TSN-002",
+            "means_of_aquisition_id": cls.means.id,
+            "location_id": cls.location.id,
+            "marca_id": cls.marca.id,
+        })

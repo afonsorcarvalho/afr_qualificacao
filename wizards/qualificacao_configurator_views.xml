@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Wizard principal -->
+    <record id="view_qualificacao_configurator_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.configurator.form</field>
+        <field name="model">afr.qualificacao.configurator</field>
+        <field name="arch" type="xml">
+            <form string="Configurador de Qualificações">
+                <header>
+                    <button name="action_add_multiple_equipments"
+                            string="+ Vários Equipamentos"
+                            type="object"
+                            class="btn-secondary"/>
+                    <button name="action_save_as_template"
+                            string="Salvar como Template"
+                            type="object"
+                            class="btn-secondary"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="sale_order_id" readonly="1"/>
+                            <field name="partner_id"/>
+                        </group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="total_estimated"/>
+                        </group>
+                    </group>
+                    <field name="equipment_line_ids">
+                        <form>
+                            <header>
+                                <button name="action_duplicate"
+                                        string="Duplicar"
+                                        type="object"
+                                        class="btn-secondary"/>
+                            </header>
+                            <sheet>
+                                <group>
+                                    <group>
+                                        <field name="equipment_id"
+                                               domain="[('client_id','=',parent.partner_id)]"
+                                               options="{'no_create': True}"/>
+                                        <field name="equipment_category_id"/>
+                                    </group>
+                                    <group>
+                                        <field name="do_qi"/>
+                                        <field name="do_qo"/>
+                                        <field name="do_qs"/>
+                                        <field name="currency_id" invisible="1"/>
+                                        <field name="subtotal"/>
+                                    </group>
+                                </group>
+                                <notebook>
+                                    <page string="Ciclos QD">
+                                        <field name="qd_line_ids">
+                                            <tree editable="bottom">
+                                                <field name="cycle_type_id"
+                                                       domain="['|',('equipment_category_id','=',parent.equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"/>
+                                                <field name="qty"/>
+                                                <field name="currency_id" invisible="1"/>
+                                                <field name="subtotal"/>
+                                            </tree>
+                                        </field>
+                                    </page>
+                                    <page string="Malhas Calibração">
+                                        <field name="calib_line_ids">
+                                            <tree editable="bottom">
+                                                <field name="malha_type_id"
+                                                       domain="['|',('equipment_category_id','=',parent.equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"/>
+                                                <field name="sensor_kind_id"/>
+                                                <field name="qty"/>
+                                                <field name="currency_id" invisible="1"/>
+                                                <field name="subtotal"/>
+                                            </tree>
+                                        </field>
+                                    </page>
+                                </notebook>
+                            </sheet>
+                        </form>
+                        <tree>
+                            <field name="equipment_id"/>
+                            <field name="equipment_category_id"/>
+                            <field name="do_qi" widget="boolean_toggle"/>
+                            <field name="do_qo" widget="boolean_toggle"/>
+                            <field name="do_qs" widget="boolean_toggle"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="subtotal"/>
+                        </tree>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_apply"
+                            string="Aplicar ao Pedido"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancelar"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- Bulk wizard -->
+    <record id="view_qualificacao_configurator_bulk_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.configurator.bulk.form</field>
+        <field name="model">afr.qualificacao.configurator.bulk</field>
+        <field name="arch" type="xml">
+            <form string="Adicionar Vários Equipamentos">
+                <sheet>
+                    <group>
+                        <field name="parent_wizard_id" invisible="1"/>
+                        <field name="partner_id" readonly="1"/>
+                        <field name="equipment_ids"
+                               widget="many2many_tags"
+                               domain="[('client_id','=',partner_id)]"/>
+                    </group>
+                    <group string="Qualificações Padrão (aplicadas a todos selecionados)">
+                        <field name="do_qi"/>
+                        <field name="do_qo"/>
+                        <field name="do_qs"/>
+                    </group>
+                    <notebook>
+                        <page string="Ciclos QD">
+                            <field name="qd_line_ids">
+                                <tree editable="bottom">
+                                    <field name="cycle_type_id"/>
+                                    <field name="qty"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Malhas Calibração">
+                            <field name="calib_line_ids">
+                                <tree editable="bottom">
+                                    <field name="malha_type_id"/>
+                                    <field name="qty"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button name="action_apply"
+                            string="Aplicar"
+                            type="object"
+                            class="btn-primary"/>
+                    <button string="Cancelar"
+                            class="btn-secondary"
+                            special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

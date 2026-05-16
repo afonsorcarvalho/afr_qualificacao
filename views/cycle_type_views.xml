@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_cycle_type_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.cycle.type.tree</field>
+        <field name="model">afr.qualificacao.cycle.type</field>
+        <field name="arch" type="xml">
+            <tree string="Tipos de Ciclo (QD)">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="product_id"/>
+                <field name="equipment_category_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_cycle_type_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.cycle.type.form</field>
+        <field name="model">afr.qualificacao.cycle.type</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="product_id"/>
+                            <field name="equipment_category_id"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group string="Descrição">
+                        <field name="description" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_cycle_type" model="ir.actions.act_window">
+        <field name="name">Tipos de Ciclo (QD)</field>
+        <field name="res_model">afr.qualificacao.cycle.type</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

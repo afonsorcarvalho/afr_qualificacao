@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_sensor_kind_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.sensor.kind.tree</field>
+        <field name="model">afr.qualificacao.sensor.kind</field>
+        <field name="arch" type="xml">
+            <tree string="Grandezas">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="unit"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_sensor_kind_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.sensor.kind.form</field>
+        <field name="model">afr.qualificacao.sensor.kind</field>
+        <field name="arch" type="xml">
+            <form string="Grandeza">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="code"/>
+                        <field name="unit"/>
+                        <field name="sequence"/>
+                        <field name="active"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_sensor_kind" model="ir.actions.act_window">
+        <field name="name">Grandezas de Sensor</field>
+        <field name="res_model">afr.qualificacao.sensor.kind</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_engc_os_form_inherit_qualificacao" model="ir.ui.view">
+        <field name="name">engc.os.form.inherit.qualificacao</field>
+        <field name="model">engc.os</field>
+        <field name="inherit_id" ref="engc_os.form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_qualificacoes"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-tasks"
+                        attrs="{'invisible': [('afr_qualificacao_count','=',0)]}">
+                    <field name="afr_qualificacao_count" widget="statinfo" string="Qualificações"/>
+                </button>
+            </xpath>
+        </field>
+    </record>
+</odoo>

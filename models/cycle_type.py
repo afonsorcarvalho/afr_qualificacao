@@ -1,0 +1,68 @@
+"""Catálogo técnico de tipos de ciclo para qualificação de desempenho (QD).
+
+Cada tipo de ciclo (ex: "Carga Máxima", "Carga Mínima", "Penetração de Calor")
+é vinculado a 1 `product.product` que define o preço unitário no orçamento.
+
+Reuso de `engc.equipment.category` (módulo `engc_os`) para filtrar ciclos
+aplicáveis a cada categoria de equipamento (ex: autoclave vs estufa) durante
+o wizard configurador.
+"""
+
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
+
+
+class AfrQualificacaoCycleType(models.Model):
+    """Tipo de ciclo de qualificação de desempenho (QD)."""
+
+    _name = "afr.qualificacao.cycle.type"
+    _description = "Tipo de Ciclo de Qualificação (QD)"
+    _order = "sequence, name"
+
+    name = fields.Char(
+        required=True,
+        translate=True,
+        help="Nome do tipo de ciclo (ex: Ciclo Carga Máxima).",
+    )
+    code = fields.Char(
+        help="Código curto para referência interna / DOCX (ex: QD-CMAX).",
+    )
+    product_id = fields.Many2one(
+        comodel_name="product.product",
+        string="Produto de Serviço",
+        required=True,
+        domain=[("type", "=", "service"), ("sale_ok", "=", True)],
+        help=(
+            "Produto serviço que define preço unitário deste ciclo no "
+            "orçamento. Cada execução de ciclo gera 1 unidade do produto."
+        ),
+    )
+    equipment_category_id = fields.Many2one(
+        comodel_name="engc.equipment.category",
+        string="Categoria de Equipamento",
+        help=(
+            "Restringe disponibilidade do ciclo no wizard configurador para "
+            "equipamentos desta categoria. Deixe vazio para 'todas categorias'."
+        ),
+    )
+    description = fields.Text(
+        translate=True,
+        help="Detalhe técnico do ciclo (carga, parâmetros, finalidade).",
+    )
+    sequence = fields.Integer(default=10)
+    company_id = fields.Many2one(
+        comodel_name="res.company",
+        default=lambda self: self.env.company,
+    )
+    active = fields.Boolean(default=True)
+
+    @api.constrains("product_id")
+    def _check_product_is_service(self):
+        for record in self:
+            if record.product_id and record.product_id.type != "service":
+                raise ValidationError(
+                    _(
+                        "Produto '%s' não é do tipo serviço."
+                    )
+                    % record.product_id.display_name
+                )

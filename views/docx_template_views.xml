@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Views e menus do Template DOCX conforme documentação:
+    https://www.odoo.com/documentation/16.0/pt_BR/developer/reference/addons/actions.html
+    https://www.odoo.com/documentation/16.0/pt_BR/developer/howtos/rdtraining/03_basicviews.html
+-->
+<odoo>
+    <!-- Ação e views -->
+    <record id="view_afr_qualificacao_docx_template_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.docx.template.tree</field>
+        <field name="model">afr.qualificacao.docx.template</field>
+        <field name="arch" type="xml">
+            <tree string="Docx Templates" create="true" edit="true">
+                <field name="name"/>
+                <field name="filename"/>
+                <field name="active"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_afr_qualificacao_docx_template_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.docx.template.form</field>
+        <field name="model">afr.qualificacao.docx.template</field>
+        <field name="arch" type="xml">
+            <form string="Docx Template">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="datas" filename="filename"/>
+                            <field name="filename"/>
+                        </group>
+                        <group>
+                            <field name="mimetype" readonly="1"/>
+                            <field name="active"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_afr_qualificacao_docx_template" model="ir.actions.act_window">
+        <field name="name">Docx Templates</field>
+        <field name="res_model">afr.qualificacao.docx.template</field>
+        <field name="view_mode">tree,form</field>
+        <field name="context">{}</field>
+    </record>
+
+    <!-- Menus de Configuração -->
+    <menuitem
+        id="menu_afr_qualificacao_config"
+        name="Configuração"
+        parent="afr_qualificacao.menu_afr_qualificacao_root"
+        sequence="90"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_docx_template"
+        name="Docx Template"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_afr_qualificacao_docx_template"
+        sequence="10"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+</odoo>
+
+

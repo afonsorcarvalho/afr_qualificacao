@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Vistas configuradas seguindo o guia oficial:
+    https://www.odoo.com/documentation/16.0/pt_BR/developer/howtos/rdtraining/03_basicviews.html
+-->
+<odoo>
+    <record id="view_afr_qualificacao_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.tree</field>
+        <field name="model">afr.qualificacao</field>
+        <field name="arch" type="xml">
+            <tree
+                string="Qualificações"
+                decoration-muted="state == 'cancelled'"
+                decoration-danger="state == 'rejected'"
+                decoration-success="state == 'approved'"
+                decoration-warning="state == 'in_progress'"
+            >
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="equipment_id"/>
+                <field name="qualification_type"/>
+                <field name="responsible_id"/>
+                <field name="planned_date"/>
+                <field name="execution_date"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+     <record id="view_afr_qualificacao_deviation_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.deviation.search</field>
+        <field name="model">afr.qualificacao.deviation</field>
+        <field name="arch" type="xml">
+            <search string="Pesquisar desvios">
+                <field name="name"/>
+                <field name="qualificacao_id"/>
+                <field name="responsible_id"/>
+                <filter name="filter_open" string="Abertos" domain="[('resolved', '=', False)]"/>
+                <filter name="filter_by_qualificacao" string="Por qualificação" context="{'group_by': 'qualificacao_id'}"/>
+            </search>
+        </field>
+    </record>
+    <record id="action_afr_qualificacao_deviation" model="ir.actions.act_window">
+        <field name="name">Desvios</field>
+        <field name="res_model">afr.qualificacao.deviation</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="afr_qualificacao.view_afr_qualificacao_deviation_search"/>
+    </record>
+   
+
+    <record id="view_afr_qualificacao_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.form</field>
+        <field name="model">afr.qualificacao</field>
+        <field name="arch" type="xml">
+            <form string="Qualificação">
+                <header>
+                    <button
+                        name="action_start"
+                        type="object"
+                        string="Iniciar"
+                        class="oe_highlight"
+                        states="draft"
+                    />
+                    <button
+                        name="action_mark_approved"
+                        type="object"
+                        string="Aprovar"
+                        class="oe_highlight"
+                        states="in_progress,rejected"
+                    />
+                    <button
+                        name="action_mark_rejected"
+                        type="object"
+                        string="Reprovar"
+                        states="in_progress"
+                        class="oe_stat_button"
+                    />
+                    <button
+                        name="action_cancel"
+                        type="object"
+                        string="Cancelar"
+                        states="draft,in_progress"
+                    />
+                    <button
+                        name="action_generate_docx"
+                        type="object"
+                        string="Gerar DOCX"
+                        class="oe_highlight"
+                        context="{'default_qualificacao_id': active_id}"
+                    />
+                    <field name="state" widget="statusbar" statusbar_visible="draft,in_progress,approved,rejected,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button
+                            type="action"
+                            class="oe_stat_button"
+                            name="%(afr_qualificacao.action_afr_qualificacao_deviation)d"
+                            context="{'search_default_qualificacao_id': active_id, 'default_qualificacao_id': active_id}"
+                            icon="fa-exclamation-triangle"
+                        >
+                            <field
+                                name="deviation_count"
+                                widget="statinfo"
+                                string="Desvios"
+                            />
+                        </button>
+                        <button
+                            name="action_view_sale_order"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-shopping-cart"
+                            attrs="{'invisible': [('sale_order_id', '=', False)]}"
+                        >
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Pedido</span>
+                                <field name="sale_order_id" nolabel="1"/>
+                            </div>
+                        </button>
+                        <button
+                            name="action_view_engc_os"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-wrench"
+                            attrs="{'invisible': [('engc_os_id', '=', False)]}"
+                        >
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">OS</span>
+                                <field name="engc_os_id" nolabel="1"/>
+                            </div>
+                        </button>
+                        <button
+                            name="action_view_engc_calibration"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-line-chart"
+                            attrs="{'invisible': ['|', ('qualification_type', '!=', 'calibration'), ('engc_calibration_id', '=', False)]}"
+                        >
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Calibração</span>
+                                <field name="engc_calibration_id" nolabel="1"/>
+                            </div>
+                        </button>
+                        <button
+                            name="action_view_invoices"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-file-text-o"
+                            attrs="{'invisible': [('invoice_count', '=', 0)]}"
+                        >
+                            <field name="invoice_count" widget="statinfo" string="Faturas"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="equipment_id" options="{'no_create_edit': True}"/>
+                            <field name="partner_id" options="{'no_create_edit': True}"/>
+                            <field name="qualification_type"/>
+                            <field name="responsible_id" options="{'no_create_edit': True}"/>
+                            <field name="docx_template_id" options="{'no_create_edit': True}"/>
+                        </group>
+                        <group>
+                            <field name="planned_date"/>
+                            <field name="execution_date"/>
+                            <field name="approver_id" options="{'no_create_edit': True}"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Etapas">
+                            <field name="step_ids" context="{'default_qualificacao_id': active_id}">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="acceptance_criteria"/>
+                                    <field name="result_notes"/>
+                                    <field name="approved"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Desvios">
+                            <field name="deviation_ids" context="{'default_qualificacao_id': active_id}">
+                                <tree editable="bottom">
+                                    <field name="name"/>
+                                    <field name="step_id"/>
+                                    <field name="responsible_id"/>
+                                    <field name="deadline_date"/>
+                                    <field name="resolved"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Ciclos (QD)" attrs="{'invisible': [('qualification_type', '!=', 'performance')]}">
+                            <field name="cycle_ids">
+                                <tree editable="bottom" decoration-success="state == 'passed'" decoration-danger="state == 'failed'">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="cycle_type_id"/>
+                                    <field name="sale_order_line_id" readonly="1" optional="hide"/>
+                                    <field name="executed_date"/>
+                                    <field name="state"/>
+                                    <field name="notes" optional="hide"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Malhas (Calibração)" attrs="{'invisible': [('qualification_type', '!=', 'calibration')]}">
+                            <group>
+                                <field name="engc_calibration_id"
+                                       options="{'no_create_edit': True}"
+                                       domain="[('equipment_id','=',equipment_id)]"
+                                       help="Link manual com calibração engc_os (certificado + pontos de medição)."/>
+                                <field name="engc_calibration_state"/>
+                            </group>
+                            <field name="malha_ids">
+                                <tree editable="bottom" decoration-success="state == 'passed'" decoration-danger="state == 'failed'">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="malha_type_id"/>
+                                    <field name="sensor_kind_id" optional="show"/>
+                                    <field name="sensor_serial" optional="show"/>
+                                    <field name="engc_calibration_measurement_id"
+                                           options="{'no_create_edit': True}"
+                                           domain="[('calibration_id','=',parent.engc_calibration_id)]"
+                                           optional="show"/>
+                                    <field name="measurement_unit" optional="hide"/>
+                                    <field name="sale_order_line_id" readonly="1" optional="hide"/>
+                                    <field name="executed_date"/>
+                                    <field name="state"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Comercial">
+                            <group>
+                                <group string="Origem">
+                                    <field name="company_id" groups="base.group_multi_company"/>
+                                    <field name="sale_order_id" readonly="1"/>
+                                    <field name="engc_os_id" readonly="1"/>
+                                </group>
+                                <group string="Faturamento">
+                                    <field name="invoice_status"/>
+                                    <field name="invoice_count" readonly="1"/>
+                                </group>
+                            </group>
+                            <group string="Linhas do Pedido">
+                                <field name="sale_order_line_ids" nolabel="1">
+                                    <tree>
+                                        <field name="product_id"/>
+                                        <field name="qualification_type"/>
+                                        <field name="product_uom_qty"/>
+                                        <field name="qty_delivered"/>
+                                        <field name="invoice_status"/>
+                                    </tree>
+                                </field>
+                            </group>
+                        </page>
+                        <page string="Observações">
+                            <field name="notes" widget="html"/>
+                        </page>
+                        <page string="Mensagens">
+                            <field name="message_follower_ids" widget="mail_followers" readonly="1"/>
+                            <field name="activity_ids" widget="mail_activity"/>
+                            <field name="message_ids" widget="mail_thread"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_afr_qualificacao_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.search</field>
+        <field name="model">afr.qualificacao</field>
+        <field name="arch" type="xml">
+            <search string="Pesquisar qualificações">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="equipment_id"/>
+                <field name="qualification_type"/>
+                <field name="state"/>
+                <group expand="1" string="Filtro por status">
+                    <filter name="filter_draft" string="Rascunho" domain="[('state', '=', 'draft')]"/>
+                    <filter name="filter_in_progress" string="Em andamento" domain="[('state', '=', 'in_progress')]"/>
+                    <filter name="filter_approved" string="Aprovada" domain="[('state', '=', 'approved')]"/>
+                    <filter name="filter_rejected" string="Reprovada" domain="[('state', '=', 'rejected')]"/>
+                </group>
+                <group expand="0" string="Agrupamentos">
+                    <filter name="group_partner" string="Cliente" context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_equipment" string="Equipamento" context="{'group_by': 'equipment_id'}"/>
+                    <filter name="group_type" string="Tipo" context="{'group_by': 'qualification_type'}"/>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_afr_qualificacao" model="ir.actions.act_window">
+        <field name="name">Qualificações</field>
+        <field name="res_model">afr.qualificacao</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="afr_qualificacao.view_afr_qualificacao_search"/>
+        <field name="context">{}</field>
+    </record>
+
+    <record id="view_afr_qualificacao_deviation_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.deviation.tree</field>
+        <field name="model">afr.qualificacao.deviation</field>
+        <field name="arch" type="xml">
+            <tree string="Desvios de Qualificação">
+                <field name="name"/>
+                <field name="qualificacao_id"/>
+                <field name="step_id"/>
+                <field name="responsible_id"/>
+                <field name="deadline_date"/>
+                <field name="resolved"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_afr_qualificacao_deviation_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.deviation.form</field>
+        <field name="model">afr.qualificacao.deviation</field>
+        <field name="arch" type="xml">
+            <form string="Desvio de Qualificação">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="qualificacao_id" options="{'no_create_edit': True}"/>
+                            <field name="step_id" domain="[('qualificacao_id', '=', qualificacao_id)]"/>
+                        </group>
+                        <group>
+                            <field name="responsible_id"/>
+                            <field name="deadline_date"/>
+                            <field name="resolved"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="description"/>
+                        <field name="corrective_action"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+   
+
+    
+</odoo>
+

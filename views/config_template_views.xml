@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_config_template_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.config.template.tree</field>
+        <field name="model">afr.qualificacao.config.template</field>
+        <field name="arch" type="xml">
+            <tree string="Templates de Qualificação">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="equipment_category_id"/>
+                <field name="do_qi" widget="boolean_toggle"/>
+                <field name="do_qo" widget="boolean_toggle"/>
+                <field name="do_qs" widget="boolean_toggle"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_config_template_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.config.template.form</field>
+        <field name="model">afr.qualificacao.config.template</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="equipment_category_id"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group>
+                            <field name="do_qi"/>
+                            <field name="do_qo"/>
+                            <field name="do_qs"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Ciclos QD">
+                            <field name="qd_line_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="cycle_type_id"/>
+                                    <field name="qty"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Malhas Calibração">
+                            <field name="calib_line_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="malha_type_id"/>
+                                    <field name="qty"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Descrição">
+                            <field name="description"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_config_template" model="ir.actions.act_window">
+        <field name="name">Templates de Qualificação</field>
+        <field name="res_model">afr.qualificacao.config.template</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

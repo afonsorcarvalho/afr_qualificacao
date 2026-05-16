@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Grupos de segurança conforme práticas recomendadas na documentação do Odoo:
+    https://www.odoo.com/documentation/16.0/pt_BR/developer/reference/backend/security.html
+-->
+<odoo>
+    <record id="group_afr_qualificacao_user" model="res.groups">
+        <field name="name">Qualificação - Usuário</field>
+    </record>
+
+    <record id="group_afr_qualificacao_manager" model="res.groups">
+        <field name="name">Qualificação - Gestor</field>
+        <field name="implied_ids" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
+    </record>
+</odoo>
+
