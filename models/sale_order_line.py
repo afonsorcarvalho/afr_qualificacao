@@ -15,10 +15,14 @@ from odoo.exceptions import ValidationError
 class SaleOrderLine(models.Model):
     _inherit = "sale.order.line"
 
+    # Metadados qualif: copy=True para preservar configuração ao duplicar SO
+    # (user pede que duplicação carregue equipamento+tipo+ciclo/malha). Apenas
+    # `afr_qualificacao_id` permanece copy=False — qualificação é criada no
+    # confirm do novo SO, não herdada do original.
     is_qualificacao_managed = fields.Boolean(
         string="Gerenciado por Qualificação",
         default=False,
-        copy=False,
+        copy=True,
         help=(
             "Marca linhas criadas pelo wizard Configurador de Qualificações. "
             "Re-apply do wizard apaga/recria apenas linhas managed (preserva "
@@ -34,23 +38,23 @@ class SaleOrderLine(models.Model):
             ("calibration", "Calibração"),
         ],
         string="Tipo de Qualificação",
-        copy=False,
+        copy=True,
     )
     equipment_id = fields.Many2one(
         comodel_name="engc.equipment",
         string="Equipamento",
-        copy=False,
+        copy=True,
         help="Equipamento associado a esta linha de qualificação.",
     )
     cycle_type_id = fields.Many2one(
         comodel_name="afr.qualificacao.cycle.type",
         string="Tipo de Ciclo (QD)",
-        copy=False,
+        copy=True,
     )
     malha_type_id = fields.Many2one(
         comodel_name="afr.qualificacao.malha.type",
         string="Tipo de Malha (Calib)",
-        copy=False,
+        copy=True,
     )
     afr_qualificacao_id = fields.Many2one(
         comodel_name="afr.qualificacao",
@@ -59,6 +63,35 @@ class SaleOrderLine(models.Model):
         ondelete="set null",
         help="Qualificação criada ao confirmar este SO.",
     )
+    equipment_subtotal = fields.Monetary(
+        compute="_compute_equipment_subtotal",
+        string="Subtotal Equipamento",
+        currency_field="currency_id",
+        help=(
+            "Em linhas de section (display_type='line_section'), retorna soma "
+            "de price_subtotal de TODAS linhas de produto do mesmo "
+            "equipment_id no mesmo SO. Em demais linhas, 0. Visível no tree "
+            "do SO p/ leitura rápida do escopo por equipamento."
+        ),
+    )
+
+    @api.depends(
+        "display_type",
+        "equipment_id",
+        "order_id.order_line.equipment_id",
+        "order_id.order_line.display_type",
+        "order_id.order_line.price_subtotal",
+    )
+    def _compute_equipment_subtotal(self):
+        for line in self:
+            if line.display_type != "line_section" or not line.equipment_id:
+                line.equipment_subtotal = 0.0
+                continue
+            siblings = line.order_id.order_line.filtered(
+                lambda l: l.equipment_id == line.equipment_id
+                and not l.display_type
+            )
+            line.equipment_subtotal = sum(siblings.mapped("price_subtotal"))
     cycle_ids = fields.One2many(
         comodel_name="afr.qualificacao.cycle",
         inverse_name="sale_order_line_id",
@@ -80,6 +113,11 @@ class SaleOrderLine(models.Model):
     def _check_qualificacao_consistency(self):
         for line in self:
             if not line.is_qualificacao_managed:
+                continue
+            # Section/note (display_type set) — pular consistência: são
+            # apenas linhas visuais geradas pelo wizard p/ agrupar
+            # equipamentos no SO. Não geram qualificação.
+            if line.display_type:
                 continue
             if not line.equipment_id:
                 raise ValidationError(_(

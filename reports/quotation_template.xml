@@ -1,0 +1,596 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Inherit do template padrão Odoo `sale.report_saleorder_document`.
+
+        Estratégia (preserva fallback Odoo):
+        1. Adiciona `t-if="not doc.has_qualif_lines"` no <div class="page">
+           original — esconde quando SO tem qualif.
+        2. Insere novo <div class="page" t-if="doc.has_qualif_lines"> antes,
+           com layout dedicado (capa + sumário + descritivo + escopo +
+           normas + resumo financeiro + condições + aceite).
+
+        Mantém `web.external_layout` (logo + footer) em ambos os fluxos.
+
+        Cores neutras (#333/#666/#999/#ddd). PT-BR. A4 retrato.
+    -->
+    <template id="report_saleorder_document_qualif"
+              inherit_id="sale.report_saleorder_document"
+              name="Cotação Qualificação (AFR)">
+
+        <!-- Condiciona o div page original — fallback Odoo padrão -->
+        <xpath expr="//div[hasclass('page')]" position="attributes">
+            <attribute name="t-if">not doc.has_qualif_lines</attribute>
+        </xpath>
+
+        <!-- Insere novo div page com layout dedicado -->
+        <xpath expr="//div[hasclass('page')]" position="before">
+            <div class="page qq-page" t-if="doc.has_qualif_lines">
+                <style>
+                    /* Font sizes aumentados ~30% sobre baseline original
+                       conforme request user: parágrafos e tabelas mais
+                       legíveis. Cover title mantido (já grande). */
+                    .qq-page { color: #333; font-size: 16px; }
+                    /* Esconde bloco de endereço do partner injetado por
+                       `web.external_layout_standard` (aparecia top-right da
+                       capa, duplicando info já presente em "Cliente:" da
+                       meta box). Style só renderiza quando qq-page existe
+                       (has_qualif_lines=True), portanto não afeta fallback. */
+                    .address, .row.address { display: none !important; }
+                    .qq-cover {
+                        text-align: center;
+                        padding: 60px 40px 40px 40px;
+                        min-height: 720px;
+                    }
+                    .qq-cover-title {
+                        font-size: 28px;
+                        font-weight: bold;
+                        color: #222;
+                        margin-top: 80px;
+                        letter-spacing: 1px;
+                    }
+                    .qq-cover-subtitle {
+                        font-size: 16px;
+                        color: #666;
+                        margin-top: 10px;
+                        font-style: italic;
+                    }
+                    .qq-cover-meta {
+                        margin-top: 80px;
+                        display: inline-block;
+                        border-top: 2px solid #333;
+                        border-bottom: 2px solid #333;
+                        padding: 20px 50px;
+                        text-align: left;
+                        font-size: 17px;
+                        line-height: 1.8;
+                    }
+                    .qq-cover-meta strong {
+                        color: #222;
+                        display: inline-block;
+                        min-width: 100px;
+                    }
+                    .qq-cover-footer {
+                        margin-top: 60px;
+                        font-size: 13px;
+                        color: #999;
+                    }
+                    .qq-section { page-break-before: always; padding-top: 10px; }
+                    /* Continua na mesma página da seção anterior (sem quebra).
+                       Usado para agrupar: Sumário+Descritivo e
+                       Financeiro+Condições+Aceite conforme request user. */
+                    .qq-section-cont { page-break-before: avoid; padding-top: 18px; }
+                    .qq-section-title {
+                        font-size: 18px;
+                        font-weight: bold;
+                        color: #222;
+                        border-bottom: 2px solid #333;
+                        padding: 6px 0;
+                        margin-bottom: 12px;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                    }
+                    .qq-subsection-title {
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: #444;
+                        margin-top: 14px;
+                        margin-bottom: 6px;
+                    }
+                    .qq-table {
+                        width: 100%;
+                        font-size: 14px;
+                        border-collapse: collapse;
+                        margin-bottom: 10px;
+                    }
+                    .qq-table th {
+                        background-color: #f4f4f4;
+                        color: #222;
+                        border-bottom: 2px solid #333;
+                        padding: 8px 10px;
+                        text-align: left;
+                        font-weight: bold;
+                    }
+                    .qq-table td {
+                        padding: 7px 10px;
+                        border-bottom: 1px solid #eee;
+                        vertical-align: top;
+                    }
+                    .qq-equip-card {
+                        border: 1px solid #ddd;
+                        border-radius: 3px;
+                        padding: 12px 14px;
+                        margin-bottom: 14px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-equip-header {
+                        border-bottom: 1px solid #ccc;
+                        padding-bottom: 6px;
+                        margin-bottom: 10px;
+                        font-weight: bold;
+                        font-size: 17px;
+                        color: #222;
+                    }
+                    .qq-equip-meta {
+                        font-size: 13px;
+                        color: #666;
+                        font-weight: normal;
+                        margin-left: 8px;
+                    }
+                    .qq-type-block {
+                        padding: 6px 0 6px 8px;
+                        border-left: 3px solid #ccc;
+                        margin: 6px 0 6px 4px;
+                    }
+                    .qq-type-label {
+                        font-weight: bold;
+                        color: #333;
+                        font-size: 16px;
+                    }
+                    .qq-item-list {
+                        font-size: 14px;
+                        color: #555;
+                        margin: 4px 0 0 12px;
+                    }
+                    .qq-equip-subtotal {
+                        text-align: right;
+                        font-weight: bold;
+                        font-size: 17px;
+                        color: #222;
+                        border-top: 1px solid #ddd;
+                        padding-top: 8px;
+                        margin-top: 8px;
+                    }
+                    .qq-descritivo-block {
+                        margin-bottom: 14px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-descritivo-label {
+                        font-weight: bold;
+                        color: #222;
+                        font-size: 16px;
+                        margin-bottom: 4px;
+                    }
+                    .qq-descritivo-text {
+                        font-size: 14px;
+                        color: #444;
+                        text-align: justify;
+                        line-height: 1.5;
+                        white-space: pre-line;
+                    }
+                    .qq-total-table {
+                        width: 100%;
+                        font-size: 16px;
+                        margin-top: 10px;
+                    }
+                    .qq-total-table td {
+                        padding: 7px 10px;
+                    }
+                    .qq-total-table .qq-tot-label { text-align: left; color: #555; }
+                    .qq-total-table .qq-tot-value { text-align: right; font-weight: bold; color: #222; }
+                    .qq-total-grand {
+                        border-top: 2px solid #333;
+                        font-size: 18px;
+                        color: #000;
+                    }
+                    .qq-conditions-grid {
+                        display: table;
+                        width: 100%;
+                        margin-bottom: 16px;
+                    }
+                    .qq-conditions-cell {
+                        display: table-cell;
+                        width: 33%;
+                        padding: 8px 12px;
+                        border: 1px solid #ddd;
+                        vertical-align: top;
+                        font-size: 14px;
+                    }
+                    .qq-conditions-cell strong {
+                        display: block;
+                        color: #333;
+                        margin-bottom: 4px;
+                    }
+                    .qq-signature-block {
+                        margin-top: 40px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-signature-row {
+                        display: table;
+                        width: 100%;
+                        margin-top: 60px;
+                    }
+                    .qq-signature-col {
+                        display: table-cell;
+                        width: 50%;
+                        text-align: center;
+                        padding: 0 20px;
+                    }
+                    .qq-signature-line {
+                        border-bottom: 1px solid #333;
+                        margin-bottom: 8px;
+                        height: 1px;
+                    }
+                    .qq-signature-label {
+                        font-size: 13px;
+                        color: #666;
+                    }
+                    .qq-norma-organism {
+                        font-size: 13px;
+                        color: #888;
+                    }
+                </style>
+
+                <!-- ========================================================
+                     SECÇÃO 1 — CAPA
+                ========================================================= -->
+                <div class="qq-cover">
+                    <div class="qq-cover-title">
+                        PROPOSTA TÉCNICO-COMERCIAL
+                    </div>
+                    <div class="qq-cover-subtitle">
+                        Qualificação de Equipamentos
+                    </div>
+
+                    <div class="qq-cover-meta">
+                        <div>
+                            <strong>Nº:</strong>
+                            <span t-field="doc.name"/>
+                        </div>
+                        <div>
+                            <strong>Cliente:</strong>
+                            <span t-field="doc.partner_id.name"/>
+                        </div>
+                        <div t-if="doc.partner_id.vat">
+                            <strong>CNPJ/CPF:</strong>
+                            <span t-field="doc.partner_id.vat"/>
+                        </div>
+                        <div>
+                            <strong>Data:</strong>
+                            <span t-field="doc.date_order" t-options="{'widget': 'date'}"/>
+                        </div>
+                        <div t-if="doc.validity_date">
+                            <strong>Validade:</strong>
+                            <span t-field="doc.validity_date"/>
+                        </div>
+                    </div>
+
+                    <div class="qq-cover-footer">
+                        Emitido por
+                        <span t-field="doc.company_id.name"/>
+                    </div>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 2 — SUMÁRIO EXECUTIVO
+                ========================================================= -->
+                <t t-set="summary" t-value="doc._qualif_equipment_summary()"/>
+                <t t-set="type_descs" t-value="doc._qualif_type_descriptions()"/>
+
+                <div class="qq-section">
+                    <div class="qq-section-title">Sumário Executivo</div>
+                    <p>
+                        Esta proposta descreve o escopo técnico-comercial dos
+                        serviços de qualificação a serem prestados para
+                        <strong t-field="doc.partner_id.name"/>.
+                    </p>
+                    <table class="qq-table">
+                        <tr>
+                            <th style="width: 40%;">Item</th>
+                            <th>Conteúdo</th>
+                        </tr>
+                        <tr>
+                            <td><strong>Equipamentos abrangidos</strong></td>
+                            <td><span t-esc="len(summary)"/></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tipos de serviço incluídos</strong></td>
+                            <td>
+                                <t t-foreach="type_descs" t-as="td">
+                                    <span t-esc="td['label']"/><t t-if="not td_last">; </t>
+                                </t>
+                            </td>
+                        </tr>
+                        <tr t-if="doc.qualif_standard_ids">
+                            <td><strong>Normas aplicáveis</strong></td>
+                            <td>
+                                <t t-foreach="doc.qualif_standard_ids" t-as="std">
+                                    <span t-esc="std.code"/><t t-if="not std_last">; </t>
+                                </t>
+                            </td>
+                        </tr>
+                        <tr t-if="doc.user_id">
+                            <td><strong>Responsável comercial</strong></td>
+                            <td>
+                                <span t-field="doc.user_id.name"/>
+                                <t t-if="doc.user_id.email">
+                                    · <span t-field="doc.user_id.email"/>
+                                </t>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 3 — DESCRITIVO TÉCNICO
+                     (continua na mesma página do Sumário Executivo)
+                ========================================================= -->
+                <div class="qq-section qq-section-cont">
+                    <div class="qq-section-title">Descritivo Técnico</div>
+                    <p>
+                        A seguir, descrição dos tipos de qualificação
+                        contemplados nesta proposta.
+                    </p>
+                    <t t-foreach="type_descs" t-as="td">
+                        <div class="qq-descritivo-block">
+                            <div class="qq-descritivo-label">
+                                <span t-esc="td['label']"/>
+                            </div>
+                            <div class="qq-descritivo-text">
+                                <span t-esc="td['description']"/>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 4 — ESCOPO POR EQUIPAMENTO
+                ========================================================= -->
+                <div class="qq-section">
+                    <div class="qq-section-title">Escopo por Equipamento</div>
+                    <p>
+                        Detalhamento dos serviços a serem executados em cada
+                        equipamento. Subtotais não incluem impostos.
+                    </p>
+                    <t t-foreach="summary" t-as="eq">
+                        <div class="qq-equip-card">
+                            <div class="qq-equip-header">
+                                <span t-esc="eq['equipment'].name"/>
+                                <span class="qq-equip-meta">
+                                    <t t-if="eq['equipment'].serial_number">
+                                        · S/N:
+                                        <span t-esc="eq['equipment'].serial_number"/>
+                                    </t>
+                                    <t t-if="eq['equipment'].category_id">
+                                        · Categoria:
+                                        <span t-esc="eq['equipment'].category_id.name"/>
+                                    </t>
+                                </span>
+                            </div>
+                            <t t-foreach="eq['types']" t-as="tp">
+                                <div class="qq-type-block">
+                                    <div class="qq-type-label">
+                                        <span t-esc="tp['label']"/>
+                                    </div>
+                                    <ul class="qq-item-list">
+                                        <t t-foreach="tp['items']" t-as="it">
+                                            <li>
+                                                <span t-esc="it['name']"/>
+                                                <t t-if="it['qty'] and it['qty'] != 1">
+                                                    — quantidade:
+                                                    <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
+                                                </t>
+                                            </li>
+                                        </t>
+                                    </ul>
+                                </div>
+                            </t>
+                            <div class="qq-equip-subtotal">
+                                Subtotal do equipamento:
+                                <span t-esc="eq['subtotal']"
+                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 5 — NORMAS APLICÁVEIS
+                ========================================================= -->
+                <div class="qq-section" t-if="doc.qualif_standard_ids">
+                    <div class="qq-section-title">Normas Aplicáveis</div>
+                    <p>
+                        Os serviços contemplados nesta proposta atendem às
+                        seguintes normas técnicas e regulatórias.
+                    </p>
+                    <table class="qq-table">
+                        <tr>
+                            <th style="width: 22%;">Código</th>
+                            <th style="width: 38%;">Nome</th>
+                            <th style="width: 15%;">Organismo</th>
+                            <th>Escopo</th>
+                        </tr>
+                        <t t-foreach="doc.qualif_standard_ids" t-as="std">
+                            <tr>
+                                <td>
+                                    <strong t-esc="std.code"/>
+                                </td>
+                                <td>
+                                    <span t-esc="std.name"/>
+                                </td>
+                                <td>
+                                    <span class="qq-norma-organism" t-esc="std.organism or ''"/>
+                                </td>
+                                <td>
+                                    <span t-esc="std.description or ''"/>
+                                </td>
+                            </tr>
+                        </t>
+                    </table>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 6 — RESUMO FINANCEIRO
+                ========================================================= -->
+                <div class="qq-section">
+                    <div class="qq-section-title">Resumo Financeiro</div>
+                    <p>
+                        Resumo dos valores conforme escopo apresentado. Valores
+                        em
+                        <span t-esc="doc.currency_id.name"/>.
+                    </p>
+                    <table class="qq-table">
+                        <tr>
+                            <th>Equipamento</th>
+                            <th class="text-end" style="text-align: right;">Subtotal</th>
+                        </tr>
+                        <t t-foreach="summary" t-as="eq">
+                            <tr>
+                                <td>
+                                    <span t-esc="eq['equipment'].name"/>
+                                </td>
+                                <td style="text-align: right;">
+                                    <span t-esc="eq['subtotal']"
+                                          t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                </td>
+                            </tr>
+                        </t>
+                    </table>
+
+                    <table class="qq-total-table">
+                        <tr>
+                            <td class="qq-tot-label">Subtotal:</td>
+                            <td class="qq-tot-value">
+                                <span t-field="doc.amount_untaxed"
+                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="qq-tot-label">Impostos:</td>
+                            <td class="qq-tot-value">
+                                <span t-field="doc.amount_tax"
+                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                            </td>
+                        </tr>
+                        <tr class="qq-total-grand">
+                            <td class="qq-tot-label">TOTAL GERAL:</td>
+                            <td class="qq-tot-value">
+                                <span t-field="doc.amount_total"
+                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 7 — CONDIÇÕES COMERCIAIS
+                     (continua na mesma página do Resumo Financeiro)
+                ========================================================= -->
+                <div class="qq-section qq-section-cont">
+                    <div class="qq-section-title">Condições Comerciais</div>
+
+                    <div class="qq-conditions-grid">
+                        <div class="qq-conditions-cell">
+                            <strong>Validade da Proposta</strong>
+                            <t t-if="doc.validity_date">
+                                <span t-field="doc.validity_date"/>
+                            </t>
+                            <t t-else="">
+                                <em>Consultar responsável comercial.</em>
+                            </t>
+                        </div>
+                        <div class="qq-conditions-cell">
+                            <strong>Condição de Pagamento</strong>
+                            <t t-if="doc.payment_term_id">
+                                <span t-field="doc.payment_term_id.name"/>
+                            </t>
+                            <t t-else="">
+                                <em>A combinar.</em>
+                            </t>
+                        </div>
+                        <div class="qq-conditions-cell">
+                            <strong>Responsável Comercial</strong>
+                            <t t-if="doc.user_id">
+                                <div t-field="doc.user_id.name"/>
+                                <div t-if="doc.user_id.email"
+                                     style="font-size: 13px; color: #666;">
+                                    <span t-field="doc.user_id.email"/>
+                                </div>
+                                <div t-if="doc.user_id.phone"
+                                     style="font-size: 13px; color: #666;">
+                                    <span t-field="doc.user_id.phone"/>
+                                </div>
+                            </t>
+                        </div>
+                    </div>
+
+                    <div t-if="doc.note" class="qq-descritivo-block">
+                        <div class="qq-subsection-title">Termos e Observações</div>
+                        <div class="qq-descritivo-text">
+                            <span t-field="doc.note"/>
+                        </div>
+                    </div>
+
+                    <div t-if="doc.payment_term_id and not is_html_empty(doc.payment_term_id.note)"
+                         class="qq-descritivo-block">
+                        <div class="qq-subsection-title">Observações de Pagamento</div>
+                        <div class="qq-descritivo-text">
+                            <span t-field="doc.payment_term_id.note"/>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========================================================
+                     SECÇÃO 8 — ACEITE
+                     (continua na mesma página de Financeiro + Condições)
+                ========================================================= -->
+                <div class="qq-section qq-section-cont qq-signature-block">
+                    <div class="qq-section-title">Aceite da Proposta</div>
+                    <p>
+                        Declaro estar de acordo com os termos, escopo e
+                        valores apresentados nesta Proposta Técnico-Comercial
+                        <strong t-field="doc.name"/>.
+                    </p>
+
+                    <div class="qq-signature-row">
+                        <div class="qq-signature-col">
+                            <div class="qq-signature-line"/>
+                            <div class="qq-signature-label">
+                                <strong>CLIENTE</strong>
+                                <br/>
+                                <span t-field="doc.partner_id.name"/>
+                                <br/>
+                                Nome, cargo, assinatura e carimbo
+                            </div>
+                        </div>
+                        <div class="qq-signature-col">
+                            <div class="qq-signature-line"/>
+                            <div class="qq-signature-label">
+                                <strong>EMPRESA</strong>
+                                <br/>
+                                <span t-field="doc.company_id.name"/>
+                                <br/>
+                                Nome, cargo, assinatura
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 30px; text-align: center; font-size: 14px;">
+                        <strong>Local e data:</strong>
+                        ____________________________________, ____ / ____ / ________
+                    </div>
+                </div>
+            </div>
+        </xpath>
+    </template>
+</odoo>

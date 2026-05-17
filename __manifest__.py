@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.2.1.0",
+    "version": "16.0.2.2.2",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -39,7 +39,9 @@
         "security/qualificacao_groups.xml",
         "security/ir.model.access.csv",
         "data/sensor_kind_seed.xml",
+        "data/standard_seed.xml",
         "views/sensor_kind_views.xml",
+        "views/standard_views.xml",
         "views/cycle_type_views.xml",
         "views/malha_type_views.xml",
         "views/config_template_views.xml",
@@ -54,6 +56,7 @@
         "reports/qualificacao_certificate_template.xml",
         "reports/qualificacao_certificate_report.xml",
         "reports/calibration_certificate_inherit.xml",
+        "reports/quotation_template.xml",
     ],
     "external_dependencies": {
         "python": [
