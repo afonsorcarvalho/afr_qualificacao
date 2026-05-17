@@ -76,14 +76,25 @@ class SaleOrder(models.Model):
         compute="_compute_qualificacao_count",
         string="Total de Qualificações",
     )
+    # OS própria de qualificação (16.0.3.1.0 — substitui engc_os no fluxo qualif)
+    qualificacao_os_ids = fields.One2many(
+        comodel_name="afr.qualificacao.os",
+        inverse_name="sale_order_id",
+        string="OS de Qualificação",
+    )
+    qualificacao_os_count = fields.Integer(
+        compute="_compute_qualificacao_os_count",
+        string="Total OS Qualif",
+    )
+    # DEPRECATED 16.0.3.1.0 — preservado para SOs antigas (cutover sem migração).
     engc_os_ids = fields.One2many(
         comodel_name="engc.os",
         inverse_name="sale_order_id",
-        string="Ordens de Serviço",
+        string="OSs engc (legacy)",
     )
     engc_os_count = fields.Integer(
         compute="_compute_engc_os_count",
-        string="Total de OSs",
+        string="Total OSs engc (legacy)",
     )
 
     has_qualif_lines = fields.Boolean(
@@ -119,6 +130,11 @@ class SaleOrder(models.Model):
     def _compute_qualificacao_count(self):
         for order in self:
             order.qualificacao_count = len(order.qualificacao_ids)
+
+    @api.depends("qualificacao_os_ids")
+    def _compute_qualificacao_os_count(self):
+        for order in self:
+            order.qualificacao_os_count = len(order.qualificacao_os_ids)
 
     @api.depends("engc_os_ids")
     def _compute_engc_os_count(self):
@@ -418,11 +434,21 @@ class SaleOrder(models.Model):
             "domain": [("id", "in", self.qualificacao_ids.ids)],
         }
 
+    def action_view_qualificacao_os(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("OS de Qualificação"),
+            "res_model": "afr.qualificacao.os",
+            "view_mode": "tree,form",
+            "domain": [("id", "in", self.qualificacao_os_ids.ids)],
+        }
+
     def action_view_engc_os(self):
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Ordens de Serviço"),
+            "name": _("OSs engc (legacy)"),
             "res_model": "engc.os",
             "view_mode": "tree,form",
             "domain": [("id", "in", self.engc_os_ids.ids)],
@@ -439,14 +465,17 @@ class SaleOrder(models.Model):
         return result
 
     def _create_qualificacoes_from_lines(self):
-        """Materializa engc.os + afr.qualificacao + sub-records.
+        """Materializa afr.qualificacao.os + afr.qualificacao + sub-records.
 
-        Agrupamento:
-        - 1 engc.os por equipamento (campo logístico, agendamento)
+        Cutover 16.0.3.1.0:
+        - 1 afr.qualificacao.os por SO (agregando N equipamentos × N tipos)
         - 1 afr.qualificacao por (equipamento, qualification_type)
         - Para QD: N afr.qualificacao.cycle por linha SO (qty=N)
         - Para Calib: N afr.qualificacao.malha por linha SO
         - Para QI/QO/QS: sem sub-records (1 linha = 1 qualificação)
+
+        engc.os NÃO é mais criado para SOs de qualificação. SOs antigas
+        (pré-3.1.0) ficam com engc.os existente; cutover sem migração.
 
         Idempotência: skip se afr_qualificacao_id já populado (evita
         re-gerar em re-confirm).
@@ -462,35 +491,31 @@ class SaleOrder(models.Model):
         if not managed:
             return
 
-        EngcOs = self.env["engc.os"]
+        QualifOs = self.env["afr.qualificacao.os"]
         Qualif = self.env["afr.qualificacao"]
         Cycle = self.env["afr.qualificacao.cycle"]
         Malha = self.env["afr.qualificacao.malha"]
+
+        # 1 OS por SO (reusa se já existe — re-confirmação parcial)
+        os = self.qualificacao_os_ids[:1] or QualifOs.create(
+            self._prepare_qualificacao_os_values()
+        )
 
         # Agrupa linhas por equipamento
         by_equipment = defaultdict(lambda: self.env["sale.order.line"])
         for line in managed:
             by_equipment[line.equipment_id] |= line
 
-        # Por equipamento: cria engc.os (se ainda não houver pra esse equip+SO)
         for equipment, equip_lines in by_equipment.items():
-            existing_os = self.engc_os_ids.filtered(
-                lambda o: o.equipment_id == equipment
-            )
-            engc_os = existing_os[:1] if existing_os else EngcOs.create(
-                self._prepare_engc_os_values(equipment)
-            )
-
-            # Por (equipment, qualification_type) único: cria afr.qualificacao
+            # Por (equipment, qualification_type): 1 afr.qualificacao
             by_type = defaultdict(lambda: self.env["sale.order.line"])
             for line in equip_lines:
                 by_type[line.qualification_type] |= line
 
             for qtype, type_lines in by_type.items():
                 qualif = Qualif.create(
-                    self._prepare_qualificacao_values(equipment, qtype, engc_os)
+                    self._prepare_qualificacao_values(equipment, qtype, os)
                 )
-                # back-ref nas linhas SO
                 type_lines.write({"afr_qualificacao_id": qualif.id})
 
                 # Sub-records explodidos por qty
@@ -516,25 +541,20 @@ class SaleOrder(models.Model):
                             })
                 # QI/QO/QS: sem sub-records
 
-    def _prepare_engc_os_values(self, equipment):
-        """Hook: valores para criar engc.os de um equipamento."""
+    def _prepare_qualificacao_os_values(self):
+        """Hook: valores para criar afr.qualificacao.os a partir do SO."""
         self.ensure_one()
-        now = fields.Datetime.now()
         return {
-            "equipment_id": equipment.id,
-            "client_id": self.partner_id.id,
-            "company_id": self.company_id.id,
             "sale_order_id": self.id,
-            "origin": self.name,
-            "maintenance_type": "qualification",
-            "who_executor": "own",
-            "date_request": now,
-            "date_scheduled": now,
-            "solicitante": self.partner_id.name or self.name,
+            "company_id": self.company_id.id,
+            # tecnico_default_id + datas planejadas: gestor preenche pós-confirm
         }
 
-    def _prepare_qualificacao_values(self, equipment, qualification_type, engc_os):
-        """Hook: valores para criar afr.qualificacao."""
+    def _prepare_qualificacao_values(self, equipment, qualification_type, os):
+        """Hook: valores para criar afr.qualificacao vinculada à OS qualif.
+
+        Assinatura mudada em 16.0.3.1.0: `engc_os` → `os` (afr.qualificacao.os).
+        """
         self.ensure_one()
         return {
             "name": _("Q-%s-%s-%s") % (
@@ -547,5 +567,6 @@ class SaleOrder(models.Model):
             "qualification_type": qualification_type,
             "company_id": self.company_id.id,
             "sale_order_id": self.id,
-            "engc_os_id": engc_os.id,
+            "os_id": os.id,
+            # engc_os_id deprecated — não preenchido para SOs novas.
         }

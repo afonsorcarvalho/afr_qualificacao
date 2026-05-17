@@ -8,3 +8,5 @@ from . import test_quotation_report
 # F1 (16.0.3.0.0)
 from . import test_os_workflow
 from . import test_relatorio_time_compute
+# F2 (16.0.3.1.0)
+from . import test_quote_first_os

@@ -15,15 +15,24 @@ class TestSoConfirmGeneration(AfrQualificacaoTestCommon):
         wiz.action_apply()
         return so
 
-    def test_confirm_creates_one_os_per_equipment(self):
+    def test_confirm_creates_one_qualificacao_os_aggregating_equipments(self):
+        """Cutover 16.0.3.1.0: 1 afr.qualificacao.os agrega TODOS os equipamentos.
+
+        engc.os NÃO é mais criado para SOs de qualificação.
+        """
         so = self._build_so_with_lines([
             {"equipment_id": self.equip1.id, "do_qi": True},
             {"equipment_id": self.equip2.id, "do_qo": True},
         ])
         so.action_confirm()
-        self.assertEqual(so.engc_os_count, 2)
-        equips = so.engc_os_ids.mapped("equipment_id")
+        # 1 OS qualif agregando tudo
+        self.assertEqual(so.qualificacao_os_count, 1)
+        os = so.qualificacao_os_ids
+        # OS contém ambos equipamentos via qualifs
+        equips = os.equipment_ids
         self.assertEqual(set(equips.ids), {self.equip1.id, self.equip2.id})
+        # engc.os NÃO criado para essa SO (cutover)
+        self.assertEqual(so.engc_os_count, 0)
 
     def test_confirm_creates_qualif_per_equipment_type_pair(self):
         so = self._build_so_with_lines([

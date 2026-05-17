@@ -23,12 +23,19 @@
                         attrs="{'invisible': [('qualificacao_count','=',0)]}">
                     <field name="qualificacao_count" widget="statinfo" string="Qualificações"/>
                 </button>
+                <button name="action_view_qualificacao_os"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-clipboard"
+                        attrs="{'invisible': [('qualificacao_os_count','=',0)]}">
+                    <field name="qualificacao_os_count" widget="statinfo" string="OS Qualif"/>
+                </button>
                 <button name="action_view_engc_os"
                         type="object"
                         class="oe_stat_button"
                         icon="fa-wrench"
                         attrs="{'invisible': [('engc_os_count','=',0)]}">
-                    <field name="engc_os_count" widget="statinfo" string="OSs"/>
+                    <field name="engc_os_count" widget="statinfo" string="OSs (legacy)"/>
                 </button>
             </xpath>
 
