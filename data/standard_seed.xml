@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Seed inicial de Normas Aplicáveis em qualificações/calibrações.
+        noupdate="1": permite que cliente edite/desative sem perder em upgrade.
+        Foco: normas mais comuns no contexto BR (saúde, farma, laboratório).
+    -->
+
+    <record id="standard_iso_17025" model="afr.qualificacao.standard">
+        <field name="code">ISO/IEC 17025</field>
+        <field name="name">Requisitos gerais para a competência de laboratórios de ensaio e calibração</field>
+        <field name="organism">ISO</field>
+        <field name="description">Norma internacional que estabelece requisitos para laboratórios demonstrarem competência técnica, imparcialidade e operação consistente. Base para acreditação de laboratórios de calibração e ensaios.</field>
+        <field name="sequence">10</field>
+    </record>
+
+    <record id="standard_nbr_iso_17025" model="afr.qualificacao.standard">
+        <field name="code">ABNT NBR ISO/IEC 17025</field>
+        <field name="name">Versão brasileira da ISO/IEC 17025</field>
+        <field name="organism">ABNT</field>
+        <field name="description">Adoção brasileira (ABNT) da ISO/IEC 17025. Referência oficial para acreditação Inmetro/Cgcre de laboratórios de calibração.</field>
+        <field name="sequence">15</field>
+    </record>
+
+    <record id="standard_fda_21_cfr_part_11" model="afr.qualificacao.standard">
+        <field name="code">FDA 21 CFR Part 11</field>
+        <field name="name">Electronic Records; Electronic Signatures</field>
+        <field name="organism">FDA</field>
+        <field name="description">Regulamentação da FDA que define critérios para registros eletrônicos e assinaturas eletrônicas confiáveis em sistemas computadorizados usados em ambientes regulados.</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="standard_anvisa_rdc_658" model="afr.qualificacao.standard">
+        <field name="code">ANVISA RDC 658/2022</field>
+        <field name="name">Boas Práticas de Fabricação de Medicamentos</field>
+        <field name="organism">ANVISA</field>
+        <field name="description">Resolução ANVISA que estabelece os requisitos mínimos a serem seguidos na fabricação de medicamentos para padronizar a verificação do cumprimento das BPF.</field>
+        <field name="sequence">30</field>
+    </record>
+
+    <record id="standard_anvisa_rdc_665" model="afr.qualificacao.standard">
+        <field name="code">ANVISA RDC 665/2022</field>
+        <field name="name">Boas Práticas de Fabricação de Produtos para Saúde</field>
+        <field name="organism">ANVISA</field>
+        <field name="description">Resolução ANVISA com requisitos para fabricação de produtos para saúde (dispositivos médicos), aplicável a equipamentos hospitalares.</field>
+        <field name="sequence">35</field>
+    </record>
+
+    <record id="standard_ispe_gamp_5" model="afr.qualificacao.standard">
+        <field name="code">ISPE GAMP 5</field>
+        <field name="name">A Risk-Based Approach to Compliant GxP Computerized Systems</field>
+        <field name="organism">ISPE</field>
+        <field name="description">Guia de boas práticas (Good Automated Manufacturing Practice) para validação de sistemas computadorizados em ambientes GxP, baseado em análise de risco.</field>
+        <field name="sequence">40</field>
+    </record>
+
+    <record id="standard_who_trs_961" model="afr.qualificacao.standard">
+        <field name="code">WHO TRS 961 Annex 3</field>
+        <field name="name">WHO good manufacturing practices: water for pharmaceutical use</field>
+        <field name="organism">WHO</field>
+        <field name="description">Diretrizes da Organização Mundial da Saúde para qualificação de sistemas de água para uso farmacêutico.</field>
+        <field name="sequence">50</field>
+    </record>
+
+    <record id="standard_inmetro_vim" model="afr.qualificacao.standard">
+        <field name="code">VIM 2012 / JCGM 200:2012</field>
+        <field name="name">Vocabulário Internacional de Metrologia</field>
+        <field name="organism">Inmetro / BIPM</field>
+        <field name="description">Vocabulário internacional de termos fundamentais e gerais de metrologia. Base terminológica para certificados de calibração.</field>
+        <field name="sequence">60</field>
+    </record>
+
+</odoo>

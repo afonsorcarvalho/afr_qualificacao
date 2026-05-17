@@ -82,5 +82,14 @@
         sequence="50"
         groups="afr_qualificacao.group_afr_qualificacao_manager"
     />
+
+    <menuitem
+        id="menu_afr_qualificacao_standard"
+        name="Normas Aplicáveis"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_qualificacao_standard"
+        sequence="60"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
 </odoo>
 

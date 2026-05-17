@@ -5,12 +5,63 @@
 - `action_confirm()` override dispara `_create_qualificacoes_from_lines()`
   que materializa engc.os (1/equipamento) + afr.qualificacao (1/equip×tipo)
   + sub-records (cycles/malhas explodidos por qty).
+- Helpers `has_qualif_lines`, `qualif_standard_ids` e
+  `_qualif_equipment_summary()` alimentam o template QWeb dedicado de
+  cotação (inherit condicional em `sale.report_saleorder_document`).
 """
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
+from odoo.tools.misc import formatLang
+
+
+# Selection labels (mantidos em sync com sale_order_line.qualification_type).
+QUALIF_TYPE_LABELS = OrderedDict([
+    ("installation", "Qualificação de Instalação (QI)"),
+    ("operational", "Qualificação Operacional (QO)"),
+    ("performance", "Qualificação de Desempenho (QD)"),
+    ("software", "Qualificação de Software (QS)"),
+    ("calibration", "Calibração"),
+])
+
+# Descrições padrão por tipo — usadas no Descritivo Técnico do relatório
+# de cotação. Texto voltado ao cliente leigo (sem jargão excessivo).
+# Sobrescrita possível via campo `description` do `cycle_type`/`malha_type`
+# ou via `qualificacao_type_config.description` (não-obrigatório).
+QUALIF_TYPE_DEFAULT_DESCRIPTION = {
+    "installation": (
+        "Verificação documentada de que o equipamento foi instalado de "
+        "acordo com as especificações do fabricante e os requisitos do "
+        "local de uso — incluindo utilidades, espaço físico, conexões "
+        "elétricas, hidráulicas e ambiente operacional."
+    ),
+    "operational": (
+        "Verificação documentada de que o equipamento opera dentro das "
+        "faixas e tolerâncias previstas em sua especificação — incluindo "
+        "todos os modos de operação, alarmes, intertravamentos e funções "
+        "de segurança."
+    ),
+    "performance": (
+        "Verificação documentada de que o equipamento entrega desempenho "
+        "consistente em condições reais de uso, executando ciclos "
+        "representativos do processo. Inclui análise de uniformidade, "
+        "repetibilidade e atendimento a critérios de aceitação técnicos."
+    ),
+    "software": (
+        "Validação documentada de sistemas computadorizados associados ao "
+        "equipamento — verificando integridade de dados, controles de "
+        "acesso, registros eletrônicos e conformidade com requisitos "
+        "regulatórios aplicáveis."
+    ),
+    "calibration": (
+        "Conjunto de operações que estabelece a relação entre os valores "
+        "indicados pelo instrumento e os valores correspondentes de "
+        "padrões rastreáveis. Inclui emissão de certificado com pontos "
+        "medidos, incertezas e comparação com critérios de aceitação."
+    ),
+}
 
 
 class SaleOrder(models.Model):
@@ -35,6 +86,35 @@ class SaleOrder(models.Model):
         string="Total de OSs",
     )
 
+    has_qualif_lines = fields.Boolean(
+        compute="_compute_has_qualif_lines",
+        string="Possui Linhas de Qualificação",
+        help=(
+            "True se a SO tem linhas geradas pelo configurador "
+            "(is_qualificacao_managed). Usado pelo template QWeb de "
+            "cotação para chavear entre layout dedicado e fallback Odoo."
+        ),
+    )
+    qualif_standard_ids = fields.Many2many(
+        comodel_name="afr.qualificacao.standard",
+        string="Normas Aplicáveis (agregado)",
+        compute="_compute_qualif_standard_ids",
+        help=(
+            "Normas únicas agregadas das linhas managed (via cycle_type/"
+            "malha_type). Não persistido — recalculado on-the-fly."
+        ),
+    )
+    qualif_subtotals_html = fields.Html(
+        compute="_compute_qualif_subtotals_html",
+        string="Subtotais por Equipamento",
+        sanitize=False,
+        help=(
+            "Tabela HTML resumo de subtotais por equipamento, gerada do "
+            "agregado das linhas managed. Exibida no form do SO abaixo "
+            "das linhas (Odoo não suporta coluna por section nativo)."
+        ),
+    )
+
     @api.depends("qualificacao_ids")
     def _compute_qualificacao_count(self):
         for order in self:
@@ -44,6 +124,261 @@ class SaleOrder(models.Model):
     def _compute_engc_os_count(self):
         for order in self:
             order.engc_os_count = len(order.engc_os_ids)
+
+    @api.depends(
+        "order_line.is_qualificacao_managed",
+        "order_line.equipment_id",
+        "order_line.display_type",
+    )
+    def _compute_has_qualif_lines(self):
+        for order in self:
+            order.has_qualif_lines = any(
+                line.is_qualificacao_managed
+                and line.equipment_id
+                and not line.display_type
+                for line in order.order_line
+            )
+
+    @api.depends(
+        "order_line.is_qualificacao_managed",
+        "order_line.equipment_id",
+        "order_line.display_type",
+        "order_line.price_subtotal",
+        "currency_id",
+    )
+    def _compute_qualif_subtotals_html(self):
+        """Render tabela HTML com subtotal por equipamento.
+
+        Vazio se SO não tem qualif_lines. Usado em painel form do SO
+        (Odoo não permite injetar coluna por section line — colspan=99).
+        """
+        for order in self:
+            if not order.has_qualif_lines:
+                order.qualif_subtotals_html = False
+                continue
+            summary = order._qualif_equipment_summary()
+            if not summary:
+                order.qualif_subtotals_html = False
+                continue
+            rows = []
+            total = 0.0
+            for s in summary:
+                equip_label = s["equipment"].display_name or _("Equipamento")
+                if s["equipment"].serial_number:
+                    equip_label += " — S/N: %s" % s["equipment"].serial_number
+                value = formatLang(
+                    self.env, s["subtotal"],
+                    currency_obj=order.currency_id,
+                )
+                rows.append(
+                    '<tr><td style="padding:4px 12px;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;'
+                    'font-weight:bold;">%s</td></tr>' % (equip_label, value)
+                )
+                total += s["subtotal"]
+            total_str = formatLang(
+                self.env, total, currency_obj=order.currency_id,
+            )
+            rows.append(
+                '<tr style="border-top:2px solid #333;">'
+                '<td style="padding:6px 12px;font-weight:bold;">TOTAL</td>'
+                '<td style="padding:6px 12px;text-align:right;'
+                'font-weight:bold;font-size:14px;">%s</td></tr>' % total_str
+            )
+            order.qualif_subtotals_html = (
+                '<div style="margin-top:12px;">'
+                '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
+                'Subtotais por Equipamento'
+                '</div>'
+                '<table style="border-collapse:collapse;min-width:50%%;'
+                'border:1px solid #ddd;font-size:12px;">'
+                '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
+                '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
+                '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
+                '</tr></thead>'
+                '<tbody>%s</tbody>'
+                '</table></div>'
+            ) % "".join(rows)
+
+    @api.depends(
+        "order_line.is_qualificacao_managed",
+        "order_line.display_type",
+        "order_line.cycle_type_id.standard_ids",
+        "order_line.malha_type_id.standard_ids",
+    )
+    def _compute_qualif_standard_ids(self):
+        for order in self:
+            standards = self.env["afr.qualificacao.standard"]
+            for line in order.order_line:
+                if not line.is_qualificacao_managed or line.display_type:
+                    continue
+                if line.cycle_type_id:
+                    standards |= line.cycle_type_id.standard_ids
+                if line.malha_type_id:
+                    standards |= line.malha_type_id.standard_ids
+            order.qualif_standard_ids = standards.sorted(
+                key=lambda s: (s.sequence, s.code or "", s.name or "")
+            )
+
+    # ------------------------------------------------------------------
+    # Helpers para template QWeb de cotação
+    # ------------------------------------------------------------------
+    def _qualif_equipment_summary(self):
+        """Agrega linhas managed por equipamento → tipo qualif → itens.
+
+        Retorna lista ordenada de dicts:
+            [
+                {
+                    "equipment": <engc.equipment record>,
+                    "types": [
+                        {
+                            "code": "performance",
+                            "label": "Qualificação de Desempenho (QD)",
+                            "items": [
+                                {"name": "Ciclo X", "qty": 3, "subtype": "cycle_type"},
+                                ...
+                            ],
+                            "subtotal": 4500.00,
+                        },
+                        ...
+                    ],
+                    "subtotal": 7800.00,
+                },
+                ...
+            ]
+
+        Usado pelo QWeb: `<t t-set="summary" t-value="o._qualif_equipment_summary()"/>`.
+        """
+        self.ensure_one()
+        # equipment_id → qualification_type → list of lines
+        by_equip = OrderedDict()
+        for line in self.order_line.sorted(key=lambda l: (
+            l.equipment_id.name or "",
+            l.qualification_type or "",
+            l.sequence,
+        )):
+            if not (line.is_qualificacao_managed and line.equipment_id):
+                continue
+            if line.display_type:
+                # Linhas visuais (section/note) — ignorar no agregado.
+                continue
+            equip = line.equipment_id
+            if equip not in by_equip:
+                by_equip[equip] = OrderedDict()
+            qtype = line.qualification_type or "other"
+            by_equip[equip].setdefault(qtype, []).append(line)
+
+        summary = []
+        for equip, types_dict in by_equip.items():
+            equip_subtotal = 0.0
+            types_list = []
+            # Preserva ordem do selection (QI → QO → QD → QS → Calib).
+            ordered_types = [
+                t for t in QUALIF_TYPE_LABELS if t in types_dict
+            ] + [
+                t for t in types_dict if t not in QUALIF_TYPE_LABELS
+            ]
+            for qtype in ordered_types:
+                lines = types_dict[qtype]
+                items = []
+                type_subtotal = 0.0
+                for line in lines:
+                    # User pref: usar `line.name` (descrição da linha SO,
+                    # editável pelo comercial) em vez do nome técnico do
+                    # cycle/malha/produto. Cai pro nome técnico se vazio.
+                    if line.cycle_type_id:
+                        item_name = line.name or line.cycle_type_id.name
+                        subtype = "cycle_type"
+                    elif line.malha_type_id:
+                        fallback = "%s (%s)" % (
+                            line.malha_type_id.name,
+                            line.malha_type_id.sensor_kind_id.name or "",
+                        )
+                        item_name = line.name or fallback
+                        subtype = "malha_type"
+                    else:
+                        # QI/QO/QS: line.name = descrição (default Odoo
+                        # popula com description_sale do produto).
+                        item_name = (
+                            line.name
+                            or line.product_id.display_name
+                            or ""
+                        )
+                        subtype = "product"
+                    items.append({
+                        "name": item_name,
+                        "qty": line.product_uom_qty,
+                        "subtype": subtype,
+                        "line": line,
+                    })
+                    type_subtotal += line.price_subtotal
+                equip_subtotal += type_subtotal
+                types_list.append({
+                    "code": qtype,
+                    "label": QUALIF_TYPE_LABELS.get(qtype, qtype),
+                    "items": items,
+                    "subtotal": type_subtotal,
+                })
+            summary.append({
+                "equipment": equip,
+                "types": types_list,
+                "subtotal": equip_subtotal,
+            })
+        return summary
+
+    def _qualif_type_descriptions(self):
+        """Retorna descritivos técnicos por tipo qualif presente na SO.
+
+        Lista ordenada de dicts: `[{"code", "label", "description"}, ...]`.
+
+        Description hierarquia (primeiro não-vazio):
+        1. Description específico do `cycle_type`/`malha_type` da linha
+           (concatena os únicos quando múltiplos)
+        2. Fallback hardcoded em `QUALIF_TYPE_DEFAULT_DESCRIPTION`
+        """
+        self.ensure_one()
+        types_present = OrderedDict()
+        for line in self.order_line:
+            if not line.is_qualificacao_managed:
+                continue
+            if line.display_type:
+                continue
+            qtype = line.qualification_type
+            if not qtype:
+                continue
+            types_present.setdefault(qtype, []).append(line)
+
+        result = []
+        ordered_types = [
+            t for t in QUALIF_TYPE_LABELS if t in types_present
+        ] + [
+            t for t in types_present if t not in QUALIF_TYPE_LABELS
+        ]
+        for qtype in ordered_types:
+            lines = types_present[qtype]
+            # Coleta descriptions específicas de cycle/malha types
+            specific_descs = []
+            seen = set()
+            for line in lines:
+                cm_type = line.cycle_type_id or line.malha_type_id
+                if cm_type and cm_type.description:
+                    key = (cm_type._name, cm_type.id)
+                    if key not in seen:
+                        seen.add(key)
+                        specific_descs.append(
+                            "%s: %s" % (cm_type.name, cm_type.description)
+                        )
+            description = (
+                "\n".join(specific_descs)
+                if specific_descs
+                else QUALIF_TYPE_DEFAULT_DESCRIPTION.get(qtype, "")
+            )
+            result.append({
+                "code": qtype,
+                "label": QUALIF_TYPE_LABELS.get(qtype, qtype),
+                "description": description,
+            })
+        return result
 
     # ------------------------------------------------------------------
     # Configurador (abre wizard)
@@ -117,7 +452,9 @@ class SaleOrder(models.Model):
         re-gerar em re-confirm).
         """
         self.ensure_one()
-        managed = self.order_line.filtered("is_qualificacao_managed")
+        managed = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and not l.display_type
+        )
         if not managed:
             return
         # Skip linhas já processadas

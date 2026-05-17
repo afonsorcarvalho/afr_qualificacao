@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_qualificacao_standard_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.standard.tree</field>
+        <field name="model">afr.qualificacao.standard</field>
+        <field name="arch" type="xml">
+            <tree string="Normas Aplicáveis">
+                <field name="sequence" widget="handle"/>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="organism"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_qualificacao_standard_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.standard.form</field>
+        <field name="model">afr.qualificacao.standard</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="name"/>
+                            <field name="organism"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Descrição" name="description">
+                            <field name="description" nolabel="1"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_qualificacao_standard_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.standard.search</field>
+        <field name="model">afr.qualificacao.standard</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="code"/>
+                <field name="name"/>
+                <field name="organism"/>
+                <filter name="active" string="Ativas" domain="[('active','=',True)]"/>
+                <filter name="inactive" string="Arquivadas" domain="[('active','=',False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_organism" string="Organismo"
+                            context="{'group_by': 'organism'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_qualificacao_standard" model="ir.actions.act_window">
+        <field name="name">Normas Aplicáveis</field>
+        <field name="res_model">afr.qualificacao.standard</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_qualificacao_standard_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Cadastre normas técnicas e regulatórias aplicáveis
+            </p>
+            <p>
+                Ex: ISO 17025, FDA 21 CFR Part 11, ANVISA RDC 658.
+                Vincule normas a Tipos de Ciclo (QD) e Tipos de Malha (Calibração).
+                Aparecem agregadas no relatório de cotação.
+            </p>
+        </field>
+    </record>
+</odoo>

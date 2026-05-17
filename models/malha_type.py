@@ -55,6 +55,17 @@ class AfrQualificacaoMalhaType(models.Model):
         translate=True,
         help="Detalhe técnico da malha (pontos típicos, faixa, instrumento).",
     )
+    standard_ids = fields.Many2many(
+        comodel_name="afr.qualificacao.standard",
+        relation="afr_malha_type_standard_rel",
+        column1="malha_type_id",
+        column2="standard_id",
+        string="Normas Aplicáveis",
+        help=(
+            "Normas técnicas/regulatórias atendidas por esta malha. "
+            "Agregadas no relatório de cotação por sale.order."
+        ),
+    )
     sequence = fields.Integer(default=10)
     company_id = fields.Many2one(
         comodel_name="res.company",

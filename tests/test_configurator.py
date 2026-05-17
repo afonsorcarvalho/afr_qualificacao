@@ -35,7 +35,10 @@ class TestConfigurator(AfrQualificacaoTestCommon):
         })]
         wiz.action_apply()
 
-        lines = so.order_line.filtered("is_qualificacao_managed")
+        # Filtra só linhas de produto (skip section line por equipamento).
+        lines = so.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and not l.display_type
+        )
         self.assertEqual(len(lines), 4)  # QI + 2 QD + 1 Calib
 
         qi = lines.filtered(lambda l: l.qualification_type == "installation")
@@ -67,7 +70,10 @@ class TestConfigurator(AfrQualificacaoTestCommon):
         })]
         wiz.action_apply()
         self.assertIn(manual, so.order_line)
-        self.assertEqual(len(so.order_line.filtered("is_qualificacao_managed")), 1)
+        product_lines = so.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and not l.display_type
+        )
+        self.assertEqual(len(product_lines), 1)
 
         # Reapply (recria managed; manual preservada)
         wiz2 = self._open_wizard(so)
@@ -78,7 +84,10 @@ class TestConfigurator(AfrQualificacaoTestCommon):
         })]
         wiz2.action_apply()
         self.assertIn(manual, so.order_line)
-        self.assertEqual(len(so.order_line.filtered("is_qualificacao_managed")), 2)
+        product_lines2 = so.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and not l.display_type
+        )
+        self.assertEqual(len(product_lines2), 2)
 
     def test_load_from_existing_lines_idempotent(self):
         so = self._build_so()

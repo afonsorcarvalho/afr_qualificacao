@@ -1,6 +1,7 @@
 """Inicializa os modelos do módulo afr_qualificacao."""
 
 from . import sensor_kind
+from . import qualificacao_standard
 from . import cycle_type
 from . import malha_type
 from . import config_template

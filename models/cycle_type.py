@@ -49,6 +49,17 @@ class AfrQualificacaoCycleType(models.Model):
         translate=True,
         help="Detalhe técnico do ciclo (carga, parâmetros, finalidade).",
     )
+    standard_ids = fields.Many2many(
+        comodel_name="afr.qualificacao.standard",
+        relation="afr_cycle_type_standard_rel",
+        column1="cycle_type_id",
+        column2="standard_id",
+        string="Normas Aplicáveis",
+        help=(
+            "Normas técnicas/regulatórias atendidas por este ciclo. "
+            "Agregadas no relatório de cotação por sale.order."
+        ),
+    )
     sequence = fields.Integer(default=10)
     company_id = fields.Many2one(
         comodel_name="res.company",

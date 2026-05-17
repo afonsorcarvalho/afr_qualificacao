@@ -37,9 +37,18 @@
                             <field name="active"/>
                         </group>
                     </group>
-                    <group string="Descrição">
-                        <field name="description" nolabel="1"/>
+                    <group>
+                        <group string="Normas Aplicáveis">
+                            <field name="standard_ids" nolabel="1"
+                                   widget="many2many_tags"
+                                   options="{'no_create': True, 'no_create_edit': True}"/>
+                        </group>
                     </group>
+                    <notebook>
+                        <page string="Descrição" name="description">
+                            <field name="description" nolabel="1"/>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>

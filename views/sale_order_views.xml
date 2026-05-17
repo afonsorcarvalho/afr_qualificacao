@@ -39,6 +39,18 @@
                 <field name="cycle_type_id" optional="hide"/>
                 <field name="malha_type_id" optional="hide"/>
             </xpath>
+
+            <!-- Painel "Subtotais por Equipamento" — visível quando SO
+                 tem linhas de qualificação. Section lines no Odoo usam
+                 colspan=99, impossível injetar coluna por section, então
+                 mostra resumo agregado abaixo do tree de order_line. -->
+            <xpath expr="//field[@name='order_line']" position="after">
+                <field name="has_qualif_lines" invisible="1"/>
+                <field name="qualif_subtotals_html"
+                       nolabel="1"
+                       readonly="1"
+                       attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
+            </xpath>
         </field>
     </record>
 </odoo>

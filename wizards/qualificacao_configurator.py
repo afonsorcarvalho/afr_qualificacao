@@ -129,6 +129,22 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         for eq_line in self.equipment_line_ids:
             equip = eq_line.equipment_id
 
+            # Section header por equipamento — Odoo renderiza em bold no
+            # tree do SO e calcula subtotal por section nativamente. Marca
+            # is_qualificacao_managed pra ser apagada em re-apply.
+            section_label = equip.display_name or _("Equipamento")
+            if equip.serial_number:
+                section_label += " — S/N: %s" % equip.serial_number
+            new_lines.append((0, 0, {
+                "order_id": so.id,
+                "display_type": "line_section",
+                "name": section_label,
+                "is_qualificacao_managed": True,
+                "equipment_id": equip.id,
+                "product_uom_qty": 0,
+                "price_unit": 0,
+            }))
+
             # QI/QO/QS via type.config
             for flag, qtype in (
                 ("do_qi", "installation"),
