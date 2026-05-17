@@ -24,13 +24,14 @@ KIND_SELECTION = [
 class AfrQualificacaoProcedimento(models.Model):
     _name = "afr.qualificacao.procedimento"
     _description = "Procedimento de Qualificação (Template)"
+    _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "sequence, name"
 
-    name = fields.Char(required=True, translate=True)
-    code = fields.Char()
+    name = fields.Char(required=True, translate=True, tracking=True)
+    code = fields.Char(tracking=True)
     description = fields.Text(translate=True)
     sequence = fields.Integer(default=10)
-    active = fields.Boolean(default=True)
+    active = fields.Boolean(default=True, tracking=True)
     company_id = fields.Many2one(
         "res.company",
         default=lambda self: self.env.company,
@@ -45,11 +46,13 @@ class AfrQualificacaoProcedimento(models.Model):
         ],
         required=True,
         string="Tipo aplicável",
+        tracking=True,
     )
     equipment_category_id = fields.Many2one(
         "engc.equipment.category",
         string="Categoria do equipamento",
         help="Vazio = aplica a qualquer categoria (fallback). Específica = match preferencial.",
+        tracking=True,
     )
     item_ids = fields.One2many(
         "afr.qualificacao.procedimento.item",

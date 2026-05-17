@@ -39,14 +39,14 @@ class AfrQualificacaoOsRelatorioWizard(models.TransientModel):
         relation="afr_qualif_os_relatorio_wizard_cycle_rel",
         column1="wizard_id",
         column2="cycle_id",
-        string="Ciclos cobertos",
+        string="Ciclos realizados",
     )
     malha_ids = fields.Many2many(
         "afr.qualificacao.malha",
         relation="afr_qualif_os_relatorio_wizard_malha_rel",
         column1="wizard_id",
         column2="malha_id",
-        string="Malhas cobertas",
+        string="Malhas realizadas",
     )
 
     def _default_tecnico_ids(self):

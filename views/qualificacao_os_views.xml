@@ -76,17 +76,18 @@
                                    string="Relatórios"/>
                         </button>
                         <button name="action_view_collect_items" type="object"
-                                class="oe_stat_button" icon="fa-paperclip">
-                            <field name="collect_collected_count" widget="statinfo"
-                                   string="Coletadas"/>
-                        </button>
-                        <button name="action_view_collect_items" type="object"
                                 class="oe_stat_button" icon="fa-exclamation-circle"
                                 attrs="{'invisible': [('collect_pending_count', '=', 0)]}">
                             <field name="collect_pending_count" widget="statinfo"
                                    string="Pendentes"/>
                         </button>
-                        <button class="oe_stat_button" icon="fa-thumbs-up" disabled="1">
+                        <button name="action_view_collect_items" type="object"
+                                class="oe_stat_button" icon="fa-paperclip">
+                            <field name="collect_collected_count" widget="statinfo"
+                                   string="Coletadas"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-thumbs-up" disabled="1"
+                                attrs="{'invisible': [('qualificacao_done_count', '=', 0)]}">
                             <field name="qualificacao_done_count" widget="statinfo"
                                    string="Aprovadas"/>
                         </button>
@@ -196,7 +197,7 @@
                                         </t>
                                     </templates>
                                 </kanban>
-                                <tree editable="bottom">
+                                <tree>
                                     <field name="sequence" widget="handle"/>
                                     <field name="name"/>
                                     <field name="kind"/>

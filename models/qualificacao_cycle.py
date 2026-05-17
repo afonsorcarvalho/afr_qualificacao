@@ -47,3 +47,12 @@ class AfrQualificacaoCycle(models.Model):
     )
     executed_date = fields.Date(string="Data de Execução")
     notes = fields.Text()
+
+    def name_get(self):
+        result = []
+        for r in self:
+            seq = (r.sequence // 10) if r.sequence else 0
+            type_name = r.cycle_type_id.name or ""
+            label = "%s #%s" % (type_name, seq) if type_name else "Ciclo #%s" % seq
+            result.append((r.id, label))
+        return result

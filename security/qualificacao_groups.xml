@@ -10,18 +10,28 @@
 -->
 <odoo>
 
+    <!-- Categoria do módulo (form do user agrupa nossos grupos juntos) -->
+    <record id="module_category_afr_qualificacao" model="ir.module.category">
+        <field name="name">Qualificações</field>
+        <field name="description">Gestão de Qualificações (QI/QO/QD/QS/Calibração)</field>
+        <field name="sequence">40</field>
+    </record>
+
     <record id="group_afr_qualificacao_technician" model="res.groups">
-        <field name="name">Qualificação - Técnico</field>
+        <field name="name">Técnico</field>
+        <field name="category_id" ref="module_category_afr_qualificacao"/>
         <field name="comment">Acesso restrito: vê OS atribuídas, preenche relatórios e coletas. Não edita procedimentos nem aprova OS.</field>
     </record>
 
     <record id="group_afr_qualificacao_user" model="res.groups">
-        <field name="name">Qualificação - Usuário</field>
+        <field name="name">Usuário</field>
+        <field name="category_id" ref="module_category_afr_qualificacao"/>
         <field name="implied_ids" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
     </record>
 
     <record id="group_afr_qualificacao_manager" model="res.groups">
-        <field name="name">Qualificação - Gestor</field>
+        <field name="name">Gestor</field>
+        <field name="category_id" ref="module_category_afr_qualificacao"/>
         <field name="implied_ids" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
     </record>
 

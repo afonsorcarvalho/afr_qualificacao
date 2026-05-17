@@ -88,3 +88,18 @@ class AfrQualificacaoMalha(models.Model):
         string="Unidade",
         readonly=True,
     )
+
+    def name_get(self):
+        result = []
+        for r in self:
+            seq = (r.sequence // 10) if r.sequence else 0
+            type_name = r.malha_type_id.name or ""
+            sensor = r.malha_type_id.sensor_kind_id.name or ""
+            if type_name and sensor:
+                label = "%s (%s) #%s" % (type_name, sensor, seq)
+            elif type_name:
+                label = "%s #%s" % (type_name, seq)
+            else:
+                label = "Malha #%s" % seq
+            result.append((r.id, label))
+        return result

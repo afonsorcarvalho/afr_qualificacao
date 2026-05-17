@@ -19,15 +19,18 @@
                             <field name="tecnico_ids" widget="many2many_tags"/>
                         </group>
                     </group>
-                    <group string="Descrição">
-                        <field name="descricao" nolabel="1"
-                               placeholder="Ex.: das 08h às 12h realizando primeiro ciclo vazio da QD autoclave AC-01."/>
-                    </group>
+                    <separator string="Descrição"/>
+                    <field name="descricao" nolabel="1"
+                           placeholder="Ex.: das 08h às 12h realizando primeiro ciclo vazio da QD autoclave AC-01."/>
                     <notebook>
-                        <page string="Cobertura técnica">
+                        <page string="Execução">
                             <group>
-                                <field name="cycle_ids" widget="many2many_tags"/>
-                                <field name="malha_ids" widget="many2many_tags"/>
+                                <field name="cycle_ids" widget="many2many_tags"
+                                       string="Ciclos realizados"
+                                       domain="[('qualificacao_id.os_id', '=', os_id)]"/>
+                                <field name="malha_ids" widget="many2many_tags"
+                                       string="Malhas realizadas"
+                                       domain="[('qualificacao_id.os_id', '=', os_id)]"/>
                             </group>
                         </page>
                     </notebook>
