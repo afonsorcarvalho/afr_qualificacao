@@ -131,6 +131,28 @@
                     <group string="Descrição / Observações">
                         <field name="description" nolabel="1"/>
                     </group>
+                    <notebook>
+                        <page string="Padrões Metrológicos" name="standards">
+                            <field name="standards_warning_text" invisible="1"/>
+                            <field name="standards_all_valid" invisible="1"/>
+                            <div class="alert alert-warning" role="alert"
+                                 attrs="{'invisible': [('standards_all_valid', '=', True)]}">
+                                <i class="fa fa-exclamation-triangle" title="Atenção" role="img" aria-label="Atenção"/>
+                                <strong> Padrões com certificado expirado / ausente: </strong>
+                                <field name="standards_warning_text" nolabel="1" readonly="1"/>
+                            </div>
+                            <field name="standard_instrument_ids"
+                                   options="{'no_create': True, 'no_create_edit': True, 'no_quick_create': True}">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="id_number" optional="show"/>
+                                    <field name="tag" optional="hide"/>
+                                    <field name="marca" optional="hide"/>
+                                    <field name="modelo" optional="hide"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
                 <div class="oe_chatter">
                     <field name="message_follower_ids"/>

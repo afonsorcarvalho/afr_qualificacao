@@ -232,6 +232,30 @@
                                 </tree>
                             </field>
                         </page>
+                        <page string="Padrões Metrológicos" name="standards"
+                              attrs="{'invisible': [('standard_instrument_count', '=', 0)]}">
+                            <field name="standards_warning_text" invisible="1"/>
+                            <field name="standards_all_valid" invisible="1"/>
+                            <field name="standard_instrument_count" invisible="1"/>
+                            <div class="alert alert-warning" role="alert"
+                                 attrs="{'invisible': [('standards_all_valid', '=', True)]}">
+                                <i class="fa fa-exclamation-triangle" title="Atenção" role="img" aria-label="Atenção"/>
+                                <strong> Padrões sem certificado de calibração válido: </strong>
+                                <field name="standards_warning_text" nolabel="1" readonly="1"/>
+                                <div class="text-muted small mt-1">
+                                    Verifique <i>Configurações → AFR Qualificação</i> para política de bloqueio na aprovação.
+                                </div>
+                            </div>
+                            <field name="standard_instrument_ids" nolabel="1" readonly="1">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="id_number" optional="show"/>
+                                    <field name="tag" optional="hide"/>
+                                    <field name="marca" optional="hide"/>
+                                    <field name="modelo" optional="hide"/>
+                                </tree>
+                            </field>
+                        </page>
                         <page string="Certificado" attrs="{'invisible': [('certificate_token', '=', False)]}">
                             <group>
                                 <group>

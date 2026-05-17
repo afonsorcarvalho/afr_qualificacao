@@ -256,6 +256,28 @@ class AfrQualificacao(models.Model):
         compute="_compute_collect_pending_count",
         string="Coletas pendentes",
     )
+    # F4 (16.0.3.3.0): agregação de padrões metrológicos dos collect.items
+    standard_instrument_ids = fields.Many2many(
+        "engc.calibration.instruments",
+        string="Padrões Metrológicos",
+        compute="_compute_standard_instrument_ids",
+        store=False,
+        help="União dos padrões declarados nos collect.items desta qualificação.",
+    )
+    standard_instrument_count = fields.Integer(
+        compute="_compute_standard_instrument_ids",
+        string="Padrões",
+    )
+    standards_all_valid = fields.Boolean(
+        compute="_compute_standards_validity",
+        string="Padrões com certificado válido",
+        store=False,
+    )
+    standards_warning_text = fields.Text(
+        compute="_compute_standards_validity",
+        string="Padrões sem certificado válido",
+        store=False,
+    )
     malha_count = fields.Integer(
         string="Total de Malhas",
         compute="_compute_malha_count",
@@ -514,6 +536,37 @@ class AfrQualificacao(models.Model):
                 )
             )
 
+    @api.depends("collect_item_ids.standard_instrument_ids")
+    def _compute_standard_instrument_ids(self):
+        for record in self:
+            instruments = record.collect_item_ids.mapped("standard_instrument_ids")
+            record.standard_instrument_ids = instruments
+            record.standard_instrument_count = len(instruments)
+
+    @api.depends(
+        "collect_item_ids.standard_instrument_ids",
+        "collect_item_ids.standard_instrument_ids.certificate_ids.validate_calibration",
+    )
+    def _compute_standards_validity(self):
+        today = fields.Date.today()
+        for record in self:
+            invalid = []
+            instruments = record.collect_item_ids.mapped("standard_instrument_ids")
+            for inst in instruments:
+                has_valid = any(
+                    c.validate_calibration and c.validate_calibration >= today
+                    for c in inst.certificate_ids
+                )
+                if not has_valid:
+                    invalid.append(
+                        inst.display_name
+                        or inst.name
+                        or inst.id_number
+                        or _("Instrumento #%s") % inst.id
+                    )
+            record.standards_all_valid = not invalid
+            record.standards_warning_text = ", ".join(invalid)
+
     @api.depends(
         "qualification_type",
         "cycle_ids.sale_order_line_id",
@@ -580,8 +633,29 @@ class AfrQualificacao(models.Model):
         return True
 
     def action_mark_approved(self):
-        """Altera o status para 'Aprovada', emite certificado e propaga qty_delivered."""
+        """Altera o status para 'Aprovada', emite certificado e propaga qty_delivered.
+
+        F4 (16.0.3.3.0): valida padrões metrológicos. Se algum instrumento
+        sem certificado válido (`validate_calibration >= today`):
+        - flag `qualif_block_approval_expired_standards` True → ValidationError
+        - flag False (default) → message_post warning (não-bloqueante)
+        """
+        block = self.env["ir.config_parameter"].sudo().get_param(
+            "afr_qualificacao.qualif_block_approval_expired_standards",
+            default="False",
+        )
+        block = str(block).lower() in ("true", "1", "yes")
         for record in self:
+            if not record.standards_all_valid and record.standard_instrument_count:
+                msg = _(
+                    "Padrões metrológicos sem certificado de calibração válido: %s"
+                ) % record.standards_warning_text
+                if block:
+                    raise ValidationError(msg)
+                record.message_post(
+                    body=msg,
+                    subject=_("Aviso: padrões com certificado expirado"),
+                )
             record.state = "approved"
             record.execution_date = record.execution_date or fields.Date.context_today(
                 self

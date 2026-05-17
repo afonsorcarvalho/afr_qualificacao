@@ -17,3 +17,5 @@ from . import docx_template
 from . import sale_order_line
 from . import sale_order
 from . import engc_os
+from . import res_config_settings        # F4 (16.0.3.3.0)
+from . import calibration_instruments    # F4 (16.0.3.3.0)

@@ -110,6 +110,53 @@ class AfrQualificacaoCollectItem(models.Model):
     captured_at = fields.Datetime(readonly=True)
     captured_by = fields.Many2one("res.users", readonly=True)
 
+    # F4 (16.0.3.3.0): padrões metrológicos usados nesta coleta
+    standard_instrument_ids = fields.Many2many(
+        "engc.calibration.instruments",
+        "afr_qualif_collect_item_instrument_rel",
+        "collect_item_id",
+        "instrument_id",
+        string="Padrões Metrológicos",
+        help=(
+            "Instrumentos padrão (engc.calibration.instruments) utilizados "
+            "para gerar este item de coleta. Cada instrumento traz "
+            "certificados de calibração com data de validade."
+        ),
+    )
+    standards_all_valid = fields.Boolean(
+        compute="_compute_standards_validity",
+        string="Padrões com certificado válido",
+        store=False,
+    )
+    standards_warning_text = fields.Text(
+        compute="_compute_standards_validity",
+        string="Padrões sem certificado válido",
+        store=False,
+    )
+
+    @api.depends(
+        "standard_instrument_ids",
+        "standard_instrument_ids.certificate_ids.validate_calibration",
+    )
+    def _compute_standards_validity(self):
+        today = fields.Date.today()
+        for r in self:
+            invalid = []
+            for inst in r.standard_instrument_ids:
+                has_valid = any(
+                    c.validate_calibration and c.validate_calibration >= today
+                    for c in inst.certificate_ids
+                )
+                if not has_valid:
+                    invalid.append(
+                        inst.display_name
+                        or inst.name
+                        or inst.id_number
+                        or _("Instrumento #%s") % inst.id
+                    )
+            r.standards_all_valid = not invalid
+            r.standards_warning_text = ", ".join(invalid)
+
     @api.onchange("file")
     def _onchange_file_set_collected(self):
         for r in self:
