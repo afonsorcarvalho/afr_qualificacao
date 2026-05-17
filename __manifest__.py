@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.3.1.0",
+    "version": "16.0.3.2.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -61,7 +61,9 @@
         "views/malha_type_views.xml",
         "views/config_template_views.xml",
         "views/qualificacao_type_config_views.xml",
+        "views/qualificacao_procedimento_views.xml",
         # Views — operação (actions registradas antes do menu)
+        "views/qualificacao_collect_item_views.xml",
         "views/qualificacao_os_relatorio_views.xml",
         "views/qualificacao_os_views.xml",
         "views/qualificacao_views.xml",
@@ -71,6 +73,7 @@
         # Wizards
         "wizards/qualificacao_configurator_views.xml",
         "wizards/relatorio_wizard_views.xml",
+        "wizards/apply_procedimento_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
         # Views com menuitem que referencia menu_root (depois dos menus principais)

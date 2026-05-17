@@ -246,6 +246,16 @@ class AfrQualificacao(models.Model):
         string="Malhas (Calibração)",
         help="Sub-records de malhas para Calibração.",
     )
+    # F3 (16.0.3.2.0): coletas (checklist + anexos unificados)
+    collect_item_ids = fields.One2many(
+        comodel_name="afr.qualificacao.collect.item",
+        inverse_name="qualif_id",
+        string="Coletas",
+    )
+    collect_pending_count = fields.Integer(
+        compute="_compute_collect_pending_count",
+        string="Coletas pendentes",
+    )
     malha_count = fields.Integer(
         string="Total de Malhas",
         compute="_compute_malha_count",
@@ -494,6 +504,15 @@ class AfrQualificacao(models.Model):
     def _compute_malha_count(self):
         for record in self:
             record.malha_count = len(record.malha_ids)
+
+    @api.depends("collect_item_ids", "collect_item_ids.state", "collect_item_ids.required")
+    def _compute_collect_pending_count(self):
+        for record in self:
+            record.collect_pending_count = len(
+                record.collect_item_ids.filtered(
+                    lambda c: c.required and c.state == "pending"
+                )
+            )
 
     @api.depends(
         "qualification_type",

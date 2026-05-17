@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ======================================================== -->
+    <!-- KANBAN (default view) — upload rápido por kind            -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_collect_item_kanban" model="ir.ui.view">
+        <field name="name">afr.qualificacao.collect.item.kanban</field>
+        <field name="model">afr.qualificacao.collect.item</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="kind" class="o_kanban_small_column"
+                    group_create="false" quick_create="false">
+                <field name="name"/>
+                <field name="kind"/>
+                <field name="state"/>
+                <field name="required"/>
+                <field name="qualif_id"/>
+                <field name="equipment_id"/>
+                <field name="cycle_id"/>
+                <field name="malha_id"/>
+                <field name="file"/>
+                <field name="filename"/>
+                <field name="captured_by"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div t-attf-class="oe_kanban_card oe_kanban_global_click
+                                #{record.state.raw_value == 'collected' ? 'oe_kanban_color_10' : ''}
+                                #{record.state.raw_value == 'skipped' ? 'oe_kanban_color_2' : ''}">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong><field name="name"/></strong>
+                                    <span t-if="record.required.raw_value"
+                                          class="badge text-bg-danger ms-1"
+                                          title="Obrigatório" role="img" aria-label="Obrigatório">!</span>
+                                </div>
+                                <span t-attf-class="badge
+                                    #{record.state.raw_value == 'collected' ? 'text-bg-success' : ''}
+                                    #{record.state.raw_value == 'pending' ? 'text-bg-warning' : ''}
+                                    #{record.state.raw_value == 'skipped' ? 'text-bg-secondary' : ''}">
+                                    <field name="state"/>
+                                </span>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div t-if="record.equipment_id.raw_value">
+                                    <i class="fa fa-cogs" title="Equipamento" role="img" aria-label="Equipamento"/>
+                                    <field name="equipment_id"/>
+                                </div>
+                                <div>
+                                    <i class="fa fa-check-square-o" title="Qualificação" role="img" aria-label="Qualificação"/>
+                                    <field name="qualif_id"/>
+                                </div>
+                                <div t-if="record.cycle_id.raw_value" class="text-muted">
+                                    Ciclo: <field name="cycle_id"/>
+                                </div>
+                                <div t-if="record.malha_id.raw_value" class="text-muted">
+                                    Malha: <field name="malha_id"/>
+                                </div>
+                                <div t-if="record.file.raw_value" class="mt-1">
+                                    <i class="fa fa-paperclip" title="Arquivo" role="img" aria-label="Arquivo"/>
+                                    <field name="filename"/>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left">
+                                    <field name="captured_by" widget="many2one_avatar_user"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- FORM                                                      -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_collect_item_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.collect.item.form</field>
+        <field name="model">afr.qualificacao.collect.item</field>
+        <field name="arch" type="xml">
+            <form string="Item de Coleta">
+                <header>
+                    <button name="action_mark_skipped" type="object"
+                            string="Pular item" class="btn-secondary"
+                            attrs="{'invisible': [('state', '!=', 'pending')]}"/>
+                    <button name="action_reset_pending" type="object"
+                            string="Reabrir / Limpar" class="btn-secondary"
+                            attrs="{'invisible': [('state', '=', 'pending')]}"
+                            groups="afr_qualificacao.group_afr_qualificacao_user"
+                            confirm="Limpar arquivo e voltar para pendente?"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pending,collected"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Identificação">
+                            <field name="kind"/>
+                            <field name="required"/>
+                            <field name="qualif_id"
+                                   attrs="{'readonly': [('procedimento_item_id', '!=', False)]}"
+                                   options="{'no_create': True}"/>
+                            <field name="os_id" readonly="1"/>
+                            <field name="equipment_id" readonly="1"/>
+                            <field name="cycle_id" readonly="1"
+                                   attrs="{'invisible': [('cycle_id', '=', False)]}"/>
+                            <field name="malha_id" readonly="1"
+                                   attrs="{'invisible': [('malha_id', '=', False)]}"/>
+                        </group>
+                        <group string="Coleta">
+                            <field name="file" filename="filename" widget="binary"/>
+                            <field name="filename" invisible="1"/>
+                            <field name="mimetype" optional="hide"/>
+                            <field name="captured_at" readonly="1"/>
+                            <field name="captured_by" readonly="1"/>
+                            <field name="relatorio_id" options="{'no_create': True}"/>
+                            <field name="procedimento_item_id" readonly="1"
+                                   attrs="{'invisible': [('procedimento_item_id', '=', False)]}"/>
+                        </group>
+                    </group>
+                    <group string="Instrução">
+                        <field name="instruction" nolabel="1" readonly="1"
+                               attrs="{'invisible': [('instruction', '=', False)]}"/>
+                    </group>
+                    <group string="Descrição / Observações">
+                        <field name="description" nolabel="1"/>
+                    </group>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- TREE                                                      -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_collect_item_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.collect.item.tree</field>
+        <field name="model">afr.qualificacao.collect.item</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="state == 'collected'"
+                  decoration-muted="state == 'skipped'"
+                  decoration-warning="state == 'pending' and required"
+                  multi_edit="1">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="kind"/>
+                <field name="qualif_id"/>
+                <field name="equipment_id" optional="show"/>
+                <field name="cycle_id" optional="hide"/>
+                <field name="malha_id" optional="hide"/>
+                <field name="required"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'collected'"
+                       decoration-warning="state == 'pending'"
+                       decoration-muted="state == 'skipped'"/>
+                <field name="captured_by" optional="hide"/>
+                <field name="filename" optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- SEARCH                                                    -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_collect_item_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.collect.item.search</field>
+        <field name="model">afr.qualificacao.collect.item</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="qualif_id"/>
+                <field name="os_id"/>
+                <field name="equipment_id"/>
+                <separator/>
+                <filter string="Pendente" name="filter_pending"
+                        domain="[('state', '=', 'pending')]"/>
+                <filter string="Coletado" name="filter_collected"
+                        domain="[('state', '=', 'collected')]"/>
+                <filter string="Pulado" name="filter_skipped"
+                        domain="[('state', '=', 'skipped')]"/>
+                <separator/>
+                <filter string="Obrigatórios" name="filter_required"
+                        domain="[('required', '=', True)]"/>
+                <filter string="Required pendente" name="filter_req_pending"
+                        domain="[('required', '=', True), ('state', '=', 'pending')]"/>
+                <group expand="1" string="Agrupar por">
+                    <filter string="Tipo (kind)" name="group_kind"
+                            context="{'group_by': 'kind'}"/>
+                    <filter string="Estado" name="group_state"
+                            context="{'group_by': 'state'}"/>
+                    <filter string="OS" name="group_os"
+                            context="{'group_by': 'os_id'}"/>
+                    <filter string="Qualificação" name="group_qualif"
+                            context="{'group_by': 'qualif_id'}"/>
+                    <filter string="Equipamento" name="group_equipment"
+                            context="{'group_by': 'equipment_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_afr_qualificacao_collect_item" model="ir.actions.act_window">
+        <field name="name">Coletas / Checklist</field>
+        <field name="res_model">afr.qualificacao.collect.item</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="search_view_id" ref="view_afr_qualificacao_collect_item_search"/>
+        <field name="context">{"search_default_filter_req_pending": 1}</field>
+    </record>
+
+</odoo>

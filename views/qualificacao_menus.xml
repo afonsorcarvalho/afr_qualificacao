@@ -40,6 +40,15 @@
     />
 
     <menuitem
+        id="menu_afr_qualificacao_collect_item"
+        name="Coletas / Checklist"
+        parent="menu_afr_qualificacao_root"
+        action="afr_qualificacao.action_afr_qualificacao_collect_item"
+        sequence="17"
+        groups="afr_qualificacao.group_afr_qualificacao_technician"
+    />
+
+    <menuitem
         id="menu_afr_qualificacao_deviation"
         name="Desvios"
         parent="menu_afr_qualificacao_root"
@@ -107,6 +116,15 @@
         parent="menu_afr_qualificacao_config"
         action="afr_qualificacao.action_qualificacao_standard"
         sequence="60"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_procedimento"
+        name="Procedimentos de Qualificação"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_afr_qualificacao_procedimento"
+        sequence="70"
         groups="afr_qualificacao.group_afr_qualificacao_manager"
     />
 </odoo>

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ======================================================== -->
+    <!-- FORM: procedimento (template)                             -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_procedimento_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.procedimento.form</field>
+        <field name="model">afr.qualificacao.procedimento</field>
+        <field name="arch" type="xml">
+            <form string="Procedimento de Qualificação">
+                <sheet>
+                    <widget name="web_ribbon" title="Arquivado" bg_color="bg-danger"
+                            attrs="{'invisible': [('active', '=', True)]}"/>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" placeholder="Ex.: QD Autoclave Vapor — Procedimento Padrão"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Aplicabilidade">
+                            <field name="applicable_qualification_type"/>
+                            <field name="equipment_category_id"
+                                   options="{'no_create': True}"/>
+                            <field name="code"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group string="Status">
+                            <field name="active"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="item_count"/>
+                        </group>
+                    </group>
+                    <separator string="Descrição"/>
+                    <field name="description" placeholder="Breve descrição do procedimento (aparece para o técnico em campo)."/>
+                    <separator string="Itens (esperados de coleta)"/>
+                    <field name="item_ids">
+                        <tree editable="bottom">
+                            <field name="sequence" widget="handle"/>
+                            <field name="name"/>
+                            <field name="kind"/>
+                            <field name="target_level"/>
+                            <field name="required"/>
+                            <field name="mimetypes_hint" optional="hide"/>
+                            <field name="instruction" optional="hide"/>
+                        </tree>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- TREE                                                      -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_procedimento_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.procedimento.tree</field>
+        <field name="model">afr.qualificacao.procedimento</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="applicable_qualification_type"/>
+                <field name="equipment_category_id" optional="show"/>
+                <field name="item_count" string="Itens"/>
+                <field name="code" optional="hide"/>
+                <field name="active"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- SEARCH                                                    -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_procedimento_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.procedimento.search</field>
+        <field name="model">afr.qualificacao.procedimento</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="applicable_qualification_type"/>
+                <field name="equipment_category_id"/>
+                <filter string="Arquivados" name="filter_inactive"
+                        domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Tipo" name="group_type"
+                            context="{'group_by': 'applicable_qualification_type'}"/>
+                    <filter string="Categoria" name="group_category"
+                            context="{'group_by': 'equipment_category_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_afr_qualificacao_procedimento" model="ir.actions.act_window">
+        <field name="name">Procedimentos de Qualificação</field>
+        <field name="res_model">afr.qualificacao.procedimento</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_afr_qualificacao_procedimento_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Crie um procedimento de qualificação (template)
+            </p>
+            <p>
+                Procedimentos definem os itens a coletar em campo (fotos, planilhas,
+                dados do qualificador) por tipo de qualificação + categoria de equipamento.
+                Carregado automaticamente ao criar a OS via SO confirm.
+            </p>
+        </field>
+    </record>
+
+</odoo>

@@ -495,6 +495,8 @@ class SaleOrder(models.Model):
         Qualif = self.env["afr.qualificacao"]
         Cycle = self.env["afr.qualificacao.cycle"]
         Malha = self.env["afr.qualificacao.malha"]
+        Procedimento = self.env["afr.qualificacao.procedimento"]
+        CollectItem = self.env["afr.qualificacao.collect.item"]
 
         # 1 OS por SO (reusa se já existe — re-confirmação parcial)
         os = self.qualificacao_os_ids[:1] or QualifOs.create(
@@ -540,6 +542,44 @@ class SaleOrder(models.Model):
                                 "sequence": seq * 10,
                             })
                 # QI/QO/QS: sem sub-records
+
+                # F3 (16.0.3.2.0): explode procedimento default em collect.items
+                # sudo: vendedor pode confirmar SO sem precisar de grupos qualif
+                proc = Procedimento.sudo().resolve_for(qtype, equipment.category_id)
+                if proc:
+                    self._explode_collect_items(CollectItem.sudo(), qualif, proc)
+
+    def _explode_collect_items(self, CollectItem, qualif, procedimento):
+        """F3: Cria N collect.items por procedimento.item conforme target_level.
+
+        target_level=qualificacao → 1 item por qualif
+        target_level=cycle → 1 item por cycle existente (qualif QD)
+        target_level=malha → 1 item por malha existente (qualif Calib)
+        """
+        for pi in procedimento.item_ids:
+            base_vals = {
+                "name": pi.name,
+                "sequence": pi.sequence,
+                "kind": pi.kind,
+                "required": pi.required,
+                "instruction": pi.instruction,
+                "procedimento_item_id": pi.id,
+                "qualif_id": qualif.id,
+            }
+            if pi.target_level == "qualificacao":
+                CollectItem.create(base_vals)
+            elif pi.target_level == "cycle":
+                for cycle in qualif.cycle_ids:
+                    vals = dict(base_vals)
+                    vals["cycle_id"] = cycle.id
+                    vals["name"] = _("%s — Ciclo %d") % (pi.name, cycle.sequence)
+                    CollectItem.create(vals)
+            elif pi.target_level == "malha":
+                for malha in qualif.malha_ids:
+                    vals = dict(base_vals)
+                    vals["malha_id"] = malha.id
+                    vals["name"] = _("%s — Malha %d") % (pi.name, malha.sequence)
+                    CollectItem.create(vals)
 
     def _prepare_qualificacao_os_values(self):
         """Hook: valores para criar afr.qualificacao.os a partir do SO."""

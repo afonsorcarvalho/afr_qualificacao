@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_afr_qualificacao_os_apply_procedimento_wizard_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.apply.procedimento.wizard.form</field>
+        <field name="model">afr.qualificacao.os.apply.procedimento.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Aplicar Procedimento">
+                <sheet>
+                    <group>
+                        <field name="os_id" readonly="1"/>
+                        <field name="procedimento_id"/>
+                        <field name="overwrite_existing"/>
+                    </group>
+                    <group string="Qualificações alvo">
+                        <field name="qualificacao_ids" nolabel="1" widget="many2many_tags"/>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_apply" type="object"
+                            string="Aplicar" class="btn-primary"/>
+                    <button special="cancel" string="Cancelar" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

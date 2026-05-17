@@ -10,6 +10,8 @@ from . import qualificacao_cycle
 from . import qualificacao_malha
 from . import qualificacao_os           # F1 (16.0.3.0.0)
 from . import qualificacao_os_relatorio # F1 (16.0.3.0.0)
+from . import qualificacao_procedimento # F3 (16.0.3.2.0)
+from . import qualificacao_collect_item # F3 (16.0.3.2.0)
 from . import qualificacao
 from . import docx_template
 from . import sale_order_line

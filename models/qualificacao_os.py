@@ -149,6 +149,22 @@ class AfrQualificacaoOs(models.Model):
     relatorio_count = fields.Integer(
         compute="_compute_relatorio_count",
     )
+    # F3 (16.0.3.2.0): coletas explodidas do procedimento por qualif/cycle/malha
+    collect_item_ids = fields.One2many(
+        "afr.qualificacao.collect.item",
+        "os_id",
+        string="Itens de coleta",
+    )
+    collect_total_count = fields.Integer(
+        compute="_compute_collect_counts",
+    )
+    collect_pending_count = fields.Integer(
+        compute="_compute_collect_counts",
+        help="Itens required ainda pendentes.",
+    )
+    collect_collected_count = fields.Integer(
+        compute="_compute_collect_counts",
+    )
 
     # ───────── Assinaturas ─────────
     signature_technician = fields.Image(
@@ -229,6 +245,23 @@ class AfrQualificacaoOs(models.Model):
     def _compute_relatorio_count(self):
         for r in self:
             r.relatorio_count = len(r.relatorio_ids)
+
+    @api.depends(
+        "collect_item_ids",
+        "collect_item_ids.state",
+        "collect_item_ids.required",
+    )
+    def _compute_collect_counts(self):
+        for r in self:
+            r.collect_total_count = len(r.collect_item_ids)
+            r.collect_collected_count = len(
+                r.collect_item_ids.filtered(lambda c: c.state == "collected")
+            )
+            r.collect_pending_count = len(
+                r.collect_item_ids.filtered(
+                    lambda c: c.required and c.state == "pending"
+                )
+            )
 
     def _group_expand_states(self, states, domain, order):
         """Mostra todos os estados no kanban mesmo se vazios."""
@@ -323,6 +356,12 @@ class AfrQualificacaoOs(models.Model):
                     _("Existem qualificações rejeitadas: %s. "
                       "Corrija ou cancele a OS antes de aprovar.")
                     % ", ".join(rejected.mapped("name"))
+                )
+            # Warning não-bloqueante: coletas required pendentes
+            if r.collect_pending_count:
+                r.message_post(
+                    body=_("⚠ %d itens de coleta obrigatórios ainda pendentes. "
+                           "Aprovação solicitada mesmo assim.") % r.collect_pending_count,
                 )
             r.write({"state": "in_approved"})
         return True
@@ -428,4 +467,27 @@ class AfrQualificacaoOs(models.Model):
             "res_model": "engc.equipment",
             "view_mode": "tree,form",
             "domain": [("id", "in", self.equipment_ids.ids)],
+        }
+
+    def action_view_collect_items(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Coletas / Checklist"),
+            "res_model": "afr.qualificacao.collect.item",
+            "view_mode": "kanban,tree,form",
+            "domain": [("os_id", "=", self.id)],
+            "context": {"default_qualif_id": False, "search_default_group_kind": 1},
+        }
+
+    def action_apply_procedimento(self):
+        """Abre wizard para aplicar/re-aplicar procedimento a qualifs."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Aplicar Procedimento"),
+            "res_model": "afr.qualificacao.os.apply.procedimento.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_os_id": self.id},
         }
