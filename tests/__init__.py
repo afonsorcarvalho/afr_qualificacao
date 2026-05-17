@@ -5,3 +5,6 @@ from . import test_so_confirm_generation
 from . import test_qty_delivered_propagation
 from . import test_certificate
 from . import test_quotation_report
+# F1 (16.0.3.0.0)
+from . import test_os_workflow
+from . import test_relatorio_time_compute

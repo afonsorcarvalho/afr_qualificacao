@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ======================================================== -->
+    <!-- FORM VIEW                                                 -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_relatorio_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.relatorio.form</field>
+        <field name="model">afr.qualificacao.os.relatorio</field>
+        <field name="arch" type="xml">
+            <form string="Relatório parcial">
+                <header>
+                    <button name="action_done" type="object"
+                            string="Concluir" class="btn-primary"
+                            states="draft"/>
+                    <button name="action_cancel" type="object"
+                            string="Cancelar" class="btn-secondary"
+                            states="draft"/>
+                    <button name="action_reopen" type="object"
+                            string="Reabrir" class="btn-secondary"
+                            states="done,cancel"
+                            groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,done"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="OS">
+                            <field name="os_id"
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Intervalo">
+                            <field name="data_inicio"
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="data_fim"
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <field name="time_execution" widget="float_time"/>
+                        </group>
+                    </group>
+                    <group string="Equipe">
+                        <field name="tecnico_ids" widget="many2many_tags"
+                               attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                    </group>
+                    <notebook>
+                        <page string="Descrição" name="descricao">
+                            <field name="descricao" nolabel="1"
+                                   placeholder="Ex.: das 08h às 12h realizando o primeiro ciclo vazio da QD autoclave AC-01..."
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            <separator string="Observações"/>
+                            <field name="observacoes" nolabel="1"
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                        </page>
+                        <page string="Cobertura técnica" name="cobertura">
+                            <group>
+                                <field name="cycle_ids" widget="many2many_tags"
+                                       attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                                <field name="malha_ids" widget="many2many_tags"
+                                       attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- TREE VIEW                                                 -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_relatorio_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.relatorio.tree</field>
+        <field name="model">afr.qualificacao.os.relatorio</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="state == 'done'"
+                  decoration-muted="state == 'cancel'">
+                <field name="name"/>
+                <field name="os_id"/>
+                <field name="data_inicio"/>
+                <field name="data_fim"/>
+                <field name="time_execution" widget="float_time" sum="Total"/>
+                <field name="tecnico_ids" widget="many2many_tags"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-warning="state == 'draft'"
+                       decoration-muted="state == 'cancel'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- SEARCH VIEW                                               -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_relatorio_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.relatorio.search</field>
+        <field name="model">afr.qualificacao.os.relatorio</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="os_id"/>
+                <field name="tecnico_ids"/>
+                <separator/>
+                <filter string="Rascunho" name="filter_draft"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter string="Concluídos" name="filter_done"
+                        domain="[('state', '=', 'done')]"/>
+                <filter string="Meus relatórios" name="filter_mine"
+                        domain="[('tecnico_ids.user_id', '=', uid)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="OS" name="group_os"
+                            context="{'group_by': 'os_id'}"/>
+                    <filter string="Estado" name="group_state"
+                            context="{'group_by': 'state'}"/>
+                    <filter string="Mês" name="group_mes"
+                            context="{'group_by': 'data_inicio:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- ACTION                                                    -->
+    <!-- ======================================================== -->
+    <record id="action_afr_qualificacao_os_relatorio" model="ir.actions.act_window">
+        <field name="name">Relatórios parciais</field>
+        <field name="res_model">afr.qualificacao.os.relatorio</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_afr_qualificacao_os_relatorio_search"/>
+    </record>
+
+</odoo>

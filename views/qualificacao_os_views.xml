@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ======================================================== -->
+    <!-- FORM VIEW                                                 -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.form</field>
+        <field name="model">afr.qualificacao.os</field>
+        <field name="arch" type="xml">
+            <form string="OS de Qualificação">
+                <header>
+                    <!-- Workflow buttons -->
+                    <button name="action_schedule" type="object"
+                            string="Agendar" class="btn-primary"
+                            states="draft"
+                            groups="afr_qualificacao.group_afr_qualificacao_user"/>
+                    <button name="action_start_execution" type="object"
+                            string="Iniciar execução" class="btn-primary"
+                            states="scheduled,in_progress"/>
+                    <button name="action_open_new_relatorio_wizard" type="object"
+                            string="Novo relatório" class="btn-secondary"
+                            states="in_progress"/>
+                    <button name="action_request_approval" type="object"
+                            string="Solicitar aprovação" class="btn-primary"
+                            states="in_progress"
+                            groups="afr_qualificacao.group_afr_qualificacao_user"/>
+                    <button name="action_approve" type="object"
+                            string="Aprovar" class="btn-primary"
+                            states="in_approved"
+                            groups="afr_qualificacao.group_afr_qualificacao_manager"
+                            confirm="Aprovar OS e propagar aprovação a todas as qualificações?"/>
+                    <button name="action_done" type="object"
+                            string="Concluir" class="btn-primary"
+                            states="approved"
+                            groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+                    <button name="action_cancel" type="object"
+                            string="Cancelar" class="btn-secondary"
+                            attrs="{'invisible': [('state', 'in', ['done', 'cancelled'])]}"
+                            groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+                    <button name="action_reset_to_draft" type="object"
+                            string="Voltar p/ rascunho" class="btn-secondary"
+                            states="cancelled"
+                            groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,scheduled,in_progress,in_approved,approved,done"/>
+                </header>
+                <sheet>
+                    <!-- Ribbon: cancelado -->
+                    <widget name="web_ribbon" title="Cancelada"
+                            bg_color="bg-danger"
+                            attrs="{'invisible': [('state', '!=', 'cancelled')]}"/>
+                    <widget name="web_ribbon" title="Concluída"
+                            bg_color="bg-success"
+                            attrs="{'invisible': [('state', '!=', 'done')]}"/>
+
+                    <!-- Stat buttons -->
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_qualificacoes" type="object"
+                                class="oe_stat_button" icon="fa-check-square-o">
+                            <field name="qualificacao_count" widget="statinfo"
+                                   string="Qualificações"/>
+                        </button>
+                        <button name="action_view_equipamentos" type="object"
+                                class="oe_stat_button" icon="fa-cogs">
+                            <field name="equipment_count" widget="statinfo"
+                                   string="Equipamentos"/>
+                        </button>
+                        <button name="action_view_relatorios" type="object"
+                                class="oe_stat_button" icon="fa-file-text-o">
+                            <field name="relatorio_count" widget="statinfo"
+                                   string="Relatórios"/>
+                        </button>
+                        <button class="oe_stat_button" icon="fa-thumbs-up" disabled="1">
+                            <field name="qualificacao_done_count" widget="statinfo"
+                                   string="Aprovadas"/>
+                        </button>
+                    </div>
+
+                    <!-- Title -->
+                    <div class="oe_title">
+                        <label for="name" class="oe_edit_only"/>
+                        <h1>
+                            <field name="name" readonly="1"/>
+                        </h1>
+                    </div>
+
+                    <!-- Main groups -->
+                    <group>
+                        <group string="Identificação">
+                            <field name="partner_id" readonly="1"/>
+                            <field name="sale_order_id" readonly="1"
+                                   attrs="{'invisible': [('sale_order_id', '=', False)]}"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Equipe e cronograma">
+                            <field name="tecnico_default_id"
+                                   options="{'no_create': True}"
+                                   attrs="{'readonly': [('state', 'in', ['done', 'cancelled'])]}"/>
+                            <field name="approver_id"
+                                   options="{'no_create': True}"
+                                   attrs="{'readonly': [('state', 'in', ['done', 'cancelled'])]}"/>
+                            <field name="date_planned_start"
+                                   attrs="{'readonly': [('state', 'in', ['done', 'cancelled'])]}"/>
+                            <field name="date_planned_end"
+                                   attrs="{'readonly': [('state', 'in', ['done', 'cancelled'])]}"/>
+                            <field name="duration_planned" widget="float_time"/>
+                            <field name="date_actual_start"/>
+                            <field name="date_actual_end"/>
+                            <field name="duration_actual" widget="float_time"/>
+                        </group>
+                    </group>
+
+                    <!-- Notebook -->
+                    <notebook>
+                        <page string="Qualificações" name="qualificacoes">
+                            <field name="qualificacao_ids" readonly="1"
+                                   context="{'default_os_id': active_id}">
+                                <tree decoration-success="state == 'approved'"
+                                      decoration-info="state == 'in_progress'"
+                                      decoration-muted="state in ('cancelled', 'rejected')">
+                                    <field name="name"/>
+                                    <field name="equipment_id"/>
+                                    <field name="qualification_type"/>
+                                    <field name="responsible_id"
+                                           widget="many2one_avatar_user"/>
+                                    <field name="execution_date"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'approved'"
+                                           decoration-info="state == 'in_progress'"
+                                           decoration-warning="state == 'draft'"
+                                           decoration-danger="state == 'rejected'"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <page string="Relatórios parciais" name="relatorios">
+                            <field name="relatorio_ids"
+                                   context="{'default_os_id': active_id}">
+                                <tree decoration-success="state == 'done'"
+                                      decoration-muted="state == 'cancel'">
+                                    <field name="name"/>
+                                    <field name="data_inicio"/>
+                                    <field name="data_fim"/>
+                                    <field name="time_execution" widget="float_time" sum="Total"/>
+                                    <field name="tecnico_ids" widget="many2many_tags"/>
+                                    <field name="descricao" optional="show"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'done'"
+                                           decoration-warning="state == 'draft'"
+                                           decoration-muted="state == 'cancel'"/>
+                                </tree>
+                            </field>
+                        </page>
+
+                        <page string="Assinaturas" name="assinaturas">
+                            <group>
+                                <group string="Técnico">
+                                    <field name="signature_technician" widget="signature"
+                                           options="{'full_name': 'tecnico_default_id'}"
+                                           attrs="{'readonly': [('state', 'in', ['done', 'cancelled'])]}"/>
+                                    <field name="signature_technician_date"/>
+                                </group>
+                                <group string="Supervisor">
+                                    <field name="signature_supervisor" widget="signature"
+                                           options="{'full_name': 'approver_id'}"
+                                           attrs="{'readonly': [('state', 'in', ['done', 'cancelled'])]}"
+                                           groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+                                    <field name="signature_supervisor_date"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- TREE VIEW                                                 -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.tree</field>
+        <field name="model">afr.qualificacao.os</field>
+        <field name="arch" type="xml">
+            <tree string="Ordens de Serviço de Qualificação"
+                  decoration-success="state == 'done'"
+                  decoration-info="state == 'in_progress'"
+                  decoration-warning="state == 'in_approved'"
+                  decoration-muted="state == 'cancelled'">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="sale_order_id" optional="show"/>
+                <field name="equipment_count" string="Eqps"/>
+                <field name="qualificacao_count" string="Qualifs"/>
+                <field name="qualificacao_done_count" string="Aprov."/>
+                <field name="tecnico_default_id" widget="many2one_avatar_employee" optional="show"/>
+                <field name="date_planned_start" optional="show"/>
+                <field name="date_planned_end" optional="hide"/>
+                <field name="duration_planned" widget="float_time" optional="hide"/>
+                <field name="duration_actual" widget="float_time" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'done'"
+                       decoration-info="state == 'in_progress'"
+                       decoration-warning="state == 'in_approved'"
+                       decoration-primary="state == 'approved'"
+                       decoration-muted="state == 'cancelled'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- KANBAN VIEW (board por estado)                            -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_kanban" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.kanban</field>
+        <field name="model">afr.qualificacao.os</field>
+        <field name="arch" type="xml">
+            <kanban default_group_by="state" class="o_kanban_small_column"
+                    quick_create="false" group_create="false">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="tecnico_default_id"/>
+                <field name="date_planned_start"/>
+                <field name="qualificacao_count"/>
+                <field name="qualificacao_done_count"/>
+                <field name="equipment_count"/>
+                <field name="state"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="o_kanban_record_top">
+                                <div class="o_kanban_record_headings">
+                                    <strong><field name="name"/></strong>
+                                    <br/>
+                                    <small><field name="partner_id"/></small>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_body">
+                                <div>
+                                    <i class="fa fa-cogs" title="Equipamentos" role="img" aria-label="Equipamentos"/> <field name="equipment_count"/> eqps •
+                                    <i class="fa fa-check-square-o" title="Aprovadas" role="img" aria-label="Aprovadas"/> <field name="qualificacao_done_count"/>/<field name="qualificacao_count"/>
+                                </div>
+                                <div t-if="record.date_planned_start.raw_value" class="text-muted">
+                                    <i class="fa fa-calendar" title="Início planejado" role="img" aria-label="Início planejado"/> <field name="date_planned_start"/>
+                                </div>
+                            </div>
+                            <div class="o_kanban_record_bottom">
+                                <div class="oe_kanban_bottom_left"/>
+                                <div class="oe_kanban_bottom_right">
+                                    <field name="tecnico_default_id"
+                                           widget="many2one_avatar_employee"/>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- SEARCH VIEW                                               -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.search</field>
+        <field name="model">afr.qualificacao.os</field>
+        <field name="arch" type="xml">
+            <search string="Buscar OS Qualificação">
+                <field name="name" string="Referência"/>
+                <field name="partner_id"/>
+                <field name="sale_order_id"/>
+                <field name="tecnico_default_id"/>
+                <field name="equipment_ids"/>
+                <separator/>
+                <filter string="Rascunho" name="filter_draft"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter string="Agendada" name="filter_scheduled"
+                        domain="[('state', '=', 'scheduled')]"/>
+                <filter string="Em execução" name="filter_in_progress"
+                        domain="[('state', '=', 'in_progress')]"/>
+                <filter string="Aguardando aprovação" name="filter_in_approved"
+                        domain="[('state', '=', 'in_approved')]"/>
+                <filter string="Concluídas" name="filter_done"
+                        domain="[('state', '=', 'done')]"/>
+                <separator/>
+                <filter string="Minhas OS (técnico)" name="filter_my_os"
+                        domain="['|',
+                            ('tecnico_default_id.user_id', '=', uid),
+                            ('relatorio_ids.tecnico_ids.user_id', '=', uid)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Estado" name="group_state"
+                            context="{'group_by': 'state'}"/>
+                    <filter string="Cliente" name="group_partner"
+                            context="{'group_by': 'partner_id'}"/>
+                    <filter string="Técnico padrão" name="group_tecnico"
+                            context="{'group_by': 'tecnico_default_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- ACTION + MENU                                             -->
+    <!-- ======================================================== -->
+    <record id="action_afr_qualificacao_os" model="ir.actions.act_window">
+        <field name="name">OS de Qualificação</field>
+        <field name="res_model">afr.qualificacao.os</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="search_view_id" ref="view_afr_qualificacao_os_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Crie sua primeira Ordem de Serviço de Qualificação
+            </p>
+            <p>
+                Container que agrupa múltiplos equipamentos e qualificações
+                em uma única OS, com técnico, cronograma e relatórios parciais.
+            </p>
+        </field>
+    </record>
+
+</odoo>

@@ -2,15 +2,27 @@
 <!--
     Grupos de segurança conforme práticas recomendadas na documentação do Odoo:
     https://www.odoo.com/documentation/16.0/pt_BR/developer/reference/backend/security.html
+
+    Hierarquia (implies):
+      group_afr_qualificacao_technician  ← técnico de campo (vê OS atribuída, preenche relatório+coleta)
+      group_afr_qualificacao_user        ← implies technician + gestor operacional (cria OS, edita config)
+      group_afr_qualificacao_manager     ← implies user + aprova OS/qualifs, edita procedimentos
 -->
 <odoo>
+
+    <record id="group_afr_qualificacao_technician" model="res.groups">
+        <field name="name">Qualificação - Técnico</field>
+        <field name="comment">Acesso restrito: vê OS atribuídas, preenche relatórios e coletas. Não edita procedimentos nem aprova OS.</field>
+    </record>
+
     <record id="group_afr_qualificacao_user" model="res.groups">
         <field name="name">Qualificação - Usuário</field>
+        <field name="implied_ids" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
     </record>
 
     <record id="group_afr_qualificacao_manager" model="res.groups">
         <field name="name">Qualificação - Gestor</field>
         <field name="implied_ids" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
     </record>
-</odoo>
 
+</odoo>

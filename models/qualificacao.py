@@ -210,13 +210,25 @@ class AfrQualificacao(models.Model):
     # ------------------------------------------------------------------
     # Vínculos engc_os + sub-records (cycles / malhas)
     # ------------------------------------------------------------------
+    # OS própria de qualificação (16.0.3.0.0). Em F1 só o campo;
+    # a lógica de criação automática no SO confirm migra em F2.
+    os_id = fields.Many2one(
+        comodel_name="afr.qualificacao.os",
+        string="OS de Qualificação",
+        copy=False,
+        ondelete="set null",
+        index=True,
+        tracking=True,
+        help="Container hierárquico de qualificações (substitui engc_os a partir de 16.0.3.1.0).",
+    )
+    # DEPRECATED 16.0.3.1.0 — preservado para SOs antigas (sem migração: pré-produção).
     engc_os_id = fields.Many2one(
         comodel_name="engc.os",
-        string="Ordem de Serviço",
+        string="Ordem de Serviço (legacy)",
         copy=False,
         ondelete="set null",
         tracking=True,
-        help="OS gerada automaticamente para esta qualificação (1 por equipamento).",
+        help="LEGACY (deprecated em 16.0.3.1.0): use os_id. Mantido para SOs antigas.",
     )
     cycle_ids = fields.One2many(
         comodel_name="afr.qualificacao.cycle",

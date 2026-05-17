@@ -13,12 +13,30 @@
     />
 
     <menuitem
+        id="menu_afr_qualificacao_os"
+        name="Ordens de Serviço"
+        parent="menu_afr_qualificacao_root"
+        action="afr_qualificacao.action_afr_qualificacao_os"
+        sequence="5"
+        groups="afr_qualificacao.group_afr_qualificacao_technician"
+    />
+
+    <menuitem
         id="menu_afr_qualificacao_records"
-        name="Registros"
+        name="Registros (qualificações)"
         parent="menu_afr_qualificacao_root"
         action="afr_qualificacao.action_afr_qualificacao"
         sequence="10"
         groups="afr_qualificacao.group_afr_qualificacao_user"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_os_relatorio"
+        name="Relatórios parciais"
+        parent="menu_afr_qualificacao_root"
+        action="afr_qualificacao.action_afr_qualificacao_os_relatorio"
+        sequence="15"
+        groups="afr_qualificacao.group_afr_qualificacao_technician"
     />
 
     <menuitem
