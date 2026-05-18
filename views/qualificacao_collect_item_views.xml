@@ -122,6 +122,8 @@
                             <field name="relatorio_id" options="{'no_create': True}"/>
                             <field name="procedimento_item_id" readonly="1"
                                    attrs="{'invisible': [('procedimento_item_id', '=', False)]}"/>
+                            <field name="docx_section"
+                                   help="Seção do relatório DOCX onde esta coleta aparecerá. Herdado do procedimento — ajustável."/>
                         </group>
                     </group>
                     <group string="Instrução">
@@ -223,6 +225,7 @@
                        string="Sem relatório" optional="show" readonly="1"/>
                 <field name="captured_by" optional="hide"/>
                 <field name="filename" optional="show"/>
+                <field name="docx_section" optional="hide"/>
             </tree>
         </field>
     </record>

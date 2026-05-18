@@ -86,6 +86,7 @@
                         string="Gerar DOCX"
                         class="oe_highlight"
                         context="{'default_qualificacao_id': active_id}"
+                        attrs="{'invisible': [('qualification_type', '=', 'calibration')]}"
                     />
                     <button
                         name="action_print_certificate"

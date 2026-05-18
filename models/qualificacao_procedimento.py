@@ -29,6 +29,36 @@ DEFAULT_REQUIRES_INSTRUMENT_BY_KIND = {
     "outro": False,
 }
 
+# F6.1 (16.0.3.5.0): seção do relatório DOCX onde a coleta será listada.
+# Os valores correspondem aos blocos de loop esperados pelos templates
+# docs/MODELO_QUALIFICACAO_*.docx (e estrutura de docs/exemplo_contexto.json).
+DOCX_SECTION_SELECTION = [
+    # QI
+    ("qi_utilidades", "QI — Utilidades"),
+    ("qi_documentos", "QI — Documentos"),
+    ("qi_componentes", "QI — Componentes"),
+    ("qi_instalacao", "QI — Instalação"),
+    ("qi_calibracoes", "QI — Calibrações"),
+    ("qi_treinamentos", "QI — Treinamentos"),
+    # QO
+    ("qo_testes_funcionais", "QO — Testes Funcionais"),
+    ("qo_testes_seguranca", "QO — Testes de Segurança"),
+    ("qo_mapeamento_ciclo1", "QO — Mapeamento Ciclo 1"),
+    ("qo_mapeamento_ciclo2", "QO — Mapeamento Ciclo 2"),
+    ("qo_mapeamento_ciclo3", "QO — Mapeamento Ciclo 3"),
+    # QD
+    ("qd_carga", "QD — Carga"),
+    ("qd_penetracao_ciclo1", "QD — Penetração Ciclo 1"),
+    ("qd_penetracao_ciclo2", "QD — Penetração Ciclo 2"),
+    ("qd_penetracao_ciclo3", "QD — Penetração Ciclo 3"),
+    ("qd_indicadores_quimicos", "QD — Indicadores Químicos"),
+    ("qd_indicadores_biologicos", "QD — Indicadores Biológicos"),
+    ("qd_bowie_dick", "QD — Bowie-Dick"),
+    ("qd_repetibilidade", "QD — Repetibilidade"),
+    # Catch-all
+    ("anexos", "Anexos (genérico)"),
+]
+
 
 class AfrQualificacaoProcedimento(models.Model):
     _name = "afr.qualificacao.procedimento"
@@ -167,6 +197,19 @@ class AfrQualificacaoProcedimentoItem(models.Model):
             "liste todas as grandezas que aparecem no arquivo bruto. Cobertura "
             "do collect.item é validada contra a união das grandezas dos "
             "instrumentos selecionados."
+        ),
+    )
+
+    # F6.1 (16.0.3.5.0) — seção do relatório DOCX onde o item aparece.
+    docx_section = fields.Selection(
+        DOCX_SECTION_SELECTION,
+        string="Seção no relatório DOCX",
+        help=(
+            "Classifica em qual tabela do relatório DOCX (QI/QO/QD) o "
+            "collect.item gerado a partir deste template será listado. "
+            "Vazio = não aparece em tabela específica (aparece em 'anexos' "
+            "se for required ou se tiver arquivo). Os valores casam com "
+            "os blocos {% for %} dos templates em static/docx/."
         ),
     )
 

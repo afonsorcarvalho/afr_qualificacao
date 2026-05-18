@@ -9,6 +9,7 @@ https://docxtpl.readthedocs.io/en/latest/usage.html
 """
 
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -17,7 +18,6 @@ from tempfile import NamedTemporaryFile
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
-from odoo.modules.module import get_module_resource
 
 try:
     from docxtpl import DocxTemplate  # type: ignore[import]
@@ -863,109 +863,417 @@ class AfrQualificacao(models.Model):
             "target": "current",
         }
 
-    def action_generate_docx(self):
-        """Gera relatório DOCX usando docxtpl conforme documentação oficial.
+    # ------------------------------------------------------------------
+    # F6.1 (16.0.3.5.0) — geração do relatório DOCX (QI/QO/QD/QS)
+    # ------------------------------------------------------------------
+    # Mapeia qualification_type → xmlid do template default em data seed.
+    # QS reusa template QI até existir template específico (gap F6.x).
+    _DOCX_TEMPLATE_XMLID_BY_TYPE = {
+        "installation": "afr_qualificacao.tpl_docx_qi",
+        "operational": "afr_qualificacao.tpl_docx_qo",
+        "performance": "afr_qualificacao.tpl_docx_qd",
+        "software": "afr_qualificacao.tpl_docx_qi",
+    }
 
-        A seleção de template respeita a escolha do usuário no campo
-        'Template DOCX'. Caso não haja seleção, utiliza o arquivo padrão
-        em 'static/docx/qualificacao_template.docx'.
+    def _docx_partner_dict(self):
+        """Bloco `cliente` do contexto DOCX (chaves do exemplo_contexto.json)."""
+        self.ensure_one()
+        p = self.partner_id
+        if not p:
+            return {}
+        return {
+            "nome": p.name or "",
+            "fantasia": getattr(p, "commercial_company_name", "") or p.name or "",
+            "cnpj": p.vat or "",
+            "endereco": p.street or "",
+            "cidade": p.city or "",
+            "uf": (p.state_id.code if p.state_id else "") or "",
+            "cep": p.zip or "",
+            "unidade": "",
+            "responsavel_tecnico": "",
+            "email": p.email or "",
+            "telefone": p.phone or "",
+        }
+
+    def _docx_equipment_dict(self):
+        """Bloco `equipamento` do contexto DOCX. Defensivo: campos opcionais."""
+        self.ensure_one()
+        e = self.equipment_id
+        if not e:
+            return {}
+
+        def g(field, default=""):
+            return getattr(e, field, default) or default
+
+        return {
+            "descricao": e.display_name or e.name or "",
+            "tag": g("tag", "") or g("internal_code", ""),
+            "fabricante": g("manufacturer", ""),
+            "modelo": g("model", ""),
+            "numero_serie": g("serial_number", ""),
+            "ano_fabricacao": g("manufacture_year", ""),
+            "capacidade": g("capacity", ""),
+            "faixa_operacao": g("operation_range", ""),
+            "tensao": g("voltage", ""),
+            "frequencia": g("frequency", ""),
+            "localizacao": g("location", ""),
+            "software": g("software", ""),
+            "versao_software": g("software_version", ""),
+        }
+
+    def _docx_company_dict(self):
+        c = self.env.company
+        parts = [c.street, c.city, c.state_id.code if c.state_id else ""]
+        endereco = ", ".join(p for p in parts if p)
+        return {
+            "nome": c.name or "",
+            "cnpj": c.vat or "",
+            "endereco": endereco,
+        }
+
+    def _docx_user_block(self, user):
+        """Bloco {nome, cargo, data} para aprovacao.elaborado/revisado/aprovado."""
+        if not user:
+            return {"nome": "", "cargo": "", "data": ""}
+        emp = self.env["hr.employee"].search(
+            [("user_id", "=", user.id)], limit=1
+        )
+        cargo = (emp.job_title if emp else "") or ""
+        data = self.execution_date.isoformat() if self.execution_date else ""
+        return {"nome": user.name or "", "cargo": cargo, "data": data}
+
+    def _docx_aprovacao_dict(self):
+        """Bloco aprovacao: elaborado / revisado / aprovado."""
+        self.ensure_one()
+        revisor = (
+            self.os_id.tecnico_default_id.user_id
+            if self.os_id and self.os_id.tecnico_default_id
+            else False
+        )
+        return {
+            "elaborado": self._docx_user_block(self.responsible_id),
+            "revisado": self._docx_user_block(revisor or self.responsible_id),
+            "aprovado": self._docx_user_block(self.approver_id),
+        }
+
+    def _docx_instruments_summary(self):
+        """Bloco `instrumentos[]`: deduplica padrões dos collect.items."""
+        self.ensure_one()
+        rows = []
+        seen = set()
+        for inst in self.standard_instrument_ids:
+            if inst.id in seen:
+                continue
+            seen.add(inst.id)
+            cert = inst.certificate_ids[:1]
+            rows.append({
+                "tag": getattr(inst, "id_number", "") or "",
+                "descricao": inst.display_name or inst.name or "",
+                "fabricante": getattr(inst, "manufacturer", "") or "",
+                "modelo": getattr(inst, "model", "") or "",
+                "numero_serie": getattr(inst, "serial_number", "") or "",
+                "certificado": (cert.number if cert and hasattr(cert, "number") else "") or "",
+                "validade": cert.validate_calibration.isoformat()
+                if cert and cert.validate_calibration else "",
+            })
+        return rows
+
+    def _docx_collect_item_row(self, item):
+        """Linha tabular padrão para uma coleta dentro de qualquer seção do DOCX.
+
+        F6.1 — sem parse granular de XLSX/CSV: usa apenas metadados da coleta.
+        F6.x futuro popula colunas como sensor/posicao/t_min/t_max a partir
+        do binário `item.file`.
+        """
+        captured = (
+            item.captured_at.isoformat() if item.captured_at else ""
+        )
+        return {
+            "nome": item.name or "",
+            "descricao": item.description or item.instruction or "",
+            "kind": dict(item._fields["kind"].selection).get(item.kind, item.kind),
+            "state": item.state,
+            "captured_at": captured,
+            "captured_by": item.captured_by.name if item.captured_by else "",
+            "arquivo": item.filename or "",
+            "conforme": "Sim" if item.state == "collected" else "Não",
+            # Campos placeholder para colunas técnicas (preenchidos em F6.x):
+            "especificado": "",
+            "encontrado": "",
+            "criterio": "",
+            "resultado": "",
+            "sensor": "",
+            "posicao": "",
+            "t_min": "",
+            "t_max": "",
+            "t_media": "",
+            "delta_t": "",
+            "t_plateau": "",
+            "tempo": "",
+            "f0": "",
+        }
+
+    def _docx_group_by_section(self, prefix):
+        """Agrupa collect.items por docx_section que comece com `prefix`.
+
+        Retorna dict {sub_section_name: [row_dict, ...]} pronto pra
+        `ctx['qi'] = {'utilidades': [...], 'documentos': [...]}`.
         """
         self.ensure_one()
-        if DocxTemplate is None:
-            raise UserError(
-                _(
-                    "A biblioteca docxtpl não está disponível. Verifique se o "
-                    "pacote Python foi instalado conforme a documentação."
-                )
-            )
-        document = None
-        temp_template_path = None
-        # 1) Tenta usar o template selecionado na qualificação (binário)
-        if self.docx_template_id and self.docx_template_id.datas:  # type: ignore[attr-defined]
+        out = {}
+        prefix_full = prefix + "_"
+        for item in self.collect_item_ids:
+            sec = item.docx_section or ""
+            if not sec.startswith(prefix_full):
+                continue
+            sub = sec[len(prefix_full):]
+            out.setdefault(sub, []).append(self._docx_collect_item_row(item))
+        return out
+
+    # Skeletons mínimos por tipo: templates docxtpl chamam {{ qx.sub_block.attr }}
+    # mesmo quando user não tem dados, então TODAS as chaves precisam existir
+    # (jinja2 strict undefined). Listas vazias e dicts com strings vazias são
+    # renderizados como linhas vazias / colunas em branco — comportamento OK
+    # para F6.1. Sub-dicts (programa, resumo, carga, bowie_dick) virão de
+    # campos custom em F6.x próximo (parse XLSX, modelo dedicado, ou form
+    # extra no qualif).
+    _DOCX_QX_SKELETONS = {
+        "qi": {
+            "utilidades": [],
+            "documentos": [],
+            "componentes": [],
+            "instalacao": [],
+            "calibracoes": [],
+            "treinamentos": [],
+        },
+        "qo": {
+            "testes_funcionais": [],
+            "testes_seguranca": [],
+            "programa": {
+                "nome": "", "setpoint": "", "tempo_exposicao": "",
+                "qtd_sensores": "", "intervalo_leitura": "", "qtd_ciclos": "",
+            },
+            "mapeamento_ciclo1": [],
+            "mapeamento_ciclo2": [],
+            "mapeamento_ciclo3": [],
+            "resumo": {
+                "tempo_total": "", "t_max_global": "", "t_min_global": "",
+                "t_media_global": "", "delta_t_max": "",
+                "pressao_saturacao": "", "t_calc_pressao": "", "f0": "",
+            },
+        },
+        "qd": {
+            "carga": {
+                "tipo": "", "descricao": "", "densidade": "",
+                "embalagem": "", "posicionamento": "", "itens": [],
+            },
+            "penetracao_ciclo1": [],
+            "penetracao_ciclo2": [],
+            "penetracao_ciclo3": [],
+            "indicadores_quimicos": [],
+            "indicadores_biologicos": [],
+            "bowie_dick": {
+                "aplicavel": "", "tipo": "", "lote": "",
+                "validade": "", "resultado": "", "conforme": "",
+            },
+            "repetibilidade": [],
+        },
+    }
+
+    def _docx_qx_block(self, prefix):
+        """Monta bloco qi/qo/qd com skeleton completo + popula via coletas."""
+        self.ensure_one()
+        # Deep-copy do skeleton (dicts nested precisam de cópia)
+        block = copy.deepcopy(self._DOCX_QX_SKELETONS.get(prefix, {}))
+        # Popula listas a partir das coletas com docx_section correspondente
+        grouped = self._docx_group_by_section(prefix)
+        for sub, rows in grouped.items():
+            if sub == "carga":
+                # qd_carga: coletas viram itens dentro do dict carga
+                block.setdefault("carga", {"itens": []})
+                if isinstance(block["carga"], dict):
+                    block["carga"]["itens"] = rows
+            elif sub in block and isinstance(block[sub], list):
+                block[sub] = rows
+            else:
+                # Section não declarada no skeleton — adiciona como lista
+                # (template novo no futuro pode pedir; não quebra render)
+                block[sub] = rows
+        block.update({
+            "resultado": dict(self._fields["state"].selection).get(
+                self.state, self.state
+            ),
+            "observacoes": "",
+            "acoes_corretivas": "",
+            "executor": self.responsible_id.name if self.responsible_id else "",
+            "data_execucao": self.execution_date.isoformat()
+            if self.execution_date else "",
+        })
+        return block
+
+    def _build_docx_context(self):
+        """Monta dict completo conforme docs/exemplo_contexto.json.
+
+        F6.1 (16.0.3.5.0): cobre empresa, documento, cliente, equipamento,
+        aprovacao, instrumentos[]. Blocos qi/qo/qd populados conforme
+        `qualification_type` da qualif (outros ficam vazios). Blocos
+        `revisoes[]` e `conclusao` ficam com defaults vazios — gap declarado
+        para etapa F6.x futura.
+        """
+        self.ensure_one()
+        type_to_prefix = {
+            "installation": "qi",
+            "operational": "qo",
+            "performance": "qd",
+            "software": "qi",  # QS reusa estrutura QI nesta etapa
+        }
+        ctx = {
+            "empresa": self._docx_company_dict(),
+            "documento": {
+                "titulo": "%s — %s" % (
+                    dict(self._fields["qualification_type"].selection).get(
+                        self.qualification_type, ""
+                    ),
+                    self.name or "",
+                ),
+                "codigo": self.name or "",
+                "revisao": "01",
+                "data_emissao": self.execution_date.isoformat()
+                if self.execution_date else "",
+                "proxima_revisao": "",
+                "procedimento_referencia": "",
+                "qi_codigo": "",
+                "qo_codigo": "",
+            },
+            "cliente": self._docx_partner_dict(),
+            "equipamento": self._docx_equipment_dict(),
+            "aprovacao": self._docx_aprovacao_dict(),
+            "revisoes": [],  # F6.x: modelo dedicado se necessário
+            "instrumentos": self._docx_instruments_summary(),
+            "qi": {},
+            "qo": {},
+            "qd": {},
+            "conclusao": {
+                "status": dict(self._fields["state"].selection).get(
+                    self.state, self.state
+                ),
+                "validade": "",
+                "proxima_qualificacao": "",
+                "observacoes": "",
+            },
+            "anexos": {"observacoes": ""},
+        }
+        prefix = type_to_prefix.get(self.qualification_type)
+        if prefix:
+            ctx[prefix] = self._docx_qx_block(prefix)
+        return ctx
+
+    def _resolve_docx_template_bytes(self):
+        """Retorna (bytes, source_label) do template DOCX a renderizar.
+
+        Ordem: 1) docx_template_id manual; 2) lookup por xmlid baseado em
+        qualification_type. Raise UserError se nenhum disponível.
+        """
+        self.ensure_one()
+        # 1) Escolha manual no formulário da qualif
+        if self.docx_template_id and self.docx_template_id.datas:
             try:
-                template_bytes = base64.b64decode(self.docx_template_id.datas)  # type: ignore[attr-defined]
+                return (
+                    base64.b64decode(self.docx_template_id.datas),
+                    self.docx_template_id.display_name,
+                )
             except Exception as error:
                 raise UserError(
                     _("Falha ao decodificar o template selecionado: %s") % error
                 ) from error
-            # Cria arquivo temporário que não será deletado automaticamente
-            # para que o DocxTemplate possa acessá-lo durante o render
-            temp_template = NamedTemporaryFile(suffix=".docx", delete=False)
-            temp_template_path = temp_template.name
-            try:
-                temp_template.write(template_bytes)
-                temp_template.flush()
-                temp_template.close()  # Fecha o handle, mas mantém o arquivo
+        # 2) Fallback automático por tipo via data seed
+        xmlid = self._DOCX_TEMPLATE_XMLID_BY_TYPE.get(self.qualification_type)
+        if xmlid:
+            tpl = self.env.ref(xmlid, raise_if_not_found=False)
+            if tpl and tpl.datas:
                 try:
-                    document = DocxTemplate(temp_template_path)
+                    return base64.b64decode(tpl.datas), tpl.display_name
                 except Exception as error:
                     raise UserError(
-                        _("Falha ao carregar o template selecionado: %s") % error
+                        _("Falha ao decodificar template default %s: %s") % (
+                            xmlid, error,
+                        )
                     ) from error
-            except Exception:
-                # Se houver erro, remove o arquivo temporário antes de relançar
-                if temp_template_path and os.path.exists(temp_template_path):
-                    os.unlink(temp_template_path)
-                raise
-        # 2) Fallback: template padrão no módulo
-        if document is None:
-            template_path = get_module_resource(
-                "afr_qualificacao", "static", "docx", "qualificacao_template.docx"
-            )
-            if not template_path:
-                raise UserError(
-                    _(
-                        "Modelo DOCX não encontrado. Adicione o arquivo "
-                        "'qualificacao_template.docx' em afr_qualificacao/static/docx "
-                        "ou selecione um Template DOCX na qualificação."
-                    )
-                )
+        raise UserError(_(
+            "Nenhum template DOCX disponível para a qualificação tipo '%s'. "
+            "Selecione manualmente em 'Template DOCX' ou verifique se o "
+            "data seed do módulo foi carregado (afr.qualificacao.docx.template)."
+        ) % self.qualification_type)
+
+    def action_generate_docx(self):
+        """Gera relatório DOCX da qualificação via docxtpl (F6.1).
+
+        Resolve template (manual ou default por tipo), monta contexto rico
+        conforme docs/exemplo_contexto.json, renderiza e cria ir.attachment.
+        Retorna act_url abrindo o attachment em nova aba.
+
+        Calibração: NÃO suportado nesta etapa — use `action_print_certificate`
+        (report QWeb nativo de engc.calibration). Gap declarado em F6.x.
+        """
+        self.ensure_one()
+        if self.qualification_type == "calibration":
+            raise UserError(_(
+                "Geração DOCX não suportada para qualificação tipo Calibração. "
+                "Use o botão 'Imprimir Certificado' (report QWeb nativo de "
+                "engc.calibration)."
+            ))
+        if DocxTemplate is None:
+            raise UserError(_(
+                "A biblioteca docxtpl não está disponível. Verifique se o "
+                "pacote Python foi instalado conforme a documentação."
+            ))
+
+        template_bytes, _source = self._resolve_docx_template_bytes()
+
+        temp_template = NamedTemporaryFile(suffix=".docx", delete=False)
+        temp_template_path = temp_template.name
+        try:
+            temp_template.write(template_bytes)
+            temp_template.flush()
+            temp_template.close()
             try:
-                document = DocxTemplate(template_path)
-            except Exception as error:  # docxtpl lança erros genéricos
+                document = DocxTemplate(temp_template_path)
+            except Exception as error:
                 raise UserError(
-                    _("Falha ao carregar o modelo DOCX: %s") % error
+                    _("Falha ao carregar o template DOCX: %s") % error
                 ) from error
 
-        context = {
-            "qualificacao": self,
-            "equipamento": self.equipment_id.name,  # type: ignore[attr-defined]
-            "responsavel": self.responsible_id.name,
-            "aprovador": self.approver_id.name,
-            "company": self.env.company,
-        }
-        try:
-            document.render(context)
+            context = self._build_docx_context()
+            try:
+                document.render(context)
+            except Exception as error:
+                raise UserError(
+                    _("Falha ao renderizar template DOCX: %s") % error
+                ) from error
+
+            with NamedTemporaryFile(suffix=".docx") as out:
+                document.save(out.name)
+                out.seek(0)
+                file_content = out.read()
         finally:
-            # Remove o arquivo temporário após o render, se existir
-            if temp_template_path and os.path.exists(temp_template_path):
+            if os.path.exists(temp_template_path):
                 try:
                     os.unlink(temp_template_path)
-                except Exception:
-                    pass  # Ignora erros ao remover arquivo temporário
-
-        with NamedTemporaryFile(suffix=".docx") as temp:
-            document.save(temp.name)
-            temp.seek(0)
-            file_content = temp.read()
+                except OSError:
+                    pass
 
         if not file_content:
             raise UserError(_("O arquivo gerado está vazio."))
 
-        report_name = "%s.docx" % (self.name or "qualificacao")  # type: ignore[attr-defined]
-        attachment = self.env["ir.attachment"].create(
-            {
-                "name": report_name,
-                "type": "binary",
-                "datas": base64.b64encode(file_content),
-                "res_model": self._name,
-                "res_id": self.id,
-                "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            }
-        )
-
-        # Abre o attachment em uma nova aba sem forçar download
-        # O navegador tentará abrir com o aplicativo padrão ou oferecerá download
+        report_name = "%s.docx" % (self.name or "qualificacao")
+        attachment = self.env["ir.attachment"].create({
+            "name": report_name,
+            "type": "binary",
+            "datas": base64.b64encode(file_content),
+            "res_model": self._name,
+            "res_id": self.id,
+            "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        })
         return {
             "type": "ir.actions.act_url",
             "url": "/web/content/%s" % attachment.id,

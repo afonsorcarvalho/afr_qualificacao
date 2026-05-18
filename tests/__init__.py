@@ -17,3 +17,5 @@ from . import test_collect_item_lifecycle
 from . import test_standard_instruments
 # F4.3 (16.0.3.4.0)
 from . import test_coverage
+# F6.1 (16.0.3.5.0)
+from . import test_docx_render

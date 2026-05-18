@@ -50,6 +50,7 @@
                                    optional="show"
                                    options="{'no_create_edit': True}"
                                    attrs="{'column_invisible': [('parent.id', '=', False)]}"/>
+                            <field name="docx_section" optional="show"/>
                             <field name="mimetypes_hint" optional="hide"/>
                             <field name="instruction" optional="hide"/>
                         </tree>

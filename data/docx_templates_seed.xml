@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        F6.1 (16.0.3.5.0) — Templates DOCX default por tipo de qualificação.
+        noupdate=1 preserva customizações do user após upgrade do módulo.
+        Os arquivos vivem em static/docx/ e são carregados via type="base64" file="...".
+    -->
+    <record id="tpl_docx_qi" model="afr.qualificacao.docx.template">
+        <field name="name">Qualificação de Instalação (QI)</field>
+        <field name="filename">qualificacao_qi.docx</field>
+        <field name="datas" type="base64" file="afr_qualificacao/static/docx/qualificacao_qi.docx"/>
+    </record>
+
+    <record id="tpl_docx_qo" model="afr.qualificacao.docx.template">
+        <field name="name">Qualificação Operacional (QO)</field>
+        <field name="filename">qualificacao_qo.docx</field>
+        <field name="datas" type="base64" file="afr_qualificacao/static/docx/qualificacao_qo.docx"/>
+    </record>
+
+    <record id="tpl_docx_qd" model="afr.qualificacao.docx.template">
+        <field name="name">Qualificação de Desempenho (QD)</field>
+        <field name="filename">qualificacao_qd.docx</field>
+        <field name="datas" type="base64" file="afr_qualificacao/static/docx/qualificacao_qd.docx"/>
+    </record>
+</odoo>

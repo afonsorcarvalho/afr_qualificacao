@@ -147,6 +147,20 @@ class AfrQualificacaoCollectItem(models.Model):
         readonly=True,
         string="Grandezas requeridas",
     )
+
+    # F6.1 (16.0.3.5.0) — herdado do procedimento.item; editável caso a explosão
+    # tenha vindo de procedimento legado sem docx_section setado.
+    # Selection inferida do related (não declarar para evitar warning Odoo).
+    docx_section = fields.Selection(
+        related="procedimento_item_id.docx_section",
+        store=True,
+        readonly=False,
+        string="Seção no relatório DOCX",
+        help=(
+            "Tabela do relatório DOCX onde esta coleta será listada. "
+            "Herdado de procedimento.item.docx_section; pode ser ajustado."
+        ),
+    )
     coverage_complete = fields.Boolean(
         compute="_compute_coverage",
         store=False,

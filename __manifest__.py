@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.3.4.0",
+    "version": "16.0.3.5.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -20,7 +20,12 @@
           F3 (16.0.3.2.0): Procedimento template + collect.items unificados.
           F4 (16.0.3.3.0): Padrões metrológicos M2M (engc.calibration.instruments).
           F5 (16.0.3.4.0): Reports completos + record rules technician.
-          F6 (futuro):     DOCX por procedimento (consolidação de coletas/fotos).
+          F6.1 (16.0.3.5.0): Relatório DOCX individual por qualif (QI/QO/QD/QS)
+            com templates default por tipo + mapeamento docx_section por
+            procedimento.item. Render via docxtpl, contexto rico (cliente,
+            equipamento, instrumentos, tabelas agrupadas por seção).
+          F6.2 (futuro):   DOCX UNIFICADO por OS (agrega QI+QO+QD).
+          F6.3 (futuro):   Conversão DOCX → PDF (LibreOffice headless).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -54,6 +59,7 @@
         "data/sequences.xml",
         "data/sensor_kind_seed.xml",
         "data/standard_seed.xml",
+        "data/docx_templates_seed.xml",
         # Views — config (master data) com actions
         "views/sensor_kind_views.xml",
         "views/standard_views.xml",
