@@ -104,6 +104,154 @@ class AfrQualificacaoOsRelatorio(models.Model):
         string="Malhas cobertas",
     )
 
+    # F4.7 (16.0.3.4.0): coletas realizadas neste relatório
+    collect_item_ids = fields.One2many(
+        "afr.qualificacao.collect.item",
+        "relatorio_id",
+        string="Coletas realizadas",
+        help="Itens de coleta materializados neste relatório (state=collected).",
+    )
+    pending_collect_item_ids = fields.Many2many(
+        "afr.qualificacao.collect.item",
+        compute="_compute_pending_collect_items",
+        store=False,
+        string="Coletas pendentes da OS",
+        help="Coletas required ainda em state=pending na OS deste relatório.",
+    )
+    # F4.8 (16.0.3.4.0): ciclos/malhas coletados neste relatório
+    cycles_collected_ids = fields.One2many(
+        "afr.qualificacao.cycle",
+        "relatorio_id",
+        string="Ciclos coletados",
+    )
+    malhas_collected_ids = fields.One2many(
+        "afr.qualificacao.malha",
+        "relatorio_id",
+        string="Malhas coletadas",
+    )
+    pending_cycles_ids = fields.Many2many(
+        "afr.qualificacao.cycle",
+        compute="_compute_pending_subrecords",
+        store=False,
+        string="Ciclos pendentes da OS",
+    )
+    pending_malhas_ids = fields.Many2many(
+        "afr.qualificacao.malha",
+        compute="_compute_pending_subrecords",
+        store=False,
+        string="Malhas pendentes da OS",
+    )
+    pending_collect_count = fields.Integer(
+        compute="_compute_pending_collect_items", store=False,
+    )
+    pending_cycles_count = fields.Integer(
+        compute="_compute_pending_subrecords", store=False,
+    )
+    pending_malhas_count = fields.Integer(
+        compute="_compute_pending_subrecords", store=False,
+    )
+
+    @api.depends("os_id",
+                 "os_id.qualificacao_ids.cycle_ids.state",
+                 "os_id.qualificacao_ids.malha_ids.state")
+    def _compute_pending_subrecords(self):
+        for r in self:
+            if not r.os_id:
+                r.pending_cycles_ids = False
+                r.pending_malhas_ids = False
+                r.pending_cycles_count = 0
+                r.pending_malhas_count = 0
+                continue
+            cycles = r.os_id.qualificacao_ids.mapped("cycle_ids")
+            malhas = r.os_id.qualificacao_ids.mapped("malha_ids")
+            pending_c = cycles.filtered(lambda c: c.state == "pending")
+            # F4.10: malha sai de "Pendentes" só quando certificada
+            pending_m = malhas.filtered(lambda m: m.state != "certified")
+            r.pending_cycles_ids = pending_c
+            r.pending_malhas_ids = pending_m
+            r.pending_cycles_count = len(pending_c)
+            r.pending_malhas_count = len(pending_m)
+
+    @api.depends("os_id", "os_id.qualificacao_ids.collect_item_ids.state",
+                 "os_id.qualificacao_ids.collect_item_ids.required")
+    def _compute_pending_collect_items(self):
+        for r in self:
+            if not r.os_id:
+                r.pending_collect_item_ids = False
+                r.pending_collect_count = 0
+                continue
+            all_items = r.os_id.qualificacao_ids.mapped("collect_item_ids")
+            pending = all_items.filtered(
+                lambda c: c.required and c.state == "pending"
+            )
+            r.pending_collect_item_ids = pending
+            r.pending_collect_count = len(pending)
+
+    def action_open_pending_collects(self):
+        """Abre lista de collect.items pendentes da OS em modo edit.
+        Context auto-vincula `relatorio_id` ao registro aberto.
+        """
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Coletas Pendentes — %s") % (self.name or ""),
+            "res_model": "afr.qualificacao.collect.item",
+            "view_mode": "tree,form",
+            "domain": [
+                ("os_id", "=", self.os_id.id),
+                ("required", "=", True),
+                ("state", "=", "pending"),
+            ],
+            "context": {
+                "default_relatorio_id": self.id,
+                "default_required": True,
+            },
+            "target": "current",
+        }
+
+    def action_open_pending_cycles(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Ciclos Pendentes — %s") % (self.name or ""),
+            "res_model": "afr.qualificacao.cycle",
+            "view_mode": "tree,form",
+            "domain": [
+                ("qualificacao_id.os_id", "=", self.os_id.id),
+                ("state", "=", "pending"),
+            ],
+            "context": {"default_relatorio_id": self.id},
+            "target": "current",
+        }
+
+    def action_open_pending_malhas(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Malhas Pendentes — %s") % (self.name or ""),
+            "res_model": "afr.qualificacao.malha",
+            "view_mode": "tree,form",
+            "domain": [
+                ("qualificacao_id.os_id", "=", self.os_id.id),
+                ("state", "=", "pending"),
+            ],
+            "context": {"default_relatorio_id": self.id},
+            "target": "current",
+        }
+
+    def action_open_collected_items(self):
+        """Abre lista de collect.items deste relatório (já coletados)."""
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Coletas — %s") % (self.name or ""),
+            "res_model": "afr.qualificacao.collect.item",
+            "view_mode": "tree,form",
+            "domain": [("relatorio_id", "=", self.id)],
+            "context": {"default_relatorio_id": self.id},
+            "target": "current",
+        }
+
     # ═════════════════════════════════════════════════════════════
     # CREATE OVERRIDE — sequence
     # ═════════════════════════════════════════════════════════════

@@ -42,6 +42,14 @@
                             <field name="kind"/>
                             <field name="target_level"/>
                             <field name="required"/>
+                            <field name="requires_instrument"
+                                   widget="boolean_toggle"
+                                   optional="show"/>
+                            <field name="required_sensor_kind_ids"
+                                   widget="many2many_tags"
+                                   optional="show"
+                                   options="{'no_create_edit': True}"
+                                   attrs="{'column_invisible': [('parent.id', '=', False)]}"/>
                             <field name="mimetypes_hint" optional="hide"/>
                             <field name="instruction" optional="hide"/>
                         </tree>

@@ -49,6 +49,104 @@
                                attrs="{'readonly': [('state', '!=', 'draft')]}"/>
                     </group>
                     <notebook>
+                        <page string="Coletas" name="coletas">
+                            <field name="pending_collect_count" invisible="1"/>
+                            <field name="pending_malhas_count" invisible="1"/>
+
+                            <!-- ═══════════ ANEXOS / CHECKLIST ═══════════ -->
+                            <h3 class="mt-0">
+                                <i class="fa fa-paperclip" title="Anexos" role="img" aria-label="Anexos"/>
+                                Anexos / Checklist
+                            </h3>
+                            <separator string="Realizados neste relatório"/>
+                            <field name="collect_item_ids" readonly="1" nolabel="1">
+                                <tree decoration-success="state == 'collected'"
+                                      decoration-muted="state == 'skipped'">
+                                    <field name="qualif_id"/>
+                                    <field name="cycle_id" optional="show"/>
+                                    <field name="name"/>
+                                    <field name="kind"/>
+                                    <field name="required"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="filename" optional="show"/>
+                                    <field name="captured_by" optional="show"/>
+                                </tree>
+                            </field>
+                            <div attrs="{'invisible': [('pending_collect_count', '=', 0)]}">
+                                <separator string="Pendentes na OS"/>
+                                <field name="pending_collect_item_ids" readonly="1" nolabel="1">
+                                    <tree decoration-warning="required" create="false" edit="false">
+                                        <field name="qualif_id"/>
+                                        <field name="cycle_id" optional="show"/>
+                                        <field name="name"/>
+                                        <field name="kind"/>
+                                        <field name="required"/>
+                                        <field name="state" widget="badge"/>
+                                        <button name="action_open_for_collect"
+                                                type="object"
+                                                string="Coletar"
+                                                icon="fa-paperclip"
+                                                class="btn-primary"
+                                                context="{'attach_to_relatorio_id': parent.id}"/>
+                                    </tree>
+                                </field>
+                                <div class="mt-1 mb-3">
+                                    <button name="action_open_pending_collects"
+                                            type="object" class="btn-link"
+                                            string="Abrir lista completa de anexos pendentes"
+                                            icon="fa-external-link"/>
+                                </div>
+                            </div>
+
+                            <!-- F4.9: ciclos QD agregam collect.items via cycle_id.
+                                 State auto-passed quando todas coletas required collected.
+                                 Seção removida — visualização via tree de collect.items acima
+                                 (cycle_id é coluna optional). Resumo no form da qualif. -->
+
+                            <!-- ═══════════ MALHAS CALIBRAÇÃO ═══════════ -->
+                            <h3>
+                                <i class="fa fa-flask" title="Malhas" role="img" aria-label="Malhas"/>
+                                Malhas (Calibração)
+                            </h3>
+                            <separator string="Executadas neste relatório"/>
+                            <field name="malhas_collected_ids" readonly="1" nolabel="1">
+                                <tree decoration-success="state == 'certified'"
+                                      decoration-info="state == 'collected'"
+                                      decoration-danger="state == 'failed'">
+                                    <field name="qualificacao_id"/>
+                                    <field name="malha_type_id"/>
+                                    <field name="sequence"/>
+                                    <field name="sensor_kind_id"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="engc_calibration_measurement_id" optional="show"/>
+                                    <field name="executed_date"/>
+                                </tree>
+                            </field>
+                            <div attrs="{'invisible': [('pending_malhas_count', '=', 0)]}">
+                                <separator string="Pendentes na OS"/>
+                                <field name="pending_malhas_ids" readonly="1" nolabel="1">
+                                    <tree decoration-warning="state == 'pending'" create="false" edit="false">
+                                        <field name="qualificacao_id"/>
+                                        <field name="malha_type_id"/>
+                                        <field name="sequence"/>
+                                        <field name="sensor_kind_id"/>
+                                        <field name="state" widget="badge"/>
+                                        <button name="action_open_for_collect"
+                                                type="object"
+                                                string="Coletar"
+                                                icon="fa-paperclip"
+                                                class="btn-primary"
+                                                context="{'attach_to_relatorio_id': parent.id}"/>
+                                    </tree>
+                                </field>
+                                <div class="mt-1">
+                                    <button name="action_open_pending_malhas"
+                                            type="object" class="btn-link"
+                                            string="Abrir lista completa de malhas pendentes"
+                                            icon="fa-external-link"/>
+                                </div>
+                            </div>
+                        </page>
                         <page string="Descrição" name="descricao">
                             <field name="descricao" nolabel="1"
                                    placeholder="Ex.: das 08h às 12h realizando o primeiro ciclo vazio da QD autoclave AC-01..."
@@ -56,14 +154,6 @@
                             <separator string="Observações"/>
                             <field name="observacoes" nolabel="1"
                                    attrs="{'readonly': [('state', '!=', 'draft')]}"/>
-                        </page>
-                        <page string="Cobertura técnica" name="cobertura">
-                            <group>
-                                <field name="cycle_ids" widget="many2many_tags"
-                                       attrs="{'readonly': [('state', '!=', 'draft')]}"/>
-                                <field name="malha_ids" widget="many2many_tags"
-                                       attrs="{'readonly': [('state', '!=', 'draft')]}"/>
-                            </group>
                         </page>
                     </notebook>
                 </sheet>

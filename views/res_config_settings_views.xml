@@ -28,6 +28,20 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="qualif_block_approval_incomplete_coverage"/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="qualif_block_approval_incomplete_coverage"/>
+                                <div class="text-muted">
+                                    F4.3: bloqueia <code>action_mark_approved</code> se algum collect.item
+                                    obrigatório (<code>required + requires_instrument</code>) tem cobertura
+                                    de grandezas incompleta — alguma grandeza requerida não está coberta
+                                    pelos instrumentos selecionados. Quando desligado, apenas registra aviso.
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </xpath>

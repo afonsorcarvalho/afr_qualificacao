@@ -79,10 +79,11 @@ class TestCertificate(AfrQualificacaoTestCommon):
         wiz.action_apply()
         so.action_confirm()
         qd = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "performance")
-        qd.cycle_ids.write({"state": "passed"})
+        rel = self._get_relatorio(qd.os_id)
+        qd.cycle_ids.with_context(default_relatorio_id=rel.id).write({"state": "passed"})
         qd.action_mark_approved()
         # Hash congelado. Alterar state de cycle invalida.
-        qd.cycle_ids[0].state = "failed"
+        qd.cycle_ids[0].with_context(default_relatorio_id=rel.id).write({"state": "failed"})
         result = qd.verify_certificate()
         self.assertFalse(result["valid"], "Mudança em cycle.state = tampered")
 

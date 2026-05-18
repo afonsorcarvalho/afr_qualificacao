@@ -32,8 +32,9 @@ class TestQtyDeliveredPropagation(AfrQualificacaoTestCommon):
     def test_approve_qd_propagates_passed_cycles(self):
         so = self._setup_confirmed_so()
         qd = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "performance")
-        # 2 de 3 passed
-        qd.cycle_ids[:2].state = "passed"
+        rel = self._get_relatorio(qd.os_id)
+        # 2 de 3 passed via relatorio (gate F4.8)
+        qd.cycle_ids[:2].with_context(default_relatorio_id=rel.id).write({"state": "passed"})
         qd.action_mark_approved()
         qd_line = so.order_line.filtered(lambda l: l.qualification_type == "performance")
         self.assertEqual(qd_line.qty_delivered, 2.0)
@@ -41,8 +42,9 @@ class TestQtyDeliveredPropagation(AfrQualificacaoTestCommon):
     def test_approve_calib_propagates_passed_malhas(self):
         so = self._setup_confirmed_so()
         calib = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "calibration")
-        # todos 5 passed
-        calib.malha_ids.write({"state": "passed"})
+        rel = self._get_relatorio(calib.os_id)
+        # todos 5 collected via relatorio (gate F4.8/F4.10 — state passed→collected)
+        calib.malha_ids.with_context(default_relatorio_id=rel.id).write({"state": "collected"})
         calib.action_mark_approved()
         calib_line = so.order_line.filtered(lambda l: l.qualification_type == "calibration")
         self.assertEqual(calib_line.qty_delivered, 5.0)

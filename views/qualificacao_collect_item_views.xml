@@ -131,16 +131,47 @@
                     <group string="Descrição / Observações">
                         <field name="description" nolabel="1"/>
                     </group>
+                    <field name="collected_without_relatorio" invisible="1"/>
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': [('collected_without_relatorio', '=', False)]}">
+                        <i class="fa fa-exclamation-triangle" title="Aviso" role="img" aria-label="Aviso"/>
+                        <strong> Coleta sem relatório vinculado. </strong>
+                        Coletas devem ser realizadas via Relatório da OS. Aprovação da qualificação será bloqueada.
+                    </div>
                     <notebook>
                         <page string="Padrões Metrológicos" name="standards">
                             <field name="standards_warning_text" invisible="1"/>
                             <field name="standards_all_valid" invisible="1"/>
+                            <field name="requires_instrument" invisible="1"/>
+                            <field name="coverage_complete" invisible="1"/>
+                            <field name="coverage_warning_text" invisible="1"/>
+                            <field name="required_sensor_kind_ids" invisible="1"/>
+                            <field name="missing_sensor_kind_ids" invisible="1"/>
+
+                            <!-- Requisitos do procedimento -->
+                            <group attrs="{'invisible': [('requires_instrument', '=', False)]}">
+                                <field name="required_sensor_kind_ids"
+                                       widget="many2many_tags"
+                                       readonly="1"
+                                       string="Grandezas requeridas"/>
+                            </group>
+
+                            <!-- Alert cobertura incompleta (vermelho para consistência com qualif form) -->
+                            <div class="alert alert-danger" role="alert"
+                                 attrs="{'invisible': ['|', ('requires_instrument', '=', False), ('coverage_complete', '=', True)]}">
+                                <i class="fa fa-times-circle" title="Cobertura incompleta" role="img" aria-label="Cobertura incompleta"/>
+                                <strong> Cobertura incompleta. Grandezas faltantes: </strong>
+                                <field name="coverage_warning_text" nolabel="1" readonly="1"/>
+                            </div>
+
+                            <!-- Alert padrão expirado -->
                             <div class="alert alert-warning" role="alert"
                                  attrs="{'invisible': [('standards_all_valid', '=', True)]}">
                                 <i class="fa fa-exclamation-triangle" title="Atenção" role="img" aria-label="Atenção"/>
                                 <strong> Padrões com certificado expirado / ausente: </strong>
                                 <field name="standards_warning_text" nolabel="1" readonly="1"/>
                             </div>
+
                             <field name="standard_instrument_ids"
                                    options="{'no_create': True, 'no_create_edit': True, 'no_quick_create': True}">
                                 <tree>
@@ -149,6 +180,7 @@
                                     <field name="tag" optional="hide"/>
                                     <field name="marca" optional="hide"/>
                                     <field name="modelo" optional="hide"/>
+                                    <field name="sensor_kind_ids" widget="many2many_tags" optional="show"/>
                                 </tree>
                             </field>
                         </page>
@@ -169,9 +201,10 @@
         <field name="name">afr.qualificacao.collect.item.tree</field>
         <field name="model">afr.qualificacao.collect.item</field>
         <field name="arch" type="xml">
-            <tree decoration-success="state == 'collected'"
+            <tree decoration-success="state == 'collected' and relatorio_id"
                   decoration-muted="state == 'skipped'"
                   decoration-warning="state == 'pending' and required"
+                  decoration-danger="collected_without_relatorio"
                   multi_edit="1">
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
@@ -185,6 +218,9 @@
                        decoration-success="state == 'collected'"
                        decoration-warning="state == 'pending'"
                        decoration-muted="state == 'skipped'"/>
+                <field name="relatorio_id" optional="show"/>
+                <field name="collected_without_relatorio" widget="boolean_toggle"
+                       string="Sem relatório" optional="show" readonly="1"/>
                 <field name="captured_by" optional="hide"/>
                 <field name="filename" optional="show"/>
             </tree>

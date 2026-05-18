@@ -196,13 +196,25 @@
                             </field>
                         </page>
                         <page string="Ciclos (QD)" attrs="{'invisible': [('qualification_type', '!=', 'performance')]}">
+                            <div class="text-muted small mb-2">
+                                Ciclo é wrapper das coletas vinculadas via <code>cycle_id</code>.
+                                Estado vira <b>Aprovado</b> automaticamente quando todas coletas
+                                required do ciclo são collected. Para reprovar manualmente, edite
+                                state no form do ciclo.
+                            </div>
                             <field name="cycle_ids">
-                                <tree editable="bottom" decoration-success="state == 'passed'" decoration-danger="state == 'failed'">
+                                <tree decoration-success="state == 'passed'"
+                                      decoration-danger="state == 'failed'"
+                                      decoration-warning="state == 'pending'"
+                                      create="false">
                                     <field name="sequence" widget="handle"/>
                                     <field name="cycle_type_id"/>
+                                    <field name="collects_progress" string="Progresso"/>
+                                    <field name="collects_complete" widget="boolean_toggle" string="Completo" readonly="1"/>
                                     <field name="sale_order_line_id" readonly="1" optional="hide"/>
-                                    <field name="executed_date"/>
-                                    <field name="state"/>
+                                    <field name="executed_date" readonly="1"/>
+                                    <field name="relatorio_id" readonly="1" optional="show"/>
+                                    <field name="state" widget="badge"/>
                                     <field name="notes" optional="hide"/>
                                 </tree>
                             </field>
@@ -216,7 +228,7 @@
                                 <field name="engc_calibration_state"/>
                             </group>
                             <field name="malha_ids">
-                                <tree editable="bottom" decoration-success="state == 'passed'" decoration-danger="state == 'failed'">
+                                <tree editable="bottom" decoration-success="state == 'certified'" decoration-info="state == 'collected'" decoration-danger="state == 'failed'">
                                     <field name="sequence" widget="handle"/>
                                     <field name="malha_type_id"/>
                                     <field name="sensor_kind_id" optional="show"/>
@@ -233,10 +245,25 @@
                             </field>
                         </page>
                         <page string="Padrões Metrológicos" name="standards"
-                              attrs="{'invisible': [('standard_instrument_count', '=', 0)]}">
+                              attrs="{'invisible': ['&amp;', ('standard_instrument_count', '=', 0), ('coverage_complete', '=', True)]}">
                             <field name="standards_warning_text" invisible="1"/>
                             <field name="standards_all_valid" invisible="1"/>
                             <field name="standard_instrument_count" invisible="1"/>
+                            <field name="coverage_complete" invisible="1"/>
+                            <field name="coverage_warning_text" invisible="1"/>
+
+                            <!-- F4.3: alert cobertura de grandezas incompleta -->
+                            <div class="alert alert-danger" role="alert"
+                                 attrs="{'invisible': [('coverage_complete', '=', True)]}">
+                                <i class="fa fa-times-circle" title="Cobertura incompleta" role="img" aria-label="Cobertura incompleta"/>
+                                <strong> Coletas com cobertura de grandezas incompleta: </strong>
+                                <pre style="white-space: pre-wrap; margin: 0.5em 0;"><field name="coverage_warning_text" nolabel="1" readonly="1"/></pre>
+                                <div class="text-muted small">
+                                    Cada coleta required + requires_instrument precisa ter padrões cobrindo todas as grandezas exigidas.
+                                </div>
+                            </div>
+
+                            <!-- F4: alert certificado expirado -->
                             <div class="alert alert-warning" role="alert"
                                  attrs="{'invisible': [('standards_all_valid', '=', True)]}">
                                 <i class="fa fa-exclamation-triangle" title="Atenção" role="img" aria-label="Atenção"/>
@@ -253,6 +280,7 @@
                                     <field name="tag" optional="hide"/>
                                     <field name="marca" optional="hide"/>
                                     <field name="modelo" optional="hide"/>
+                                    <field name="sensor_kind_ids" widget="many2many_tags" optional="show"/>
                                 </tree>
                             </field>
                         </page>

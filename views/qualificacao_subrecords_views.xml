@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ============================================================== -->
+    <!-- afr.qualificacao.cycle — FORM/TREE                             -->
+    <!-- ============================================================== -->
+    <record id="view_afr_qualificacao_cycle_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.cycle.form</field>
+        <field name="model">afr.qualificacao.cycle</field>
+        <field name="arch" type="xml">
+            <form string="Ciclo">
+                <header>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pending,passed,failed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="cycle_type_id"/></h1>
+                    </div>
+                    <field name="collected_without_relatorio" invisible="1"/>
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': [('collected_without_relatorio', '=', False)]}">
+                        <i class="fa fa-exclamation-triangle" title="Aviso" role="img" aria-label="Aviso"/>
+                        <strong> Ciclo executado sem relatório vinculado. </strong>
+                        Execução deve ser registrada via Relatório da OS.
+                    </div>
+                    <group>
+                        <group string="Identificação">
+                            <field name="qualificacao_id" options="{'no_create': True}"/>
+                            <field name="sequence"/>
+                            <field name="sale_order_line_id" readonly="1"/>
+                        </group>
+                        <group string="Execução">
+                            <field name="executed_date"/>
+                            <field name="relatorio_id" options="{'no_create': True}"/>
+                        </group>
+                    </group>
+                    <group string="Observações">
+                        <field name="notes" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_afr_qualificacao_cycle_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.cycle.tree</field>
+        <field name="model">afr.qualificacao.cycle</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="state == 'passed'"
+                  decoration-danger="state == 'failed' or collected_without_relatorio"
+                  decoration-warning="state == 'pending'">
+                <field name="qualificacao_id"/>
+                <field name="cycle_type_id"/>
+                <field name="sequence"/>
+                <field name="state" widget="badge"/>
+                <field name="relatorio_id" optional="show"/>
+                <field name="collected_without_relatorio" widget="boolean_toggle"
+                       string="Sem relatório" optional="show" readonly="1"/>
+                <field name="executed_date" optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ============================================================== -->
+    <!-- afr.qualificacao.malha — FORM/TREE                             -->
+    <!-- ============================================================== -->
+    <record id="view_afr_qualificacao_malha_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.malha.form</field>
+        <field name="model">afr.qualificacao.malha</field>
+        <field name="arch" type="xml">
+            <form string="Malha">
+                <header>
+                    <button name="action_create_engc_calibration"
+                            type="object"
+                            string="Criar Calibração"
+                            class="btn-primary"
+                            icon="fa-flask"
+                            attrs="{'invisible': [('engc_calibration_measurement_id', '!=', False)]}"
+                            confirm="Criar uma engc.calibration vinculada a esta malha?"/>
+                    <button name="action_create_engc_calibration"
+                            type="object"
+                            string="Abrir Calibração"
+                            class="btn-secondary"
+                            icon="fa-external-link"
+                            attrs="{'invisible': [('engc_calibration_measurement_id', '=', False)]}"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="pending,collected,certified"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="malha_type_id"/></h1>
+                    </div>
+                    <field name="collected_without_relatorio" invisible="1"/>
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': [('collected_without_relatorio', '=', False)]}">
+                        <i class="fa fa-exclamation-triangle" title="Aviso" role="img" aria-label="Aviso"/>
+                        <strong> Malha executada sem relatório vinculado. </strong>
+                        Execução deve ser registrada via Relatório da OS.
+                    </div>
+                    <group>
+                        <group string="Identificação">
+                            <field name="qualificacao_id" options="{'no_create': True}"/>
+                            <field name="sequence"/>
+                            <field name="sensor_kind_id" readonly="1"/>
+                            <field name="sensor_serial"/>
+                        </group>
+                        <group string="Execução">
+                            <field name="executed_date"/>
+                            <field name="relatorio_id" options="{'no_create': True}"/>
+                            <field name="engc_calibration_measurement_id"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="measurement_unit" readonly="1"
+                                   attrs="{'invisible': [('measurement_unit', '=', False)]}"/>
+                        </group>
+                    </group>
+                    <notebook attrs="{'invisible': [('engc_calibration_measurement_id', '=', False)]}">
+                        <page string="Pontos de Medição">
+                            <field name="measurement_point_ids" readonly="1" nolabel="1">
+                                <tree>
+                                    <field name="true_quantity_value"/>
+                                    <field name="measurement_quantity_value_1"/>
+                                    <field name="measurement_quantity_value_2"/>
+                                    <field name="measurement_quantity_value_3"/>
+                                    <field name="measurement_quantity_value_mean"/>
+                                    <field name="erro_value"/>
+                                    <field name="uncertainty"/>
+                                    <field name="coverage_factor" optional="hide"/>
+                                    <field name="veff" optional="hide"/>
+                                    <field name="resolutino_instrument" optional="hide"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                    <group string="Observações">
+                        <field name="notes" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_afr_qualificacao_malha_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.malha.tree</field>
+        <field name="model">afr.qualificacao.malha</field>
+        <field name="arch" type="xml">
+            <tree decoration-success="state == 'certified'"
+                  decoration-info="state == 'collected'"
+                  decoration-danger="state == 'failed' or collected_without_relatorio"
+                  decoration-warning="state == 'pending'">
+                <field name="qualificacao_id"/>
+                <field name="malha_type_id"/>
+                <field name="sensor_kind_id"/>
+                <field name="sequence"/>
+                <field name="state" widget="badge"/>
+                <field name="relatorio_id" optional="show"/>
+                <field name="engc_calibration_measurement_id" optional="show"/>
+                <field name="collected_without_relatorio" widget="boolean_toggle"
+                       string="Sem relatório" optional="show" readonly="1"/>
+                <field name="executed_date" optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+</odoo>

@@ -278,6 +278,17 @@ class AfrQualificacao(models.Model):
         string="Padrões sem certificado válido",
         store=False,
     )
+    # F4.3 (16.0.3.4.0): agregação de cobertura de grandezas
+    coverage_complete = fields.Boolean(
+        compute="_compute_coverage_aggregate",
+        store=False,
+        string="Cobertura de grandezas completa",
+    )
+    coverage_warning_text = fields.Text(
+        compute="_compute_coverage_aggregate",
+        store=False,
+        string="Coletas com cobertura incompleta",
+    )
     malha_count = fields.Integer(
         string="Total de Malhas",
         compute="_compute_malha_count",
@@ -544,6 +555,28 @@ class AfrQualificacao(models.Model):
             record.standard_instrument_count = len(instruments)
 
     @api.depends(
+        "collect_item_ids.coverage_complete",
+        "collect_item_ids.required",
+        "collect_item_ids.requires_instrument",
+        "collect_item_ids.name",
+        "collect_item_ids.coverage_warning_text",
+    )
+    def _compute_coverage_aggregate(self):
+        for record in self:
+            incomplete = record.collect_item_ids.filtered(
+                lambda c: c.required and c.requires_instrument and not c.coverage_complete
+            )
+            record.coverage_complete = not incomplete
+            if incomplete:
+                lines = []
+                for c in incomplete:
+                    detail = c.coverage_warning_text or _("(sem padrão)")
+                    lines.append("• %s — %s" % (c.name, detail))
+                record.coverage_warning_text = "\n".join(lines)
+            else:
+                record.coverage_warning_text = ""
+
+    @api.depends(
         "collect_item_ids.standard_instrument_ids",
         "collect_item_ids.standard_instrument_ids.certificate_ids.validate_calibration",
     )
@@ -639,23 +672,76 @@ class AfrQualificacao(models.Model):
         sem certificado válido (`validate_calibration >= today`):
         - flag `qualif_block_approval_expired_standards` True → ValidationError
         - flag False (default) → message_post warning (não-bloqueante)
+
+        F4.3 (16.0.3.4.0): valida cobertura de grandezas dos collect.items
+        required que exigem instrumento (requires_instrument=True). Se algum
+        item required tem coverage_complete=False:
+        - flag `qualif_block_approval_incomplete_coverage` True → ValidationError
+        - flag False (default) → message_post warning
         """
-        block = self.env["ir.config_parameter"].sudo().get_param(
-            "afr_qualificacao.qualif_block_approval_expired_standards",
-            default="False",
-        )
-        block = str(block).lower() in ("true", "1", "yes")
+        ICP = self.env["ir.config_parameter"].sudo()
+        block_expired = str(
+            ICP.get_param(
+                "afr_qualificacao.qualif_block_approval_expired_standards",
+                default="False",
+            )
+        ).lower() in ("true", "1", "yes")
+        block_coverage = str(
+            ICP.get_param(
+                "afr_qualificacao.qualif_block_approval_incomplete_coverage",
+                default="False",
+            )
+        ).lower() in ("true", "1", "yes")
         for record in self:
             if not record.standards_all_valid and record.standard_instrument_count:
                 msg = _(
                     "Padrões metrológicos sem certificado de calibração válido: %s"
                 ) % record.standards_warning_text
-                if block:
+                if block_expired:
                     raise ValidationError(msg)
                 record.message_post(
                     body=msg,
                     subject=_("Aviso: padrões com certificado expirado"),
                 )
+            if not record.coverage_complete:
+                msg = _(
+                    "Coletas com cobertura de grandezas incompleta:\n%s"
+                ) % (record.coverage_warning_text or _("(sem detalhes)"))
+                if block_coverage:
+                    raise ValidationError(msg)
+                record.message_post(
+                    body=msg,
+                    subject=_("Aviso: cobertura de grandezas incompleta"),
+                )
+            # F4.7: coletas required materializadas precisam vir de relatório
+            orphan = record.collect_item_ids.filtered(
+                lambda c: c.required and c.state == "collected" and not c.relatorio_id
+            )
+            if orphan:
+                names = ", ".join(orphan.mapped("name"))
+                raise ValidationError(_(
+                    "Coletas marcadas como coletadas mas sem relatório vinculado: %s. "
+                    "Coletas devem ser realizadas através de um Relatório da OS."
+                ) % names)
+            # F4.8: ciclos/malhas materializados precisam vir de relatório
+            orphan_cycles = record.cycle_ids.filtered(
+                lambda c: c.state in ("passed", "failed") and not c.relatorio_id
+            )
+            if orphan_cycles:
+                names = ", ".join(orphan_cycles.mapped("display_name"))
+                raise ValidationError(_(
+                    "Ciclos marcados como executados sem relatório vinculado: %s. "
+                    "Execução de ciclos deve ser registrada via Relatório da OS."
+                ) % names)
+            orphan_malhas = record.malha_ids.filtered(
+                lambda m: m.state in ("collected", "certified", "failed") and not m.relatorio_id
+            )
+            if orphan_malhas:
+                names = ", ".join(orphan_malhas.mapped("display_name"))
+                raise ValidationError(_(
+                    "Malhas marcadas como executadas sem relatório vinculado: %s. "
+                    "Execução de malhas deve ser registrada via Relatório da OS."
+                ) % names)
             record.state = "approved"
             record.execution_date = record.execution_date or fields.Date.context_today(
                 self
@@ -704,7 +790,7 @@ class AfrQualificacao(models.Model):
                     continue
                 key = malha.sale_order_line_id
                 by_line[key][1] += 1
-                if malha.state == "passed":
+                if malha.state in ("collected", "certified"):
                     by_line[key][0] += 1
             for line, (passed, _total) in by_line.items():
                 line.qty_delivered = passed

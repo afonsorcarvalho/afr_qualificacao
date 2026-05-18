@@ -15,3 +15,5 @@ from . import test_procedimento_explosion
 from . import test_collect_item_lifecycle
 # F4 (16.0.3.3.0)
 from . import test_standard_instruments
+# F4.3 (16.0.3.4.0)
+from . import test_coverage

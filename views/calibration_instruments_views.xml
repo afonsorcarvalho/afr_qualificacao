@@ -47,6 +47,45 @@
     </record>
 
     <!-- ============================================================== -->
+    <!-- F4.3: liga unit_of_measurement à grandeza (sensor_kind)         -->
+    <!-- ============================================================== -->
+    <record id="view_engc_calibration_measurement_unit_form_inherit_qualif" model="ir.ui.view">
+        <field name="name">engc.calibration.measurement.unit.form.qualif</field>
+        <field name="model">engc.calibration.measurement.unit</field>
+        <field name="inherit_id" ref="engc_os.calibration_measurement_unit_form"/>
+        <field name="arch" type="xml">
+            <field name="simbolo" position="after">
+                <field name="afr_sensor_kind_id" options="{'no_create_edit': True}"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- ============================================================== -->
+    <!-- F4.3: painel "Cobertura Metrológica" no form instrumento       -->
+    <!-- ============================================================== -->
+    <record id="view_engc_calibration_instruments_form_coverage" model="ir.ui.view">
+        <field name="name">engc.calibration.instruments.form.coverage</field>
+        <field name="model">engc.calibration.instruments</field>
+        <field name="inherit_id" ref="engc_os.calibration_instruments_form"/>
+        <field name="priority">95</field>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook/page[1]" position="after">
+                <page string="Cobertura Metrológica" name="coverage">
+                    <group>
+                        <field name="sensor_kind_ids" widget="many2many_tags" readonly="1"/>
+                        <field name="measurement_unit_ids" widget="many2many_tags" readonly="1"/>
+                    </group>
+                    <div class="text-muted small">
+                        Grandezas e unidades derivadas das linhas de incerteza
+                        dos certificados. Configure <i>Grandeza (AFR)</i> em cada
+                        unidade de medida para popular este painel.
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============================================================== -->
     <!-- Action + menuitem dedicados em Qualificações > Configurações    -->
     <!-- ============================================================== -->
     <record id="action_calibration_instruments_qualif" model="ir.actions.act_window">

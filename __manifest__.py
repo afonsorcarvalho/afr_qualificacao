@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.3.3.0",
+    "version": "16.0.3.4.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -64,6 +64,7 @@
         "views/qualificacao_procedimento_views.xml",
         # Views — operação (actions registradas antes do menu)
         "views/qualificacao_collect_item_views.xml",
+        "views/qualificacao_subrecords_views.xml",
         "views/qualificacao_os_relatorio_views.xml",
         "views/qualificacao_os_views.xml",
         "views/qualificacao_views.xml",

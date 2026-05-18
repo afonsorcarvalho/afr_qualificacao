@@ -20,6 +20,15 @@ KIND_SELECTION = [
     ("outro", "Outro"),
 ]
 
+# F4.3: default de requires_instrument conforme natureza do item.
+DEFAULT_REQUIRES_INSTRUMENT_BY_KIND = {
+    "foto": False,
+    "excel": True,
+    "pdf": False,
+    "qualificador_data": True,
+    "outro": False,
+}
+
 
 class AfrQualificacaoProcedimento(models.Model):
     _name = "afr.qualificacao.procedimento"
@@ -134,3 +143,41 @@ class AfrQualificacaoProcedimentoItem(models.Model):
         default="qualificacao",
         help="Cycle/malha explodem N collect.items conforme qty da qualif.",
     )
+
+    # F4.3 — Exigência de instrumento padrão
+    requires_instrument = fields.Boolean(
+        string="Requer padrão metrológico",
+        default=lambda self: self._default_requires_instrument(),
+        help=(
+            "Quando ativo, o collect.item gerado por este template exige que "
+            "o técnico associe ao menos um instrumento padrão cobrindo as "
+            "grandezas listadas. Default automático por tipo de mídia: "
+            "Planilha/Arquivo Qualificador = True; Foto/PDF/Outro = False."
+        ),
+    )
+    required_sensor_kind_ids = fields.Many2many(
+        "afr.qualificacao.sensor.kind",
+        "afr_proc_item_sensor_kind_rel",
+        "procedimento_item_id",
+        "sensor_kind_id",
+        string="Grandezas requeridas",
+        help=(
+            "Grandezas que os instrumentos padrão devem cobrir (ex: TEMP, "
+            "PRESS). Para itens multi-medida (ex: Dados do Qualificador), "
+            "liste todas as grandezas que aparecem no arquivo bruto. Cobertura "
+            "do collect.item é validada contra a união das grandezas dos "
+            "instrumentos selecionados."
+        ),
+    )
+
+    @api.model
+    def _default_requires_instrument(self):
+        kind = self.env.context.get("default_kind", "foto")
+        return DEFAULT_REQUIRES_INSTRUMENT_BY_KIND.get(kind, False)
+
+    @api.onchange("kind")
+    def _onchange_kind_requires_instrument(self):
+        for r in self:
+            r.requires_instrument = DEFAULT_REQUIRES_INSTRUMENT_BY_KIND.get(
+                r.kind, False
+            )

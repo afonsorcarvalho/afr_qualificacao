@@ -384,12 +384,35 @@
     </record>
 
     <!-- ======================================================== -->
+    <!-- CALENDAR (F4.4 — programação das OS)                      -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_calendar" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.calendar</field>
+        <field name="model">afr.qualificacao.os</field>
+        <field name="arch" type="xml">
+            <calendar string="Programação de OS"
+                      date_start="date_planned_start"
+                      date_stop="date_planned_end"
+                      color="tecnico_default_id"
+                      mode="month"
+                      quick_add="false"
+                      event_open_popup="true">
+                <field name="name"/>
+                <field name="partner_id" filters="1"/>
+                <field name="tecnico_default_id" filters="1" avatar_field="image_128"/>
+                <field name="state" filters="1" invisible="1"/>
+                <field name="equipment_ids" invisible="1"/>
+            </calendar>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
     <!-- ACTION + MENU                                             -->
     <!-- ======================================================== -->
     <record id="action_afr_qualificacao_os" model="ir.actions.act_window">
         <field name="name">OS de Qualificação</field>
         <field name="res_model">afr.qualificacao.os</field>
-        <field name="view_mode">tree,kanban,form</field>
+        <field name="view_mode">tree,kanban,calendar,form</field>
         <field name="search_view_id" ref="view_afr_qualificacao_os_search"/>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">

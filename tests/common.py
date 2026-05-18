@@ -1,5 +1,8 @@
 """Setup compartilhado dos testes do fluxo quote-first."""
 
+from datetime import timedelta
+
+from odoo import fields
 from odoo.tests.common import TransactionCase
 
 
@@ -126,3 +129,22 @@ class AfrQualificacaoTestCommon(TransactionCase):
             "location_id": cls.location.id,
             "marca_id": cls.marca.id,
         })
+
+    def _get_relatorio(self, os):
+        """F4.8: cria/cacheia um relatorio dummy para a OS, usado em tests
+        que precisam materializar cycles/malhas como passed/failed (gate
+        em action_mark_approved exige relatorio_id vinculado).
+        """
+        if not hasattr(self, "_relatorio_cache"):
+            self._relatorio_cache = {}
+        if os.id in self._relatorio_cache:
+            return self._relatorio_cache[os.id]
+        now = fields.Datetime.now()
+        rel = self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os.id,
+            "descricao": "Test relatório",
+            "data_inicio": now,
+            "data_fim": now + timedelta(hours=1),
+        })
+        self._relatorio_cache[os.id] = rel
+        return rel
