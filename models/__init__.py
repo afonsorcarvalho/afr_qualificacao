@@ -5,6 +5,10 @@ from . import qualificacao_standard
 from . import cycle_type
 from . import malha_type
 from . import config_template
+from . import proposal_section          # F8.1 (16.0.4.0.0)
+from . import proposal_template         # F8.1 (16.0.4.0.0)
+from . import proposal_optional         # F8.1 (16.0.4.0.0)
+from . import proposal_block            # F8.2 (16.0.4.1.0)
 from . import qualificacao_type_config
 from . import qualificacao_cycle
 from . import qualificacao_malha

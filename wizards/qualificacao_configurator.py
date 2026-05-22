@@ -51,6 +51,15 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         currency_field="currency_id",
         string="Total Estimado",
     )
+    # F8.2 — serviços opcionais incluídos como linhas extra na cotação
+    optional_ids = fields.Many2many(
+        comodel_name="afr.proposal.optional",
+        string="Serviços Opcionais",
+        help=(
+            "Opcionais (pasta impressa, viagem, diária adicional) gerados "
+            "como linhas extra do pedido — fora do escopo de qualificação."
+        ),
+    )
 
     @api.depends("equipment_line_ids.subtotal")
     def _compute_total_estimated(self):
@@ -61,9 +70,25 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     # Carrega matriz a partir de linhas SO existentes (idempotência)
     # ------------------------------------------------------------------
     def _load_from_existing_lines(self):
-        """Lê linhas SO managed, agrupa por equipment_id, popula equipment_line_ids."""
+        """Lê linhas SO managed, agrupa por equipment_id, popula equipment_line_ids.
+
+        Carrega também os serviços opcionais existentes de volta em
+        `optional_ids` (idempotência ao reabrir o configurador).
+        """
         self.ensure_one()
-        managed = self.sale_order_id.order_line.filtered("is_qualificacao_managed")
+        so_lines = self.sale_order_id.order_line
+        # Opcionais existentes → optional_ids
+        opt_lines = so_lines.filtered("is_proposal_optional")
+        if opt_lines:
+            opts = self.env["afr.proposal.optional"].search(
+                [("product_id", "in", opt_lines.mapped("product_id").ids)]
+            )
+            if opts:
+                self.optional_ids = [(6, 0, opts.ids)]
+        # Equipamentos managed (exclui linhas de opcionais)
+        managed = so_lines.filtered(
+            lambda l: l.is_qualificacao_managed and not l.is_proposal_optional
+        )
         if not managed:
             return
         by_equip = defaultdict(lambda: {
@@ -195,7 +220,26 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "malha_type_id": c.malha_type_id.id,
                 }))
 
+        # Serviços opcionais → linhas managed marcadas is_proposal_optional
+        # (apagadas/recriadas no re-apply junto das demais linhas managed,
+        # mas excluídas da geração de qualificações no confirm do SO).
+        for opt in self.optional_ids:
+            price = opt.default_price or (
+                opt.product_id.list_price if opt.product_id else 0.0
+            )
+            new_lines.append((0, 0, {
+                "order_id": so.id,
+                "product_id": opt.product_id.id,
+                "name": opt.name,
+                "product_uom_qty": opt.default_qty or 1.0,
+                "price_unit": price,
+                "is_qualificacao_managed": True,
+                "is_proposal_optional": True,
+            }))
+
         so.write({"order_line": new_lines})
+        # F8.2 — semeia blocos da proposta a partir do template (idempotente)
+        so._seed_proposal_blocks()
         return {"type": "ir.actions.act_window_close"}
 
     # ------------------------------------------------------------------
@@ -287,6 +331,33 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         related="wizard_id.currency_id",
         readonly=True,
     )
+    # F8.2 — template de equipamento: autofill QI/QO/QS + ciclos + malhas
+    config_template_id = fields.Many2one(
+        comodel_name="afr.qualificacao.config.template",
+        string="Template de Equipamento",
+        help=(
+            "Selecione um pacote pré-cadastrado para preencher QI/QO/QS, "
+            "ciclos e malhas automaticamente. Editável depois."
+        ),
+    )
+
+    @api.onchange("config_template_id")
+    def _onchange_config_template(self):
+        """Aplica o pacote do template à linha (preço/escopo — modelo híbrido)."""
+        tpl = self.config_template_id
+        if not tpl:
+            return
+        self.do_qi = tpl.do_qi
+        self.do_qo = tpl.do_qo
+        self.do_qs = tpl.do_qs
+        self.qd_line_ids = [(5, 0, 0)] + [
+            (0, 0, {"cycle_type_id": line.cycle_type_id.id, "qty": line.qty})
+            for line in tpl.qd_line_ids
+        ]
+        self.calib_line_ids = [(5, 0, 0)] + [
+            (0, 0, {"malha_type_id": line.malha_type_id.id, "qty": line.qty})
+            for line in tpl.calib_line_ids
+        ]
 
     @api.depends(
         "do_qi", "do_qo", "do_qs",

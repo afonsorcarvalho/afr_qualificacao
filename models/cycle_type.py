@@ -49,6 +49,30 @@ class AfrQualificacaoCycleType(models.Model):
         translate=True,
         help="Detalhe técnico do ciclo (carga, parâmetros, finalidade).",
     )
+    # F8.1 — specs técnicas para renderizar a tabela de ciclos da proposta.
+    temperature = fields.Char(
+        string="Temperatura",
+        translate=True,
+        help="Temperatura nominal do ciclo (ex: 134°C). Texto livre.",
+    )
+    duration = fields.Char(
+        string="Tempo",
+        translate=True,
+        help="Duração do ciclo (ex: 7 min, 24 h). Texto livre.",
+    )
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+        help="Classifica o ciclo na tabela da proposta (QO sem carga, QD com carga).",
+    )
+    estimated_days = fields.Float(
+        string="Dias Estimados",
+        help="Dias de execução estimados deste ciclo (sugestão para a proposta).",
+    )
     standard_ids = fields.Many2many(
         comodel_name="afr.qualificacao.standard",
         relation="afr_cycle_type_standard_rel",

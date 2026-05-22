@@ -47,11 +47,28 @@ class AfrQualificacaoConfigTemplate(models.Model):
         copy=True,
     )
     description = fields.Text(translate=True)
-    sequence = fields.Integer(default=10)
+    # F8.1 — preço/dias sugeridos do pacote de equipamento (modelo híbrido:
+    # template sugere, comercial ajusta na proposta).
     company_id = fields.Many2one(
         comodel_name="res.company",
         default=lambda self: self.env.company,
     )
+    currency_id = fields.Many2one(
+        comodel_name="res.currency",
+        related="company_id.currency_id",
+        string="Moeda",
+        readonly=True,
+    )
+    price_base = fields.Monetary(
+        string="Preço Base",
+        currency_field="currency_id",
+        help="Preço sugerido do pacote de equipamento. Sempre editável na proposta.",
+    )
+    estimated_days = fields.Float(
+        string="Dias Estimados",
+        help="Dias de execução estimados do pacote completo.",
+    )
+    sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
 
 

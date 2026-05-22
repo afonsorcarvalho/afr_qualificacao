@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.3.5.0",
+    "version": "16.0.4.1.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -26,6 +26,16 @@
             equipamento, instrumentos, tabelas agrupadas por seção).
           F6.2 (futuro):   DOCX UNIFICADO por OS (agrega QI+QO+QD).
           F6.3 (futuro):   Conversão DOCX → PDF (LibreOffice headless).
+          F8 (16.0.4.x): Proposta LEGO — builder de cotação. Catálogos de
+            templates de equipamento (cycle/malha com specs técnicas + preço)
+            + biblioteca de blocos de texto reutilizáveis montados por
+            proposta.
+            F8.1 (16.0.4.0.0): camada de dados (catálogos + section/template/
+              optional + seeds).
+            F8.2 (16.0.4.1.0): builder — wizard escolhe template de
+              equipamento + opcionais; sale.order ganha proposal_template_id
+              + blocos lego editáveis (afr.proposal.block).
+            F8.3 (futuro): report percorrendo blocos.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -60,12 +70,20 @@
         "data/sensor_kind_seed.xml",
         "data/standard_seed.xml",
         "data/docx_templates_seed.xml",
+        # F8.1 — Proposta LEGO: blocos e templates (section antes de template)
+        "data/proposal_section_seed.xml",
+        "data/proposal_optional_seed.xml",
+        "data/proposal_template_seed.xml",
         # Views — config (master data) com actions
         "views/sensor_kind_views.xml",
         "views/standard_views.xml",
         "views/cycle_type_views.xml",
         "views/malha_type_views.xml",
         "views/config_template_views.xml",
+        # F8.1 — Proposta LEGO: views master data (actions; menus em qualificacao_menus.xml)
+        "views/proposal_section_views.xml",
+        "views/proposal_optional_views.xml",
+        "views/proposal_template_views.xml",
         "views/qualificacao_type_config_views.xml",
         "views/qualificacao_procedimento_views.xml",
         # Views — operação (actions registradas antes do menu)

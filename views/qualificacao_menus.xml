@@ -127,5 +127,41 @@
         sequence="70"
         groups="afr_qualificacao.group_afr_qualificacao_manager"
     />
+
+    <!-- F8.1 — Proposta LEGO: cadastro de templates e blocos de cotação -->
+    <menuitem
+        id="menu_afr_qualificacao_proposals"
+        name="Propostas (LEGO)"
+        parent="menu_afr_qualificacao_config"
+        sequence="80"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_proposal_template"
+        name="Templates de Proposta"
+        parent="menu_afr_qualificacao_proposals"
+        action="afr_qualificacao.action_proposal_template"
+        sequence="10"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_proposal_section"
+        name="Blocos de Proposta"
+        parent="menu_afr_qualificacao_proposals"
+        action="afr_qualificacao.action_proposal_section"
+        sequence="20"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_proposal_optional"
+        name="Serviços Opcionais"
+        parent="menu_afr_qualificacao_proposals"
+        action="afr_qualificacao.action_proposal_optional"
+        sequence="30"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
 </odoo>
 

@@ -125,6 +125,19 @@ class SaleOrder(models.Model):
             "das linhas (Odoo não suporta coluna por section nativo)."
         ),
     )
+    # F8.2 — Proposta LEGO: template + blocos montáveis por cotação
+    proposal_template_id = fields.Many2one(
+        comodel_name="afr.proposal.template",
+        string="Template de Proposta",
+        default=lambda self: self._default_proposal_template(),
+        help="Template de blocos usado para montar o relatório de cotação.",
+    )
+    proposal_block_ids = fields.One2many(
+        comodel_name="afr.proposal.block",
+        inverse_name="sale_order_id",
+        string="Blocos da Proposta",
+        copy=True,
+    )
 
     @api.depends("qualificacao_ids")
     def _compute_qualificacao_count(self):
@@ -399,6 +412,48 @@ class SaleOrder(models.Model):
     # ------------------------------------------------------------------
     # Configurador (abre wizard)
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # F8.2 — Proposta LEGO: blocos montáveis
+    # ------------------------------------------------------------------
+    @api.model
+    def _default_proposal_template(self):
+        """Template de proposta default da empresa (menor sequência)."""
+        return self.env["afr.proposal.template"].search(
+            [("company_id", "in", [self.env.company.id, False])],
+            order="sequence, id", limit=1,
+        )
+
+    def _seed_proposal_blocks(self):
+        """Copia os slots do proposal_template_id para proposal_block_ids.
+
+        Idempotente: pula a SO se já tem blocos. Use
+        action_reload_proposal_blocks() para forçar recarga.
+        """
+        Block = self.env["afr.proposal.block"]
+        for order in self:
+            if order.proposal_block_ids or not order.proposal_template_id:
+                continue
+            vals = []
+            for line in order.proposal_template_id.line_ids.sorted("sequence"):
+                section = line.section_id
+                vals.append({
+                    "sale_order_id": order.id,
+                    "sequence": line.sequence,
+                    "block_kind": line.block_kind,
+                    "section_id": section.id if section else False,
+                    "title": section.name if section else False,
+                    "body": section.body if section else False,
+                })
+            if vals:
+                Block.create(vals)
+
+    def action_reload_proposal_blocks(self):
+        """Apaga blocos atuais e recarrega do template (descarta edições)."""
+        self.ensure_one()
+        self.proposal_block_ids.unlink()
+        self._seed_proposal_blocks()
+        return True
+
     def action_open_configurator(self):
         """Abre wizard configurador de qualificações em modal fullscreen."""
         self.ensure_one()
@@ -482,7 +537,9 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
         managed = self.order_line.filtered(
-            lambda l: l.is_qualificacao_managed and not l.display_type
+            lambda l: l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
         )
         if not managed:
             return

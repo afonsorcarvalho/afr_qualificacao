@@ -55,6 +55,16 @@ class AfrQualificacaoMalhaType(models.Model):
         translate=True,
         help="Detalhe técnico da malha (pontos típicos, faixa, instrumento).",
     )
+    # F8.1 — specs técnicas para renderizar a tabela de calibração da proposta.
+    range_spec = fields.Char(
+        string="Faixa Nominal",
+        translate=True,
+        help="Faixa nominal da malha (ex: 0–150 °C). Texto livre.",
+    )
+    estimated_days = fields.Float(
+        string="Dias Estimados",
+        help="Dias de execução estimados desta malha (sugestão para a proposta).",
+    )
     standard_ids = fields.Many2many(
         comodel_name="afr.qualificacao.standard",
         relation="afr_malha_type_standard_rel",

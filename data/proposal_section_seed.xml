@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        F8.1 — Biblioteca inicial de blocos de proposta (Proposta LEGO).
+        Migra o texto antes hardcoded em sale_order.py
+        (QUALIF_TYPE_DEFAULT_DESCRIPTION) e as seções fixas do relatório de
+        cotação para registros editáveis.
+        noupdate="1": cliente edita/desativa sem perder em upgrade.
+        O corpo aceita expressões {{ ... }} resolvidas na renderização.
+    -->
+
+    <record id="proposal_section_objetivo" model="afr.proposal.section">
+        <field name="code">SEC-OBJETIVO</field>
+        <field name="name">Objetivo</field>
+        <field name="category">objetivo</field>
+        <field name="sequence">10</field>
+        <field name="body" type="html">
+            <div>
+                <p>Esta proposta tem por objetivo o fornecimento de serviços de
+                Qualificação Térmica e Calibração de instrumentos para
+                <strong>{{ partner.name }}</strong>, conforme escopo técnico
+                e condições comerciais a seguir descritos.</p>
+                <p>O escopo limita-se aos equipamentos relacionados nesta
+                proposta, de acordo com a relação de serviços a executar.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_metodologia" model="afr.proposal.section">
+        <field name="code">SEC-METODOLOGIA</field>
+        <field name="name">Metodologia</field>
+        <field name="category">metodologia</field>
+        <field name="sequence">20</field>
+        <field name="body" type="html">
+            <div>
+                <p>A estratégia de execução incorpora metodologias comprovadas,
+                executadas segundo critérios de qualidade e princípios de
+                organização, atendendo aos requisitos normativos e à legislação
+                aplicável a cada processo.</p>
+                <p>A qualificação térmica é parte integrante do processo de
+                validação e contém as etapas de Qualificação de Instalação (QI),
+                Qualificação de Operação (QO) e Qualificação de Desempenho (QD).</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_qi" model="afr.proposal.section">
+        <field name="code">SEC-QI</field>
+        <field name="name">Qualificação de Instalação (QI)</field>
+        <field name="category">tecnico</field>
+        <field name="sequence">30</field>
+        <field name="body" type="html">
+            <div>
+                <p>Verificação documentada de que o equipamento foi instalado de
+                acordo com as especificações do fabricante e os requisitos do
+                local de uso — incluindo utilidades, espaço físico, conexões
+                elétricas, hidráulicas e ambiente operacional.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_qo" model="afr.proposal.section">
+        <field name="code">SEC-QO</field>
+        <field name="name">Qualificação de Operação (QO)</field>
+        <field name="category">tecnico</field>
+        <field name="sequence">40</field>
+        <field name="body" type="html">
+            <div>
+                <p>Verificação documentada de que o equipamento opera dentro das
+                faixas e tolerâncias previstas em sua especificação — incluindo
+                todos os modos de operação, alarmes, intertravamentos e funções
+                de segurança.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_qd" model="afr.proposal.section">
+        <field name="code">SEC-QD</field>
+        <field name="name">Qualificação de Desempenho (QD)</field>
+        <field name="category">tecnico</field>
+        <field name="sequence">50</field>
+        <field name="body" type="html">
+            <div>
+                <p>Verificação documentada de que o equipamento entrega desempenho
+                consistente em condições reais de uso, executando ciclos
+                representativos do processo. Inclui análise de uniformidade,
+                repetibilidade e atendimento a critérios de aceitação técnicos.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_qs" model="afr.proposal.section">
+        <field name="code">SEC-QS</field>
+        <field name="name">Qualificação de Software (QS)</field>
+        <field name="category">tecnico</field>
+        <field name="sequence">60</field>
+        <field name="body" type="html">
+            <div>
+                <p>Validação documentada de sistemas computadorizados associados ao
+                equipamento — verificando integridade de dados, controles de
+                acesso, registros eletrônicos e conformidade com requisitos
+                regulatórios aplicáveis.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_calib" model="afr.proposal.section">
+        <field name="code">SEC-CALIB</field>
+        <field name="name">Calibração</field>
+        <field name="category">tecnico</field>
+        <field name="sequence">70</field>
+        <field name="body" type="html">
+            <div>
+                <p>Conjunto de operações que estabelece a relação entre os valores
+                indicados pelo instrumento e os valores correspondentes de
+                padrões rastreáveis. Inclui emissão de certificado com pontos
+                medidos, incertezas e comparação com critérios de aceitação.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_normas" model="afr.proposal.section">
+        <field name="code">SEC-NORMAS</field>
+        <field name="name">Rastreabilidade e Segurança da Informação</field>
+        <field name="category">normas</field>
+        <field name="sequence">80</field>
+        <field name="body" type="html">
+            <div>
+                <p>Todos os padrões utilizados nas qualificações e calibrações são
+                calibrados anualmente pela Rede Brasileira de Calibração
+                (RBC-Inmetro), atendendo aos requisitos nacionais (ANVISA) e a
+                normas internacionais.</p>
+                <p>Os dados coletados são protegidos por critérios rigorosos de
+                segurança da informação, com criptografia em conformidade com
+                FDA 21 CFR Part 11.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_entregaveis" model="afr.proposal.section">
+        <field name="code">SEC-ENTREGAVEIS</field>
+        <field name="name">Entregáveis</field>
+        <field name="category">custom</field>
+        <field name="sequence">90</field>
+        <field name="body" type="html">
+            <div>
+                <p>O relatório de qualificação contempla:</p>
+                <ul>
+                    <li>Protocolo de Qualificação Térmica;</li>
+                    <li>Resultados em forma de tabelas e gráficos;</li>
+                    <li>Relatórios gerados pelo equipamento qualificado (quando aplicável);</li>
+                    <li>Certificados de calibração dos instrumentos;</li>
+                    <li>Certificados de calibração do validador (antes e depois da qualificação);</li>
+                    <li>Documentos complementares com rastreabilidade Inmetro.</li>
+                </ul>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_validadores" model="afr.proposal.section">
+        <field name="code">SEC-VALIDADORES</field>
+        <field name="name">Sistemas de Aquisição de Dados (Validadores)</field>
+        <field name="category">validadores</field>
+        <field name="sequence">100</field>
+        <field name="body" type="html">
+            <div>
+                <p>Os serviços utilizam validadores de dados de elevada precisão,
+                com certificados de calibração rastreáveis:</p>
+                <table class="table table-sm">
+                    <thead>
+                        <tr><th>Validador</th><th>Canais</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Yokogawa DX-2030</td><td>30 canais</td></tr>
+                        <tr><td>Yokogawa DX-2030-s-4-2</td><td>30 canais</td></tr>
+                        <tr><td>Yokogawa DX1006-3-4-2</td><td>12 canais</td></tr>
+                        <tr><td>Yokogawa GP10</td><td>20 canais</td></tr>
+                        <tr><td>Yokogawa GM1020</td><td>20 canais</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_responsabilidades" model="afr.proposal.section">
+        <field name="code">SEC-RESPONSABILIDADES</field>
+        <field name="name">Responsabilidades do Cliente</field>
+        <field name="category">responsabilidades</field>
+        <field name="sequence">110</field>
+        <field name="body" type="html">
+            <div>
+                <p>Para a correta execução dos serviços, o cliente compromete-se a:</p>
+                <ul>
+                    <li>Designar responsáveis pela supervisão e pela aprovação da documentação;</li>
+                    <li>Garantir os equipamentos em pleno funcionamento, com manutenção em dia;</li>
+                    <li>Disponibilizar cargas, materiais e insumos necessários aos ciclos;</li>
+                    <li>Fornecer os insumos de teste aplicáveis (indicadores biológicos e químicos, testes específicos);</li>
+                    <li>Para serviços fora da Grande São Paulo, arcar com as despesas de deslocamento da equipe técnica.</li>
+                </ul>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_condicoes" model="afr.proposal.section">
+        <field name="code">SEC-CONDICOES</field>
+        <field name="name">Condições Comerciais</field>
+        <field name="category">condicoes</field>
+        <field name="sequence">120</field>
+        <field name="body" type="html">
+            <div>
+                <p><strong>Validade da proposta:</strong> 30 dias.</p>
+                <p><strong>Condição de pagamento:</strong> faturado em 7/35 dias a
+                contar do início dos trabalhos.</p>
+                <p><strong>Prazo de entrega do relatório:</strong> 25 dias úteis.</p>
+                <p><strong>Diária técnica adicional:</strong> em caso de atrasos
+                causados por motivos do cliente não previstos nesta proposta,
+                será cobrada diária técnica adicional por dia de trabalho
+                excedente.</p>
+                <p><strong>Cancelamento:</strong> após agendamento, o cliente deve
+                comunicar cancelamento com no mínimo 3 dias de antecedência; caso
+                contrário, será cobrada uma diária técnica.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_credenciais" model="afr.proposal.section">
+        <field name="code">SEC-CREDENCIAIS</field>
+        <field name="name">Credenciais Técnicas</field>
+        <field name="category">credenciais</field>
+        <field name="sequence">130</field>
+        <field name="body" type="html">
+            <div>
+                <p>{{ company.name }} mantém registro junto ao CREA e responsável
+                técnico habilitado (Engenheiro Mecânico), assegurando a emissão de
+                documentação técnica com validade legal.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_aceite" model="afr.proposal.section">
+        <field name="code">SEC-ACEITE</field>
+        <field name="name">Aceite da Proposta</field>
+        <field name="category">aceite</field>
+        <field name="sequence">140</field>
+        <field name="body" type="html">
+            <div>
+                <p>Declaro que li, compreendi e concordo com os termos técnicos e
+                comerciais descritos nesta proposta, referente à prestação de
+                serviços de Qualificação Térmica e Calibração, conforme o escopo
+                apresentado. Autorizo {{ company.name }} a iniciar os serviços
+                mediante agendamento prévio.</p>
+            </div>
+        </field>
+    </record>
+
+</odoo>

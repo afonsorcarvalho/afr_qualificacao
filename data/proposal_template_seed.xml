@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        F8.1 — Template de proposta default "Proposta LabQuali QI/QO/QD".
+        Sequência de blocos reproduzindo a estrutura da proposta atual do
+        cliente. Carregado APÓS proposal_section_seed.xml (linhas referenciam
+        as seções). noupdate="1": cliente reordena/customiza sem perder.
+    -->
+
+    <record id="proposal_template_labquali" model="afr.proposal.template">
+        <field name="code">TPL-LABQUALI</field>
+        <field name="name">Proposta LabQuali QI/QO/QD</field>
+        <field name="sequence">10</field>
+    </record>
+
+    <record id="proposal_template_labquali_l01" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">10</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_objetivo"/>
+    </record>
+    <record id="proposal_template_labquali_l02" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">20</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_metodologia"/>
+    </record>
+    <record id="proposal_template_labquali_l03" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">30</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_qi"/>
+    </record>
+    <record id="proposal_template_labquali_l04" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">40</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_qo"/>
+    </record>
+    <record id="proposal_template_labquali_l05" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">50</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_qd"/>
+    </record>
+    <record id="proposal_template_labquali_l06" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">60</field>
+        <field name="block_kind">equipment_scope</field>
+    </record>
+    <record id="proposal_template_labquali_l07" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">70</field>
+        <field name="block_kind">cycle_specs</field>
+    </record>
+    <record id="proposal_template_labquali_l08" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">80</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_validadores"/>
+    </record>
+    <record id="proposal_template_labquali_l09" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">90</field>
+        <field name="block_kind">standards_table</field>
+    </record>
+    <record id="proposal_template_labquali_l10" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">100</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_normas"/>
+    </record>
+    <record id="proposal_template_labquali_l11" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">110</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_entregaveis"/>
+    </record>
+    <record id="proposal_template_labquali_l12" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">120</field>
+        <field name="block_kind">financial</field>
+    </record>
+    <record id="proposal_template_labquali_l13" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">130</field>
+        <field name="block_kind">optionals</field>
+    </record>
+    <record id="proposal_template_labquali_l14" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">140</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_responsabilidades"/>
+    </record>
+    <record id="proposal_template_labquali_l15" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">150</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_condicoes"/>
+    </record>
+    <record id="proposal_template_labquali_l16" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">160</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_credenciais"/>
+    </record>
+    <record id="proposal_template_labquali_l17" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">170</field>
+        <field name="block_kind">acceptance</field>
+    </record>
+    <record id="proposal_template_labquali_l18" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">180</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_aceite"/>
+    </record>
+
+</odoo>

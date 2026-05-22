@@ -29,6 +29,16 @@ class SaleOrderLine(models.Model):
             "linhas avulsas adicionadas manualmente)."
         ),
     )
+    is_proposal_optional = fields.Boolean(
+        string="Serviço Opcional da Proposta",
+        default=False,
+        copy=True,
+        help=(
+            "Marca linhas de serviços opcionais (pasta, viagem, diária) "
+            "geradas pelo configurador. São linhas managed para fins de "
+            "re-apply, mas NÃO geram qualificação no confirm do SO."
+        ),
+    )
     qualification_type = fields.Selection(
         selection=[
             ("installation", "Instalação (QI)"),
@@ -105,6 +115,7 @@ class SaleOrderLine(models.Model):
 
     @api.constrains(
         "is_qualificacao_managed",
+        "is_proposal_optional",
         "qualification_type",
         "equipment_id",
         "cycle_type_id",
@@ -118,6 +129,10 @@ class SaleOrderLine(models.Model):
             # apenas linhas visuais geradas pelo wizard p/ agrupar
             # equipamentos no SO. Não geram qualificação.
             if line.display_type:
+                continue
+            # Serviço opcional (F8.2): linha managed sem equipamento/tipo —
+            # não é linha de qualificação, pular consistência.
+            if line.is_proposal_optional:
                 continue
             if not line.equipment_id:
                 raise ValidationError(_(

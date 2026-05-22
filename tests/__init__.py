@@ -19,3 +19,7 @@ from . import test_standard_instruments
 from . import test_coverage
 # F6.1 (16.0.3.5.0)
 from . import test_docx_render
+# F8.1 (16.0.4.0.0)
+from . import test_proposal_catalog
+# F8.2 (16.0.4.1.0)
+from . import test_proposal_builder

@@ -38,6 +38,10 @@
                         </group>
                     </group>
                     <group>
+                        <group string="Specs Técnicas (Proposta)">
+                            <field name="range_spec"/>
+                            <field name="estimated_days"/>
+                        </group>
                         <group string="Normas Aplicáveis">
                             <field name="standard_ids" nolabel="1"
                                    widget="many2many_tags"

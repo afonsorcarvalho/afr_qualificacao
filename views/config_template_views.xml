@@ -36,6 +36,11 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="active"/>
                         </group>
+                        <group string="Sugestão Comercial (Proposta)">
+                            <field name="price_base"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="estimated_days"/>
+                        </group>
                     </group>
                     <notebook>
                         <page string="Ciclos QD">
