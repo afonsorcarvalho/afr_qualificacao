@@ -100,6 +100,14 @@ class AfrQualificacaoConfigTemplateQd(models.Model):
         translate=True,
         help="Descrição que vira default da linha SO ao aplicar o template.",
     )
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        help=(
+            "Override de horas/run do tipo neste template. 0 = usa "
+            "cycle_type/malha_type.estimated_hours."
+        ),
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
 
@@ -134,6 +142,14 @@ class AfrQualificacaoConfigTemplateQo(models.Model):
         translate=True,
         help="Descrição que vira default da linha SO ao aplicar o template.",
     )
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        help=(
+            "Override de horas/run do tipo neste template. 0 = usa "
+            "cycle_type/malha_type.estimated_hours."
+        ),
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
 
@@ -166,6 +182,14 @@ class AfrQualificacaoConfigTemplateCalib(models.Model):
         string="Descrição",
         translate=True,
         help="Descrição que vira default da linha SO ao aplicar o template.",
+    )
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        help=(
+            "Override de horas/run do tipo neste template. 0 = usa "
+            "cycle_type/malha_type.estimated_hours."
+        ),
     )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
