@@ -309,6 +309,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 }
                 if cfg.default_unit_price:
                     vals["price_unit"] = cfg.default_unit_price
+                if cfg.estimated_hours:
+                    vals["estimated_hours"] = cfg.estimated_hours
                 new_lines.append((0, 0, vals))
 
             # QO — cycle-based: 1 linha por ciclo QO declarado.
@@ -326,6 +328,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     qo_vals["name"] = qo.description
                 if qo.unit_price:
                     qo_vals["price_unit"] = qo.unit_price
+                hours = qo.estimated_hours or qo.cycle_type_id.estimated_hours
+                if hours:
+                    qo_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, qo_vals))
 
             # QD — 1 linha por cycle_type
@@ -343,6 +348,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     qd_vals["name"] = qd.description
                 if qd.unit_price:
                     qd_vals["price_unit"] = qd.unit_price
+                hours = qd.estimated_hours or qd.cycle_type_id.estimated_hours
+                if hours:
+                    qd_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, qd_vals))
 
             # Calib — 1 linha por malha_type
@@ -360,6 +368,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     c_vals["name"] = c.description
                 if c.unit_price:
                     c_vals["price_unit"] = c.unit_price
+                hours = c.estimated_hours or c.malha_type_id.estimated_hours
+                if hours:
+                    c_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, c_vals))
 
         # Serviços opcionais → linhas managed marcadas is_proposal_optional
