@@ -73,7 +73,9 @@
                                                 <tree editable="bottom">
                                                     <field name="cycle_type_id"
                                                            domain="['|', ('equipment_category_id','=',parent.equipment_category_id), ('equipment_category_id','=',False), ('load_type','in',['vazio','sem_carga']), ('active','=',True)]"/>
+                                                    <field name="description"/>
                                                     <field name="qty"/>
+                                                    <field name="unit_price"/>
                                                     <field name="currency_id" invisible="1"/>
                                                     <field name="subtotal"/>
                                                 </tree>
@@ -84,7 +86,9 @@
                                                 <tree editable="bottom">
                                                     <field name="cycle_type_id"
                                                            domain="['|', ('equipment_category_id','=',parent.equipment_category_id), ('equipment_category_id','=',False), ('load_type','=','com_carga'), ('active','=',True)]"/>
+                                                    <field name="description"/>
                                                     <field name="qty"/>
+                                                    <field name="unit_price"/>
                                                     <field name="currency_id" invisible="1"/>
                                                     <field name="subtotal"/>
                                                 </tree>
@@ -96,7 +100,9 @@
                                                     <field name="malha_type_id"
                                                            domain="['|',('equipment_category_id','=',parent.equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"/>
                                                     <field name="sensor_kind_id"/>
+                                                    <field name="description"/>
                                                     <field name="qty"/>
+                                                    <field name="unit_price"/>
                                                     <field name="currency_id" invisible="1"/>
                                                     <field name="subtotal"/>
                                                 </tree>
@@ -229,11 +235,23 @@
                         <field name="do_qs"/>
                     </group>
                     <notebook>
-                        <page string="Ciclos QD">
+                        <page string="Ciclos QO (sem carga)">
+                            <field name="qo_line_ids">
+                                <tree editable="bottom">
+                                    <field name="cycle_type_id"/>
+                                    <field name="description"/>
+                                    <field name="qty"/>
+                                    <field name="unit_price"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Ciclos QD (com carga)">
                             <field name="qd_line_ids">
                                 <tree editable="bottom">
                                     <field name="cycle_type_id"/>
+                                    <field name="description"/>
                                     <field name="qty"/>
+                                    <field name="unit_price"/>
                                 </tree>
                             </field>
                         </page>
@@ -241,7 +259,9 @@
                             <field name="calib_line_ids">
                                 <tree editable="bottom">
                                     <field name="malha_type_id"/>
+                                    <field name="description"/>
                                     <field name="qty"/>
+                                    <field name="unit_price"/>
                                 </tree>
                             </field>
                         </page>

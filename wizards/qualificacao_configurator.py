@@ -315,7 +315,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             # type.config (linha única, comportamento pré-F8.8 com do_qo=True).
             if eq_line.qo_line_ids:
                 for qo in eq_line.qo_line_ids:
-                    new_lines.append((0, 0, {
+                    qo_vals = {
                         "order_id": so.id,
                         "product_id": qo.cycle_type_id.product_id.id,
                         "product_uom_qty": qo.qty,
@@ -323,7 +323,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                         "qualification_type": "operational",
                         "equipment_id": equip.id,
                         "cycle_type_id": qo.cycle_type_id.id,
-                    }))
+                    }
+                    if qo.description:
+                        qo_vals["name"] = qo.description
+                    if qo.unit_price:
+                        qo_vals["price_unit"] = qo.unit_price
+                    new_lines.append((0, 0, qo_vals))
             elif eq_line.do_qo:
                 cfg = TypeConfig.get_config_for("operational", so.company_id)
                 if not cfg:
@@ -345,7 +350,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
 
             # QD — 1 linha por cycle_type
             for qd in eq_line.qd_line_ids:
-                new_lines.append((0, 0, {
+                qd_vals = {
                     "order_id": so.id,
                     "product_id": qd.cycle_type_id.product_id.id,
                     "product_uom_qty": qd.qty,
@@ -353,11 +358,16 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "qualification_type": "performance",
                     "equipment_id": equip.id,
                     "cycle_type_id": qd.cycle_type_id.id,
-                }))
+                }
+                if qd.description:
+                    qd_vals["name"] = qd.description
+                if qd.unit_price:
+                    qd_vals["price_unit"] = qd.unit_price
+                new_lines.append((0, 0, qd_vals))
 
             # Calib — 1 linha por malha_type
             for c in eq_line.calib_line_ids:
-                new_lines.append((0, 0, {
+                c_vals = {
                     "order_id": so.id,
                     "product_id": c.malha_type_id.product_id.id,
                     "product_uom_qty": c.qty,
@@ -365,7 +375,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "qualification_type": "calibration",
                     "equipment_id": equip.id,
                     "malha_type_id": c.malha_type_id.id,
-                }))
+                }
+                if c.description:
+                    c_vals["name"] = c.description
+                if c.unit_price:
+                    c_vals["price_unit"] = c.unit_price
+                new_lines.append((0, 0, c_vals))
 
         # Serviços opcionais → linhas managed marcadas is_proposal_optional
         # (apagadas/recriadas no re-apply junto das demais linhas managed,
@@ -506,15 +521,30 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.do_qo = tpl.do_qo
         self.do_qs = tpl.do_qs
         self.qo_line_ids = [(5, 0, 0)] + [
-            (0, 0, {"cycle_type_id": line.cycle_type_id.id, "qty": line.qty})
+            (0, 0, {
+                "cycle_type_id": line.cycle_type_id.id,
+                "qty": line.qty,
+                "description": line.cycle_type_id.product_id.name or False,
+                "unit_price": line.cycle_type_id.product_id.list_price or 0.0,
+            })
             for line in tpl.qo_line_ids
         ]
         self.qd_line_ids = [(5, 0, 0)] + [
-            (0, 0, {"cycle_type_id": line.cycle_type_id.id, "qty": line.qty})
+            (0, 0, {
+                "cycle_type_id": line.cycle_type_id.id,
+                "qty": line.qty,
+                "description": line.cycle_type_id.product_id.name or False,
+                "unit_price": line.cycle_type_id.product_id.list_price or 0.0,
+            })
             for line in tpl.qd_line_ids
         ]
         self.calib_line_ids = [(5, 0, 0)] + [
-            (0, 0, {"malha_type_id": line.malha_type_id.id, "qty": line.qty})
+            (0, 0, {
+                "malha_type_id": line.malha_type_id.id,
+                "qty": line.qty,
+                "description": line.malha_type_id.product_id.name or False,
+                "unit_price": line.malha_type_id.product_id.list_price or 0.0,
+            })
             for line in tpl.calib_line_ids
         ]
 
@@ -574,15 +604,24 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.copy({
             "equipment_id": False,
             "qo_line_ids": [
-                (0, 0, {"cycle_type_id": l.cycle_type_id.id, "qty": l.qty})
+                (0, 0, {
+                    "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
+                    "description": l.description, "unit_price": l.unit_price,
+                })
                 for l in self.qo_line_ids
             ],
             "qd_line_ids": [
-                (0, 0, {"cycle_type_id": l.cycle_type_id.id, "qty": l.qty})
+                (0, 0, {
+                    "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
+                    "description": l.description, "unit_price": l.unit_price,
+                })
                 for l in self.qd_line_ids
             ],
             "calib_line_ids": [
-                (0, 0, {"malha_type_id": l.malha_type_id.id, "qty": l.qty})
+                (0, 0, {
+                    "malha_type_id": l.malha_type_id.id, "qty": l.qty,
+                    "description": l.description, "unit_price": l.unit_price,
+                })
                 for l in self.calib_line_ids
             ],
         })
@@ -610,6 +649,11 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
         string="Tipo de Ciclo",
         required=True,
     )
+    description = fields.Char(string="Descrição")
+    unit_price = fields.Monetary(
+        string="Preço Unitário",
+        currency_field="currency_id",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -620,11 +664,20 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
         readonly=True,
     )
 
-    @api.depends("cycle_type_id.product_id.list_price", "qty")
+    @api.depends("unit_price", "qty")
     def _compute_subtotal(self):
         for line in self:
-            price = line.cycle_type_id.product_id.list_price if line.cycle_type_id else 0.0
-            line.subtotal = price * (line.qty or 0)
+            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_defaults(self):
+        for line in self:
+            prod = line.cycle_type_id.product_id
+            if prod:
+                if not line.description:
+                    line.description = prod.name
+                if not line.unit_price:
+                    line.unit_price = prod.list_price
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -650,6 +703,11 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
         required=True,
         domain=[("load_type", "in", ["vazio", "sem_carga"])],
     )
+    description = fields.Char(string="Descrição")
+    unit_price = fields.Monetary(
+        string="Preço Unitário",
+        currency_field="currency_id",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -660,11 +718,20 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
         readonly=True,
     )
 
-    @api.depends("cycle_type_id.product_id.list_price", "qty")
+    @api.depends("unit_price", "qty")
     def _compute_subtotal(self):
         for line in self:
-            price = line.cycle_type_id.product_id.list_price if line.cycle_type_id else 0.0
-            line.subtotal = price * (line.qty or 0)
+            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_defaults(self):
+        for line in self:
+            prod = line.cycle_type_id.product_id
+            if prod:
+                if not line.description:
+                    line.description = prod.name
+                if not line.unit_price:
+                    line.unit_price = prod.list_price
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -691,6 +758,11 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
         related="malha_type_id.sensor_kind_id",
         readonly=True,
     )
+    description = fields.Char(string="Descrição")
+    unit_price = fields.Monetary(
+        string="Preço Unitário",
+        currency_field="currency_id",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -701,11 +773,20 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
         readonly=True,
     )
 
-    @api.depends("malha_type_id.product_id.list_price", "qty")
+    @api.depends("unit_price", "qty")
     def _compute_subtotal(self):
         for line in self:
-            price = line.malha_type_id.product_id.list_price if line.malha_type_id else 0.0
-            line.subtotal = price * (line.qty or 0)
+            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0)
+
+    @api.onchange("malha_type_id")
+    def _onchange_malha_type_defaults(self):
+        for line in self:
+            prod = line.malha_type_id.product_id
+            if prod:
+                if not line.description:
+                    line.description = prod.name
+                if not line.unit_price:
+                    line.unit_price = prod.list_price
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -738,6 +819,11 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
     do_qi = fields.Boolean(string="QI")
     do_qo = fields.Boolean(string="QO")
     do_qs = fields.Boolean(string="QS")
+    qo_line_ids = fields.One2many(
+        comodel_name="afr.qualificacao.configurator.bulk.qo",
+        inverse_name="bulk_id",
+        string="Ciclos QO",
+    )
     qd_line_ids = fields.One2many(
         comodel_name="afr.qualificacao.configurator.bulk.qd",
         inverse_name="bulk_id",
@@ -768,12 +854,25 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                 "do_qi": self.do_qi,
                 "do_qo": self.do_qo,
                 "do_qs": self.do_qs,
+                "qo_line_ids": [
+                    (0, 0, {
+                        "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
+                        "description": l.description, "unit_price": l.unit_price,
+                    })
+                    for l in self.qo_line_ids
+                ],
                 "qd_line_ids": [
-                    (0, 0, {"cycle_type_id": l.cycle_type_id.id, "qty": l.qty})
+                    (0, 0, {
+                        "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
+                        "description": l.description, "unit_price": l.unit_price,
+                    })
                     for l in self.qd_line_ids
                 ],
                 "calib_line_ids": [
-                    (0, 0, {"malha_type_id": l.malha_type_id.id, "qty": l.qty})
+                    (0, 0, {
+                        "malha_type_id": l.malha_type_id.id, "qty": l.qty,
+                        "description": l.description, "unit_price": l.unit_price,
+                    })
                     for l in self.calib_line_ids
                 ],
             })
@@ -785,6 +884,36 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
             "target": "new",
             "context": {"dialog_size": "extra-large"},
         }
+
+
+class AfrQualificacaoConfiguratorBulkQo(models.TransientModel):
+    _name = "afr.qualificacao.configurator.bulk.qo"
+    _description = "Bulk QO Line"
+
+    bulk_id = fields.Many2one(
+        comodel_name="afr.qualificacao.configurator.bulk",
+        required=True,
+        ondelete="cascade",
+    )
+    cycle_type_id = fields.Many2one(
+        comodel_name="afr.qualificacao.cycle.type",
+        string="Tipo de Ciclo",
+        required=True,
+        domain=[("load_type", "in", ["vazio", "sem_carga"])],
+    )
+    description = fields.Char(string="Descrição")
+    unit_price = fields.Float(string="Preço Unitário")
+    qty = fields.Integer(string="Quantidade", default=1, required=True)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_defaults(self):
+        for line in self:
+            prod = line.cycle_type_id.product_id
+            if prod:
+                if not line.description:
+                    line.description = prod.name
+                if not line.unit_price:
+                    line.unit_price = prod.list_price
 
 
 class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
@@ -801,7 +930,19 @@ class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
         string="Tipo de Ciclo",
         required=True,
     )
+    description = fields.Char(string="Descrição")
+    unit_price = fields.Float(string="Preço Unitário")
     qty = fields.Integer(string="Quantidade", default=1, required=True)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_defaults(self):
+        for line in self:
+            prod = line.cycle_type_id.product_id
+            if prod:
+                if not line.description:
+                    line.description = prod.name
+                if not line.unit_price:
+                    line.unit_price = prod.list_price
 
 
 class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
@@ -818,4 +959,16 @@ class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
         string="Tipo de Malha",
         required=True,
     )
+    description = fields.Char(string="Descrição")
+    unit_price = fields.Float(string="Preço Unitário")
     qty = fields.Integer(string="Quantidade", default=1, required=True)
+
+    @api.onchange("malha_type_id")
+    def _onchange_malha_type_defaults(self):
+        for line in self:
+            prod = line.malha_type_id.product_id
+            if prod:
+                if not line.description:
+                    line.description = prod.name
+                if not line.unit_price:
+                    line.unit_price = prod.list_price

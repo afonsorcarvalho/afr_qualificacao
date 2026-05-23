@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.9.0",
+    "version": "16.0.4.10.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -62,6 +62,12 @@
             F8.10 (16.0.4.9.0): refinamento Equipment Scope — remove
               subtotal por equipamento (preço só no Resumo Financeiro);
               calib renderiza como "0N Calibração de <malha>".
+            F8.11 (16.0.4.10.0): description + unit_price editáveis nas
+              sublines QO/QD/Calib do configurador (default ← product.name
+              / list_price); description vira `name` da linha SO,
+              unit_price vira `price_unit`. Bulk "Adicionar Vários" ganha
+              aba Ciclos QO. Aba "Optional Products" do sale_management
+              escondida (não usada).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

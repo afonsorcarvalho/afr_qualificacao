@@ -100,4 +100,16 @@
             </xpath>
         </field>
     </record>
+
+    <!-- Esconde aba "Optional Products" do sale_management — não usada neste fluxo. -->
+    <record id="view_sale_order_form_hide_optional_products" model="ir.ui.view">
+        <field name="name">sale.order.form.hide.optional.products</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale_management.sale_order_form_quote"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='optional_products']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+        </field>
+    </record>
 </odoo>
