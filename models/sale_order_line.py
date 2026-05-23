@@ -66,6 +66,15 @@ class SaleOrderLine(models.Model):
         string="Tipo de Malha (Calib)",
         copy=True,
     )
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        copy=True,
+        help=(
+            "Horas estimadas por execução desta linha (override do "
+            "cycle_type/malha_type/type_config). Usado pelo cronograma."
+        ),
+    )
     afr_qualificacao_id = fields.Many2one(
         comodel_name="afr.qualificacao",
         string="Qualificação Gerada",
