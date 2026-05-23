@@ -40,7 +40,7 @@
                             <field name="temperature"/>
                             <field name="duration"/>
                             <field name="load_type"/>
-                            <field name="estimated_days"/>
+                            <field name="estimated_hours"/>
                         </group>
                         <group string="Normas Aplicáveis">
                             <field name="standard_ids" nolabel="1"

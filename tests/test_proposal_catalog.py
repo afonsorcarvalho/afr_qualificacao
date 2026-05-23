@@ -31,12 +31,12 @@ class TestProposalCatalog(TransactionCase):
             "temperature": "134°C",
             "duration": "7 min",
             "load_type": "com_carga",
-            "estimated_days": 1.5,
+            "estimated_hours": 1.5,
         })
         self.assertEqual(cycle.temperature, "134°C")
         self.assertEqual(cycle.duration, "7 min")
         self.assertEqual(cycle.load_type, "com_carga")
-        self.assertEqual(cycle.estimated_days, 1.5)
+        self.assertEqual(cycle.estimated_hours, 1.5)
 
     def test_malha_type_carries_technical_specs(self):
         """malha.type aceita faixa nominal e dias estimados."""
