@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.10.0",
+    "version": "16.0.4.11.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -68,6 +68,13 @@
               unit_price vira `price_unit`. Bulk "Adicionar Vários" ganha
               aba Ciclos QO. Aba "Optional Products" do sale_management
               escondida (não usada).
+            F8.12 (16.0.4.11.0): cycle_type + malha_type ganham
+              `default_unit_price` (override product.list_price para
+              precificação ciclo-a-ciclo). Onchange/autofill sublines usa
+              `default_unit_price or product.list_price`. Removido
+              checkbox `do_qo` do equipment_line + bulk wizard (presença
+              de qo_line_ids = aplicar QO; fallback type.config descontinuado).
+              ACL faltante adicionada para `afr.qualificacao.configurator.bulk.qo`.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

@@ -24,7 +24,13 @@ class TestQuoteFirstOs(AfrQualificacaoTestCommon):
     # ─────────────────────────────────────────────────────────────
     def test_one_os_per_so_aggregating_two_equips(self):
         so = self._confirm_so_with([
-            {"equipment_id": self.equip1.id, "do_qi": True, "do_qo": True},
+            {
+                "equipment_id": self.equip1.id,
+                "do_qi": True,
+                "qo_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
+                })],
+            },
             {"equipment_id": self.equip2.id, "do_qi": True},
         ])
         self.assertEqual(so.qualificacao_os_count, 1)
@@ -62,7 +68,12 @@ class TestQuoteFirstOs(AfrQualificacaoTestCommon):
     def test_engc_os_not_created_in_cutover(self):
         so = self._confirm_so_with([
             {"equipment_id": self.equip1.id, "do_qi": True},
-            {"equipment_id": self.equip2.id, "do_qo": True},
+            {
+                "equipment_id": self.equip2.id,
+                "qo_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
+                })],
+            },
         ])
         self.assertEqual(so.engc_os_count, 0)
         self.assertEqual(so.qualificacao_os_count, 1)

@@ -65,6 +65,14 @@ class AfrQualificacaoMalhaType(models.Model):
         string="Dias Estimados",
         help="Dias de execução estimados desta malha (sugestão para a proposta).",
     )
+    default_unit_price = fields.Float(
+        string="Preço Unit. Padrão",
+        digits="Product Price",
+        help=(
+            "Preço unitário sugerido pra cada execução desta malha no "
+            "configurador. Override do product.list_price; 0 = usa list_price."
+        ),
+    )
     standard_ids = fields.Many2many(
         comodel_name="afr.qualificacao.standard",
         relation="afr_malha_type_standard_rel",

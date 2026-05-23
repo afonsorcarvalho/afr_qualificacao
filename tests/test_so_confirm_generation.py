@@ -22,7 +22,12 @@ class TestSoConfirmGeneration(AfrQualificacaoTestCommon):
         """
         so = self._build_so_with_lines([
             {"equipment_id": self.equip1.id, "do_qi": True},
-            {"equipment_id": self.equip2.id, "do_qo": True},
+            {
+                "equipment_id": self.equip2.id,
+                "qo_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
+                })],
+            },
         ])
         so.action_confirm()
         # 1 OS qualif agregando tudo
@@ -42,7 +47,12 @@ class TestSoConfirmGeneration(AfrQualificacaoTestCommon):
                 "qd_line_ids": [(0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 3})],
                 "calib_line_ids": [(0, 0, {"malha_type_id": self.malha_temp.id, "qty": 5})],
             },
-            {"equipment_id": self.equip2.id, "do_qo": True},
+            {
+                "equipment_id": self.equip2.id,
+                "qo_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
+                })],
+            },
         ])
         so.action_confirm()
         self.assertEqual(so.qualificacao_count, 4)

@@ -78,6 +78,14 @@ class AfrQualificacaoTestCommon(TransactionCase):
             "product_id": cls.product_qd_cmin.id,
             "equipment_category_id": cls.category.id,
         })
+        # F8.12 — cycle_type QO (sem carga) usado nos tests que antes usavam
+        # do_qo=True (fallback removido na F8.12).
+        cls.cycle_qo_test = cls.env["afr.qualificacao.cycle.type"].create({
+            "name": "Test QO Sem Carga", "code": "TQO-TEST",
+            "product_id": cls.product_qo.id,
+            "load_type": "sem_carga",
+            "equipment_category_id": cls.category.id,
+        })
         cls.malha_temp = cls.env["afr.qualificacao.malha.type"].create({
             "name": "Test Malha T", "code": "TMLH-T",
             "product_id": cls.product_malha_temp.id,

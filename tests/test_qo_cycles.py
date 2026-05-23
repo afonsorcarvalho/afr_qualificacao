@@ -74,15 +74,24 @@ class TestQoCycles(AfrQualificacaoTestCommon):
             sum(int(l.product_uom_qty) for l in qo_lines), 6,
         )
 
-    def test_qo_fallback_to_type_config_when_no_cycles(self):
-        """do_qo=True sem qo_line_ids → 1 linha via type.config (pré-F8.8)."""
-        so, wiz = self._wizard_with_qo(qo_lines=[], do_qo=True)
+    def test_qo_no_cycles_no_lines(self):
+        """F8.12 — sem qo_line_ids nada é gerado (fallback type.config removido)."""
+        # equipment line sem QO precisa de outra qualif pra passar action_apply
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create({
+            "sale_order_id": so.id,
+        })
+        self.env["afr.qualificacao.configurator.equipment"].create({
+            "wizard_id": wiz.id,
+            "equipment_id": self.equip1.id,
+            "do_qi": True,
+            "qo_line_ids": [],
+        })
         wiz.action_apply()
         qo_lines = so.order_line.filtered(
             lambda l: l.qualification_type == "operational"
         )
-        self.assertEqual(len(qo_lines), 1)
-        self.assertFalse(qo_lines.cycle_type_id)
+        self.assertFalse(qo_lines, "Sem qo_line_ids, nenhuma linha QO deve ser criada.")
 
     def test_confirm_explodes_qo_cycles(self):
         """confirm SO gera afr.qualificacao.cycle pra cada execução QO."""

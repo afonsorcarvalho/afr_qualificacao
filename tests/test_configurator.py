@@ -80,7 +80,9 @@ class TestConfigurator(AfrQualificacaoTestCommon):
         wiz2.equipment_line_ids = [(5, 0, 0), (0, 0, {
             "equipment_id": self.equip1.id,
             "do_qi": True,
-            "do_qo": True,
+            "qo_line_ids": [(0, 0, {
+                "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
+            })],
         })]
         wiz2.action_apply()
         self.assertIn(manual, so.order_line)

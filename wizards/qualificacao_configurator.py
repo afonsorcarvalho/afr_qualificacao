@@ -253,7 +253,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         # valida cada linha equipment tem ao menos 1 qualif
         for eq_line in self.equipment_line_ids:
             if not (
-                eq_line.do_qi or eq_line.do_qo or eq_line.do_qs
+                eq_line.do_qi or eq_line.do_qs
                 or eq_line.qo_line_ids or eq_line.qd_line_ids
                 or eq_line.calib_line_ids
             ):
@@ -311,42 +311,22 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     vals["price_unit"] = cfg.default_unit_price
                 new_lines.append((0, 0, vals))
 
-            # F8.8 — QO: cycle-based se houver qo_line_ids; senão fallback
-            # type.config (linha única, comportamento pré-F8.8 com do_qo=True).
-            if eq_line.qo_line_ids:
-                for qo in eq_line.qo_line_ids:
-                    qo_vals = {
-                        "order_id": so.id,
-                        "product_id": qo.cycle_type_id.product_id.id,
-                        "product_uom_qty": qo.qty,
-                        "is_qualificacao_managed": True,
-                        "qualification_type": "operational",
-                        "equipment_id": equip.id,
-                        "cycle_type_id": qo.cycle_type_id.id,
-                    }
-                    if qo.description:
-                        qo_vals["name"] = qo.description
-                    if qo.unit_price:
-                        qo_vals["price_unit"] = qo.unit_price
-                    new_lines.append((0, 0, qo_vals))
-            elif eq_line.do_qo:
-                cfg = TypeConfig.get_config_for("operational", so.company_id)
-                if not cfg:
-                    raise UserError(_(
-                        "Sem configuração de produto para tipo operational na empresa %s. "
-                        "Cadastre em Qualificações → Configurações → Tipos."
-                    ) % so.company_id.display_name)
-                vals = {
+            # QO — cycle-based: 1 linha por ciclo QO declarado.
+            for qo in eq_line.qo_line_ids:
+                qo_vals = {
                     "order_id": so.id,
-                    "product_id": cfg.service_product_id.id,
-                    "product_uom_qty": 1.0,
+                    "product_id": qo.cycle_type_id.product_id.id,
+                    "product_uom_qty": qo.qty,
                     "is_qualificacao_managed": True,
                     "qualification_type": "operational",
                     "equipment_id": equip.id,
+                    "cycle_type_id": qo.cycle_type_id.id,
                 }
-                if cfg.default_unit_price:
-                    vals["price_unit"] = cfg.default_unit_price
-                new_lines.append((0, 0, vals))
+                if qo.description:
+                    qo_vals["name"] = qo.description
+                if qo.unit_price:
+                    qo_vals["price_unit"] = qo.unit_price
+                new_lines.append((0, 0, qo_vals))
 
             # QD — 1 linha por cycle_type
             for qd in eq_line.qd_line_ids:
@@ -525,7 +505,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 "cycle_type_id": line.cycle_type_id.id,
                 "qty": line.qty,
                 "description": line.cycle_type_id.product_id.name or False,
-                "unit_price": line.cycle_type_id.product_id.list_price or 0.0,
+                "unit_price": (
+                    line.cycle_type_id.default_unit_price
+                    or line.cycle_type_id.product_id.list_price
+                    or 0.0
+                ),
             })
             for line in tpl.qo_line_ids
         ]
@@ -534,7 +518,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 "cycle_type_id": line.cycle_type_id.id,
                 "qty": line.qty,
                 "description": line.cycle_type_id.product_id.name or False,
-                "unit_price": line.cycle_type_id.product_id.list_price or 0.0,
+                "unit_price": (
+                    line.cycle_type_id.default_unit_price
+                    or line.cycle_type_id.product_id.list_price
+                    or 0.0
+                ),
             })
             for line in tpl.qd_line_ids
         ]
@@ -543,13 +531,17 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 "malha_type_id": line.malha_type_id.id,
                 "qty": line.qty,
                 "description": line.malha_type_id.product_id.name or False,
-                "unit_price": line.malha_type_id.product_id.list_price or 0.0,
+                "unit_price": (
+                    line.malha_type_id.default_unit_price
+                    or line.malha_type_id.product_id.list_price
+                    or 0.0
+                ),
             })
             for line in tpl.calib_line_ids
         ]
 
     @api.depends(
-        "do_qi", "do_qo", "do_qs",
+        "do_qi", "do_qs",
         "qo_line_ids.subtotal",
         "qd_line_ids.subtotal", "calib_line_ids.subtotal",
         "equipment_id",
@@ -570,15 +562,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     total += cfg.default_unit_price or (
                         cfg.service_product_id.list_price if cfg.service_product_id else 0.0
                     )
-            # QO: cycle-based se houver linhas; senão fallback type.config
-            if el.qo_line_ids:
-                total += sum(el.qo_line_ids.mapped("subtotal"))
-            elif el.do_qo:
-                cfg = TypeConfig.get_config_for("operational", el.wizard_id.company_id)
-                if cfg:
-                    total += cfg.default_unit_price or (
-                        cfg.service_product_id.list_price if cfg.service_product_id else 0.0
-                    )
+            total += sum(el.qo_line_ids.mapped("subtotal"))
             total += sum(el.qd_line_ids.mapped("subtotal"))
             total += sum(el.calib_line_ids.mapped("subtotal"))
             el.subtotal = total
@@ -677,7 +661,7 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
                 if not line.description:
                     line.description = prod.name
                 if not line.unit_price:
-                    line.unit_price = prod.list_price
+                    line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -731,7 +715,7 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
                 if not line.description:
                     line.description = prod.name
                 if not line.unit_price:
-                    line.unit_price = prod.list_price
+                    line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -786,7 +770,7 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
                 if not line.description:
                     line.description = prod.name
                 if not line.unit_price:
-                    line.unit_price = prod.list_price
+                    line.unit_price = line.malha_type_id.default_unit_price or prod.list_price
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -913,7 +897,7 @@ class AfrQualificacaoConfiguratorBulkQo(models.TransientModel):
                 if not line.description:
                     line.description = prod.name
                 if not line.unit_price:
-                    line.unit_price = prod.list_price
+                    line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
 
 
 class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
@@ -942,7 +926,7 @@ class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
                 if not line.description:
                     line.description = prod.name
                 if not line.unit_price:
-                    line.unit_price = prod.list_price
+                    line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
 
 
 class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
@@ -971,4 +955,4 @@ class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
                 if not line.description:
                     line.description = prod.name
                 if not line.unit_price:
-                    line.unit_price = prod.list_price
+                    line.unit_price = line.malha_type_id.default_unit_price or prod.list_price

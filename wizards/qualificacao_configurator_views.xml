@@ -61,7 +61,7 @@
                                         </group>
                                         <group>
                                             <field name="do_qi"/>
-                                            <field name="do_qo"/>
+                                            <field name="do_qo" invisible="1"/>
                                             <field name="do_qs"/>
                                             <field name="currency_id" invisible="1"/>
                                             <field name="subtotal"/>
@@ -115,7 +115,7 @@
                                 <field name="equipment_id"/>
                                 <field name="equipment_category_id"/>
                                 <field name="do_qi" widget="boolean_toggle"/>
-                                <field name="do_qo" widget="boolean_toggle"/>
+                                <field name="do_qo" widget="boolean_toggle" optional="hide"/>
                                 <field name="do_qs" widget="boolean_toggle"/>
                                 <field name="currency_id" invisible="1"/>
                                 <field name="subtotal"/>
@@ -231,7 +231,7 @@
                     </group>
                     <group string="Qualificações Padrão (aplicadas a todos selecionados)">
                         <field name="do_qi"/>
-                        <field name="do_qo"/>
+                        <field name="do_qo" invisible="1"/>
                         <field name="do_qs"/>
                     </group>
                     <notebook>

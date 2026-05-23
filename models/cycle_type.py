@@ -73,6 +73,14 @@ class AfrQualificacaoCycleType(models.Model):
         string="Dias Estimados",
         help="Dias de execução estimados deste ciclo (sugestão para a proposta).",
     )
+    default_unit_price = fields.Float(
+        string="Preço Unit. Padrão",
+        digits="Product Price",
+        help=(
+            "Preço unitário sugerido pra cada execução deste ciclo no "
+            "configurador. Override do product.list_price; 0 = usa list_price."
+        ),
+    )
     standard_ids = fields.Many2many(
         comodel_name="afr.qualificacao.standard",
         relation="afr_cycle_type_standard_rel",
