@@ -69,9 +69,13 @@ class AfrQualificacaoCycleType(models.Model):
         string="Tipo de Carga",
         help="Classifica o ciclo na tabela da proposta (QO sem carga, QD com carga).",
     )
-    estimated_days = fields.Float(
-        string="Dias Estimados",
-        help="Dias de execução estimados deste ciclo (sugestão para a proposta).",
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        help=(
+            "Horas estimadas por execução deste ciclo (sugestão pra "
+            "cronograma da proposta). Convertido em dias úteis via /8."
+        ),
     )
     default_unit_price = fields.Float(
         string="Preço Unit. Padrão",
