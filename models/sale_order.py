@@ -389,6 +389,27 @@ class SaleOrder(models.Model):
         """F8.14 — horas / 8 (Float decimal — 1 dia útil = 8h)."""
         return self._qualif_estimated_hours(equipment) / 8.0
 
+    def _qualif_schedule_rows(self):
+        """F8.14 — retorna lista [{equipment, hours, days}] por equip + total geral.
+
+        Usado pelo bloco `schedule` do PDF. Equipments na ordem de
+        primeira aparição nas qualif lines.
+        """
+        self.ensure_one()
+        equipments = []
+        for line in self.order_line.filtered("is_qualificacao_managed"):
+            if line.equipment_id and line.equipment_id not in equipments:
+                equipments.append(line.equipment_id)
+        rows = []
+        for eq in equipments:
+            hours = self._qualif_estimated_hours(eq)
+            rows.append({
+                "equipment": eq,
+                "hours": hours,
+                "days": hours / 8.0 if hours else 0.0,
+            })
+        return rows
+
     def _qualif_type_descriptions(self):
         """Retorna descritivos técnicos por tipo qualif presente na SO.
 

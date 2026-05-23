@@ -53,3 +53,33 @@ class TestEstimatedHours(AfrQualificacaoTestCommon):
         self.assertAlmostEqual(
             so._qualif_estimated_days(self.equip1), 3.0,
         )
+
+    def test_qualif_schedule_rows_returns_per_equipment(self):
+        """Helper retorna lista equipamento × horas × dias + total."""
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create({
+            "sale_order_id": so.id,
+        })
+        wiz.equipment_line_ids = [
+            (0, 0, {
+                "equipment_id": self.equip1.id,
+                "qd_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_cmax.id, "qty": 4,  # 4×2h = 8h
+                })],
+            }),
+            (0, 0, {
+                "equipment_id": self.equip2.id,
+                "qd_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_cmax.id, "qty": 8,  # 8×2h = 16h
+                })],
+            }),
+        ]
+        wiz.action_apply()
+        rows = so._qualif_schedule_rows()
+        self.assertEqual(len(rows), 2)
+        e1 = next(r for r in rows if r["equipment"] == self.equip1)
+        e2 = next(r for r in rows if r["equipment"] == self.equip2)
+        self.assertAlmostEqual(e1["hours"], 8.0)
+        self.assertAlmostEqual(e1["days"], 1.0)
+        self.assertAlmostEqual(e2["hours"], 16.0)
+        self.assertAlmostEqual(e2["days"], 2.0)
