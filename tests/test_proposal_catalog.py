@@ -39,17 +39,17 @@ class TestProposalCatalog(TransactionCase):
         self.assertEqual(cycle.estimated_hours, 1.5)
 
     def test_malha_type_carries_technical_specs(self):
-        """malha.type aceita faixa nominal e dias estimados."""
+        """malha.type aceita faixa nominal e horas estimadas."""
         sensor = self.env["afr.qualificacao.sensor.kind"].search([], limit=1)
         malha = self.env["afr.qualificacao.malha.type"].create({
             "name": "Malha Teste Specs",
             "product_id": self.service.id,
             "sensor_kind_id": sensor.id,
             "range_spec": "0–150 °C",
-            "estimated_days": 0.5,
+            "estimated_hours": 0.5,
         })
         self.assertEqual(malha.range_spec, "0–150 °C")
-        self.assertEqual(malha.estimated_days, 0.5)
+        self.assertEqual(malha.estimated_hours, 0.5)
 
     def test_config_template_carries_price_suggestion(self):
         """config.template aceita preço base, dias e moeda derivada da empresa."""

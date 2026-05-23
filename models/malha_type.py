@@ -61,9 +61,13 @@ class AfrQualificacaoMalhaType(models.Model):
         translate=True,
         help="Faixa nominal da malha (ex: 0–150 °C). Texto livre.",
     )
-    estimated_days = fields.Float(
-        string="Dias Estimados",
-        help="Dias de execução estimados desta malha (sugestão para a proposta).",
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        help=(
+            "Horas estimadas por execução desta malha (sugestão pra "
+            "cronograma da proposta). Convertido em dias úteis via /8."
+        ),
     )
     default_unit_price = fields.Float(
         string="Preço Unit. Padrão",
