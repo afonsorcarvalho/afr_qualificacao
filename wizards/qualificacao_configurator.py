@@ -55,6 +55,16 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         currency_field="currency_id",
         string="Total Estimado",
     )
+    estimated_hours_total = fields.Float(
+        string="Horas (Total)",
+        compute="_compute_wizard_estimated_totals",
+        digits="Product Price",
+    )
+    estimated_days_total = fields.Float(
+        string="Dias Úteis (Total)",
+        compute="_compute_wizard_estimated_totals",
+        digits=(8, 1),
+    )
     # F8.2 — serviços opcionais incluídos como linhas extra na cotação
     optional_ids = fields.Many2many(
         comodel_name="afr.proposal.optional",
@@ -103,6 +113,13 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     def _compute_total_estimated(self):
         for wiz in self:
             wiz.total_estimated = sum(wiz.equipment_line_ids.mapped("subtotal"))
+
+    @api.depends("equipment_line_ids.estimated_hours_total")
+    def _compute_wizard_estimated_totals(self):
+        for wiz in self:
+            hours = sum(wiz.equipment_line_ids.mapped("estimated_hours_total"))
+            wiz.estimated_hours_total = hours
+            wiz.estimated_days_total = hours / 8.0 if hours else 0.0
 
     @api.depends("proposal_block_ids", "equipment_line_ids", "optional_ids")
     def _compute_review_counts(self):
@@ -492,6 +509,17 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         related="wizard_id.currency_id",
         readonly=True,
     )
+    estimated_hours_total = fields.Float(
+        string="Horas Totais",
+        compute="_compute_estimated_totals",
+        digits="Product Price",
+    )
+    estimated_days_total = fields.Float(
+        string="Dias Úteis",
+        compute="_compute_estimated_totals",
+        digits=(8, 1),
+        help="Horas estimadas / 8 (1 dia útil = 8h).",
+    )
     # F8.2 — template de equipamento: autofill QI/QO/QS + ciclos + malhas
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",
@@ -604,6 +632,34 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             total += sum(el.qd_line_ids.mapped("subtotal"))
             total += sum(el.calib_line_ids.mapped("subtotal"))
             el.subtotal = total
+
+    @api.depends(
+        "do_qi", "do_qs",
+        "qo_line_ids.estimated_hours", "qo_line_ids.qty",
+        "qd_line_ids.estimated_hours", "qd_line_ids.qty",
+        "calib_line_ids.estimated_hours", "calib_line_ids.qty",
+    )
+    def _compute_estimated_totals(self):
+        TypeConfig = self.env["afr.qualificacao.type.config"]
+        for el in self:
+            hours = 0.0
+            for flag, qtype in (("do_qi", "installation"), ("do_qs", "software")):
+                if not el[flag]:
+                    continue
+                cfg = TypeConfig.get_config_for(qtype, el.wizard_id.company_id)
+                if cfg:
+                    hours += cfg.estimated_hours or 0.0
+            for line in el.qo_line_ids:
+                h = line.estimated_hours or line.cycle_type_id.estimated_hours
+                hours += (h or 0.0) * (line.qty or 0)
+            for line in el.qd_line_ids:
+                h = line.estimated_hours or line.cycle_type_id.estimated_hours
+                hours += (h or 0.0) * (line.qty or 0)
+            for line in el.calib_line_ids:
+                h = line.estimated_hours or line.malha_type_id.estimated_hours
+                hours += (h or 0.0) * (line.qty or 0)
+            el.estimated_hours_total = hours
+            el.estimated_days_total = hours / 8.0 if hours else 0.0
 
     @api.constrains("wizard_id", "equipment_id")
     def _check_unique_equipment(self):
