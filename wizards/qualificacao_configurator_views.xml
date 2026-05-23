@@ -65,6 +65,8 @@
                                             <field name="do_qs"/>
                                             <field name="currency_id" invisible="1"/>
                                             <field name="subtotal"/>
+                                            <field name="estimated_hours_total" readonly="1"/>
+                                            <field name="estimated_days_total" readonly="1"/>
                                         </group>
                                     </group>
                                     <notebook>
@@ -76,6 +78,7 @@
                                                     <field name="description"/>
                                                     <field name="qty"/>
                                                     <field name="unit_price"/>
+                                                    <field name="estimated_hours"/>
                                                     <field name="currency_id" invisible="1"/>
                                                     <field name="subtotal"/>
                                                 </tree>
@@ -89,6 +92,7 @@
                                                     <field name="description"/>
                                                     <field name="qty"/>
                                                     <field name="unit_price"/>
+                                                    <field name="estimated_hours"/>
                                                     <field name="currency_id" invisible="1"/>
                                                     <field name="subtotal"/>
                                                 </tree>
@@ -103,6 +107,7 @@
                                                     <field name="description"/>
                                                     <field name="qty"/>
                                                     <field name="unit_price"/>
+                                                    <field name="estimated_hours"/>
                                                     <field name="currency_id" invisible="1"/>
                                                     <field name="subtotal"/>
                                                 </tree>
@@ -119,6 +124,7 @@
                                 <field name="do_qs" widget="boolean_toggle"/>
                                 <field name="currency_id" invisible="1"/>
                                 <field name="subtotal"/>
+                                <field name="estimated_days_total" optional="show"/>
                             </tree>
                         </field>
                     </div>
@@ -242,6 +248,7 @@
                                     <field name="description"/>
                                     <field name="qty"/>
                                     <field name="unit_price"/>
+                                    <field name="estimated_hours"/>
                                 </tree>
                             </field>
                         </page>
@@ -252,6 +259,7 @@
                                     <field name="description"/>
                                     <field name="qty"/>
                                     <field name="unit_price"/>
+                                    <field name="estimated_hours"/>
                                 </tree>
                             </field>
                         </page>
@@ -262,6 +270,7 @@
                                     <field name="description"/>
                                     <field name="qty"/>
                                     <field name="unit_price"/>
+                                    <field name="estimated_hours"/>
                                 </tree>
                             </field>
                         </page>
