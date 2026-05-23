@@ -26,6 +26,17 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         cls.proposal_tpl = cls.env.ref(
             "afr_qualificacao.proposal_template_labquali"
         )
+        # F8.8 — cycle_specs removido do seed default; injeta linha pros
+        # tests que validam render do bloco (test_render_cycle_specs_block).
+        if not cls.proposal_tpl.line_ids.filtered(
+            lambda l: l.block_kind == "cycle_specs"
+        ):
+            cls.env["afr.proposal.template.line"].create({
+                "template_id": cls.proposal_tpl.id,
+                "sequence": 75,
+                "block_kind": "cycle_specs",
+                "title": "Tabela de Ciclos",
+            })
         cls.report = cls.env.ref("sale.action_report_saleorder")
 
     def _built_so(self, with_blocks=True):

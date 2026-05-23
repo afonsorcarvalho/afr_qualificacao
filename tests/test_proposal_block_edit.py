@@ -15,6 +15,20 @@ from .common import AfrQualificacaoTestCommon
 @tagged("post_install", "-at_install")
 class TestProposalBlockEdit(AfrQualificacaoTestCommon):
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # F8.8 — cycle_specs removido do seed default; injeta a linha aqui
+        # pra cobrir test_snapshot_cycle_specs_reflects_temperature.
+        tpl = cls.env.ref("afr_qualificacao.proposal_template_labquali")
+        if not tpl.line_ids.filtered(lambda l: l.block_kind == "cycle_specs"):
+            cls.env["afr.proposal.template.line"].create({
+                "template_id": tpl.id,
+                "sequence": 75,
+                "block_kind": "cycle_specs",
+                "title": "Tabela de Ciclos",
+            })
+
     def _built_so(self):
         so = self.env["sale.order"].create({"partner_id": self.partner.id})
         so.proposal_template_id = self.env.ref(

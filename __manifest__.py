@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.12.0",
+    "version": "16.0.4.12.1",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -80,6 +80,11 @@
               configurador usa template description antes do product.name
               como default da subline. Permite cadastrar descrição rica
               uma vez no template e reaproveitar em todas as cotações.
+            F8.13.1 (16.0.4.12.1): 3 baselines pre-existing F8.6-F8.10
+              corrigidas. test_seed_default_template_loaded espera 17
+              linhas (cycle_specs removido F8.8). test_snapshot_cycle_specs
+              + test_render_cycle_specs_block injetam template line
+              cycle_specs dinamicamente em setUpClass. 225/0/0 PASS.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

@@ -134,8 +134,9 @@ class TestProposalCatalog(TransactionCase):
     def test_seed_default_template_loaded(self):
         """Template default 'Proposta LabQuali' tem os blocos na ordem."""
         tpl = self.env.ref("afr_qualificacao.proposal_template_labquali")
-        # seed cria 18 linhas; o cliente pode acrescentar mais (noupdate).
-        self.assertGreaterEqual(len(tpl.line_ids), 18)
+        # F8.8 — seed cria 17 linhas (cycle_specs/l07 removido; tabelas QO/QD
+        # agora inline no Equipment Scope). Cliente pode acrescentar (noupdate).
+        self.assertGreaterEqual(len(tpl.line_ids), 17)
         first = tpl.line_ids.sorted("sequence")[0]
         self.assertEqual(first.block_kind, "static")
         self.assertEqual(
