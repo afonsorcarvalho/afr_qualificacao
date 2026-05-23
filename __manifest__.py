@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.11.0",
+    "version": "16.0.4.12.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -75,6 +75,11 @@
               checkbox `do_qo` do equipment_line + bulk wizard (presença
               de qo_line_ids = aplicar QO; fallback type.config descontinuado).
               ACL faltante adicionada para `afr.qualificacao.configurator.bulk.qo`.
+            F8.13 (16.0.4.12.0): templates de equipamento ganham
+              `description` (Char) por linha QO/QD/Calib. Autofill do
+              configurador usa template description antes do product.name
+              como default da subline. Permite cadastrar descrição rica
+              uma vez no template e reaproveitar em todas as cotações.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

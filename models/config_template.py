@@ -95,6 +95,11 @@ class AfrQualificacaoConfigTemplateQd(models.Model):
         string="Tipo de Ciclo",
         required=True,
     )
+    description = fields.Char(
+        string="Descrição",
+        translate=True,
+        help="Descrição que vira default da linha SO ao aplicar o template.",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
 
@@ -124,6 +129,11 @@ class AfrQualificacaoConfigTemplateQo(models.Model):
         required=True,
         domain=[("load_type", "in", ["vazio", "sem_carga"])],
     )
+    description = fields.Char(
+        string="Descrição",
+        translate=True,
+        help="Descrição que vira default da linha SO ao aplicar o template.",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
 
@@ -151,6 +161,11 @@ class AfrQualificacaoConfigTemplateCalib(models.Model):
         comodel_name="afr.qualificacao.malha.type",
         string="Tipo de Malha",
         required=True,
+    )
+    description = fields.Char(
+        string="Descrição",
+        translate=True,
+        help="Descrição que vira default da linha SO ao aplicar o template.",
     )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)

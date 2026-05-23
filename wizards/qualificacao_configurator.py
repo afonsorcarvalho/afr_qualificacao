@@ -504,7 +504,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             (0, 0, {
                 "cycle_type_id": line.cycle_type_id.id,
                 "qty": line.qty,
-                "description": line.cycle_type_id.product_id.name or False,
+                "description": (
+                    line.description
+                    or line.cycle_type_id.product_id.name
+                    or False
+                ),
                 "unit_price": (
                     line.cycle_type_id.default_unit_price
                     or line.cycle_type_id.product_id.list_price
@@ -517,7 +521,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             (0, 0, {
                 "cycle_type_id": line.cycle_type_id.id,
                 "qty": line.qty,
-                "description": line.cycle_type_id.product_id.name or False,
+                "description": (
+                    line.description
+                    or line.cycle_type_id.product_id.name
+                    or False
+                ),
                 "unit_price": (
                     line.cycle_type_id.default_unit_price
                     or line.cycle_type_id.product_id.list_price
@@ -530,7 +538,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             (0, 0, {
                 "malha_type_id": line.malha_type_id.id,
                 "qty": line.qty,
-                "description": line.malha_type_id.product_id.name or False,
+                "description": (
+                    line.description
+                    or line.malha_type_id.product_id.name
+                    or False
+                ),
                 "unit_price": (
                     line.malha_type_id.default_unit_price
                     or line.malha_type_id.product_id.list_price
