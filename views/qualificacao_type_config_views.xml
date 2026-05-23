@@ -12,6 +12,7 @@
                 <field name="qualification_type"/>
                 <field name="service_product_id"/>
                 <field name="default_unit_price" widget="monetary"/>
+                <field name="estimated_hours"/>
                 <field name="currency_id" invisible="1"/>
                 <field name="analytic_account_id"/>
                 <field name="company_id" groups="base.group_multi_company"/>
@@ -32,6 +33,7 @@
                             <field name="qualification_type"/>
                             <field name="service_product_id" options="{'no_create_edit': True}"/>
                             <field name="default_unit_price" widget="monetary"/>
+                            <field name="estimated_hours"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
                         <group>

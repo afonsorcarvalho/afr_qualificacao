@@ -54,6 +54,14 @@ class AfrQualificacaoTypeConfig(models.Model):
             "será usado o list_price do produto."
         ),
     )
+    estimated_hours = fields.Float(
+        string="Horas Estimadas",
+        digits="Product Price",
+        help=(
+            "Horas estimadas pra execução deste tipo (QI/QO/QS/Calib) "
+            "quando não há ciclo específico. Usado pelo cronograma."
+        ),
+    )
     analytic_account_id = fields.Many2one(
         comodel_name="account.analytic.account",
         string="Conta Analítica Padrão",
