@@ -31,3 +31,5 @@ from . import test_configurator_steps
 from . import test_proposal_block_edit
 # F8.8 (16.0.4.7.0)
 from . import test_qo_cycles
+# F8.14 (16.0.4.x.0)
+from . import test_estimated_hours

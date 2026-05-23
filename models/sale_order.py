@@ -357,6 +357,38 @@ class SaleOrder(models.Model):
             })
         return summary
 
+    def _qualif_estimated_hours(self, equipment=None):
+        """F8.14 — soma horas estimadas das qualif lines do SO.
+
+        Override `sale.order.line.estimated_hours` prevalece; fallback
+        cycle_type/malha_type/type.config.estimated_hours.
+        """
+        self.ensure_one()
+        TypeConfig = self.env["afr.qualificacao.type.config"]
+        lines = self.order_line.filtered("is_qualificacao_managed")
+        if equipment:
+            lines = lines.filtered(lambda l: l.equipment_id == equipment)
+        total = 0.0
+        for line in lines:
+            hours = line.estimated_hours
+            if not hours:
+                if line.cycle_type_id:
+                    hours = line.cycle_type_id.estimated_hours
+                elif line.malha_type_id:
+                    hours = line.malha_type_id.estimated_hours
+                elif line.qualification_type in ("installation", "software"):
+                    cfg = TypeConfig.get_config_for(
+                        line.qualification_type, self.company_id,
+                    )
+                    if cfg:
+                        hours = cfg.estimated_hours
+            total += (hours or 0.0) * (line.product_uom_qty or 0)
+        return total
+
+    def _qualif_estimated_days(self, equipment=None):
+        """F8.14 — horas / 8 (Float decimal — 1 dia útil = 8h)."""
+        return self._qualif_estimated_hours(equipment) / 8.0
+
     def _qualif_type_descriptions(self):
         """Retorna descritivos técnicos por tipo qualif presente na SO.
 
