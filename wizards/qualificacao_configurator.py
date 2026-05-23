@@ -650,6 +650,10 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
         string="Preço Unitário",
         currency_field="currency_id",
     )
+    estimated_hours = fields.Float(
+        string="Horas",
+        digits="Product Price",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -674,6 +678,8 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
                     line.description = prod.name
                 if not line.unit_price:
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
+                if not line.estimated_hours:
+                    line.estimated_hours = line.cycle_type_id.estimated_hours
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -704,6 +710,10 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
         string="Preço Unitário",
         currency_field="currency_id",
     )
+    estimated_hours = fields.Float(
+        string="Horas",
+        digits="Product Price",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -728,6 +738,8 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
                     line.description = prod.name
                 if not line.unit_price:
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
+                if not line.estimated_hours:
+                    line.estimated_hours = line.cycle_type_id.estimated_hours
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -759,6 +771,10 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
         string="Preço Unitário",
         currency_field="currency_id",
     )
+    estimated_hours = fields.Float(
+        string="Horas",
+        digits="Product Price",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -783,6 +799,8 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
                     line.description = prod.name
                 if not line.unit_price:
                     line.unit_price = line.malha_type_id.default_unit_price or prod.list_price
+                if not line.estimated_hours:
+                    line.estimated_hours = line.malha_type_id.estimated_hours
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -899,6 +917,10 @@ class AfrQualificacaoConfiguratorBulkQo(models.TransientModel):
     )
     description = fields.Char(string="Descrição")
     unit_price = fields.Float(string="Preço Unitário")
+    estimated_hours = fields.Float(
+        string="Horas",
+        digits="Product Price",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
 
     @api.onchange("cycle_type_id")
@@ -910,6 +932,8 @@ class AfrQualificacaoConfiguratorBulkQo(models.TransientModel):
                     line.description = prod.name
                 if not line.unit_price:
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
+                if not line.estimated_hours:
+                    line.estimated_hours = line.cycle_type_id.estimated_hours
 
 
 class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
@@ -928,6 +952,10 @@ class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
     )
     description = fields.Char(string="Descrição")
     unit_price = fields.Float(string="Preço Unitário")
+    estimated_hours = fields.Float(
+        string="Horas",
+        digits="Product Price",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
 
     @api.onchange("cycle_type_id")
@@ -939,6 +967,8 @@ class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
                     line.description = prod.name
                 if not line.unit_price:
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
+                if not line.estimated_hours:
+                    line.estimated_hours = line.cycle_type_id.estimated_hours
 
 
 class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
@@ -957,6 +987,10 @@ class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
     )
     description = fields.Char(string="Descrição")
     unit_price = fields.Float(string="Preço Unitário")
+    estimated_hours = fields.Float(
+        string="Horas",
+        digits="Product Price",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
 
     @api.onchange("malha_type_id")
@@ -968,3 +1002,5 @@ class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
                     line.description = prod.name
                 if not line.unit_price:
                     line.unit_price = line.malha_type_id.default_unit_price or prod.list_price
+                if not line.estimated_hours:
+                    line.estimated_hours = line.malha_type_id.estimated_hours
