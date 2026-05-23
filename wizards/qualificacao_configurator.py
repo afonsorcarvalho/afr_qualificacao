@@ -514,6 +514,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     or line.cycle_type_id.product_id.list_price
                     or 0.0
                 ),
+                "estimated_hours": (
+                    line.estimated_hours
+                    or line.cycle_type_id.estimated_hours
+                    or 0.0
+                ),
             })
             for line in tpl.qo_line_ids
         ]
@@ -531,6 +536,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     or line.cycle_type_id.product_id.list_price
                     or 0.0
                 ),
+                "estimated_hours": (
+                    line.estimated_hours
+                    or line.cycle_type_id.estimated_hours
+                    or 0.0
+                ),
             })
             for line in tpl.qd_line_ids
         ]
@@ -546,6 +556,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 "unit_price": (
                     line.malha_type_id.default_unit_price
                     or line.malha_type_id.product_id.list_price
+                    or 0.0
+                ),
+                "estimated_hours": (
+                    line.estimated_hours
+                    or line.malha_type_id.estimated_hours
                     or 0.0
                 ),
             })
@@ -603,6 +618,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 (0, 0, {
                     "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                     "description": l.description, "unit_price": l.unit_price,
+                    "estimated_hours": l.estimated_hours,
                 })
                 for l in self.qo_line_ids
             ],
@@ -610,6 +626,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 (0, 0, {
                     "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                     "description": l.description, "unit_price": l.unit_price,
+                    "estimated_hours": l.estimated_hours,
                 })
                 for l in self.qd_line_ids
             ],
@@ -617,6 +634,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 (0, 0, {
                     "malha_type_id": l.malha_type_id.id, "qty": l.qty,
                     "description": l.description, "unit_price": l.unit_price,
+                    "estimated_hours": l.estimated_hours,
                 })
                 for l in self.calib_line_ids
             ],
