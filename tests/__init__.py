@@ -23,3 +23,11 @@ from . import test_docx_render
 from . import test_proposal_catalog
 # F8.2 (16.0.4.1.0)
 from . import test_proposal_builder
+# F8.3 (16.0.4.2.0)
+from . import test_proposal_report
+# F8.4 (16.0.4.3.0)
+from . import test_configurator_steps
+# F8.5 (16.0.4.4.0)
+from . import test_proposal_block_edit
+# F8.8 (16.0.4.7.0)
+from . import test_qo_cycles

@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.1.0",
+    "version": "16.0.4.9.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -35,7 +35,33 @@
             F8.2 (16.0.4.1.0): builder — wizard escolhe template de
               equipamento + opcionais; sale.order ganha proposal_template_id
               + blocos lego editáveis (afr.proposal.block).
-            F8.3 (futuro): report percorrendo blocos.
+            F8.3 (16.0.4.2.0): report percorre proposal_block_ids — blocos
+              static renderizados com {{ tokens }} (inline_template) +
+              blocos dinâmicos (escopo/ciclos/normas/financeiro/opcionais/
+              aceite). Fallback para layout fixo quando sem blocos.
+            F8.4 (16.0.4.3.0): configurador guiado multi-step — Escopo →
+              Opcionais → Blocos → Revisão, com navegação Voltar/Próximo.
+            F8.5 (16.0.4.4.0): botão "Editar" por bloco (modal). Bloco
+              dinâmico é convertido por snapshot — conteúdo auto-gerado
+              congelado em HTML editável (vira static).
+            F8.6 (16.0.4.5.0): quebra de página por bloco (page_break) —
+              flag vem do template.line, copiada para o bloco; default
+              continua na mesma página.
+            F8.7 (16.0.4.6.0): passos do configurador reordenados (Blocos
+              antes de Opcionais); título do bloco editável no template
+              (template.line.title) — usado no relatório.
+            F8.8 (16.0.4.7.0): escopo detalhado — ciclos QO (sem carga)
+              modelados igual aos QD (cycle_type + qty por linha SO);
+              tabelas QO + QD inline dentro do Equipment Scope; execução
+              tracka ciclos QO em afr.qualificacao.cycle; seed de
+              cycle_types comuns por equipamento.
+            F8.9 (16.0.4.8.0): seeds de categorias de equipamento +
+              malhas (Temp/Press/Umidade) + linka cycle_types às
+              categorias + template "Pacote Autoclave a Vapor" pronto
+              (QI+QO+QD+ciclos+malhas+preço sugerido).
+            F8.10 (16.0.4.9.0): refinamento Equipment Scope — remove
+              subtotal por equipamento (preço só no Resumo Financeiro);
+              calib renderiza como "0N Calibração de <malha>".
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -70,6 +96,14 @@
         "data/sensor_kind_seed.xml",
         "data/standard_seed.xml",
         "data/docx_templates_seed.xml",
+        # F8.9 — categorias de equipamento (engc.equipment.category)
+        "data/equipment_category_seed.xml",
+        # F8.9 — malhas comuns (Temp/Press/Umidade)
+        "data/malha_type_seed.xml",
+        # F8.8 — ciclos comuns por equipamento (linkados às categorias)
+        "data/cycle_type_seed.xml",
+        # F8.9 — templates de equipamento prontos (Pacote Autoclave a Vapor)
+        "data/config_template_seed.xml",
         # F8.1 — Proposta LEGO: blocos e templates (section antes de template)
         "data/proposal_section_seed.xml",
         "data/proposal_optional_seed.xml",
@@ -84,6 +118,7 @@
         "views/proposal_section_views.xml",
         "views/proposal_optional_views.xml",
         "views/proposal_template_views.xml",
+        "views/proposal_block_views.xml",
         "views/qualificacao_type_config_views.xml",
         "views/qualificacao_procedimento_views.xml",
         # Views — operação (actions registradas antes do menu)

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        F8.9 — Templates de equipamento (config.template) pré-cadastrados,
+        baseados nas figuras da proposta LabQuali. Cada template traz o
+        escopo técnico completo (QI/QO/QD + ciclos QO/QD + malhas) +
+        sugestão de preço/dias. noupdate="1": cliente customiza.
+    -->
+
+    <!-- Pacote Autoclave a Vapor — figura 9.1 da proposta -->
+    <record id="config_template_autoclave_vapor" model="afr.qualificacao.config.template">
+        <field name="name">Pacote Autoclave a Vapor</field>
+        <field name="equipment_category_id" ref="cat_autoclave_vapor"/>
+        <field name="do_qi" eval="True"/>
+        <field name="do_qo" eval="True"/>
+        <field name="do_qs" eval="False"/>
+        <field name="price_base">2400.0</field>
+        <field name="estimated_days">1.5</field>
+        <field name="description">Pacote padrão para Autoclave a Vapor hospitalar. QI 1ª parte (documentação, elementos de controle, principais componentes, materiais, instrumentação, certificados, utilidades, equipamentos críticos, alimentação e proteção, conexões, módulos I/O). QO 1ª parte (intertravamento, perda de energia, alarmes, senhas, falta de utilidades, parâmetros operacionais, interface). QI 2ª parte (calibração de malhas de Temperatura, Pressão e Temporizador). QO 2ª parte (ciclos sem carga). QD (ciclos com carga). Previsão 1.5 dias de serviço.</field>
+        <field name="sequence">10</field>
+        <field name="qo_line_ids" eval="[
+            (0, 0, {'cycle_type_id': ref('cycle_autoclave_bowie_dick'), 'qty': 3, 'sequence': 10}),
+            (0, 0, {'cycle_type_id': ref('cycle_autoclave_vazio_sensiveis'), 'qty': 3, 'sequence': 20}),
+        ]"/>
+        <field name="qd_line_ids" eval="[
+            (0, 0, {'cycle_type_id': ref('cycle_autoclave_carga_mista'), 'qty': 3, 'sequence': 10}),
+            (0, 0, {'cycle_type_id': ref('cycle_autoclave_carga_sensiveis'), 'qty': 3, 'sequence': 20}),
+        ]"/>
+        <field name="calib_line_ids" eval="[
+            (0, 0, {'malha_type_id': ref('malha_temperatura'), 'qty': 1, 'sequence': 10}),
+            (0, 0, {'malha_type_id': ref('malha_pressao'), 'qty': 1, 'sequence': 20}),
+        ]"/>
+    </record>
+
+</odoo>

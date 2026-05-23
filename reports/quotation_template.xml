@@ -180,17 +180,22 @@
                     }
                     .qq-total-table {
                         width: 100%;
-                        font-size: 16px;
-                        margin-top: 10px;
+                        font-size: 14px;
+                        border-collapse: collapse;
+                        margin-top: -10px;
+                        margin-bottom: 10px;
                     }
                     .qq-total-table td {
-                        padding: 7px 10px;
+                        padding: 6px 10px;
+                        border-bottom: 1px solid #eee;
                     }
-                    .qq-total-table .qq-tot-label { text-align: left; color: #555; }
-                    .qq-total-table .qq-tot-value { text-align: right; font-weight: bold; color: #222; }
-                    .qq-total-grand {
+                    .qq-total-table .qq-tot-label { text-align: right; color: #555; width: 75%; }
+                    .qq-total-table .qq-tot-value { text-align: right; font-weight: bold; color: #222; width: 25%; }
+                    .qq-total-grand td {
                         border-top: 2px solid #333;
-                        font-size: 18px;
+                        border-bottom: none;
+                        padding-top: 8px;
+                        font-weight: bold;
                         color: #000;
                     }
                     .qq-conditions-grid {
@@ -239,6 +244,23 @@
                         font-size: 13px;
                         color: #888;
                     }
+                    /* F8.3 — corpo de bloco de texto estático (HTML livre) */
+                    .qq-block-body {
+                        font-size: 14px;
+                        color: #444;
+                        line-height: 1.5;
+                        text-align: justify;
+                    }
+                    .qq-block-body table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 8px 0;
+                        font-size: 13px;
+                    }
+                    .qq-block-body td, .qq-block-body th {
+                        border: 1px solid #ddd;
+                        padding: 5px 8px;
+                    }
                 </style>
 
                 <!-- ========================================================
@@ -286,6 +308,305 @@
                 ========================================================= -->
                 <t t-set="summary" t-value="doc._qualif_equipment_summary()"/>
                 <t t-set="type_descs" t-value="doc._qualif_type_descriptions()"/>
+
+                <!-- ========================================================
+                     F8.3 — Proposta LEGO: percorre os blocos montados na
+                     cotação (proposal_block_ids, incluídos, ordenados).
+                     Fallback para o layout fixo quando a SO não tem blocos.
+                ========================================================= -->
+                <t t-if="doc.proposal_block_ids.filtered('included')">
+                    <t t-foreach="doc.proposal_block_ids.filtered('included')" t-as="block">
+
+                        <!-- F8.6 — quebra de página por bloco (page_break).
+                             Sem quebra → classe qq-section-cont (continua). -->
+                        <t t-set="sec_class"
+                           t-value="'qq-section' if block.page_break else 'qq-section qq-section-cont'"/>
+
+                        <!-- Bloco de texto estático -->
+                        <t t-if="block.block_kind == 'static'">
+                            <div t-att-class="sec_class">
+                                <div class="qq-section-title" t-if="block.title">
+                                    <span t-esc="block.title"/>
+                                </div>
+                                <div class="qq-block-body"
+                                     t-out="doc._render_proposal_block_body(block.body)"/>
+                            </div>
+                        </t>
+
+                        <!-- Escopo por equipamento -->
+                        <t t-if="block.block_kind == 'equipment_scope'">
+                            <div t-att-class="sec_class">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Escopo por Equipamento'"/>
+                                </div>
+                                <t t-foreach="summary" t-as="eq">
+                                    <div class="qq-equip-card">
+                                        <div class="qq-equip-header">
+                                            <span t-esc="eq['equipment'].name"/>
+                                            <span class="qq-equip-meta">
+                                                <t t-if="eq['equipment'].serial_number">
+                                                    · S/N: <span t-esc="eq['equipment'].serial_number"/>
+                                                </t>
+                                                <t t-if="eq['equipment'].category_id">
+                                                    · Categoria: <span t-esc="eq['equipment'].category_id.name"/>
+                                                </t>
+                                            </span>
+                                        </div>
+
+                                        <!-- F8.8 — Tabela QO (sem carga) inline -->
+                                        <t t-set="qo_rows" t-value="doc._qualif_cycle_rows_for(eq['equipment'], 'qo')"/>
+                                        <t t-if="qo_rows">
+                                            <div class="qq-type-label">QO — Ciclos sem carga</div>
+                                            <table class="qq-table">
+                                                <tr>
+                                                    <th style="width: 10%;">Qtd</th>
+                                                    <th>Ciclo</th>
+                                                    <th style="width: 22%;">Temperatura</th>
+                                                    <th style="width: 22%;">Tempo</th>
+                                                </tr>
+                                                <t t-foreach="qo_rows" t-as="row">
+                                                    <tr>
+                                                        <td t-esc="row['qty']"/>
+                                                        <td t-esc="row['name']"/>
+                                                        <td t-esc="row['temperature']"/>
+                                                        <td t-esc="row['duration']"/>
+                                                    </tr>
+                                                </t>
+                                            </table>
+                                        </t>
+
+                                        <!-- F8.8 — Tabela QD (com carga) inline -->
+                                        <t t-set="qd_rows" t-value="doc._qualif_cycle_rows_for(eq['equipment'], 'qd')"/>
+                                        <t t-if="qd_rows">
+                                            <div class="qq-type-label">QD — Ciclos com carga</div>
+                                            <table class="qq-table">
+                                                <tr>
+                                                    <th style="width: 10%;">Qtd</th>
+                                                    <th>Ciclo</th>
+                                                    <th style="width: 22%;">Temperatura</th>
+                                                    <th style="width: 22%;">Tempo</th>
+                                                </tr>
+                                                <t t-foreach="qd_rows" t-as="row">
+                                                    <tr>
+                                                        <td t-esc="row['qty']"/>
+                                                        <td t-esc="row['name']"/>
+                                                        <td t-esc="row['temperature']"/>
+                                                        <td t-esc="row['duration']"/>
+                                                    </tr>
+                                                </t>
+                                            </table>
+                                        </t>
+
+                                        <!-- Itens por tipo (skip performance e operational cycle-based: já tabelados) -->
+                                        <t t-foreach="eq['types']" t-as="tp">
+                                            <t t-set="skip_tp" t-value="tp['code'] == 'performance' or (tp['code'] == 'operational' and qo_rows)"/>
+                                            <t t-if="not skip_tp">
+                                                <div class="qq-type-block">
+                                                    <div class="qq-type-label">
+                                                        <span t-esc="tp['label']"/>
+                                                    </div>
+                                                    <ul class="qq-item-list">
+                                                        <t t-foreach="tp['items']" t-as="it">
+                                                            <li>
+                                                                <!-- F8.10 — calib: "0N Calibração de X" -->
+                                                                <t t-if="tp['code'] == 'calibration'">
+                                                                    <span t-esc="'%02d' % int(it['qty'] or 0)"/>
+                                                                    <span t-esc="it['name']"/>
+                                                                </t>
+                                                                <t t-else="">
+                                                                    <span t-esc="it['name']"/>
+                                                                    <t t-if="it['qty'] and it['qty'] != 1">
+                                                                        — quantidade:
+                                                                        <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
+                                                                    </t>
+                                                                </t>
+                                                            </li>
+                                                        </t>
+                                                    </ul>
+                                                </div>
+                                            </t>
+                                        </t>
+                                        <!-- F8.10 — subtotal por equipamento removido do escopo
+                                             (preço aparece no bloco Resumo Financeiro). -->
+
+                                    </div>
+                                </t>
+                            </div>
+                        </t>
+
+                        <!-- Tabela de ciclos (specs técnicas) -->
+                        <t t-if="block.block_kind == 'cycle_specs'">
+                            <t t-set="cycle_specs" t-value="doc._qualif_cycle_specs()"/>
+                            <div t-att-class="sec_class" t-if="cycle_specs">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Especificação de Ciclos'"/>
+                                </div>
+                                <t t-foreach="cycle_specs" t-as="cs">
+                                    <div class="qq-subsection-title">
+                                        <span t-esc="cs['equipment'].name"/>
+                                    </div>
+                                    <table class="qq-table">
+                                        <tr>
+                                            <th style="width: 10%;">Qtd</th>
+                                            <th>Ciclo</th>
+                                            <th style="width: 20%;">Temperatura</th>
+                                            <th style="width: 20%;">Tempo</th>
+                                            <th style="width: 20%;">Carga</th>
+                                        </tr>
+                                        <t t-foreach="cs['rows']" t-as="row">
+                                            <tr>
+                                                <td t-esc="row['qty']"/>
+                                                <td t-esc="row['name']"/>
+                                                <td t-esc="row['temperature']"/>
+                                                <td t-esc="row['duration']"/>
+                                                <td t-esc="row['load_type']"/>
+                                            </tr>
+                                        </t>
+                                    </table>
+                                </t>
+                            </div>
+                        </t>
+
+                        <!-- Tabela de normas -->
+                        <t t-if="block.block_kind == 'standards_table'">
+                            <div t-att-class="sec_class" t-if="doc.qualif_standard_ids">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Normas Aplicáveis'"/>
+                                </div>
+                                <table class="qq-table">
+                                    <tr>
+                                        <th style="width: 22%;">Código</th>
+                                        <th style="width: 38%;">Nome</th>
+                                        <th style="width: 15%;">Organismo</th>
+                                        <th>Escopo</th>
+                                    </tr>
+                                    <t t-foreach="doc.qualif_standard_ids" t-as="std">
+                                        <tr>
+                                            <td><strong t-esc="std.code"/></td>
+                                            <td><span t-esc="std.name"/></td>
+                                            <td><span class="qq-norma-organism" t-esc="std.organism or ''"/></td>
+                                            <td><span t-esc="std.description or ''"/></td>
+                                        </tr>
+                                    </t>
+                                </table>
+                            </div>
+                        </t>
+
+                        <!-- Resumo financeiro -->
+                        <t t-if="block.block_kind == 'financial'">
+                            <div t-att-class="sec_class">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Resumo Financeiro'"/>
+                                </div>
+                                <table class="qq-table">
+                                    <tr>
+                                        <th>Equipamento</th>
+                                        <th style="text-align: right;">Subtotal</th>
+                                    </tr>
+                                    <t t-foreach="summary" t-as="eq">
+                                        <tr>
+                                            <td><span t-esc="eq['equipment'].name"/></td>
+                                            <td style="text-align: right;">
+                                                <span t-esc="eq['subtotal']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </table>
+                                <table class="qq-total-table">
+                                    <tr>
+                                        <td class="qq-tot-label">Subtotal:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-field="doc.amount_untaxed"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="qq-tot-label">Impostos:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-field="doc.amount_tax"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                    <tr class="qq-total-grand">
+                                        <td class="qq-tot-label">TOTAL GERAL:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-field="doc.amount_total"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </t>
+
+                        <!-- Serviços opcionais -->
+                        <t t-if="block.block_kind == 'optionals'">
+                            <t t-set="opt_lines" t-value="doc.order_line.filtered('is_proposal_optional')"/>
+                            <div t-att-class="sec_class" t-if="opt_lines">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Serviços Opcionais'"/>
+                                </div>
+                                <table class="qq-table">
+                                    <tr>
+                                        <th>Serviço</th>
+                                        <th style="width: 10%;">Qtd</th>
+                                        <th style="width: 20%; text-align: right;">Valor Unit.</th>
+                                        <th style="width: 20%; text-align: right;">Subtotal</th>
+                                    </tr>
+                                    <t t-foreach="opt_lines" t-as="ol">
+                                        <tr>
+                                            <td><span t-esc="ol.name"/></td>
+                                            <td>
+                                                <span t-esc="int(ol.product_uom_qty) if ol.product_uom_qty == int(ol.product_uom_qty) else ol.product_uom_qty"/>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <span t-esc="ol.price_unit"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <span t-esc="ol.price_subtotal"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </table>
+                            </div>
+                        </t>
+
+                        <!-- Aceite -->
+                        <t t-if="block.block_kind == 'acceptance'">
+                            <div t-attf-class="#{sec_class} qq-signature-block">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Aceite da Proposta'"/>
+                                </div>
+                                <div class="qq-signature-row">
+                                    <div class="qq-signature-col">
+                                        <div class="qq-signature-line"/>
+                                        <div class="qq-signature-label">
+                                            <strong>CLIENTE</strong><br/>
+                                            <span t-field="doc.partner_id.name"/><br/>
+                                            Nome, cargo, assinatura e carimbo
+                                        </div>
+                                    </div>
+                                    <div class="qq-signature-col">
+                                        <div class="qq-signature-line"/>
+                                        <div class="qq-signature-label">
+                                            <strong>EMPRESA</strong><br/>
+                                            <span t-field="doc.company_id.name"/><br/>
+                                            Nome, cargo, assinatura
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 30px; text-align: center; font-size: 14px;">
+                                    <strong>Local e data:</strong>
+                                    ____________________________________, ____ / ____ / ________
+                                </div>
+                            </div>
+                        </t>
+
+                    </t>
+                </t>
+                <t t-else="">
 
                 <div class="qq-section">
                     <div class="qq-section-title">Sumário Executivo</div>
@@ -590,6 +911,7 @@
                         ____________________________________, ____ / ____ / ________
                     </div>
                 </div>
+                </t>
             </div>
         </xpath>
     </template>

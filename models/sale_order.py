@@ -12,6 +12,8 @@
 
 from collections import OrderedDict, defaultdict
 
+from markupsafe import Markup
+
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
@@ -319,11 +321,11 @@ class SaleOrder(models.Model):
                         item_name = line.name or line.cycle_type_id.name
                         subtype = "cycle_type"
                     elif line.malha_type_id:
-                        fallback = "%s (%s)" % (
-                            line.malha_type_id.name,
-                            line.malha_type_id.sensor_kind_id.name or "",
-                        )
-                        item_name = line.name or fallback
+                        # F8.10 — calib na proposta: "Calibração de <malha>"
+                        # (prefixo de quantidade aplicado no render do report;
+                        # line.name é geralmente o nome do produto e fica
+                        # menos informativo que o nome da malha).
+                        item_name = "Calibração de %s" % line.malha_type_id.name
                         subtype = "malha_type"
                     else:
                         # QI/QO/QS: line.name = descrição (default Odoo
@@ -433,16 +435,24 @@ class SaleOrder(models.Model):
         for order in self:
             if order.proposal_block_ids or not order.proposal_template_id:
                 continue
+            kind_labels = dict(
+                self.env["afr.proposal.block"]._fields["block_kind"].selection
+            )
             vals = []
             for line in order.proposal_template_id.line_ids.sorted("sequence"):
                 section = line.section_id
+                title = line.title or (
+                    section.name if section
+                    else kind_labels.get(line.block_kind, "")
+                )
                 vals.append({
                     "sale_order_id": order.id,
                     "sequence": line.sequence,
                     "block_kind": line.block_kind,
                     "section_id": section.id if section else False,
-                    "title": section.name if section else False,
+                    "title": title,
                     "body": section.body if section else False,
+                    "page_break": line.page_break,
                 })
             if vals:
                 Block.create(vals)
@@ -453,6 +463,88 @@ class SaleOrder(models.Model):
         self.proposal_block_ids.unlink()
         self._seed_proposal_blocks()
         return True
+
+    def _render_proposal_block_body(self, body):
+        """Renderiza o corpo de um bloco static resolvendo {{ expressões }}.
+
+        Usa o engine `inline_template` do mail.render.mixin (sandbox de
+        expressões {{ }}) com contexto restrito — `partner`, `company`,
+        `doc` — sem expor `env` arbitrário. Retorna Markup p/ saída raw
+        no QWeb (`t-out`).
+        """
+        self.ensure_one()
+        if not body:
+            return Markup("")
+        rendered = self.env["mail.render.mixin"].sudo()._render_template(
+            str(body), "sale.order", [self.id], engine="inline_template",
+            add_context={
+                "partner": self.partner_id,
+                "company": self.company_id,
+                "doc": self,
+            },
+        )
+        return Markup(rendered.get(self.id) or "")
+
+    def _qualif_cycle_rows_for(self, equipment, phase):
+        """F8.8 — Linhas de ciclo (qtd/ciclo/temp/tempo) para o
+        Equipment Scope inline. `phase` = 'qo' (operational) ou 'qd'
+        (performance). Apenas linhas com `cycle_type_id` setado.
+        """
+        self.ensure_one()
+        qtype = "operational" if phase == "qo" else "performance"
+        lines = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
+            and l.equipment_id == equipment
+            and l.qualification_type == qtype
+            and l.cycle_type_id
+        )
+        return [
+            {
+                "name": line.cycle_type_id.name,
+                "qty": int(line.product_uom_qty or 0),
+                "temperature": line.cycle_type_id.temperature or "",
+                "duration": line.cycle_type_id.duration or "",
+            }
+            for line in lines
+        ]
+
+    def _qualif_cycle_specs(self):
+        """Specs técnicas de ciclos QD por equipamento (bloco cycle_specs).
+
+        Retorna lista ordenada de dicts:
+            [{"equipment": <rec>, "rows": [
+                {"name", "qty", "temperature", "duration", "load_type"}, ...
+            ]}, ...]
+        """
+        self.ensure_one()
+        managed = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
+            and l.cycle_type_id
+        )
+        load_labels = dict(
+            self.env["afr.qualificacao.cycle.type"]._fields["load_type"].selection
+        )
+        by_equip = OrderedDict()
+        for line in managed:
+            by_equip.setdefault(line.equipment_id, []).append(line)
+        result = []
+        for equip, lines in by_equip.items():
+            rows = []
+            for line in lines:
+                cycle_type = line.cycle_type_id
+                rows.append({
+                    "name": cycle_type.name,
+                    "qty": int(line.product_uom_qty or 0),
+                    "temperature": cycle_type.temperature or "",
+                    "duration": cycle_type.duration or "",
+                    "load_type": load_labels.get(cycle_type.load_type, ""),
+                })
+            result.append({"equipment": equip, "rows": rows})
+        return result
 
     def action_open_configurator(self):
         """Abre wizard configurador de qualificações em modal fullscreen."""
@@ -577,9 +669,14 @@ class SaleOrder(models.Model):
                 )
                 type_lines.write({"afr_qualificacao_id": qualif.id})
 
-                # Sub-records explodidos por qty
-                if qtype == "performance":
+                # Sub-records explodidos por qty.
+                # F8.8 — QO cycle-based explode igual ao QD: linhas
+                # operational com cycle_type_id geram afr.qualificacao.cycle.
+                if qtype in ("performance", "operational"):
                     for line in type_lines:
+                        if not line.cycle_type_id:
+                            # operational sem cycle (do_qo boolean): sem sub-records
+                            continue
                         qty = int(line.product_uom_qty or 0)
                         for seq in range(1, qty + 1):
                             Cycle.create({
@@ -598,7 +695,7 @@ class SaleOrder(models.Model):
                                 "sale_order_line_id": line.id,
                                 "sequence": seq * 10,
                             })
-                # QI/QO/QS: sem sub-records
+                # QI/QS: sem sub-records. QO boolean: sem sub-records (pulado acima).
 
                 # F3 (16.0.3.2.0): explode procedimento default em collect.items
                 # sudo: vendedor pode confirmar SO sem precisar de grupos qualif

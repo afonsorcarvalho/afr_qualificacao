@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- F8.5 — editor de bloco da proposta em modal (botão "Editar"). -->
+    <record id="view_proposal_block_form" model="ir.ui.view">
+        <field name="name">afr.proposal.block.form</field>
+        <field name="model">afr.proposal.block</field>
+        <field name="arch" type="xml">
+            <form string="Bloco da Proposta">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="block_kind" readonly="1"/>
+                            <field name="title"/>
+                        </group>
+                        <group>
+                            <field name="included"/>
+                            <field name="page_break"/>
+                            <field name="section_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <separator string="Conteúdo (aceita {{ expressões }})"/>
+                    <field name="body"/>
+                </sheet>
+                <footer>
+                    <button string="Fechar" class="btn-primary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

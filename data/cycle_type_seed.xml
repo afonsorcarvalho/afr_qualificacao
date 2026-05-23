@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        F8.8 — Seed de ciclos comuns por categoria de equipamento,
+        baseado nas figuras da proposta LabQuali. F8.9 linka cada ciclo
+        à sua engc.equipment.category (cat_autoclave_vapor etc.). Todos
+        referenciam 1 produto serviço genérico (preço 0; comercial
+        ajusta no orçamento). noupdate="1": cliente customiza sem perder.
+    -->
+
+    <!-- Produto serviço genérico de execução de ciclo -->
+    <record id="product_cycle_execution" model="product.product">
+        <field name="name">Execução de Ciclo de Qualificação</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <!-- ===== Autoclave a Vapor ===== -->
+    <record id="cycle_autoclave_bowie_dick" model="afr.qualificacao.cycle.type">
+        <field name="name">Bowie Dick (Autoclave)</field>
+        <field name="code">AUT-BWD</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_vapor"/>
+        <field name="temperature">134°C</field>
+        <field name="duration">3.5 min</field>
+        <field name="load_type">sem_carga</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="cycle_autoclave_vazio_sensiveis" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazio Sensíveis (Autoclave)</field>
+        <field name="code">AUT-VAS</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_vapor"/>
+        <field name="temperature">121°C</field>
+        <field name="duration">20 min</field>
+        <field name="load_type">sem_carga</field>
+        <field name="sequence">11</field>
+    </record>
+    <record id="cycle_autoclave_carga_mista" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Mista (Autoclave)</field>
+        <field name="code">AUT-CM</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_vapor"/>
+        <field name="temperature">134°C</field>
+        <field name="duration">7 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">12</field>
+    </record>
+    <record id="cycle_autoclave_carga_sensiveis" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Sensíveis (Autoclave)</field>
+        <field name="code">AUT-CS</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_vapor"/>
+        <field name="temperature">121°C</field>
+        <field name="duration">20 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">13</field>
+    </record>
+
+    <!-- ===== Termodesinfectora ===== -->
+    <record id="cycle_termo_vazio_80" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazio 80°C (Termodesinfectora)</field>
+        <field name="code">TER-V80</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_termodesinfectora"/>
+        <field name="temperature">80°C</field>
+        <field name="duration">10 min</field>
+        <field name="load_type">vazio</field>
+        <field name="sequence">20</field>
+    </record>
+    <record id="cycle_termo_vazio_92" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazio 92°C (Termodesinfectora)</field>
+        <field name="code">TER-V92</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_termodesinfectora"/>
+        <field name="temperature">92°C</field>
+        <field name="duration">2 min</field>
+        <field name="load_type">vazio</field>
+        <field name="sequence">21</field>
+    </record>
+    <record id="cycle_termo_carga_instrumental" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Instrumental (Termodesinfectora)</field>
+        <field name="code">TER-CI</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_termodesinfectora"/>
+        <field name="temperature">92°C</field>
+        <field name="duration">2 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">22</field>
+    </record>
+    <record id="cycle_termo_carga_inalatorio" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Inalatório (Termodesinfectora)</field>
+        <field name="code">TER-CIN</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_termodesinfectora"/>
+        <field name="temperature">80°C</field>
+        <field name="duration">10 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">23</field>
+    </record>
+
+    <!-- ===== Lavadora Ultrassônica ===== -->
+    <record id="cycle_ultrassonica_vazio" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazio (Ultrassônica)</field>
+        <field name="code">ULT-V45</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_lavadora_ultrassonica"/>
+        <field name="temperature">45°C</field>
+        <field name="duration">15 min</field>
+        <field name="load_type">vazio</field>
+        <field name="sequence">30</field>
+    </record>
+    <record id="cycle_ultrassonica_carga" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Instrumental + Canulados (Ultrassônica)</field>
+        <field name="code">ULT-CIC</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_lavadora_ultrassonica"/>
+        <field name="temperature">45°C</field>
+        <field name="duration">15 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">31</field>
+    </record>
+
+    <!-- ===== Refrigerador / Câmara Climática ===== -->
+    <record id="cycle_refrigerador_vazio" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazio (Refrigerador/Câmara)</field>
+        <field name="code">REF-VAZ</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_refrigerador_camara"/>
+        <field name="temperature">2 à 8°C</field>
+        <field name="duration">24 h</field>
+        <field name="load_type">vazio</field>
+        <field name="sequence">40</field>
+    </record>
+    <record id="cycle_refrigerador_carga" model="afr.qualificacao.cycle.type">
+        <field name="name">Com Carga (Refrigerador/Câmara)</field>
+        <field name="code">REF-CC</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_refrigerador_camara"/>
+        <field name="temperature">2 à 8°C</field>
+        <field name="duration">24 h</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">41</field>
+    </record>
+
+    <!-- ===== Estufa de Esterilização ===== -->
+    <record id="cycle_estufa_vazio" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazios (Estufa Esterilização)</field>
+        <field name="code">EST-VAZ</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_estufa_esterilizacao"/>
+        <field name="temperature">250°C</field>
+        <field name="duration">60 min</field>
+        <field name="load_type">vazio</field>
+        <field name="sequence">50</field>
+    </record>
+    <record id="cycle_estufa_carga" model="afr.qualificacao.cycle.type">
+        <field name="name">Com Carga (Estufa Esterilização)</field>
+        <field name="code">EST-CC</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_estufa_esterilizacao"/>
+        <field name="temperature">250°C</field>
+        <field name="duration">60 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">51</field>
+    </record>
+
+    <!-- ===== Autoclave a Gás (ETO) ===== -->
+    <record id="cycle_eto_vazio" model="afr.qualificacao.cycle.type">
+        <field name="name">Vazio (Autoclave Gás ETO)</field>
+        <field name="code">ETO-VAZ</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_gas"/>
+        <field name="temperature">53°C</field>
+        <field name="duration">180 min</field>
+        <field name="load_type">vazio</field>
+        <field name="sequence">60</field>
+    </record>
+    <record id="cycle_eto_carga_meio_tempo" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Meio Tempo (ETO)</field>
+        <field name="code">ETO-MT</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_gas"/>
+        <field name="temperature">53°C</field>
+        <field name="duration">90 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">61</field>
+    </record>
+    <record id="cycle_eto_carga_tempo_rotina" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Tempo Rotina (ETO)</field>
+        <field name="code">ETO-TR</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_gas"/>
+        <field name="temperature">53°C</field>
+        <field name="duration">180 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">62</field>
+    </record>
+    <record id="cycle_eto_carga_exposicao_curta" model="afr.qualificacao.cycle.type">
+        <field name="name">Carga Exposição Curta (ETO)</field>
+        <field name="code">ETO-EC</field>
+        <field name="product_id" ref="product_cycle_execution"/>
+        <field name="equipment_category_id" ref="cat_autoclave_gas"/>
+        <field name="temperature">53°C</field>
+        <field name="duration">5 min</field>
+        <field name="load_type">com_carga</field>
+        <field name="sequence">63</field>
+    </record>
+
+</odoo>

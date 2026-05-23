@@ -18,6 +18,7 @@
         <field name="sequence">10</field>
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_objetivo"/>
+        <field name="page_break" eval="True"/>
     </record>
     <record id="proposal_template_labquali_l02" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
@@ -47,12 +48,11 @@
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">60</field>
         <field name="block_kind">equipment_scope</field>
+        <field name="page_break" eval="True"/>
     </record>
-    <record id="proposal_template_labquali_l07" model="afr.proposal.template.line">
-        <field name="template_id" ref="proposal_template_labquali"/>
-        <field name="sequence">70</field>
-        <field name="block_kind">cycle_specs</field>
-    </record>
+    <!-- F8.8 — l07 cycle_specs removido do template default; tabelas
+         de ciclo agora aparecem inline no Equipment Scope (l06). Bloco
+         cycle_specs continua disponível como tipo, mas não no default. -->
     <record id="proposal_template_labquali_l08" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">80</field>
@@ -80,6 +80,7 @@
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">120</field>
         <field name="block_kind">financial</field>
+        <field name="page_break" eval="True"/>
     </record>
     <record id="proposal_template_labquali_l13" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
@@ -108,6 +109,7 @@
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">170</field>
         <field name="block_kind">acceptance</field>
+        <field name="page_break" eval="True"/>
     </record>
     <record id="proposal_template_labquali_l18" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>

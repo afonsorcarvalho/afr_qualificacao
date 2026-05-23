@@ -79,7 +79,11 @@
                             <field name="included" widget="boolean_toggle"/>
                             <field name="block_kind"/>
                             <field name="title"/>
+                            <field name="page_break" widget="boolean_toggle"/>
                             <field name="section_id" optional="hide"/>
+                            <button name="action_edit_block" type="object"
+                                    string="Editar" icon="fa-pencil"
+                                    class="btn-link"/>
                         </tree>
                         <form>
                             <group>

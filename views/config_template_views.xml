@@ -43,11 +43,22 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Ciclos QD">
+                        <page string="Ciclos QO (sem carga)">
+                            <field name="qo_line_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="cycle_type_id"
+                                           domain="[('load_type','in',['vazio','sem_carga']),('active','=',True)]"/>
+                                    <field name="qty"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Ciclos QD (com carga)">
                             <field name="qd_line_ids">
                                 <tree editable="bottom">
                                     <field name="sequence" widget="handle"/>
-                                    <field name="cycle_type_id"/>
+                                    <field name="cycle_type_id"
+                                           domain="[('load_type','=','com_carga'),('active','=',True)]"/>
                                     <field name="qty"/>
                                 </tree>
                             </field>

@@ -88,6 +88,22 @@ class AfrProposalTemplateLine(models.Model):
         ondelete="restrict",
         help="Bloco de texto reutilizável (obrigatório quando tipo = Bloco de Texto).",
     )
+    page_break = fields.Boolean(
+        string="Nova Página",
+        default=False,
+        help=(
+            "Se marcado, o bloco inicia em nova página no PDF. Caso "
+            "contrário, continua na mesma página do bloco anterior."
+        ),
+    )
+    title = fields.Char(
+        string="Título",
+        translate=True,
+        help=(
+            "Título do bloco no relatório. Vazio = usa o nome da seção "
+            "(blocos de texto) ou o rótulo do tipo (blocos dinâmicos)."
+        ),
+    )
 
     @api.constrains("block_kind", "section_id")
     def _check_static_has_section(self):

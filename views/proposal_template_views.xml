@@ -40,6 +40,9 @@
                                    attrs="{'required': [('block_kind', '=', 'static')],
                                            'readonly': [('block_kind', '!=', 'static')]}"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
+                            <field name="title"
+                                   placeholder="(usa nome da seção / rótulo do tipo)"/>
+                            <field name="page_break" widget="boolean_toggle"/>
                         </tree>
                     </field>
                 </sheet>

@@ -142,6 +142,47 @@ class TestProposalBuilder(AfrQualificacaoTestCommon):
             len(so.proposal_block_ids), len(self.proposal_tpl.line_ids)
         )
 
+    def test_seed_uses_template_line_title(self):
+        """F8.7 — título definido no slot do template vai para o bloco."""
+        so = self._new_so()
+        tpl = self.env["afr.proposal.template"].create({"name": "Tpl Title"})
+        self.env["afr.proposal.template.line"].create({
+            "template_id": tpl.id, "sequence": 10,
+            "block_kind": "financial", "title": "Investimento",
+        })
+        so.proposal_template_id = tpl
+        so._seed_proposal_blocks()
+        self.assertEqual(so.proposal_block_ids[0].title, "Investimento")
+
+    def test_seed_dynamic_block_falls_back_to_kind_label(self):
+        """F8.7 — bloco dinâmico sem título recebe o rótulo do tipo."""
+        so = self._new_so()
+        tpl = self.env["afr.proposal.template"].create({"name": "Tpl NoTitle"})
+        self.env["afr.proposal.template.line"].create({
+            "template_id": tpl.id, "sequence": 10, "block_kind": "financial",
+        })
+        so.proposal_template_id = tpl
+        so._seed_proposal_blocks()
+        self.assertEqual(so.proposal_block_ids[0].title, "Resumo Financeiro")
+
+    def test_seed_copies_page_break_from_template_line(self):
+        """F8.6 — page_break do slot do template é copiado para o bloco."""
+        so = self._new_so()
+        tpl = self.env["afr.proposal.template"].create({"name": "Tpl PB"})
+        self.env["afr.proposal.template.line"].create({
+            "template_id": tpl.id, "sequence": 10,
+            "block_kind": "financial", "page_break": True,
+        })
+        self.env["afr.proposal.template.line"].create({
+            "template_id": tpl.id, "sequence": 20,
+            "block_kind": "optionals", "page_break": False,
+        })
+        so.proposal_template_id = tpl
+        so._seed_proposal_blocks()
+        blocks = so.proposal_block_ids.sorted("sequence")
+        self.assertTrue(blocks[0].page_break)
+        self.assertFalse(blocks[1].page_break)
+
     def test_reload_proposal_blocks_discards_edits(self):
         """action_reload_proposal_blocks recarrega do template."""
         so = self._new_so()

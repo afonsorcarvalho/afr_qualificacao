@@ -1,20 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Wizard principal -->
+    <!-- F8.4 — Configurador guiado multi-step (Escopo → Opcionais →
+         Blocos → Revisão). Navegação por step + botões Voltar/Próximo. -->
     <record id="view_qualificacao_configurator_form" model="ir.ui.view">
         <field name="name">afr.qualificacao.configurator.form</field>
         <field name="model">afr.qualificacao.configurator</field>
         <field name="arch" type="xml">
             <form string="Configurador de Qualificações">
                 <header>
-                    <button name="action_add_multiple_equipments"
-                            string="+ Vários Equipamentos"
-                            type="object"
-                            class="btn-secondary"/>
-                    <button name="action_save_as_template"
-                            string="Salvar como Template"
-                            type="object"
-                            class="btn-secondary"/>
+                    <field name="step" widget="statusbar"
+                           statusbar_visible="escopo,blocos,opcionais,revisao"/>
                 </header>
                 <sheet>
                     <group>
@@ -28,81 +23,184 @@
                             <field name="total_estimated"/>
                         </group>
                     </group>
-                    <field name="equipment_line_ids">
-                        <form>
-                            <header>
-                                <button name="action_duplicate"
-                                        string="Duplicar"
-                                        type="object"
-                                        class="btn-secondary"/>
-                            </header>
-                            <sheet>
+
+                    <!-- ETAPA 1 — ESCOPO -->
+                    <div attrs="{'invisible': [('step', '!=', 'escopo')]}">
+                        <group>
+                            <field name="proposal_template_id"
+                                   options="{'no_create': True}"/>
+                        </group>
+                        <div style="margin: 6px 0 10px 0;">
+                            <button name="action_add_multiple_equipments"
+                                    string="+ Vários Equipamentos"
+                                    type="object"
+                                    class="btn-secondary"/>
+                            <button name="action_save_as_template"
+                                    string="Salvar como Template"
+                                    type="object"
+                                    class="btn-secondary"/>
+                        </div>
+                        <field name="equipment_line_ids">
+                            <form>
+                                <header>
+                                    <button name="action_duplicate"
+                                            string="Duplicar"
+                                            type="object"
+                                            class="btn-secondary"/>
+                                </header>
+                                <sheet>
+                                    <group>
+                                        <group>
+                                            <field name="equipment_id"
+                                                   domain="[('client_id','=',parent.partner_id)]"
+                                                   options="{'no_create': True}"/>
+                                            <field name="equipment_category_id"/>
+                                            <field name="config_template_id"
+                                                   domain="['|',('equipment_category_id','=',equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"
+                                                   options="{'no_create': True}"/>
+                                        </group>
+                                        <group>
+                                            <field name="do_qi"/>
+                                            <field name="do_qo"/>
+                                            <field name="do_qs"/>
+                                            <field name="currency_id" invisible="1"/>
+                                            <field name="subtotal"/>
+                                        </group>
+                                    </group>
+                                    <notebook>
+                                        <page string="Ciclos QO (sem carga)">
+                                            <field name="qo_line_ids">
+                                                <tree editable="bottom">
+                                                    <field name="cycle_type_id"
+                                                           domain="['|', ('equipment_category_id','=',parent.equipment_category_id), ('equipment_category_id','=',False), ('load_type','in',['vazio','sem_carga']), ('active','=',True)]"/>
+                                                    <field name="qty"/>
+                                                    <field name="currency_id" invisible="1"/>
+                                                    <field name="subtotal"/>
+                                                </tree>
+                                            </field>
+                                        </page>
+                                        <page string="Ciclos QD (com carga)">
+                                            <field name="qd_line_ids">
+                                                <tree editable="bottom">
+                                                    <field name="cycle_type_id"
+                                                           domain="['|', ('equipment_category_id','=',parent.equipment_category_id), ('equipment_category_id','=',False), ('load_type','=','com_carga'), ('active','=',True)]"/>
+                                                    <field name="qty"/>
+                                                    <field name="currency_id" invisible="1"/>
+                                                    <field name="subtotal"/>
+                                                </tree>
+                                            </field>
+                                        </page>
+                                        <page string="Malhas Calibração">
+                                            <field name="calib_line_ids">
+                                                <tree editable="bottom">
+                                                    <field name="malha_type_id"
+                                                           domain="['|',('equipment_category_id','=',parent.equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"/>
+                                                    <field name="sensor_kind_id"/>
+                                                    <field name="qty"/>
+                                                    <field name="currency_id" invisible="1"/>
+                                                    <field name="subtotal"/>
+                                                </tree>
+                                            </field>
+                                        </page>
+                                    </notebook>
+                                </sheet>
+                            </form>
+                            <tree>
+                                <field name="equipment_id"/>
+                                <field name="equipment_category_id"/>
+                                <field name="do_qi" widget="boolean_toggle"/>
+                                <field name="do_qo" widget="boolean_toggle"/>
+                                <field name="do_qs" widget="boolean_toggle"/>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="subtotal"/>
+                            </tree>
+                        </field>
+                    </div>
+
+                    <!-- ETAPA 3 — OPCIONAIS -->
+                    <div attrs="{'invisible': [('step', '!=', 'opcionais')]}">
+                        <p>
+                            Selecione serviços opcionais — viram linhas extra
+                            do pedido (fora do escopo de qualificação).
+                        </p>
+                        <group>
+                            <field name="optional_ids" nolabel="1"
+                                   widget="many2many_tags"
+                                   options="{'no_create': True, 'no_create_edit': True}"/>
+                        </group>
+                    </div>
+
+                    <!-- ETAPA 2 — BLOCOS DA PROPOSTA -->
+                    <div attrs="{'invisible': [('step', '!=', 'blocos')]}">
+                        <p>
+                            Monte a proposta como peças de lego: reordene
+                            (alça), ligue/desligue e edite o conteúdo de cada
+                            bloco. Os blocos vêm do Template de Proposta.
+                        </p>
+                        <field name="proposal_block_ids">
+                            <tree editable="bottom">
+                                <field name="sequence" widget="handle"/>
+                                <field name="included" widget="boolean_toggle"/>
+                                <field name="block_kind"/>
+                                <field name="title"/>
+                                <field name="page_break" widget="boolean_toggle"/>
+                                <field name="section_id" optional="hide"/>
+                                <button name="action_edit_block" type="object"
+                                        string="Editar" icon="fa-pencil"
+                                        class="btn-link"/>
+                            </tree>
+                            <form>
                                 <group>
-                                    <group>
-                                        <field name="equipment_id"
-                                               domain="[('client_id','=',parent.partner_id)]"
-                                               options="{'no_create': True}"/>
-                                        <field name="equipment_category_id"/>
-                                        <field name="config_template_id"
-                                               domain="['|',('equipment_category_id','=',equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"
-                                               options="{'no_create': True}"/>
-                                    </group>
-                                    <group>
-                                        <field name="do_qi"/>
-                                        <field name="do_qo"/>
-                                        <field name="do_qs"/>
-                                        <field name="currency_id" invisible="1"/>
-                                        <field name="subtotal"/>
-                                    </group>
+                                    <field name="block_kind"/>
+                                    <field name="title"/>
+                                    <field name="included"/>
+                                    <field name="section_id" readonly="1"/>
                                 </group>
-                                <notebook>
-                                    <page string="Ciclos QD">
-                                        <field name="qd_line_ids">
-                                            <tree editable="bottom">
-                                                <field name="cycle_type_id"
-                                                       domain="['|',('equipment_category_id','=',parent.equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"/>
-                                                <field name="qty"/>
-                                                <field name="currency_id" invisible="1"/>
-                                                <field name="subtotal"/>
-                                            </tree>
-                                        </field>
-                                    </page>
-                                    <page string="Malhas Calibração">
-                                        <field name="calib_line_ids">
-                                            <tree editable="bottom">
-                                                <field name="malha_type_id"
-                                                       domain="['|',('equipment_category_id','=',parent.equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"/>
-                                                <field name="sensor_kind_id"/>
-                                                <field name="qty"/>
-                                                <field name="currency_id" invisible="1"/>
-                                                <field name="subtotal"/>
-                                            </tree>
-                                        </field>
-                                    </page>
-                                </notebook>
-                            </sheet>
-                        </form>
-                        <tree>
-                            <field name="equipment_id"/>
-                            <field name="equipment_category_id"/>
-                            <field name="do_qi" widget="boolean_toggle"/>
-                            <field name="do_qo" widget="boolean_toggle"/>
-                            <field name="do_qs" widget="boolean_toggle"/>
-                            <field name="currency_id" invisible="1"/>
-                            <field name="subtotal"/>
-                        </tree>
-                    </field>
-                    <group string="Serviços Opcionais (linhas extra da cotação)">
-                        <field name="optional_ids" nolabel="1"
-                               widget="many2many_tags"
-                               options="{'no_create': True, 'no_create_edit': True}"/>
-                    </group>
+                                <separator string="Conteúdo (aceita {{ expressões }})"/>
+                                <field name="body"/>
+                            </form>
+                        </field>
+                    </div>
+
+                    <!-- ETAPA 4 — REVISÃO -->
+                    <div attrs="{'invisible': [('step', '!=', 'revisao')]}">
+                        <p>
+                            Revise a proposta antes de aplicar ao pedido.
+                        </p>
+                        <group>
+                            <group string="Resumo">
+                                <field name="equipment_count"/>
+                                <field name="optional_count"/>
+                                <field name="block_count"/>
+                            </group>
+                            <group string="Valores">
+                                <field name="currency_id" invisible="1"/>
+                                <field name="total_estimated"/>
+                            </group>
+                        </group>
+                        <p>
+                            "Aplicar ao Pedido" recria as linhas de
+                            qualificação e opcionais e mantém os blocos
+                            montados na etapa anterior.
+                        </p>
+                    </div>
                 </sheet>
                 <footer>
+                    <button name="action_prev_step"
+                            string="◀ Voltar"
+                            type="object"
+                            class="btn-secondary"
+                            attrs="{'invisible': [('step', '=', 'escopo')]}"/>
+                    <button name="action_next_step"
+                            string="Próximo ▶"
+                            type="object"
+                            class="btn-primary"
+                            attrs="{'invisible': [('step', '=', 'revisao')]}"/>
                     <button name="action_apply"
                             string="Aplicar ao Pedido"
                             type="object"
-                            class="btn-primary"/>
+                            class="btn-primary"
+                            attrs="{'invisible': [('step', '!=', 'revisao')]}"/>
                     <button string="Cancelar"
                             class="btn-secondary"
                             special="cancel"/>

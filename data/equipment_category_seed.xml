@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        F8.9 — Categorias de equipamento comuns no escopo da LabQuali.
+        Reusa engc.equipment.category (módulo engc_os). noupdate="1":
+        cliente edita/renomeia sem perder em upgrade.
+    -->
+
+    <record id="cat_autoclave_vapor" model="engc.equipment.category">
+        <field name="name">Autoclave a Vapor</field>
+    </record>
+
+    <record id="cat_termodesinfectora" model="engc.equipment.category">
+        <field name="name">Termodesinfectora</field>
+    </record>
+
+    <record id="cat_lavadora_ultrassonica" model="engc.equipment.category">
+        <field name="name">Lavadora Ultrassônica</field>
+    </record>
+
+    <record id="cat_refrigerador_camara" model="engc.equipment.category">
+        <field name="name">Refrigerador / Câmara Climática</field>
+    </record>
+
+    <record id="cat_estufa_esterilizacao" model="engc.equipment.category">
+        <field name="name">Estufa de Esterilização</field>
+    </record>
+
+    <record id="cat_autoclave_gas" model="engc.equipment.category">
+        <field name="name">Autoclave a Gás (ETO)</field>
+    </record>
+
+</odoo>

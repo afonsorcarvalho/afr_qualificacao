@@ -34,6 +34,12 @@ class AfrQualificacaoConfigTemplate(models.Model):
     do_qi = fields.Boolean(string="Inclui QI")
     do_qo = fields.Boolean(string="Inclui QO")
     do_qs = fields.Boolean(string="Inclui QS")
+    qo_line_ids = fields.One2many(
+        comodel_name="afr.qualificacao.config.template.qo",
+        inverse_name="template_id",
+        string="Ciclos QO (sem carga)",
+        copy=True,
+    )
     qd_line_ids = fields.One2many(
         comodel_name="afr.qualificacao.config.template.qd",
         inverse_name="template_id",
@@ -88,6 +94,35 @@ class AfrQualificacaoConfigTemplateQd(models.Model):
         comodel_name="afr.qualificacao.cycle.type",
         string="Tipo de Ciclo",
         required=True,
+    )
+    qty = fields.Integer(string="Quantidade", default=1, required=True)
+    sequence = fields.Integer(default=10)
+
+    @api.constrains("qty")
+    def _check_qty_positive(self):
+        for record in self:
+            if record.qty < 1:
+                from odoo.exceptions import ValidationError
+                raise ValidationError("Quantidade deve ser ≥ 1.")
+
+
+class AfrQualificacaoConfigTemplateQo(models.Model):
+    """F8.8 — Linha de ciclo QO (sem carga) dentro de um template de equipamento."""
+
+    _name = "afr.qualificacao.config.template.qo"
+    _description = "Ciclo QO do Template"
+    _order = "sequence, id"
+
+    template_id = fields.Many2one(
+        comodel_name="afr.qualificacao.config.template",
+        required=True,
+        ondelete="cascade",
+    )
+    cycle_type_id = fields.Many2one(
+        comodel_name="afr.qualificacao.cycle.type",
+        string="Tipo de Ciclo",
+        required=True,
+        domain=[("load_type", "in", ["vazio", "sem_carga"])],
     )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)

@@ -19,6 +19,10 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 
 
+# F8.4/F8.7 — passos do configurador guiado, em ordem.
+_STEP_ORDER = ["escopo", "blocos", "opcionais", "revisao"]
+
+
 class AfrQualificacaoConfigurator(models.TransientModel):
     _name = "afr.qualificacao.configurator"
     _description = "Configurador de Qualificações"
@@ -60,11 +64,110 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             "como linhas extra do pedido — fora do escopo de qualificação."
         ),
     )
+    # F8.4 — configurador guiado multi-step
+    step = fields.Selection(
+        selection=[
+            ("escopo", "1. Escopo"),
+            ("blocos", "2. Blocos da Proposta"),
+            ("opcionais", "3. Opcionais"),
+            ("revisao", "4. Revisão"),
+        ],
+        default="escopo",
+        required=True,
+        string="Etapa",
+    )
+    proposal_template_id = fields.Many2one(
+        comodel_name="afr.proposal.template",
+        string="Template de Proposta",
+        help="Define os blocos de texto da proposta. Aplicado ao pedido.",
+    )
+    proposal_block_ids = fields.One2many(
+        related="sale_order_id.proposal_block_ids",
+        readonly=False,
+        string="Blocos da Proposta",
+    )
+    block_count = fields.Integer(
+        compute="_compute_review_counts",
+        string="Blocos",
+    )
+    equipment_count = fields.Integer(
+        compute="_compute_review_counts",
+        string="Equipamentos",
+    )
+    optional_count = fields.Integer(
+        compute="_compute_review_counts",
+        string="Opcionais",
+    )
 
     @api.depends("equipment_line_ids.subtotal")
     def _compute_total_estimated(self):
         for wiz in self:
             wiz.total_estimated = sum(wiz.equipment_line_ids.mapped("subtotal"))
+
+    @api.depends("proposal_block_ids", "equipment_line_ids", "optional_ids")
+    def _compute_review_counts(self):
+        for wiz in self:
+            wiz.block_count = len(wiz.proposal_block_ids)
+            wiz.equipment_count = len(wiz.equipment_line_ids)
+            wiz.optional_count = len(wiz.optional_ids)
+
+    # ------------------------------------------------------------------
+    # F8.4 — navegação guiada entre etapas
+    # ------------------------------------------------------------------
+    def _reopen(self):
+        """Reabre o próprio wizard no mesmo registro.
+
+        Botão `type=object` num modal que retorna False/None FECHA o modal.
+        Para a navegação manter o wizard aberto, os métodos de etapa
+        precisam retornar esta ação de reabertura (mesmo res_id — o
+        TransientModel preserva os dados na transação).
+        """
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "res_model": "afr.qualificacao.configurator",
+            "res_id": self.id,
+            "view_mode": "form",
+            "target": "new",
+            "context": {"dialog_size": "extra-large"},
+        }
+
+    def _go_to_step(self, target):
+        """Move o wizard para `target` e reabre o modal."""
+        self.step = target
+        if target == "blocos":
+            self._ensure_blocks_seeded()
+        return self._reopen()
+
+    def action_next_step(self):
+        """Avança uma etapa (valida o escopo ao sair da primeira)."""
+        self.ensure_one()
+        if self.step == "escopo" and not self.equipment_line_ids:
+            raise UserError(_("Adicione ao menos 1 equipamento antes de avançar."))
+        idx = _STEP_ORDER.index(self.step)
+        if idx < len(_STEP_ORDER) - 1:
+            return self._go_to_step(_STEP_ORDER[idx + 1])
+        return self._reopen()
+
+    def action_prev_step(self):
+        """Volta uma etapa."""
+        self.ensure_one()
+        idx = _STEP_ORDER.index(self.step)
+        if idx > 0:
+            return self._go_to_step(_STEP_ORDER[idx - 1])
+        return self._reopen()
+
+    def _ensure_blocks_seeded(self):
+        """Garante que a SO tem blocos para a etapa 'Blocos' (idempotente)."""
+        self.ensure_one()
+        so = self.sale_order_id
+        if (
+            self.proposal_template_id
+            and so.proposal_template_id != self.proposal_template_id
+        ):
+            so.proposal_template_id = self.proposal_template_id
+        if not so.proposal_block_ids:
+            so._seed_proposal_blocks()
 
     # ------------------------------------------------------------------
     # Carrega matriz a partir de linhas SO existentes (idempotência)
@@ -76,6 +179,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         `optional_ids` (idempotência ao reabrir o configurador).
         """
         self.ensure_one()
+        # F8.4 — herda o template de proposta da SO
+        self.proposal_template_id = self.sale_order_id.proposal_template_id
         so_lines = self.sale_order_id.order_line
         # Opcionais existentes → optional_ids
         opt_lines = so_lines.filtered("is_proposal_optional")
@@ -92,7 +197,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         if not managed:
             return
         by_equip = defaultdict(lambda: {
-            "qi": False, "qo": False, "qs": False, "qd": [], "calib": [],
+            "qi": False, "qo": False, "qs": False,
+            "qo_cycles": [], "qd": [], "calib": [],
         })
         for line in managed:
             bucket = by_equip[line.equipment_id]
@@ -100,7 +206,15 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             if qt == "installation":
                 bucket["qi"] = True
             elif qt == "operational":
-                bucket["qo"] = True
+                if line.cycle_type_id:
+                    # F8.8 — QO cycle-based
+                    bucket["qo_cycles"].append({
+                        "cycle_type_id": line.cycle_type_id.id,
+                        "qty": int(line.product_uom_qty or 1),
+                    })
+                else:
+                    # QO boolean (linha única type.config)
+                    bucket["qo"] = True
             elif qt == "software":
                 bucket["qs"] = True
             elif qt == "performance":
@@ -121,6 +235,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "do_qi": b["qi"],
                 "do_qo": b["qo"],
                 "do_qs": b["qs"],
+                "qo_line_ids": [(0, 0, x) for x in b["qo_cycles"]],
                 "qd_line_ids": [(0, 0, x) for x in b["qd"]],
                 "calib_line_ids": [(0, 0, x) for x in b["calib"]],
             }))
@@ -139,7 +254,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         for eq_line in self.equipment_line_ids:
             if not (
                 eq_line.do_qi or eq_line.do_qo or eq_line.do_qs
-                or eq_line.qd_line_ids or eq_line.calib_line_ids
+                or eq_line.qo_line_ids or eq_line.qd_line_ids
+                or eq_line.calib_line_ids
             ):
                 raise UserError(_(
                     "Equipamento %s sem qualificações selecionadas."
@@ -170,10 +286,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "price_unit": 0,
             }))
 
-            # QI/QO/QS via type.config
+            # QI/QS via type.config (single line, sem ciclos)
             for flag, qtype in (
                 ("do_qi", "installation"),
-                ("do_qo", "operational"),
                 ("do_qs", "software"),
             ):
                 if not eq_line[flag]:
@@ -190,6 +305,38 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "product_uom_qty": 1.0,
                     "is_qualificacao_managed": True,
                     "qualification_type": qtype,
+                    "equipment_id": equip.id,
+                }
+                if cfg.default_unit_price:
+                    vals["price_unit"] = cfg.default_unit_price
+                new_lines.append((0, 0, vals))
+
+            # F8.8 — QO: cycle-based se houver qo_line_ids; senão fallback
+            # type.config (linha única, comportamento pré-F8.8 com do_qo=True).
+            if eq_line.qo_line_ids:
+                for qo in eq_line.qo_line_ids:
+                    new_lines.append((0, 0, {
+                        "order_id": so.id,
+                        "product_id": qo.cycle_type_id.product_id.id,
+                        "product_uom_qty": qo.qty,
+                        "is_qualificacao_managed": True,
+                        "qualification_type": "operational",
+                        "equipment_id": equip.id,
+                        "cycle_type_id": qo.cycle_type_id.id,
+                    }))
+            elif eq_line.do_qo:
+                cfg = TypeConfig.get_config_for("operational", so.company_id)
+                if not cfg:
+                    raise UserError(_(
+                        "Sem configuração de produto para tipo operational na empresa %s. "
+                        "Cadastre em Qualificações → Configurações → Tipos."
+                    ) % so.company_id.display_name)
+                vals = {
+                    "order_id": so.id,
+                    "product_id": cfg.service_product_id.id,
+                    "product_uom_qty": 1.0,
+                    "is_qualificacao_managed": True,
+                    "qualification_type": "operational",
                     "equipment_id": equip.id,
                 }
                 if cfg.default_unit_price:
@@ -238,7 +385,10 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             }))
 
         so.write({"order_line": new_lines})
-        # F8.2 — semeia blocos da proposta a partir do template (idempotente)
+        # F8.2/F8.4 — aplica o template e semeia blocos (idempotente —
+        # preserva blocos já montados/editados na etapa "Blocos").
+        if self.proposal_template_id:
+            so.proposal_template_id = self.proposal_template_id
         so._seed_proposal_blocks()
         return {"type": "ir.actions.act_window_close"}
 
@@ -313,6 +463,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
     do_qi = fields.Boolean(string="QI")
     do_qo = fields.Boolean(string="QO")
     do_qs = fields.Boolean(string="QS")
+    qo_line_ids = fields.One2many(
+        comodel_name="afr.qualificacao.configurator.qo.line",
+        inverse_name="equipment_line_id",
+        string="Ciclos QO (sem carga)",
+    )
     qd_line_ids = fields.One2many(
         comodel_name="afr.qualificacao.configurator.qd.line",
         inverse_name="equipment_line_id",
@@ -350,6 +505,10 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.do_qi = tpl.do_qi
         self.do_qo = tpl.do_qo
         self.do_qs = tpl.do_qs
+        self.qo_line_ids = [(5, 0, 0)] + [
+            (0, 0, {"cycle_type_id": line.cycle_type_id.id, "qty": line.qty})
+            for line in tpl.qo_line_ids
+        ]
         self.qd_line_ids = [(5, 0, 0)] + [
             (0, 0, {"cycle_type_id": line.cycle_type_id.id, "qty": line.qty})
             for line in tpl.qd_line_ids
@@ -361,6 +520,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
 
     @api.depends(
         "do_qi", "do_qo", "do_qs",
+        "qo_line_ids.subtotal",
         "qd_line_ids.subtotal", "calib_line_ids.subtotal",
         "equipment_id",
     )
@@ -368,14 +528,23 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         TypeConfig = self.env["afr.qualificacao.type.config"]
         for el in self:
             total = 0.0
+            # QI/QS via type.config (boolean)
             for flag, qtype in (
                 ("do_qi", "installation"),
-                ("do_qo", "operational"),
                 ("do_qs", "software"),
             ):
                 if not el[flag]:
                     continue
                 cfg = TypeConfig.get_config_for(qtype, el.wizard_id.company_id)
+                if cfg:
+                    total += cfg.default_unit_price or (
+                        cfg.service_product_id.list_price if cfg.service_product_id else 0.0
+                    )
+            # QO: cycle-based se houver linhas; senão fallback type.config
+            if el.qo_line_ids:
+                total += sum(el.qo_line_ids.mapped("subtotal"))
+            elif el.do_qo:
+                cfg = TypeConfig.get_config_for("operational", el.wizard_id.company_id)
                 if cfg:
                     total += cfg.default_unit_price or (
                         cfg.service_product_id.list_price if cfg.service_product_id else 0.0
@@ -404,6 +573,10 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.ensure_one()
         self.copy({
             "equipment_id": False,
+            "qo_line_ids": [
+                (0, 0, {"cycle_type_id": l.cycle_type_id.id, "qty": l.qty})
+                for l in self.qo_line_ids
+            ],
             "qd_line_ids": [
                 (0, 0, {"cycle_type_id": l.cycle_type_id.id, "qty": l.qty})
                 for l in self.qd_line_ids
@@ -458,6 +631,46 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
         for line in self:
             if line.qty < 1:
                 raise ValidationError(_("Quantidade de ciclos deve ser ≥ 1."))
+
+
+class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
+    """F8.8 — linha de ciclo QO (sem carga) no configurador, espelho do QdLine."""
+
+    _name = "afr.qualificacao.configurator.qo.line"
+    _description = "Linha de Ciclo QO no Configurador"
+
+    equipment_line_id = fields.Many2one(
+        comodel_name="afr.qualificacao.configurator.equipment",
+        required=True,
+        ondelete="cascade",
+    )
+    cycle_type_id = fields.Many2one(
+        comodel_name="afr.qualificacao.cycle.type",
+        string="Tipo de Ciclo",
+        required=True,
+        domain=[("load_type", "in", ["vazio", "sem_carga"])],
+    )
+    qty = fields.Integer(string="Quantidade", default=1, required=True)
+    subtotal = fields.Monetary(
+        compute="_compute_subtotal",
+        currency_field="currency_id",
+    )
+    currency_id = fields.Many2one(
+        related="equipment_line_id.currency_id",
+        readonly=True,
+    )
+
+    @api.depends("cycle_type_id.product_id.list_price", "qty")
+    def _compute_subtotal(self):
+        for line in self:
+            price = line.cycle_type_id.product_id.list_price if line.cycle_type_id else 0.0
+            line.subtotal = price * (line.qty or 0)
+
+    @api.constrains("qty")
+    def _check_qty_positive(self):
+        for line in self:
+            if line.qty < 1:
+                raise ValidationError(_("Quantidade de ciclos QO deve ser ≥ 1."))
 
 
 class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
