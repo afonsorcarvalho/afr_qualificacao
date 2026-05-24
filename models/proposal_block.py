@@ -116,6 +116,7 @@ class AfrProposalBlock(models.Model):
         builder = {
             "equipment_scope": self._html_equipment_scope,
             "cycle_specs": self._html_cycle_specs,
+            "schedule": self._html_schedule,
             "standards_table": self._html_standards,
             "financial": self._html_financial,
             "optionals": self._html_optionals,
@@ -185,6 +186,37 @@ class AfrProposalBlock(models.Model):
                 "</thead><tbody>%s</tbody></table>"
             ) % rows)
         return Markup("").join(parts) or Markup("<p></p>")
+
+    def _html_schedule(self, order):
+        """F8.14 — tabela cronograma equipamento × horas × dias úteis."""
+        rows = order._qualif_schedule_rows()
+        if not rows:
+            return Markup("<p></p>")
+        body = [Markup(
+            "<table class='qq-table'>"
+            "<thead><tr><th>Equipamento</th>"
+            "<th style='text-align:right;'>Horas</th>"
+            "<th style='text-align:right;'>Dias úteis</th></tr></thead><tbody>"
+        )]
+        total_h = 0.0
+        for r in rows:
+            body.append(Markup(
+                "<tr><td>%s</td>"
+                "<td style='text-align:right;'>%.1f</td>"
+                "<td style='text-align:right;'>%.2f</td></tr>"
+            ) % (
+                escape(r["equipment"].display_name or ""),
+                r["hours"], r["days"],
+            ))
+            total_h += r["hours"]
+        body.append(Markup(
+            "</tbody>"
+            "<tfoot><tr><td><strong>TOTAL</strong></td>"
+            "<td style='text-align:right;'><strong>%.1f</strong></td>"
+            "<td style='text-align:right;'><strong>%.2f</strong></td></tr></tfoot>"
+            "</table>"
+        ) % (total_h, total_h / 8.0 if total_h else 0.0))
+        return Markup("").join(body)
 
     def _html_standards(self, order):
         rows = Markup("").join(

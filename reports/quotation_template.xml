@@ -518,6 +518,44 @@
                             </div>
                         </t>
 
+                        <!-- F8.14 — Bloco Cronograma (template-opcional) -->
+                        <t t-if="block.block_kind == 'schedule'">
+                            <div t-att-class="sec_class">
+                                <div class="qq-section-title">
+                                    <t t-esc="block.title or 'Cronograma Estimado'"/>
+                                </div>
+                                <t t-set="rows" t-value="doc._qualif_schedule_rows()"/>
+                                <t t-if="rows">
+                                    <table class="qq-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Equipamento</th>
+                                                <th style="text-align: right; width: 18%;">Horas</th>
+                                                <th style="text-align: right; width: 18%;">Dias úteis</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <t t-foreach="rows" t-as="r">
+                                                <tr>
+                                                    <td t-esc="r['equipment'].display_name"/>
+                                                    <td style="text-align: right;" t-esc="'%.1f' % r['hours']"/>
+                                                    <td style="text-align: right;" t-esc="'%.2f' % r['days']"/>
+                                                </tr>
+                                            </t>
+                                        </tbody>
+                                        <t t-set="total_h" t-value="sum(r['hours'] for r in rows)"/>
+                                        <tfoot>
+                                            <tr>
+                                                <td><strong>TOTAL</strong></td>
+                                                <td style="text-align: right;"><strong t-esc="'%.1f' % total_h"/></td>
+                                                <td style="text-align: right;"><strong t-esc="'%.2f' % (total_h / 8.0)"/></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </t>
+                            </div>
+                        </t>
+
                         <!-- Tabela de normas -->
                         <t t-if="block.block_kind == 'standards_table'">
                             <div t-att-class="sec_class" t-if="doc.qualif_standard_ids">
