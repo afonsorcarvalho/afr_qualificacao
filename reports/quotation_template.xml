@@ -465,6 +465,14 @@
                                         <!-- F8.10 — subtotal por equipamento removido do escopo
                                              (preço aparece no bloco Resumo Financeiro). -->
 
+                                        <t t-set="eq_hours" t-value="doc._qualif_estimated_hours(eq['equipment'])"/>
+                                        <t t-if="eq_hours">
+                                            <div class="qq-equip-schedule">
+                                                <strong>Cronograma estimado:</strong>
+                                                <t t-esc="'%.1f dias úteis (%.1f horas — base 8h/dia)' % (eq_hours / 8.0, eq_hours)"/>
+                                            </div>
+                                        </t>
+
                                     </div>
                                 </t>
                             </div>
