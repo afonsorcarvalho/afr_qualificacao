@@ -121,8 +121,8 @@ class TestQoCycles(AfrQualificacaoTestCommon):
         self.assertEqual(rows[0]["temperature"], "134°C")
         self.assertEqual(rows[0]["duration"], "3.5 min")
 
-    def test_report_renders_qo_table_inline_in_equipment_scope(self):
-        """Bloco Equipment Scope renderiza tabela QO inline com temperatura."""
+    def test_report_renders_qo_in_equipment_scope(self):
+        """F8.16 — Equipment Scope renderiza QO como bullet com temp+tempo esteril."""
         so, wiz = self._wizard_with_qo(qo_lines=[
             (self.cycle_qo_bowie, 3),
         ])
@@ -134,6 +134,9 @@ class TestQoCycles(AfrQualificacaoTestCommon):
         report = self.env.ref("sale.action_report_saleorder")
         html, _ctype = report._render_qweb_html(report.report_name, so.ids)
         html = html.decode() if isinstance(html, bytes) else html
-        self.assertIn("Ciclos sem carga", html)
+        self.assertIn("Qualificação de Operação", html)
         self.assertIn("134°C", html)
-        self.assertIn("Bowie Dick Teste", html)
+        self.assertIn("esteril", html)
+        # line.name vira default product name; aqui basta confirmar presence
+        # da Categoria do produto QO de teste.
+        self.assertIn("Test QO", html)

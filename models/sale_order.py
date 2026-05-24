@@ -21,12 +21,13 @@ from odoo.tools.misc import formatLang
 
 # Selection labels (mantidos em sync com sale_order_line.qualification_type).
 QUALIF_TYPE_LABELS = OrderedDict([
-    # F8.15 — ordem de exibição no Escopo: QI → Calibração → QO → QD → QS.
-    ("installation", "Qualificação de Instalação (QI)"),
+    # F8.15 — ordem: QI → Calibração → QO → QD → QS.
+    # F8.16 — labels alinhadas ao padrão (sem abreviação parentética).
+    ("installation", "Qualificação de Instalação"),
     ("calibration", "Calibração"),
-    ("operational", "Qualificação Operacional (QO)"),
-    ("performance", "Qualificação de Desempenho (QD)"),
-    ("software", "Qualificação de Software (QS)"),
+    ("operational", "Qualificação de Operação"),
+    ("performance", "Qualificação de Desempenho"),
+    ("software", "Qualificação de Software"),
 ])
 
 # Descrições padrão por tipo — usadas no Descritivo Técnico do relatório
@@ -318,9 +319,14 @@ class SaleOrder(models.Model):
                     # User pref: usar `line.name` (descrição da linha SO,
                     # editável pelo comercial) em vez do nome técnico do
                     # cycle/malha/produto. Cai pro nome técnico se vazio.
+                    extra = {}
                     if line.cycle_type_id:
                         item_name = line.name or line.cycle_type_id.name
                         subtype = "cycle_type"
+                        # F8.16 — bullets QO/QD precisam de temp/tempo
+                        # esteril pra exibir junto do ciclo no Escopo.
+                        extra["temperature"] = line.cycle_type_id.temperature or ""
+                        extra["duration"] = line.cycle_type_id.duration or ""
                     elif line.malha_type_id:
                         # F8.10 — calib na proposta: "Calibração de <malha>"
                         # (prefixo de quantidade aplicado no render do report;
@@ -342,6 +348,7 @@ class SaleOrder(models.Model):
                         "qty": line.product_uom_qty,
                         "subtype": subtype,
                         "line": line,
+                        **extra,
                     })
                     type_subtotal += line.price_subtotal
                 equip_subtotal += type_subtotal

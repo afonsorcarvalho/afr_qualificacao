@@ -26,7 +26,7 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
                 "template_id": tpl.id,
                 "sequence": 75,
                 "block_kind": "cycle_specs",
-                "title": "Tabela de Ciclos",
+                "title": "Tabela Resumo de Ciclos",
             })
 
     def _built_so(self):

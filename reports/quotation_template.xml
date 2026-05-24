@@ -154,7 +154,11 @@
                     .qq-type-block {
                         padding: 6px 0 6px 8px;
                         border-left: 3px solid #ccc;
-                        margin: 6px 0 6px 4px;
+                        margin: 14px 0 10px 4px;
+                    }
+                    .qq-subsection-title + .qq-table,
+                    .qq-section-title + .qq-table {
+                        margin-top: 10px;
                     }
                     .qq-type-label {
                         font-weight: bold;
@@ -367,106 +371,41 @@
                                             </span>
                                         </div>
 
-                                        <!-- F8.15 — pré-calcula QO/QD rows pro skip_tp -->
-                                        <t t-set="qo_rows" t-value="doc._qualif_cycle_rows_for(eq['equipment'], 'qo')"/>
-                                        <t t-set="qd_rows" t-value="doc._qualif_cycle_rows_for(eq['equipment'], 'qd')"/>
-
-                                        <!-- F8.15 — Ordem: QI → Calibração → QO → QD. Renderiza
-                                             primeiro tipos não-tabelados (QI/QS/Calib via listas);
-                                             tabelas QO/QD aparecem depois (ver F8.15). -->
+                                        <!-- F8.16 — Bullets pra TODOS tipos (QI/Calib/QO/QD).
+                                             Detalhe técnico (temp/tempo) inline pra QO/QD via
+                                             campos extras adicionados em _qualif_equipment_summary.
+                                             Tabela completa fica só em "Tabela Resumo de Ciclos". -->
                                         <t t-foreach="eq['types']" t-as="tp">
-                                            <t t-set="skip_tp" t-value="tp['code'] == 'performance' or (tp['code'] == 'operational' and qo_rows)"/>
-                                            <t t-if="not skip_tp">
-                                                <div class="qq-type-block">
-                                                    <div class="qq-type-label">
-                                                        <span t-esc="tp['label']"/>
-                                                    </div>
-                                                    <ul class="qq-item-list">
-                                                        <t t-foreach="tp['items']" t-as="it">
-                                                            <li>
-                                                                <!-- F8.10 — calib: "0N Calibração de X" -->
-                                                                <t t-if="tp['code'] == 'calibration'">
-                                                                    <span t-esc="'%02d' % int(it['qty'] or 0)"/>
-                                                                    <span t-esc="it['name']"/>
-                                                                </t>
-                                                                <t t-else="">
-                                                                    <span t-esc="it['name']"/>
-                                                                    <t t-if="it['qty'] and it['qty'] != 1">
-                                                                        — quantidade:
-                                                                        <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
-                                                                    </t>
-                                                                </t>
-                                                            </li>
-                                                        </t>
-                                                    </ul>
+                                            <div class="qq-type-block">
+                                                <div class="qq-type-label">
+                                                    <span t-esc="tp['label']"/>
                                                 </div>
-                                            </t>
-                                        </t>
-
-                                        <!-- F8.15 — Tabela QO (sem carga) inline. Cols: Ciclo | Qtd | Temperatura | Tempo Esteril | Tempo Estimado -->
-                                        <t t-if="qo_rows">
-                                            <div class="qq-type-label">QO — Ciclos sem carga</div>
-                                            <table class="qq-table">
-                                                <tr>
-                                                    <th>Ciclo</th>
-                                                    <th style="width: 10%;">Qtd</th>
-                                                    <th style="width: 18%;">Temperatura</th>
-                                                    <th style="width: 18%;">Tempo Esteril</th>
-                                                    <th style="width: 18%; text-align: right;">Tempo Estimado</th>
-                                                </tr>
-                                                <t t-foreach="qo_rows" t-as="row">
-                                                    <tr>
-                                                        <td t-esc="row['name']"/>
-                                                        <td t-esc="row['qty']"/>
-                                                        <td t-esc="row['temperature']"/>
-                                                        <td t-esc="row['duration']"/>
-                                                        <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
-                                                    </tr>
-                                                </t>
-                                                <t t-set="qo_total_qty" t-value="sum(r['qty'] or 0 for r in qo_rows)"/>
-                                                <t t-set="qo_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qo')"/>
-                                                <tfoot>
-                                                    <tr>
-                                                        <td colspan="4">Total: <t t-esc="qo_total_qty"/> ciclo(s)</td>
-                                                        <td style="text-align: right;">
-                                                            <t t-esc="'%.1f h · %.2f dias' % (qo_total_hours, qo_total_hours / 8.0)"/>
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </t>
-
-                                        <!-- F8.15 — Tabela QD (com carga) inline. Cols: Ciclo | Qtd | Temperatura | Tempo Esteril | Tempo Estimado -->
-                                        <t t-if="qd_rows">
-                                            <div class="qq-type-label">QD — Ciclos com carga</div>
-                                            <table class="qq-table">
-                                                <tr>
-                                                    <th>Ciclo</th>
-                                                    <th style="width: 10%;">Qtd</th>
-                                                    <th style="width: 18%;">Temperatura</th>
-                                                    <th style="width: 18%;">Tempo Esteril</th>
-                                                    <th style="width: 18%; text-align: right;">Tempo Estimado</th>
-                                                </tr>
-                                                <t t-foreach="qd_rows" t-as="row">
-                                                    <tr>
-                                                        <td t-esc="row['name']"/>
-                                                        <td t-esc="row['qty']"/>
-                                                        <td t-esc="row['temperature']"/>
-                                                        <td t-esc="row['duration']"/>
-                                                        <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
-                                                    </tr>
-                                                </t>
-                                                <t t-set="qd_total_qty" t-value="sum(r['qty'] or 0 for r in qd_rows)"/>
-                                                <t t-set="qd_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qd')"/>
-                                                <tfoot>
-                                                    <tr>
-                                                        <td colspan="4">Total: <t t-esc="qd_total_qty"/> ciclo(s)</td>
-                                                        <td style="text-align: right;">
-                                                            <t t-esc="'%.1f h · %.2f dias' % (qd_total_hours, qd_total_hours / 8.0)"/>
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
+                                                <ul class="qq-item-list">
+                                                    <t t-foreach="tp['items']" t-as="it">
+                                                        <li>
+                                                            <!-- Calibração: "0N Calibração de X" -->
+                                                            <t t-if="tp['code'] == 'calibration'">
+                                                                <span t-esc="'%02d' % int(it['qty'] or 0)"/>
+                                                                <span t-esc="it['name']"/>
+                                                            </t>
+                                                            <!-- F8.16 — QO/QD: ciclo + qtd + temperatura + tempo esteril -->
+                                                            <t t-elif="it.get('subtype') == 'cycle_type'">
+                                                                <strong t-esc="it['name']"/>
+                                                                <span> — qtd: <t t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/></span>
+                                                                <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
+                                                                <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esteril</t>
+                                                            </t>
+                                                            <t t-else="">
+                                                                <span t-esc="it['name']"/>
+                                                                <t t-if="it['qty'] and it['qty'] != 1">
+                                                                    — quantidade:
+                                                                    <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
+                                                                </t>
+                                                            </t>
+                                                        </li>
+                                                    </t>
+                                                </ul>
+                                            </div>
                                         </t>
                                         <!-- F8.10 — subtotal por equipamento removido do escopo
                                              (preço aparece no bloco Resumo Financeiro). -->
@@ -489,7 +428,7 @@
                             <t t-set="cycle_specs" t-value="doc._qualif_cycle_specs()"/>
                             <div t-att-class="sec_class" t-if="cycle_specs">
                                 <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Especificação de Ciclos'"/>
+                                    <t t-esc="block.title or 'Tabela Resumo de Ciclos'"/>
                                 </div>
                                 <t t-foreach="cycle_specs" t-as="cs">
                                     <div class="qq-subsection-title">

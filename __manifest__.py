@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.14.0",
+    "version": "16.0.4.15.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -100,6 +100,13 @@
               tfoot Total: <qty> ciclo(s) (sum qty independente de tipo)
               + horas/dias. Ordem das seções no Equipment Scope reordenada
               (QUALIF_TYPE_LABELS): QI → Calibração → QO → QD → QS.
+            F8.16 (16.0.4.15.0): Equipment Scope sem tabelas inline
+              QO/QD (dados duplicados removidos — tabela única em "Tabela
+              Resumo de Ciclos"). Bullets QO/QD exibem ciclo + qtd +
+              temperatura + tempo esteril. Labels QUALIF_TYPE_LABELS
+              padronizadas sem abreviação parentética. cycle_specs
+              default title → "Tabela Resumo de Ciclos". CSS margin
+              entre seções aumentada.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

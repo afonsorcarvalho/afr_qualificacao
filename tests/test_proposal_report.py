@@ -35,7 +35,7 @@ class TestProposalReport(AfrQualificacaoTestCommon):
                 "template_id": cls.proposal_tpl.id,
                 "sequence": 75,
                 "block_kind": "cycle_specs",
-                "title": "Tabela de Ciclos",
+                "title": "Tabela Resumo de Ciclos",
             })
         cls.report = cls.env.ref("sale.action_report_saleorder")
 
@@ -83,8 +83,8 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         """Bloco cycle_specs renderiza temperatura/tempo do tipo de ciclo."""
         so = self._built_so()
         html = self._render(so)
-        # título do bloco cycle_specs = rótulo do tipo ("Tabela de Ciclos")
-        self.assertIn("Tabela de Ciclos", html)
+        # título do bloco cycle_specs = rótulo do tipo ("Tabela Resumo de Ciclos")
+        self.assertIn("Tabela Resumo de Ciclos", html)
         self.assertIn("134°C", html)
 
     def test_render_falls_back_without_blocks(self):
