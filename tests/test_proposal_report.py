@@ -122,14 +122,12 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         self.assertIn("Total:", html)
         self.assertIn("ciclo", html)
 
-    def test_render_equipment_scope_footer_cronograma(self):
-        """Rodapé Equipment Scope mostra 'Cronograma estimado'."""
+    def test_render_equipment_scope_omits_cronograma_footer(self):
+        """Rodapé Equipment Scope NÃO mostra cronograma (movido para bloco schedule)."""
         self.cycle_cmax.estimated_hours = 2.0
-        so = self._built_so()  # 1 ciclo cmax qty=1 → 2h → 0.25 dias
+        so = self._built_so()
         html = self._render(so)
-        self.assertIn("Cronograma estimado", html)
-        self.assertIn("dias úteis", html)
-        self.assertIn("8h/dia", html)
+        self.assertNotIn("qq-equip-schedule", html)
 
     def test_render_schedule_block(self):
         """Bloco schedule renderiza tabela equipamento × horas × dias."""

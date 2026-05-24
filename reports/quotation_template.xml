@@ -27,64 +27,71 @@
         <xpath expr="//div[hasclass('page')]" position="before">
             <div class="page qq-page" t-if="doc.has_qualif_lines">
                 <style>
-                    /* Font sizes aumentados ~30% sobre baseline original
-                       conforme request user: parágrafos e tabelas mais
-                       legíveis. Cover title mantido (já grande). */
-                    .qq-page { color: #333; font-size: 16px; }
+                    /* Paleta da marca LabQuali (única cor hardcoded — single source).
+                       Regra: azul dominante (≥70%), laranja acento (≤15%), cinzas (15%).
+                       Demais cores derivam de classes Bootstrap (text-dark, text-muted, bg-light). */
+                    :root {
+                        --qq-brand: #0A3D62;       /* Azul Profundo — primária */
+                        --qq-brand-2: #1E6091;     /* Azul Médio — secundária */
+                        --qq-accent: #FF6B35;      /* Laranja Térmico — acento */
+                        --qq-accent-2: #D9482A;    /* Coral Escuro — acento secundário */
+                        --qq-gray: #5A7184;        /* Cinza Aço — secundário */
+                        --qq-gray-light: #EEF2F5;  /* Cinza Claro — fundos/borders */
+                    }
+                    /* Font sizes aumentados ~30% sobre baseline conforme request user. */
+                    .qq-page { color: #212529; font-size: 16px; }
                     /* Esconde bloco de endereço do partner injetado por
-                       `web.external_layout_standard` (aparecia top-right da
-                       capa, duplicando info já presente em "Cliente:" da
-                       meta box). Style só renderiza quando qq-page existe
-                       (has_qualif_lines=True), portanto não afeta fallback. */
+                       `web.external_layout_standard` (duplicava info da capa). */
                     .address, .row.address { display: none !important; }
                     .qq-cover {
                         text-align: center;
-                        padding: 60px 40px 40px 40px;
+                        padding: 60px 40px 40px 50px;
                         min-height: 720px;
+                        border-left: 14px solid var(--qq-accent); /* faixa laranja brand */
+                        position: relative;
                     }
                     .qq-cover-title {
                         font-size: 28px;
                         font-weight: bold;
-                        color: #222;
+                        color: var(--qq-brand);
                         margin-top: 80px;
                         letter-spacing: 1px;
                     }
                     .qq-cover-subtitle {
                         font-size: 16px;
-                        color: #666;
+                        color: var(--qq-gray);
                         margin-top: 10px;
                         font-style: italic;
                     }
                     .qq-cover-meta {
                         margin-top: 80px;
                         display: inline-block;
-                        border-top: 2px solid #333;
-                        border-bottom: 2px solid #333;
+                        border-top: 2px solid var(--qq-brand);
+                        border-bottom: 2px solid var(--qq-brand);
                         padding: 20px 50px;
                         text-align: left;
                         font-size: 17px;
                         line-height: 1.8;
                     }
                     .qq-cover-meta strong {
-                        color: #222;
+                        color: var(--qq-brand);
                         display: inline-block;
                         min-width: 100px;
                     }
                     .qq-cover-footer {
                         margin-top: 60px;
                         font-size: 13px;
-                        color: #999;
+                        color: var(--qq-gray);
                     }
                     .qq-section { page-break-before: always; padding-top: 10px; }
                     /* Continua na mesma página da seção anterior (sem quebra).
-                       Usado para agrupar: Sumário+Descritivo e
-                       Financeiro+Condições+Aceite conforme request user. */
+                       Agrupa: Sumário+Descritivo e Financeiro+Condições+Aceite. */
                     .qq-section-cont { page-break-before: avoid; padding-top: 18px; }
                     .qq-section-title {
                         font-size: 18px;
                         font-weight: bold;
-                        color: #222;
-                        border-bottom: 2px solid #333;
+                        color: var(--qq-brand);
+                        border-bottom: 3px solid var(--qq-accent); /* acento laranja */
                         padding: 6px 0;
                         margin-bottom: 12px;
                         text-transform: uppercase;
@@ -93,7 +100,7 @@
                     .qq-subsection-title {
                         font-size: 16px;
                         font-weight: bold;
-                        color: #444;
+                        color: var(--qq-brand-2);
                         margin-top: 14px;
                         margin-bottom: 6px;
                     }
@@ -104,56 +111,58 @@
                         margin-bottom: 10px;
                     }
                     .qq-table th {
-                        background-color: #f4f4f4;
-                        color: #222;
-                        border-bottom: 2px solid #333;
+                        background-color: var(--qq-gray-light);
+                        color: var(--qq-brand);
+                        border-bottom: 2px solid var(--qq-brand);
                         padding: 8px 10px;
                         text-align: left;
                         font-weight: bold;
                     }
                     .qq-table td {
                         padding: 7px 10px;
-                        border-bottom: 1px solid #eee;
+                        border-bottom: 1px solid var(--qq-gray-light);
                         vertical-align: top;
                     }
                     .qq-table tfoot td {
-                        border-top: 2px solid #333;
+                        border-top: 2px solid var(--qq-brand);
                         font-weight: bold;
                         padding: 6px 10px;
-                        background-color: #fafafa;
+                        background-color: var(--qq-gray-light);
+                        color: var(--qq-brand);
                     }
                     .qq-equip-schedule {
-                        border-top: 1px solid #999;
+                        border-top: 1px solid var(--qq-gray-light);
                         padding-top: 8px;
                         margin-top: 10px;
                         font-size: 14px;
-                        color: #222;
+                        color: var(--qq-brand);
                         text-align: right;
                     }
                     .qq-equip-card {
-                        border: 1px solid #ddd;
+                        border: 1px solid var(--qq-gray-light);
+                        border-left: 4px solid var(--qq-brand-2); /* destaque azul médio */
                         border-radius: 3px;
                         padding: 12px 14px;
                         margin-bottom: 14px;
                         page-break-inside: avoid;
                     }
                     .qq-equip-header {
-                        border-bottom: 1px solid #ccc;
+                        border-bottom: 1px solid var(--qq-gray-light);
                         padding-bottom: 6px;
                         margin-bottom: 10px;
                         font-weight: bold;
                         font-size: 17px;
-                        color: #222;
+                        color: var(--qq-brand);
                     }
                     .qq-equip-meta {
                         font-size: 13px;
-                        color: #666;
+                        color: var(--qq-gray);
                         font-weight: normal;
                         margin-left: 8px;
                     }
                     .qq-type-block {
                         padding: 6px 0 6px 8px;
-                        border-left: 3px solid #ccc;
+                        border-left: 3px solid var(--qq-accent); /* acento laranja */
                         margin: 14px 0 10px 4px;
                     }
                     .qq-subsection-title + .qq-table,
@@ -162,20 +171,20 @@
                     }
                     .qq-type-label {
                         font-weight: bold;
-                        color: #333;
+                        color: var(--qq-brand);
                         font-size: 16px;
                     }
                     .qq-item-list {
                         font-size: 14px;
-                        color: #555;
+                        color: #212529;
                         margin: 4px 0 0 12px;
                     }
                     .qq-equip-subtotal {
                         text-align: right;
                         font-weight: bold;
                         font-size: 17px;
-                        color: #222;
-                        border-top: 1px solid #ddd;
+                        color: var(--qq-brand);
+                        border-top: 1px solid var(--qq-gray-light);
                         padding-top: 8px;
                         margin-top: 8px;
                     }
@@ -185,13 +194,13 @@
                     }
                     .qq-descritivo-label {
                         font-weight: bold;
-                        color: #222;
+                        color: var(--qq-brand);
                         font-size: 16px;
                         margin-bottom: 4px;
                     }
                     .qq-descritivo-text {
                         font-size: 14px;
-                        color: #444;
+                        color: #212529;
                         text-align: justify;
                         line-height: 1.5;
                         white-space: pre-line;
@@ -205,16 +214,17 @@
                     }
                     .qq-total-table td {
                         padding: 6px 10px;
-                        border-bottom: 1px solid #eee;
+                        border-bottom: 1px solid var(--qq-gray-light);
                     }
-                    .qq-total-table .qq-tot-label { text-align: right; color: #555; width: 75%; }
-                    .qq-total-table .qq-tot-value { text-align: right; font-weight: bold; color: #222; width: 25%; }
+                    .qq-total-table .qq-tot-label { text-align: right; color: var(--qq-gray); width: 75%; }
+                    .qq-total-table .qq-tot-value { text-align: right; font-weight: bold; color: var(--qq-brand); width: 25%; }
                     .qq-total-grand td {
-                        border-top: 2px solid #333;
+                        border-top: 2px solid var(--qq-brand);
                         border-bottom: none;
                         padding-top: 8px;
                         font-weight: bold;
-                        color: #000;
+                        color: var(--qq-brand);
+                        font-size: 16px;
                     }
                     .qq-conditions-grid {
                         display: table;
@@ -225,13 +235,14 @@
                         display: table-cell;
                         width: 33%;
                         padding: 8px 12px;
-                        border: 1px solid #ddd;
+                        border: 1px solid var(--qq-gray-light);
+                        border-top: 3px solid var(--qq-brand-2); /* top stripe azul médio */
                         vertical-align: top;
                         font-size: 14px;
                     }
                     .qq-conditions-cell strong {
                         display: block;
-                        color: #333;
+                        color: var(--qq-brand);
                         margin-bottom: 4px;
                     }
                     .qq-signature-block {
@@ -250,22 +261,22 @@
                         padding: 0 20px;
                     }
                     .qq-signature-line {
-                        border-bottom: 1px solid #333;
+                        border-bottom: 1px solid var(--qq-brand);
                         margin-bottom: 8px;
                         height: 1px;
                     }
                     .qq-signature-label {
                         font-size: 13px;
-                        color: #666;
+                        color: var(--qq-gray);
                     }
                     .qq-norma-organism {
                         font-size: 13px;
-                        color: #888;
+                        color: var(--qq-gray);
                     }
                     /* F8.3 — corpo de bloco de texto estático (HTML livre) */
                     .qq-block-body {
                         font-size: 14px;
-                        color: #444;
+                        color: #212529;
                         line-height: 1.5;
                         text-align: justify;
                     }
@@ -276,8 +287,12 @@
                         font-size: 13px;
                     }
                     .qq-block-body td, .qq-block-body th {
-                        border: 1px solid #ddd;
+                        border: 1px solid var(--qq-gray-light);
                         padding: 5px 8px;
+                    }
+                    .qq-block-body th {
+                        background-color: var(--qq-gray-light);
+                        color: var(--qq-brand);
                     }
                 </style>
 
@@ -410,14 +425,6 @@
                                         <!-- F8.10 — subtotal por equipamento removido do escopo
                                              (preço aparece no bloco Resumo Financeiro). -->
 
-                                        <t t-set="eq_hours" t-value="doc._qualif_estimated_hours(eq['equipment'])"/>
-                                        <t t-if="eq_hours">
-                                            <div class="qq-equip-schedule">
-                                                <strong>Cronograma estimado:</strong>
-                                                <t t-esc="'%.1f dias úteis (%.1f horas — base 8h/dia)' % (eq_hours / 8.0, eq_hours)"/>
-                                            </div>
-                                        </t>
-
                                     </div>
                                 </t>
                             </div>
@@ -459,7 +466,7 @@
                                             <tr>
                                                 <td colspan="5">Total: <t t-esc="cs_total_qty"/> ciclo(s)</td>
                                                 <td style="text-align: right;">
-                                                    <t t-esc="'%.1f h · %.2f dias' % (cs_total_hours, cs_total_hours / 8.0)"/>
+                                                    <t t-esc="'%.1f h · %.1f dias' % (cs_total_hours, cs_total_hours / 8.0)"/>
                                                 </td>
                                             </tr>
                                         </tfoot>
@@ -474,6 +481,9 @@
                                 <div class="qq-section-title">
                                     <t t-esc="block.title or 'Cronograma Estimado'"/>
                                 </div>
+                                <p class="text-muted" style="font-size: 14px; margin-bottom: 12px;">
+                                    <em>Base de cálculo: 8 horas por dia útil.</em>
+                                </p>
                                 <t t-set="rows" t-value="doc._qualif_schedule_rows()"/>
                                 <t t-if="rows">
                                     <table class="qq-table">
@@ -489,7 +499,7 @@
                                                 <tr>
                                                     <td t-esc="r['equipment'].display_name"/>
                                                     <td style="text-align: right;" t-esc="'%.1f' % r['hours']"/>
-                                                    <td style="text-align: right;" t-esc="'%.2f' % r['days']"/>
+                                                    <td style="text-align: right;" t-esc="'%.1f' % r['days']"/>
                                                 </tr>
                                             </t>
                                         </tbody>
@@ -498,7 +508,7 @@
                                             <tr>
                                                 <td><strong>TOTAL</strong></td>
                                                 <td style="text-align: right;"><strong t-esc="'%.1f' % total_h"/></td>
-                                                <td style="text-align: right;"><strong t-esc="'%.2f' % (total_h / 8.0)"/></td>
+                                                <td style="text-align: right;"><strong t-esc="'%.1f' % (total_h / 8.0)"/></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -883,11 +893,11 @@
                             <t t-if="doc.user_id">
                                 <div t-field="doc.user_id.name"/>
                                 <div t-if="doc.user_id.email"
-                                     style="font-size: 13px; color: #666;">
+                                     class="text-muted" style="font-size: 13px;">
                                     <span t-field="doc.user_id.email"/>
                                 </div>
                                 <div t-if="doc.user_id.phone"
-                                     style="font-size: 13px; color: #666;">
+                                     class="text-muted" style="font-size: 13px;">
                                     <span t-field="doc.user_id.phone"/>
                                 </div>
                             </t>
