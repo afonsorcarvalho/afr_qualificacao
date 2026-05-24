@@ -83,7 +83,7 @@
                         font-size: 18px;
                         font-weight: bold;
                         color: var(--lq-brand);
-                        border-bottom: 3px solid var(--lq-accent); /* acento laranja */
+                        border-bottom: 3px solid var(--lq-brand);
                         padding: 6px 0;
                         margin-bottom: 12px;
                         text-transform: uppercase;
