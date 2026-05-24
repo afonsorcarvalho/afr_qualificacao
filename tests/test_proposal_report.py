@@ -112,3 +112,41 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         objetivo.body = "<p>MARCADOR_UNICO_OMITIDO</p>"
         html = self._render(so)
         self.assertNotIn("MARCADOR_UNICO_OMITIDO", html)
+
+    def test_render_table_tfoot_subtotals(self):
+        """Tabelas QO/QD do Equipment Scope têm <tfoot> com 'Total: N ciclo'."""
+        self.cycle_cmax.estimated_hours = 2.0
+        so = self._built_so()
+        html = self._render(so)
+        self.assertIn("<tfoot>", html)
+        self.assertIn("Total:", html)
+        self.assertIn("ciclo", html)
+
+    def test_render_equipment_scope_footer_cronograma(self):
+        """Rodapé Equipment Scope mostra 'Cronograma estimado'."""
+        self.cycle_cmax.estimated_hours = 2.0
+        so = self._built_so()  # 1 ciclo cmax qty=1 → 2h → 0.25 dias
+        html = self._render(so)
+        self.assertIn("Cronograma estimado", html)
+        self.assertIn("dias úteis", html)
+        self.assertIn("8h/dia", html)
+
+    def test_render_schedule_block(self):
+        """Bloco schedule renderiza tabela equipamento × horas × dias."""
+        self.cycle_cmax.estimated_hours = 2.0
+        # injeta linha schedule no template
+        if not self.proposal_tpl.line_ids.filtered(
+            lambda l: l.block_kind == "schedule"
+        ):
+            self.env["afr.proposal.template.line"].create({
+                "template_id": self.proposal_tpl.id,
+                "sequence": 95,
+                "block_kind": "schedule",
+                "title": "Cronograma Estimado",
+            })
+        so = self._built_so()
+        html = self._render(so)
+        self.assertIn("Cronograma Estimado", html)
+        self.assertIn("Equipamento", html)
+        self.assertIn("Dias úteis", html)
+        self.assertIn("TOTAL", html)
