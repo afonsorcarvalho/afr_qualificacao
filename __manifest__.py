@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.12.1",
+    "version": "16.0.4.13.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -85,6 +85,14 @@
               linhas (cycle_specs removido F8.8). test_snapshot_cycle_specs
               + test_render_cycle_specs_block injetam template line
               cycle_specs dinamicamente em setUpClass. 225/0/0 PASS.
+            F8.14 (16.0.4.13.0): cronograma estimado — estimated_hours
+              em cycle_type/malha_type/type.config + override no
+              template/configurator/SO line. Helpers _qualif_estimated_hours,
+              _qualif_estimated_days (hours/8), _qualif_schedule_rows,
+              _qualif_section_hours. PDF: tfoot subtotal em tabelas QO/QD
+              do Equipment Scope, rodapé "Cronograma estimado: N dias úteis"
+              por equipamento, novo block_kind='schedule' opcional com
+              tabela equipamento × horas × dias.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
