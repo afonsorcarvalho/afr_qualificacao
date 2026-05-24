@@ -386,6 +386,17 @@
                                                         <td t-esc="row['duration']"/>
                                                     </tr>
                                                 </t>
+                                                <t t-set="qo_total_qty" t-value="sum(r['qty'] or 0 for r in qo_rows)"/>
+                                                <t t-set="qo_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qo')"/>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td t-esc="qo_total_qty"/>
+                                                        <td colspan="2">Total: <t t-esc="len(qo_rows)"/> ciclo(s)</td>
+                                                        <td style="text-align: right;">
+                                                            <t t-esc="'%.1f h · %.2f dias' % (qo_total_hours, qo_total_hours / 8.0)"/>
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
                                             </table>
                                         </t>
 
@@ -408,6 +419,17 @@
                                                         <td t-esc="row['duration']"/>
                                                     </tr>
                                                 </t>
+                                                <t t-set="qd_total_qty" t-value="sum(r['qty'] or 0 for r in qd_rows)"/>
+                                                <t t-set="qd_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qd')"/>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td t-esc="qd_total_qty"/>
+                                                        <td colspan="2">Total: <t t-esc="len(qd_rows)"/> ciclo(s)</td>
+                                                        <td style="text-align: right;">
+                                                            <t t-esc="'%.1f h · %.2f dias' % (qd_total_hours, qd_total_hours / 8.0)"/>
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
                                             </table>
                                         </t>
 

@@ -389,6 +389,37 @@ class SaleOrder(models.Model):
         """F8.14 — horas / 8 (Float decimal — 1 dia útil = 8h)."""
         return self._qualif_estimated_hours(equipment) / 8.0
 
+    def _qualif_section_hours(self, equipment, phase):
+        """F8.14 — soma horas só de uma fase (qo/qd/calibration) por equip.
+
+        Usado pelos tfoots das tabelas QO/QD/Calib inline no Equipment Scope.
+        phase ∈ {'qo', 'qd', 'calibration'}.
+        """
+        self.ensure_one()
+        phase_to_qtype = {
+            "qo": "operational",
+            "qd": "performance",
+            "calibration": "calibration",
+        }
+        qtype = phase_to_qtype.get(phase)
+        if not qtype:
+            return 0.0
+        lines = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed
+            and l.equipment_id == equipment
+            and l.qualification_type == qtype
+        )
+        total = 0.0
+        for line in lines:
+            hours = line.estimated_hours
+            if not hours:
+                if line.cycle_type_id:
+                    hours = line.cycle_type_id.estimated_hours
+                elif line.malha_type_id:
+                    hours = line.malha_type_id.estimated_hours
+            total += (hours or 0.0) * (line.product_uom_qty or 0)
+        return total
+
     def _qualif_schedule_rows(self):
         """F8.14 — retorna lista [{equipment, hours, days}] por equip + total geral.
 
