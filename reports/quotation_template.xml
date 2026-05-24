@@ -116,6 +116,20 @@
                         border-bottom: 1px solid #eee;
                         vertical-align: top;
                     }
+                    .qq-table tfoot td {
+                        border-top: 2px solid #333;
+                        font-weight: bold;
+                        padding: 6px 10px;
+                        background-color: #fafafa;
+                    }
+                    .qq-equip-schedule {
+                        border-top: 1px solid #999;
+                        padding-top: 8px;
+                        margin-top: 10px;
+                        font-size: 14px;
+                        color: #222;
+                        text-align: right;
+                    }
                     .qq-equip-card {
                         border: 1px solid #ddd;
                         border-radius: 3px;
