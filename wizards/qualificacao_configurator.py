@@ -957,6 +957,7 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                     (0, 0, {
                         "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                         "description": l.description, "unit_price": l.unit_price,
+                        "estimated_hours": l.estimated_hours,
                     })
                     for l in self.qo_line_ids
                 ],
@@ -964,6 +965,7 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                     (0, 0, {
                         "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                         "description": l.description, "unit_price": l.unit_price,
+                        "estimated_hours": l.estimated_hours,
                     })
                     for l in self.qd_line_ids
                 ],
@@ -971,6 +973,7 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                     (0, 0, {
                         "malha_type_id": l.malha_type_id.id, "qty": l.qty,
                         "description": l.description, "unit_price": l.unit_price,
+                        "estimated_hours": l.estimated_hours,
                     })
                     for l in self.calib_line_ids
                 ],
