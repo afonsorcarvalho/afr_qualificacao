@@ -506,6 +506,13 @@
                                                 <td t-esc="row['load_type']"/>
                                             </tr>
                                         </t>
+                                        <t t-set="cs_total_qty" t-value="sum(r['qty'] or 0 for r in cs['rows'])"/>
+                                        <tfoot>
+                                            <tr>
+                                                <td t-esc="cs_total_qty"/>
+                                                <td colspan="4">Total: <t t-esc="len(cs['rows'])"/> ciclo(s)</td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </t>
                             </div>
