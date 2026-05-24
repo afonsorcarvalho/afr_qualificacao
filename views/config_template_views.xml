@@ -50,6 +50,7 @@
                                     <field name="cycle_type_id"
                                            domain="[('load_type','in',['vazio','sem_carga']),('active','=',True)]"/>
                                     <field name="description"/>
+                                    <field name="estimated_hours"/>
                                     <field name="qty"/>
                                 </tree>
                             </field>
@@ -61,6 +62,7 @@
                                     <field name="cycle_type_id"
                                            domain="[('load_type','=','com_carga'),('active','=',True)]"/>
                                     <field name="description"/>
+                                    <field name="estimated_hours"/>
                                     <field name="qty"/>
                                 </tree>
                             </field>
@@ -71,6 +73,7 @@
                                     <field name="sequence" widget="handle"/>
                                     <field name="malha_type_id"/>
                                     <field name="description"/>
+                                    <field name="estimated_hours"/>
                                     <field name="qty"/>
                                 </tree>
                             </field>
