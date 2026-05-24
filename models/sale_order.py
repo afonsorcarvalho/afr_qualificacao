@@ -21,11 +21,12 @@ from odoo.tools.misc import formatLang
 
 # Selection labels (mantidos em sync com sale_order_line.qualification_type).
 QUALIF_TYPE_LABELS = OrderedDict([
+    # F8.15 — ordem de exibição no Escopo: QI → Calibração → QO → QD → QS.
     ("installation", "Qualificação de Instalação (QI)"),
+    ("calibration", "Calibração"),
     ("operational", "Qualificação Operacional (QO)"),
     ("performance", "Qualificação de Desempenho (QD)"),
     ("software", "Qualificação de Software (QS)"),
-    ("calibration", "Calibração"),
 ])
 
 # Descrições padrão por tipo — usadas no Descritivo Técnico do relatório
@@ -584,15 +585,18 @@ class SaleOrder(models.Model):
             and l.qualification_type == qtype
             and l.cycle_type_id
         )
-        return [
-            {
+        rows = []
+        for line in lines:
+            qty = int(line.product_uom_qty or 0)
+            hours = line.estimated_hours or line.cycle_type_id.estimated_hours or 0.0
+            rows.append({
                 "name": line.cycle_type_id.name,
-                "qty": int(line.product_uom_qty or 0),
+                "qty": qty,
                 "temperature": line.cycle_type_id.temperature or "",
                 "duration": line.cycle_type_id.duration or "",
-            }
-            for line in lines
-        ]
+                "estimated_hours_total": hours * qty,
+            })
+        return rows
 
     def _qualif_cycle_specs(self):
         """Specs técnicas de ciclos QD por equipamento (bloco cycle_specs).
@@ -620,12 +624,15 @@ class SaleOrder(models.Model):
             rows = []
             for line in lines:
                 cycle_type = line.cycle_type_id
+                qty = int(line.product_uom_qty or 0)
+                hours = line.estimated_hours or cycle_type.estimated_hours or 0.0
                 rows.append({
                     "name": cycle_type.name,
-                    "qty": int(line.product_uom_qty or 0),
+                    "qty": qty,
                     "temperature": cycle_type.temperature or "",
                     "duration": cycle_type.duration or "",
                     "load_type": load_labels.get(cycle_type.load_type, ""),
+                    "estimated_hours_total": hours * qty,
                 })
             result.append({"equipment": equip, "rows": rows})
         return result

@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.13.0",
+    "version": "16.0.4.14.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -93,6 +93,13 @@
               do Equipment Scope, rodapé "Cronograma estimado: N dias úteis"
               por equipamento, novo block_kind='schedule' opcional com
               tabela equipamento × horas × dias.
+            F8.15 (16.0.4.14.0): refinamento Escopo + Tabela Resumo.
+              Tabelas QO/QD/cycle_specs reordenam cols (Ciclo|Qtd antes
+              de Temperatura); col "Tempo" renomeada "Tempo Esteril";
+              nova col "Tempo Estimado" (= cycle.estimated_hours × qty).
+              tfoot Total: <qty> ciclo(s) (sum qty independente de tipo)
+              + horas/dias. Ordem das seções no Equipment Scope reordenada
+              (QUALIF_TYPE_LABELS): QI → Calibração → QO → QD → QS.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

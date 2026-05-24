@@ -367,73 +367,13 @@
                                             </span>
                                         </div>
 
-                                        <!-- F8.8 — Tabela QO (sem carga) inline -->
+                                        <!-- F8.15 — pré-calcula QO/QD rows pro skip_tp -->
                                         <t t-set="qo_rows" t-value="doc._qualif_cycle_rows_for(eq['equipment'], 'qo')"/>
-                                        <t t-if="qo_rows">
-                                            <div class="qq-type-label">QO — Ciclos sem carga</div>
-                                            <table class="qq-table">
-                                                <tr>
-                                                    <th style="width: 10%;">Qtd</th>
-                                                    <th>Ciclo</th>
-                                                    <th style="width: 22%;">Temperatura</th>
-                                                    <th style="width: 22%;">Tempo</th>
-                                                </tr>
-                                                <t t-foreach="qo_rows" t-as="row">
-                                                    <tr>
-                                                        <td t-esc="row['qty']"/>
-                                                        <td t-esc="row['name']"/>
-                                                        <td t-esc="row['temperature']"/>
-                                                        <td t-esc="row['duration']"/>
-                                                    </tr>
-                                                </t>
-                                                <t t-set="qo_total_qty" t-value="sum(r['qty'] or 0 for r in qo_rows)"/>
-                                                <t t-set="qo_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qo')"/>
-                                                <tfoot>
-                                                    <tr>
-                                                        <td t-esc="qo_total_qty"/>
-                                                        <td colspan="2">Total: <t t-esc="len(qo_rows)"/> ciclo(s)</td>
-                                                        <td style="text-align: right;">
-                                                            <t t-esc="'%.1f h · %.2f dias' % (qo_total_hours, qo_total_hours / 8.0)"/>
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </t>
-
-                                        <!-- F8.8 — Tabela QD (com carga) inline -->
                                         <t t-set="qd_rows" t-value="doc._qualif_cycle_rows_for(eq['equipment'], 'qd')"/>
-                                        <t t-if="qd_rows">
-                                            <div class="qq-type-label">QD — Ciclos com carga</div>
-                                            <table class="qq-table">
-                                                <tr>
-                                                    <th style="width: 10%;">Qtd</th>
-                                                    <th>Ciclo</th>
-                                                    <th style="width: 22%;">Temperatura</th>
-                                                    <th style="width: 22%;">Tempo</th>
-                                                </tr>
-                                                <t t-foreach="qd_rows" t-as="row">
-                                                    <tr>
-                                                        <td t-esc="row['qty']"/>
-                                                        <td t-esc="row['name']"/>
-                                                        <td t-esc="row['temperature']"/>
-                                                        <td t-esc="row['duration']"/>
-                                                    </tr>
-                                                </t>
-                                                <t t-set="qd_total_qty" t-value="sum(r['qty'] or 0 for r in qd_rows)"/>
-                                                <t t-set="qd_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qd')"/>
-                                                <tfoot>
-                                                    <tr>
-                                                        <td t-esc="qd_total_qty"/>
-                                                        <td colspan="2">Total: <t t-esc="len(qd_rows)"/> ciclo(s)</td>
-                                                        <td style="text-align: right;">
-                                                            <t t-esc="'%.1f h · %.2f dias' % (qd_total_hours, qd_total_hours / 8.0)"/>
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </t>
 
-                                        <!-- Itens por tipo (skip performance e operational cycle-based: já tabelados) -->
+                                        <!-- F8.15 — Ordem: QI → Calibração → QO → QD. Renderiza
+                                             primeiro tipos não-tabelados (QI/QS/Calib via listas);
+                                             tabelas QO/QD aparecem depois (ver F8.15). -->
                                         <t t-foreach="eq['types']" t-as="tp">
                                             <t t-set="skip_tp" t-value="tp['code'] == 'performance' or (tp['code'] == 'operational' and qo_rows)"/>
                                             <t t-if="not skip_tp">
@@ -461,6 +401,72 @@
                                                     </ul>
                                                 </div>
                                             </t>
+                                        </t>
+
+                                        <!-- F8.15 — Tabela QO (sem carga) inline. Cols: Ciclo | Qtd | Temperatura | Tempo Esteril | Tempo Estimado -->
+                                        <t t-if="qo_rows">
+                                            <div class="qq-type-label">QO — Ciclos sem carga</div>
+                                            <table class="qq-table">
+                                                <tr>
+                                                    <th>Ciclo</th>
+                                                    <th style="width: 10%;">Qtd</th>
+                                                    <th style="width: 18%;">Temperatura</th>
+                                                    <th style="width: 18%;">Tempo Esteril</th>
+                                                    <th style="width: 18%; text-align: right;">Tempo Estimado</th>
+                                                </tr>
+                                                <t t-foreach="qo_rows" t-as="row">
+                                                    <tr>
+                                                        <td t-esc="row['name']"/>
+                                                        <td t-esc="row['qty']"/>
+                                                        <td t-esc="row['temperature']"/>
+                                                        <td t-esc="row['duration']"/>
+                                                        <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
+                                                    </tr>
+                                                </t>
+                                                <t t-set="qo_total_qty" t-value="sum(r['qty'] or 0 for r in qo_rows)"/>
+                                                <t t-set="qo_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qo')"/>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td colspan="4">Total: <t t-esc="qo_total_qty"/> ciclo(s)</td>
+                                                        <td style="text-align: right;">
+                                                            <t t-esc="'%.1f h · %.2f dias' % (qo_total_hours, qo_total_hours / 8.0)"/>
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </t>
+
+                                        <!-- F8.15 — Tabela QD (com carga) inline. Cols: Ciclo | Qtd | Temperatura | Tempo Esteril | Tempo Estimado -->
+                                        <t t-if="qd_rows">
+                                            <div class="qq-type-label">QD — Ciclos com carga</div>
+                                            <table class="qq-table">
+                                                <tr>
+                                                    <th>Ciclo</th>
+                                                    <th style="width: 10%;">Qtd</th>
+                                                    <th style="width: 18%;">Temperatura</th>
+                                                    <th style="width: 18%;">Tempo Esteril</th>
+                                                    <th style="width: 18%; text-align: right;">Tempo Estimado</th>
+                                                </tr>
+                                                <t t-foreach="qd_rows" t-as="row">
+                                                    <tr>
+                                                        <td t-esc="row['name']"/>
+                                                        <td t-esc="row['qty']"/>
+                                                        <td t-esc="row['temperature']"/>
+                                                        <td t-esc="row['duration']"/>
+                                                        <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
+                                                    </tr>
+                                                </t>
+                                                <t t-set="qd_total_qty" t-value="sum(r['qty'] or 0 for r in qd_rows)"/>
+                                                <t t-set="qd_total_hours" t-value="doc._qualif_section_hours(eq['equipment'], 'qd')"/>
+                                                <tfoot>
+                                                    <tr>
+                                                        <td colspan="4">Total: <t t-esc="qd_total_qty"/> ciclo(s)</td>
+                                                        <td style="text-align: right;">
+                                                            <t t-esc="'%.1f h · %.2f dias' % (qd_total_hours, qd_total_hours / 8.0)"/>
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
                                         </t>
                                         <!-- F8.10 — subtotal por equipamento removido do escopo
                                              (preço aparece no bloco Resumo Financeiro). -->
@@ -491,26 +497,31 @@
                                     </div>
                                     <table class="qq-table">
                                         <tr>
-                                            <th style="width: 10%;">Qtd</th>
                                             <th>Ciclo</th>
-                                            <th style="width: 20%;">Temperatura</th>
-                                            <th style="width: 20%;">Tempo</th>
-                                            <th style="width: 20%;">Carga</th>
+                                            <th style="width: 8%;">Qtd</th>
+                                            <th style="width: 15%;">Temperatura</th>
+                                            <th style="width: 15%;">Tempo Esteril</th>
+                                            <th style="width: 15%;">Carga</th>
+                                            <th style="width: 18%; text-align: right;">Tempo Estimado</th>
                                         </tr>
                                         <t t-foreach="cs['rows']" t-as="row">
                                             <tr>
-                                                <td t-esc="row['qty']"/>
                                                 <td t-esc="row['name']"/>
+                                                <td t-esc="row['qty']"/>
                                                 <td t-esc="row['temperature']"/>
                                                 <td t-esc="row['duration']"/>
                                                 <td t-esc="row['load_type']"/>
+                                                <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
                                             </tr>
                                         </t>
                                         <t t-set="cs_total_qty" t-value="sum(r['qty'] or 0 for r in cs['rows'])"/>
+                                        <t t-set="cs_total_hours" t-value="sum(r['estimated_hours_total'] or 0.0 for r in cs['rows'])"/>
                                         <tfoot>
                                             <tr>
-                                                <td t-esc="cs_total_qty"/>
-                                                <td colspan="4">Total: <t t-esc="len(cs['rows'])"/> ciclo(s)</td>
+                                                <td colspan="5">Total: <t t-esc="cs_total_qty"/> ciclo(s)</td>
+                                                <td style="text-align: right;">
+                                                    <t t-esc="'%.1f h · %.2f dias' % (cs_total_hours, cs_total_hours / 8.0)"/>
+                                                </td>
                                             </tr>
                                         </tfoot>
                                     </table>

@@ -161,15 +161,15 @@ class TestQuotationReport(AfrQualificacaoTestCommon):
         self.assertIn(self.equip2, equips)
 
     def test_equipment_summary_type_order_follows_selection(self):
-        """QI deve vir antes de QD; QD antes de Calibração."""
+        """F8.15 — ordem: QI → Calibração → QO → QD → QS."""
         so = self._make_quote_with_qualif()
         summary = so._qualif_equipment_summary()
         equip1_entry = next(s for s in summary if s["equipment"] == self.equip1)
         codes = [t["code"] for t in equip1_entry["types"]]
-        # Ordem: installation < performance < calibration
+        # F8.15: calibração antes de performance (QD).
         self.assertEqual(
             codes,
-            ["installation", "performance", "calibration"],
+            ["installation", "calibration", "performance"],
         )
 
     def test_equipment_summary_includes_items_with_qty(self):
