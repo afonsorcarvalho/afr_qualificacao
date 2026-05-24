@@ -23,6 +23,7 @@
         <field name="product_id" ref="product_malha_calibracao"/>
         <field name="sensor_kind_id" ref="sensor_kind_temperature"/>
         <field name="sequence">10</field>
+        <field name="estimated_hours">4.0</field>
     </record>
 
     <!-- Malha de Pressão — autoclaves -->
@@ -32,6 +33,7 @@
         <field name="product_id" ref="product_malha_calibracao"/>
         <field name="sensor_kind_id" ref="sensor_kind_pressure"/>
         <field name="sequence">20</field>
+        <field name="estimated_hours">4.0</field>
     </record>
 
     <!-- Malha de Umidade — autoclave gás -->
@@ -41,6 +43,7 @@
         <field name="product_id" ref="product_malha_calibracao"/>
         <field name="sensor_kind_id" ref="sensor_kind_humidity"/>
         <field name="sequence">30</field>
+        <field name="estimated_hours">4.0</field>
     </record>
 
 </odoo>
