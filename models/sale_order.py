@@ -522,6 +522,10 @@ class SaleOrder(models.Model):
 
         Idempotente: pula a SO se já tem blocos. Use
         action_reload_proposal_blocks() para forçar recarga.
+
+        F9.1 — propaga parent_id e show_number das linhas do template.
+        Duas passagens: 1ª cria blocos e mapeia line_id→block_id;
+        2ª resolve parent_id usando o mapa.
         """
         Block = self.env["afr.proposal.block"]
         for order in self:
@@ -530,14 +534,15 @@ class SaleOrder(models.Model):
             kind_labels = dict(
                 self.env["afr.proposal.block"]._fields["block_kind"].selection
             )
-            vals = []
+            # 1ª passagem: criar blocos (sem parent ainda)
+            line_to_block = {}
             for line in order.proposal_template_id.line_ids.sorted("sequence"):
                 section = line.section_id
                 title = line.title or (
                     section.name if section
                     else kind_labels.get(line.block_kind, "")
                 )
-                vals.append({
+                block = Block.create({
                     "sale_order_id": order.id,
                     "sequence": line.sequence,
                     "block_kind": line.block_kind,
@@ -545,9 +550,57 @@ class SaleOrder(models.Model):
                     "title": title,
                     "body": section.body if section else False,
                     "page_break": line.page_break,
+                    "show_number": line.show_number,
+                    "show_title": line.show_title,
                 })
-            if vals:
-                Block.create(vals)
+                line_to_block[line.id] = block.id
+            # 2ª passagem: propagar parent_id
+            for line in order.proposal_template_id.line_ids:
+                if line.parent_id and line.id in line_to_block:
+                    parent_block_id = line_to_block.get(line.parent_id.id)
+                    if parent_block_id:
+                        Block.browse(line_to_block[line.id]).write(
+                            {"parent_id": parent_block_id}
+                        )
+
+    def _proposal_block_numbering(self):
+        """Retorna dict {block_id: 'número_hierárquico'} para todos os blocos incluídos.
+
+        Ex: {1: '1', 2: '2', 3: '3', 4: '3.1', 5: '3.2', 6: '3.3', 7: '4'}
+        Blocos com show_number=False recebem string vazia ''.
+        Suporta profundidade arbitrária (1, 1.1, 1.1.1, …).
+        """
+        self.ensure_one()
+        blocks = self.proposal_block_ids.filtered("included").sorted(
+            lambda b: (b.sequence, b.id)
+        )
+        numbers = {}
+        root_counter = 0
+        child_counters = {}  # parent_id → contagem de filhos vistos
+
+        for block in blocks:
+            if not block.parent_id:
+                if block.show_number:
+                    root_counter += 1
+                    numbers[block.id] = str(root_counter)
+                    child_counters[block.id] = 0
+                else:
+                    numbers[block.id] = ""
+            else:
+                pid = block.parent_id.id
+                child_counters.setdefault(pid, 0)
+                if block.show_number:
+                    child_counters[pid] += 1
+                    parent_num = numbers.get(pid, "")
+                    numbers[block.id] = (
+                        f"{parent_num}.{child_counters[pid]}"
+                        if parent_num
+                        else str(child_counters[pid])
+                    )
+                else:
+                    numbers[block.id] = ""
+
+        return numbers
 
     def action_reload_proposal_blocks(self):
         """Apaga blocos atuais e recarrega do template (descarta edições)."""

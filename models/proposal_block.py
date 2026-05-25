@@ -12,7 +12,8 @@ ordem de `sequence`.
 
 from markupsafe import Markup, escape
 
-from odoo import fields, models, _
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 from odoo.tools.misc import formatLang
 
 from .proposal_template import PROPOSAL_BLOCK_KINDS
@@ -69,6 +70,51 @@ class AfrProposalBlock(models.Model):
             "contrário, continua na mesma página do bloco anterior."
         ),
     )
+    # F9.1 — Hierarquia pai/filho entre blocos da mesma cotação
+    parent_id = fields.Many2one(
+        comodel_name="afr.proposal.block",
+        string="Bloco Pai",
+        domain="[('sale_order_id', '=', sale_order_id), ('id', '!=', id)]",
+        ondelete="set null",
+        index=True,
+        help="Bloco pai na hierarquia da proposta. Ex: 'Qualificação Térmica' é pai de QI, QO, QD.",
+    )
+    child_ids = fields.One2many(
+        comodel_name="afr.proposal.block",
+        inverse_name="parent_id",
+        string="Sub-blocos",
+    )
+    show_number = fields.Boolean(
+        string="Numerado",
+        default=True,
+        help=(
+            "Exibe numeração hierárquica automática no título do PDF "
+            "(ex: 3, 3.1, 3.2). Desmarque para omitir o número."
+        ),
+    )
+    show_title = fields.Boolean(
+        string="Titulado",
+        default=True,
+        help=(
+            "Exibe o título do bloco no PDF. Desmarque para renderizar "
+            "apenas o conteúdo, sem cabeçalho."
+        ),
+    )
+
+    @api.constrains("parent_id")
+    def _check_no_cycle(self):
+        """Impede referências circulares na hierarquia de blocos."""
+        for record in self:
+            ancestor = record.parent_id
+            visited = {record.id}
+            while ancestor:
+                if ancestor.id in visited:
+                    raise ValidationError(
+                        _("Hierarquia circular detectada no bloco '%s'.")
+                        % record.title or record.id
+                    )
+                visited.add(ancestor.id)
+                ancestor = ancestor.parent_id
 
     def name_get(self):
         """Display: título do bloco ou rótulo do tipo dinâmico."""

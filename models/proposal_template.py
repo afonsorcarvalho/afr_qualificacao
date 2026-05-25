@@ -105,6 +105,95 @@ class AfrProposalTemplateLine(models.Model):
             "(blocos de texto) ou o rótulo do tipo (blocos dinâmicos)."
         ),
     )
+    # F9.1 — Hierarquia no template (propagada para os blocos ao seed)
+    parent_id = fields.Many2one(
+        comodel_name="afr.proposal.template.line",
+        string="Linha Pai",
+        domain="[('template_id', '=', template_id), ('id', '!=', id)]",
+        ondelete="set null",
+        help="Linha pai neste template — define hierarquia propagada ao sedar blocos na cotação.",
+    )
+    show_number = fields.Boolean(
+        string="Numerado",
+        default=True,
+        help="Exibe numeração hierárquica automática no PDF (ex: 3.1). Propagado ao bloco ao sedar.",
+    )
+    show_title = fields.Boolean(
+        string="Titulado",
+        default=True,
+        help="Exibe título no PDF. Desmarque para renderizar só o conteúdo. Propagado ao bloco ao sedar.",
+    )
+    # F9.1.x — campos de display (preview UX no editor de template)
+    display_label = fields.Char(
+        compute="_compute_display_label",
+        string="Conteúdo",
+        help="Cascade: título → nome da seção → rótulo do tipo. Identifica a linha visualmente.",
+    )
+    display_number = fields.Char(
+        compute="_compute_display_number",
+        string="Nº",
+        help="Preview do número hierárquico que aparecerá no PDF (1, 2, 3, 3.1…).",
+    )
+
+    @api.depends("title", "section_id", "block_kind")
+    def _compute_display_label(self):
+        """Cascade: title → section name → kind label."""
+        kind_labels = dict(PROPOSAL_BLOCK_KINDS)
+        for line in self:
+            line.display_label = (
+                line.title
+                or (line.section_id.name if line.section_id else "")
+                or kind_labels.get(line.block_kind, "")
+            )
+
+    @api.depends(
+        "template_id",
+        "sequence",
+        "parent_id",
+        "show_number",
+        "template_id.line_ids.sequence",
+        "template_id.line_ids.parent_id",
+        "template_id.line_ids.show_number",
+    )
+    def _compute_display_number(self):
+        """Preview da numeração hierárquica das linhas do template.
+
+        Espelha a lógica de SaleOrder._proposal_block_numbering, aplicada
+        às linhas do template (todas; sem filtrar por 'included').
+        """
+        # Inicializa todas com ""
+        for line in self:
+            line.display_number = ""
+        # Agrupa por template e calcula
+        templates = self.mapped("template_id")
+        for template in templates:
+            lines = template.line_ids.sorted(lambda l: (l.sequence, l.id))
+            numbers = {}
+            root_counter = 0
+            child_counters = {}
+            for line in lines:
+                if not line.parent_id:
+                    if line.show_number:
+                        root_counter += 1
+                        numbers[line.id] = str(root_counter)
+                        child_counters[line.id] = 0
+                    else:
+                        numbers[line.id] = ""
+                else:
+                    pid = line.parent_id.id
+                    child_counters.setdefault(pid, 0)
+                    if line.show_number:
+                        child_counters[pid] += 1
+                        parent_num = numbers.get(pid, "")
+                        numbers[line.id] = (
+                            f"{parent_num}.{child_counters[pid]}"
+                            if parent_num
+                            else str(child_counters[pid])
+                        )
+                    else:
+                        numbers[line.id] = ""
+            for line in template.line_ids:
+                line.display_number = numbers.get(line.id, "")
 
     @api.constrains("block_kind", "section_id")
     def _check_static_has_section(self):

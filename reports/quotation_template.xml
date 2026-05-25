@@ -26,6 +26,19 @@
         <!-- Insere novo div page com layout dedicado -->
         <xpath expr="//div[hasclass('page')]" position="before">
             <div class="page qq-page" t-if="doc.has_qualif_lines">
+                <!-- F9.2: remove base href tag from web.minimal_layout.
+                     wkhtmltopdf respects base tag; with it, "#anchor" hrefs
+                     resolve to absolute URLs, breaking internal PDF links.
+                     Refs: drupal.org/project/print/issues/1313754
+                           github.com/wkhtmltopdf/wkhtmltopdf/issues/3486 -->
+                <script type="text/javascript">
+                    (function() {
+                        var bases = document.getElementsByTagName('base');
+                        for (var i = bases.length - 1; i >= 0; i--) {
+                            bases[i].parentNode.removeChild(bases[i]);
+                        }
+                    })();
+                </script>
                 <style>
                     /* Paleta LabQuali — vars CSS (--lq-*) definidas globalmente
                        em afr_labquali_layout (external_layout_labquali template).
@@ -83,6 +96,48 @@
                         color: var(--lq-gray);
                     }
                     .qq-section { page-break-before: always; padding-top: 10px; }
+                    /* F9.1 — título de bloco filho: indent + font menor */
+                    .qq-section-title-child {
+                        font-size: 16px;
+                        padding-left: 16px;
+                        border-bottom-width: 2px;
+                    }
+                    /* F9.2 — Índice (TOC) — formatação igual aos títulos, sem visual de link */
+                    .qq-toc { padding: 30px 20px; }
+                    .qq-toc-list {
+                        list-style: none;
+                        padding-left: 0;
+                        margin: 20px 0;
+                    }
+                    .qq-toc-item {
+                        padding: 10px 0;
+                        border-bottom: 1px solid var(--lq-gray-light);
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                    }
+                    .qq-toc-child {
+                        padding-left: 28px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        text-transform: none;
+                        letter-spacing: 0;
+                        color: var(--lq-brand);
+                    }
+                    .qq-toc-link {
+                        color: inherit !important;
+                        text-decoration: none !important;
+                        display: block;
+                    }
+                    .qq-toc-num {
+                        display: inline-block;
+                        min-width: 45px;
+                        color: var(--lq-accent);
+                        font-weight: bold;
+                    }
+                    .qq-toc-title { color: inherit; }
                     /* Continua na mesma página da seção anterior (sem quebra).
                        Agrupa: Sumário+Descritivo e Financeiro+Condições+Aceite. */
                     .qq-section-cont { page-break-before: avoid; padding-top: 18px; }
@@ -346,6 +401,31 @@
                 <t t-set="summary" t-value="doc._qualif_equipment_summary()"/>
                 <t t-set="type_descs" t-value="doc._qualif_type_descriptions()"/>
 
+                <!-- F9.1 — numeração hierárquica {block_id: 'N' | 'N.M' | ''} -->
+                <t t-set="block_numbers" t-value="doc._proposal_block_numbering() if doc.proposal_block_ids.filtered('included') else {}"/>
+
+                <!-- ========================================================
+                     F9.2 — ÍNDICE (TOC) — após capa, antes dos blocos
+                     Links internos ancorados em qq-anchor-#{block.id}.
+                     Apenas blocos com show_title=True aparecem no índice.
+                ========================================================= -->
+                <t t-if="doc.proposal_block_ids.filtered(lambda b: b.included and b.show_title)">
+                    <div class="qq-section qq-toc">
+                        <div class="qq-section-title">Índice</div>
+                        <ul class="qq-toc-list">
+                            <t t-foreach="doc.proposal_block_ids.filtered(lambda b: b.included and b.show_title)" t-as="tb">
+                                <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
+                                <li t-attf-class="qq-toc-item#{' qq-toc-child' if tb.parent_id else ''}">
+                                    <a t-attf-href="#qq-anchor-#{tb.id}" class="qq-toc-link">
+                                        <span class="qq-toc-num" t-if="tb_num"><t t-esc="tb_num"/></span>
+                                        <span class="qq-toc-title" t-esc="tb.title or tb.display_name"/>
+                                    </a>
+                                </li>
+                            </t>
+                        </ul>
+                    </div>
+                </t>
+
                 <!-- ========================================================
                      F8.3 — Proposta LEGO: percorre os blocos montados na
                      cotação (proposal_block_ids, incluídos, ordenados).
@@ -358,12 +438,24 @@
                              Sem quebra → classe qq-section-cont (continua). -->
                         <t t-set="sec_class"
                            t-value="'qq-section' if block.page_break else 'qq-section qq-section-cont'"/>
+                        <!-- F9.1 — número hierárquico e flag de filho para indent -->
+                        <t t-set="blk_num" t-value="block_numbers.get(block.id, '')"/>
+                        <t t-set="is_child" t-value="bool(block.parent_id)"/>
+                        <!-- F9.2 — anchor interno para links do TOC.
+                             IMPORTANTE: WebKit (wkhtmltopdf) REMOVE âncoras vazias.
+                             Conteúdo &#160; (nbsp) impede remoção. Ref:
+                             https://github.com/wkhtmltopdf/wkhtmltopdf/issues/3486 -->
+                        <a t-attf-name="qq-anchor-#{block.id}"
+                           t-attf-id="qq-anchor-#{block.id}"
+                           style="text-decoration:none;color:inherit;">&#160;</a>
 
                         <!-- Bloco de texto estático -->
                         <t t-if="block.block_kind == 'static'">
                             <div t-att-class="sec_class">
-                                <div class="qq-section-title" t-if="block.title">
-                                    <span t-esc="block.title"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title and (block.title or blk_num)">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or ''"/>
                                 </div>
                                 <div class="qq-block-body"
                                      t-out="doc._render_proposal_block_body(block.body)"/>
@@ -373,8 +465,10 @@
                         <!-- Escopo por equipamento -->
                         <t t-if="block.block_kind == 'equipment_scope'">
                             <div t-att-class="sec_class">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Escopo por Equipamento'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Escopo por Equipamento'"/>
                                 </div>
                                 <t t-foreach="summary" t-as="eq">
                                     <div class="qq-equip-card">
@@ -438,8 +532,10 @@
                         <t t-if="block.block_kind == 'cycle_specs'">
                             <t t-set="cycle_specs" t-value="doc._qualif_cycle_specs()"/>
                             <div t-att-class="sec_class" t-if="cycle_specs">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Tabela Resumo de Ciclos'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Tabela Resumo de Ciclos'"/>
                                 </div>
                                 <t t-foreach="cycle_specs" t-as="cs">
                                     <div class="qq-subsection-title">
@@ -482,8 +578,10 @@
                         <!-- F8.14 — Bloco Cronograma (template-opcional) -->
                         <t t-if="block.block_kind == 'schedule'">
                             <div t-att-class="sec_class">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Cronograma Estimado'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Cronograma Estimado'"/>
                                 </div>
                                 <p class="text-muted" style="font-size: 14px; margin-bottom: 12px;">
                                     <em>Base de cálculo: 8 horas por dia útil.</em>
@@ -523,8 +621,10 @@
                         <!-- Tabela de normas -->
                         <t t-if="block.block_kind == 'standards_table'">
                             <div t-att-class="sec_class" t-if="doc.qualif_standard_ids">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Normas Aplicáveis'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Normas Aplicáveis'"/>
                                 </div>
                                 <table class="qq-table">
                                     <tr>
@@ -548,8 +648,10 @@
                         <!-- Resumo financeiro -->
                         <t t-if="block.block_kind == 'financial'">
                             <div t-att-class="sec_class">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Resumo Financeiro'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Resumo Financeiro'"/>
                                 </div>
                                 <table class="qq-table">
                                     <tr>
@@ -596,8 +698,10 @@
                         <t t-if="block.block_kind == 'optionals'">
                             <t t-set="opt_lines" t-value="doc.order_line.filtered('is_proposal_optional')"/>
                             <div t-att-class="sec_class" t-if="opt_lines">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Serviços Opcionais'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Serviços Opcionais'"/>
                                 </div>
                                 <table class="qq-table">
                                     <tr>
@@ -629,8 +733,10 @@
                         <!-- Aceite -->
                         <t t-if="block.block_kind == 'acceptance'">
                             <div t-attf-class="#{sec_class} qq-signature-block">
-                                <div class="qq-section-title">
-                                    <t t-esc="block.title or 'Aceite da Proposta'"/>
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Aceite da Proposta'"/>
                                 </div>
                                 <div class="qq-signature-row">
                                     <div class="qq-signature-col">

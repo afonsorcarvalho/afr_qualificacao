@@ -44,6 +44,23 @@
         </field>
     </record>
 
+    <!-- F9.1 — Secção pai para agrupar QI + QO + QD -->
+    <record id="proposal_section_qualif_termica" model="afr.proposal.section">
+        <field name="code">SEC-QUALIF-TERMICA</field>
+        <field name="name">Qualificação Térmica</field>
+        <field name="category">tecnico</field>
+        <field name="sequence">25</field>
+        <field name="body" type="html">
+            <div>
+                <p>A qualificação térmica é parte integrante do processo de
+                validação e abrange as etapas de Qualificação de Instalação (QI),
+                Qualificação de Operação (QO) e Qualificação de Desempenho (QD),
+                executadas em conformidade com as normas aplicáveis e os
+                requisitos do processo produtivo de <strong>{{ partner.name }}</strong>.</p>
+            </div>
+        </field>
+    </record>
+
     <record id="proposal_section_qi" model="afr.proposal.section">
         <field name="code">SEC-QI</field>
         <field name="name">Qualificação de Instalação (QI)</field>

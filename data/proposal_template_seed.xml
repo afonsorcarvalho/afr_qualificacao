@@ -26,23 +26,33 @@
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_metodologia"/>
     </record>
+    <!-- F9.1 — linha pai "Qualificação Térmica" (agrupa QI/QO/QD como filhos) -->
+    <record id="proposal_template_labquali_l02b" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_labquali"/>
+        <field name="sequence">25</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_qualif_termica"/>
+    </record>
     <record id="proposal_template_labquali_l03" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">30</field>
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_qi"/>
+        <field name="parent_id" ref="proposal_template_labquali_l02b"/>
     </record>
     <record id="proposal_template_labquali_l04" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">40</field>
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_qo"/>
+        <field name="parent_id" ref="proposal_template_labquali_l02b"/>
     </record>
     <record id="proposal_template_labquali_l05" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">50</field>
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_qd"/>
+        <field name="parent_id" ref="proposal_template_labquali_l02b"/>
     </record>
     <record id="proposal_template_labquali_l06" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
