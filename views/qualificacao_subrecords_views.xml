@@ -36,7 +36,7 @@
                         </group>
                     </group>
                     <group string="Observações">
-                        <field name="notes" nolabel="1"/>
+                        <field name="notes" nolabel="1" options="{'codeview': True}"/>
                     </group>
                 </sheet>
             </form>
@@ -133,7 +133,7 @@
                         </page>
                     </notebook>
                     <group string="Observações">
-                        <field name="notes" nolabel="1"/>
+                        <field name="notes" nolabel="1" options="{'codeview': True}"/>
                     </group>
                 </sheet>
             </form>

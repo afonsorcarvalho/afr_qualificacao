@@ -34,7 +34,7 @@
                         </group>
                     </group>
                     <separator string="Conteúdo (aceita {{ expressões }})"/>
-                    <field name="body"/>
+                    <field name="body" options="{'codeview': True}"/>
                 </sheet>
             </form>
         </field>

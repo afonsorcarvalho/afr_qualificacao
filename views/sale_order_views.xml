@@ -93,7 +93,7 @@
                                 <field name="section_id" readonly="1"/>
                             </group>
                             <separator string="Conteúdo (aceita {{ expressões }})"/>
-                            <field name="body"/>
+                            <field name="body" options="{'codeview': True}"/>
                         </form>
                     </field>
                 </page>

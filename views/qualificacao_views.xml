@@ -324,7 +324,7 @@
                             </group>
                         </page>
                         <page string="Observações">
-                            <field name="notes" widget="html"/>
+                            <field name="notes" widget="html" options="{'codeview': True}"/>
                         </page>
                         <page string="Mensagens">
                             <field name="message_follower_ids" widget="mail_followers" readonly="1"/>
