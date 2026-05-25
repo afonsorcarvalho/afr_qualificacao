@@ -37,10 +37,20 @@
                     .address, .row.address { display: none !important; }
                     .qq-cover {
                         text-align: center;
-                        padding: 60px 40px 40px 50px;
+                        padding: 60px 40px 0 50px;
                         min-height: 720px;
                         border-left: 14px solid var(--lq-accent); /* faixa laranja brand */
                         position: relative;
+                    }
+                    .qq-cover-img {
+                        margin-top: 30px;
+                        margin-left: -50px;
+                        margin-right: -40px;
+                        width: calc(100% + 90px);
+                        display: block;
+                        max-height: 340px;
+                        object-fit: cover;
+                        object-position: center;
                     }
                     .qq-cover-title {
                         font-size: 28px;
@@ -326,6 +336,11 @@
                         Emitido por
                         <span t-field="doc.company_id.name"/>
                     </div>
+
+                    <!-- Imagem de capa (collage de equipamentos) -->
+                    <img class="qq-cover-img"
+                         src="/afr_qualificacao/static/img/cover_default.jpg"
+                         alt="LabQuali — Qualificação de Equipamentos"/>
                 </div>
 
                 <!-- ========================================================
