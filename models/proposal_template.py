@@ -195,6 +195,27 @@ class AfrProposalTemplateLine(models.Model):
             for line in template.line_ids:
                 line.display_number = numbers.get(line.id, "")
 
+    def action_edit_template_line(self):
+        """F9.2: abre a seção (static) ou a própria linha (dinâmico) em modal."""
+        self.ensure_one()
+        if self.block_kind == "static" and self.section_id:
+            return {
+                "type": "ir.actions.act_window",
+                "name": _("Editar Seção da Proposta"),
+                "res_model": "afr.proposal.section",
+                "res_id": self.section_id.id,
+                "view_mode": "form",
+                "target": "new",
+            }
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Editar Linha do Template"),
+            "res_model": "afr.proposal.template.line",
+            "res_id": self.id,
+            "view_mode": "form",
+            "target": "new",
+        }
+
     @api.constrains("block_kind", "section_id")
     def _check_static_has_section(self):
         for record in self:
@@ -214,3 +235,20 @@ class AfrProposalTemplateLine(models.Model):
                 label = kind_labels.get(record.block_kind, record.block_kind or "")
             result.append((record.id, label))
         return result
+
+    @api.model
+    def _name_search(self, name="", args=None, operator="ilike", limit=100, name_get_uid=None):
+        """F9.2: busca por título, nome da seção OU rótulo do tipo de bloco."""
+        args = args or []
+        domain = []
+        if name:
+            kind_labels = dict(PROPOSAL_BLOCK_KINDS)
+            matched_kinds = [
+                code for code, label in kind_labels.items()
+                if name.lower() in (label or "").lower()
+            ]
+            domain = ["|", "|",
+                      ("title", operator, name),
+                      ("section_id.name", operator, name),
+                      ("block_kind", "in", matched_kinds) if matched_kinds else ("id", "=", 0)]
+        return self._search(domain + args, limit=limit, access_rights_uid=name_get_uid)

@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!--
+            F9.3: Email template "Proposta Tecnico-Comercial LabQuali".
+            Layout HTML inline (email-safe) com paleta LabQuali:
+              azul brand #0A3D62, azul medio #1976A8, laranja #FF6B35.
+            Estrutura: header (logo+faixa), cumprimento, bloco de dados,
+            CTA portal, assinatura, rodape. Anexa o PDF da cotacao.
+        -->
+        <record id="email_template_proposal_labquali" model="mail.template">
+            <field name="name">LabQuali: Envio de Proposta</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="subject">Proposta Técnico-Comercial {{ object.name }} — {{ object.company_id.name }}</field>
+            <field name="email_from">{{ (object.user_id.email_formatted or object.company_id.email_formatted or user.email_formatted) }}</field>
+            <field name="partner_to">{{ object.partner_id.id }}</field>
+            <field name="description">Email com layout LabQuali para envio de proposta de qualificação ao cliente</field>
+            <field name="body_html" type="html">
+<div style="margin:0;padding:0;font-family:'Helvetica Neue','Inter','Lato',Arial,sans-serif;background:#F5F7FA;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F7FA;padding:24px 0;">
+        <tr><td align="center">
+            <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"
+                   style="max-width:640px;background:#FFFFFF;border-radius:6px;overflow:hidden;
+                          box-shadow:0 2px 8px rgba(10,61,98,0.08);">
+                <tr>
+                    <td style="padding:24px 32px 16px 32px;background:#FFFFFF;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td align="left" style="vertical-align:middle;">
+                                    <img t-if="object.company_id.logo"
+                                         t-att-src="'/web/image/res.company/%s/logo' % object.company_id.id"
+                                         alt="Logo"
+                                         style="max-height:60px;max-width:240px;display:block;"/>
+                                </td>
+                                <td align="right" style="vertical-align:middle;font-size:11px;color:#5A7184;">
+                                    <span t-out="object.company_id.name or ''"/>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr><td style="height:3px;background:#0A3D62;line-height:0;font-size:0;">&#160;</td></tr>
+                <tr><td style="height:2px;background:#FF6B35;line-height:0;font-size:0;">&#160;</td></tr>
+
+                <tr>
+                    <td style="padding:32px;color:#212529;font-size:14px;line-height:1.6;">
+                        <p style="margin:0 0 16px 0;font-size:15px;">
+                            Prezado(a) <strong t-out="object.partner_id.name or ''"/>,
+                        </p>
+                        <p style="margin:0 0 20px 0;">
+                            É com satisfação que apresentamos nossa
+                            <strong style="color:#0A3D62;">Proposta Técnico-Comercial</strong>
+                            para os serviços de Qualificação de Equipamentos solicitados,
+                            elaborada em conformidade com os requisitos do seu processo.
+                        </p>
+
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                               style="background:#F5F7FA;border-left:4px solid #FF6B35;
+                                      border-radius:3px;margin:16px 0 20px 0;">
+                            <tr><td style="padding:18px 22px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                                       style="font-size:13px;color:#212529;">
+                                    <tr>
+                                        <td style="padding:4px 0;color:#0A3D62;font-weight:bold;width:130px;">Nº da Proposta:</td>
+                                        <td style="padding:4px 0;" t-out="object.name or ''"/>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding:4px 0;color:#0A3D62;font-weight:bold;">Data de Emissão:</td>
+                                        <td style="padding:4px 0;" t-out="format_date(object.date_order) or ''"/>
+                                    </tr>
+                                    <tr t-if="object.validity_date">
+                                        <td style="padding:4px 0;color:#0A3D62;font-weight:bold;">Validade:</td>
+                                        <td style="padding:4px 0;" t-out="format_date(object.validity_date) or ''"/>
+                                    </tr>
+                                </table>
+                            </td></tr>
+                        </table>
+
+                        <p style="margin:0 0 16px 0;">
+                            O documento PDF anexo detalha o escopo técnico, normas aplicáveis,
+                            cronograma estimado e condições comerciais. Recomendamos a leitura
+                            integral para esclarecimento de todos os itens contemplados.
+                        </p>
+
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
+                            <tr><td align="center" style="background:#0A3D62;border-radius:4px;">
+                                <a t-att-href="object.get_portal_url()"
+                                   style="display:inline-block;padding:12px 28px;color:#FFFFFF;
+                                          font-size:14px;font-weight:bold;text-decoration:none;
+                                          letter-spacing:0.5px;">
+                                    Visualizar Proposta Online
+                                </a>
+                            </td></tr>
+                        </table>
+
+                        <p style="margin:0 0 8px 0;">
+                            Permanecemos à disposição para esclarecimentos adicionais.
+                        </p>
+
+                        <t t-if="not is_html_empty(object.user_id.signature)">
+                            <div style="margin-top:24px;padding-top:16px;border-top:1px solid #E1E8ED;
+                                        color:#5A7184;font-size:13px;">
+                                <t t-out="object.user_id.signature or ''"/>
+                            </div>
+                        </t>
+                        <t t-else="">
+                            <p style="margin:24px 0 0 0;color:#5A7184;font-size:13px;">
+                                Atenciosamente,<br/>
+                                <strong style="color:#0A3D62;" t-out="object.user_id.name or object.company_id.name or ''"/>
+                                <t t-if="object.user_id.email"><br/>
+                                <span t-out="object.user_id.email or ''"/></t>
+                                <t t-if="object.user_id.phone"><br/>
+                                <span t-out="object.user_id.phone or ''"/></t>
+                            </p>
+                        </t>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="background:#0A3D62;padding:18px 32px;color:#FFFFFF;font-size:11px;
+                               text-align:center;line-height:1.5;">
+                        <strong t-out="object.company_id.name or ''"/>
+                        <t t-if="object.company_id.email"> ·
+                        <span t-out="object.company_id.email or ''"/></t>
+                        <t t-if="object.company_id.phone"> ·
+                        <span t-out="object.company_id.phone or ''"/></t>
+                        <t t-if="object.company_id.website"><br/>
+                        <span t-out="object.company_id.website or ''"/></t>
+                    </td>
+                </tr>
+            </table>
+        </td></tr>
+    </table>
+</div>
+            </field>
+            <field name="report_template" ref="sale.action_report_saleorder"/>
+            <field name="report_name">Proposta_{{ (object.name or '').replace('/','_') }}</field>
+            <field name="lang">{{ object.partner_id.lang or 'pt_BR' }}</field>
+            <field name="auto_delete" eval="True"/>
+        </record>
+    </data>
+</odoo>

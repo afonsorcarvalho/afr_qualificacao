@@ -77,14 +77,18 @@
                         <tree editable="bottom">
                             <field name="sale_order_id" invisible="1"/>
                             <field name="sequence" widget="handle"/>
+                            <field name="display_number" string="Nº" readonly="1"/>
                             <field name="included" widget="boolean_toggle"/>
                             <field name="show_number" widget="boolean_toggle"/>
                             <field name="show_title" widget="boolean_toggle"/>
-                            <field name="block_kind"/>
-                            <field name="parent_id" optional="show"/>
                             <field name="title"/>
-                            <field name="page_break" widget="boolean_toggle"/>
+                            <field name="block_kind"/>
+                            <field name="parent_id"
+                                   domain="[('sale_order_id','=',parent.id),('id','!=',id)]"
+                                   options="{'no_create': True, 'no_create_edit': True}"/>
+                            <field name="display_label" string="Conteúdo" readonly="1"/>
                             <field name="section_id" optional="hide"/>
+                            <field name="page_break" widget="boolean_toggle"/>
                             <button name="action_edit_block" type="object"
                                     string="Editar" icon="fa-pencil"
                                     class="btn-link"/>

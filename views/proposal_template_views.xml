@@ -52,9 +52,50 @@
                                            'readonly': [('block_kind', '!=', 'static')]}"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
                             <field name="page_break" widget="boolean_toggle"/>
+                            <button name="action_edit_template_line"
+                                    type="object"
+                                    string="Editar"
+                                    icon="fa-pencil"
+                                    class="btn-link"/>
                         </tree>
                     </field>
                 </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- F9.2 — form modal da linha (botão Editar em template dinâmico) -->
+    <record id="view_proposal_template_line_form" model="ir.ui.view">
+        <field name="name">afr.proposal.template.line.form</field>
+        <field name="model">afr.proposal.template.line</field>
+        <field name="arch" type="xml">
+            <form string="Linha do Template">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="template_id" readonly="1"/>
+                            <field name="block_kind"/>
+                            <field name="title"/>
+                            <field name="parent_id"
+                                   domain="[('template_id','=',template_id),('id','!=',id)]"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="show_number"/>
+                            <field name="show_title"/>
+                            <field name="page_break"/>
+                            <field name="section_id"
+                                   attrs="{'required': [('block_kind','=','static')],
+                                           'readonly': [('block_kind','!=','static')]}"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button string="Salvar e Fechar"
+                            class="btn-primary" special="save"/>
+                    <button string="Descartar"
+                            class="btn-secondary" special="cancel"/>
+                </footer>
             </form>
         </field>
     </record>

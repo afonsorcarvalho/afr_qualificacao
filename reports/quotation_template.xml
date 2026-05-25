@@ -32,12 +32,41 @@
                      Refs: drupal.org/project/print/issues/1313754
                            github.com/wkhtmltopdf/wkhtmltopdf/issues/3486 -->
                 <script type="text/javascript">
-                    (function() {
+                    // F9.2: wait for window.load so ALL images/CSS already loaded
+                    // by browser using current base. Then absolutize URLs and
+                    // remove base so fragment hrefs (#anchor) become internal PDF links.
+                    // Runs within wkhtmltopdf --javascript-delay (default 1000ms).
+                    window.addEventListener('load', function() {
                         var bases = document.getElementsByTagName('base');
-                        for (var i = bases.length - 1; i >= 0; i--) {
-                            bases[i].parentNode.removeChild(bases[i]);
+                        if (!bases.length) return;
+                        // Snapshot resolved URLs (getter returns abs URL via current base)
+                        var imgs = document.getElementsByTagName('img');
+                        for (var i = 0; i &lt; imgs.length; i++) {
+                            var srcAttr = imgs[i].getAttribute('src');
+                            if (srcAttr &amp;&amp; srcAttr.charAt(0) !== '#') {
+                                imgs[i].setAttribute('src', imgs[i].src);
+                            }
                         }
-                    })();
+                        var linksHead = document.getElementsByTagName('link');
+                        for (var k = 0; k &lt; linksHead.length; k++) {
+                            var hrefAttr = linksHead[k].getAttribute('href');
+                            if (hrefAttr &amp;&amp; hrefAttr.charAt(0) !== '#') {
+                                linksHead[k].setAttribute('href', linksHead[k].href);
+                            }
+                        }
+                        // Rewrite ONLY external/relative anchor links (not fragment-only #X)
+                        var anchors = document.getElementsByTagName('a');
+                        for (var a = 0; a &lt; anchors.length; a++) {
+                            var hrefA = anchors[a].getAttribute('href');
+                            if (hrefA &amp;&amp; hrefA.charAt(0) !== '#') {
+                                anchors[a].setAttribute('href', anchors[a].href);
+                            }
+                        }
+                        // Finally remove base — fragment hrefs stay #X (internal)
+                        for (var j = bases.length - 1; j >= 0; j--) {
+                            bases[j].parentNode.removeChild(bases[j]);
+                        }
+                    });
                 </script>
                 <style>
                     /* Paleta LabQuali — vars CSS (--lq-*) definidas globalmente
@@ -96,11 +125,21 @@
                         color: var(--lq-gray);
                     }
                     .qq-section { page-break-before: always; padding-top: 10px; }
-                    /* F9.1 — título de bloco filho: indent + font menor */
-                    .qq-section-title-child {
-                        font-size: 16px;
+                    /* F9.1 — título de bloco filho: visualmente distinto do pai
+                       (sem uppercase, sem letter-spacing, font menor, indent,
+                       border mais fina). Selector encadeado para ter
+                       especificidade maior que .qq-section-title (que vem depois
+                       no arquivo). Espelha estilo do TOC.qq-toc-child. */
+                    .qq-section-title.qq-section-title-child {
+                        font-size: 15px;
+                        font-weight: bold;
                         padding-left: 16px;
-                        border-bottom-width: 2px;
+                        padding-bottom: 4px;
+                        margin-bottom: 8px;
+                        text-transform: none;
+                        letter-spacing: 0;
+                        color: var(--lq-brand-2);
+                        border-bottom: 1px solid var(--lq-gray-light);
                     }
                     /* F9.2 — Índice (TOC) — formatação igual aos títulos, sem visual de link */
                     .qq-toc { padding: 30px 20px; }

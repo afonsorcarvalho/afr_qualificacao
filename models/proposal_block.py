@@ -100,6 +100,49 @@ class AfrProposalBlock(models.Model):
             "apenas o conteúdo, sem cabeçalho."
         ),
     )
+    # F9.2 — display fields (preview UX no editor da SO + popup parent_id)
+    display_label = fields.Char(
+        compute="_compute_display_label",
+        string="Conteúdo",
+        help="Cascade: título → nome da seção → rótulo do tipo.",
+    )
+    display_number = fields.Char(
+        compute="_compute_display_number",
+        string="Nº",
+        help="Preview do número hierárquico calculado da posição na cotação.",
+    )
+
+    @api.depends("title", "section_id", "block_kind")
+    def _compute_display_label(self):
+        kind_labels = dict(PROPOSAL_BLOCK_KINDS)
+        for block in self:
+            block.display_label = (
+                block.title
+                or (block.section_id.name if block.section_id else "")
+                or kind_labels.get(block.block_kind, "")
+            )
+
+    @api.depends(
+        "sale_order_id",
+        "sequence",
+        "parent_id",
+        "show_number",
+        "included",
+        "sale_order_id.proposal_block_ids.sequence",
+        "sale_order_id.proposal_block_ids.parent_id",
+        "sale_order_id.proposal_block_ids.show_number",
+        "sale_order_id.proposal_block_ids.included",
+    )
+    def _compute_display_number(self):
+        """Preview da numeração hierárquica por cotação. Reusa
+        SaleOrder._proposal_block_numbering()."""
+        for block in self:
+            block.display_number = ""
+        orders = self.mapped("sale_order_id")
+        for order in orders:
+            numbers = order._proposal_block_numbering()
+            for block in order.proposal_block_ids:
+                block.display_number = numbers.get(block.id, "")
 
     @api.constrains("parent_id")
     def _check_no_cycle(self):
@@ -126,6 +169,23 @@ class AfrProposalBlock(models.Model):
             )
             result.append((record.id, label))
         return result
+
+    @api.model
+    def _name_search(self, name="", args=None, operator="ilike", limit=100, name_get_uid=None):
+        """F9.2: busca por título, nome da seção OU rótulo do tipo de bloco."""
+        args = args or []
+        domain = []
+        if name:
+            kind_labels = dict(PROPOSAL_BLOCK_KINDS)
+            matched_kinds = [
+                code for code, label in kind_labels.items()
+                if name.lower() in (label or "").lower()
+            ]
+            domain = ["|", "|",
+                      ("title", operator, name),
+                      ("section_id.name", operator, name),
+                      ("block_kind", "in", matched_kinds) if matched_kinds else ("id", "=", 0)]
+        return self._search(domain + args, limit=limit, access_rights_uid=name_get_uid)
 
     # ------------------------------------------------------------------
     # F8.5 — editar bloco (modal); snapshot de bloco dinâmico → texto

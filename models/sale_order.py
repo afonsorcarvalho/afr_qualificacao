@@ -609,6 +609,26 @@ class SaleOrder(models.Model):
         self._seed_proposal_blocks()
         return True
 
+    def _find_mail_template(self):
+        """F9.3: override — usa template LabQuali quando SO tem linhas de qualificação.
+
+        Demais SOs caem no template padrão Odoo (sale.email_template_edi_sale).
+        Confirmation/done seguem fluxo padrão também.
+        """
+        self.ensure_one()
+        if (
+            not self.env.context.get('proforma')
+            and self.state not in ('sale', 'done')
+            and self.has_qualif_lines
+        ):
+            tmpl = self.env.ref(
+                'afr_qualificacao.email_template_proposal_labquali',
+                raise_if_not_found=False,
+            )
+            if tmpl:
+                return tmpl
+        return super()._find_mail_template()
+
     def _render_proposal_block_body(self, body):
         """Renderiza o corpo de um bloco static resolvendo {{ expressões }}.
 

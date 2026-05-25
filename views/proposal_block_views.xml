@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- F9.2 — tree standalone para popup "Pesquisar mais" do parent_id -->
+    <record id="view_proposal_block_tree" model="ir.ui.view">
+        <field name="name">afr.proposal.block.tree</field>
+        <field name="model">afr.proposal.block</field>
+        <field name="arch" type="xml">
+            <tree string="Blocos da Proposta" create="false" edit="false">
+                <field name="sale_order_id"/>
+                <field name="display_number" string="Nº"/>
+                <field name="block_kind"/>
+                <field name="display_label" string="Conteúdo"/>
+            </tree>
+        </field>
+    </record>
+
     <!-- F8.5 — editor de bloco da proposta em modal (botão "Editar"). -->
     <record id="view_proposal_block_form" model="ir.ui.view">
         <field name="name">afr.proposal.block.form</field>
@@ -22,7 +36,12 @@
                     <field name="body" options="{'codeview': True}"/>
                 </sheet>
                 <footer>
-                    <button string="Fechar" class="btn-primary" special="cancel"/>
+                    <button string="Salvar e Fechar"
+                            class="btn-primary"
+                            special="save"/>
+                    <button string="Descartar"
+                            class="btn-secondary"
+                            special="cancel"/>
                 </footer>
             </form>
         </field>

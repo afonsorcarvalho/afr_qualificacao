@@ -1,0 +1,307 @@
+/**
+ * F9.4 — Cotação online LabQuali (portal Odoo).
+ * Mirrors visual do PDF (afr_qualificacao/reports/quotation_template.xml)
+ * mas adaptado: responsivo, sem page-break, scroll suave.
+ */
+
+// Paleta LabQuali (mesma do afr_labquali_layout :root)
+$lq-brand: #0A3D62;
+$lq-brand-2: #1976A8;
+$lq-accent: #FF6B35;
+$lq-gray: #5A7184;
+$lq-gray-light: #E1E8ED;
+$lq-bg: #F5F7FA;
+
+.lq-proposta-online {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0;
+    color: #212529;
+    font-size: 15px;
+    line-height: 1.6;
+    scroll-behavior: smooth;
+
+    // ========================================================
+    // CAPA
+    // ========================================================
+    .lq-cover {
+        background: #FFFFFF;
+        padding: 0;
+        margin-bottom: 32px;
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(10, 61, 98, 0.08);
+    }
+    .lq-cover-header {
+        padding: 24px 32px 12px 32px;
+        text-align: left;
+    }
+    .lq-cover-logo {
+        max-height: 80px;
+        max-width: 320px;
+        display: block;
+    }
+    .lq-brand-bar-thick {
+        height: 3px;
+        background: $lq-brand;
+    }
+    .lq-brand-bar-accent {
+        height: 2px;
+        background: $lq-accent;
+    }
+    .lq-cover-body {
+        padding: 32px;
+        text-align: center;
+    }
+    .lq-cover-title {
+        font-size: 28px;
+        font-weight: bold;
+        color: $lq-brand;
+        margin: 16px 0 8px 0;
+        letter-spacing: 1px;
+    }
+    .lq-cover-subtitle {
+        font-size: 16px;
+        color: $lq-gray;
+        margin-bottom: 32px;
+    }
+    .lq-cover-meta {
+        display: inline-block;
+        text-align: left;
+        margin: 16px 0 28px 0;
+        border-top: 2px solid $lq-brand;
+        border-bottom: 2px solid $lq-brand;
+        padding: 16px 32px;
+
+        table { border-collapse: collapse; }
+        th {
+            color: $lq-brand;
+            font-weight: bold;
+            padding: 4px 16px 4px 0;
+            text-align: left;
+            min-width: 100px;
+            vertical-align: top;
+        }
+        td {
+            padding: 4px 0;
+        }
+    }
+    .lq-cover-footer {
+        font-size: 12px;
+        color: $lq-gray;
+        margin-bottom: 24px;
+    }
+    .lq-cover-img {
+        display: block;
+        width: 100%;
+        max-height: 320px;
+        object-fit: cover;
+    }
+
+    // ========================================================
+    // ÍNDICE
+    // ========================================================
+    .lq-toc {
+        background: #FFFFFF;
+        padding: 24px 32px;
+        margin-bottom: 32px;
+        border-radius: 6px;
+        box-shadow: 0 1px 4px rgba(10, 61, 98, 0.05);
+    }
+    .lq-toc-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 16px 0 0 0;
+    }
+    .lq-toc-item {
+        padding: 10px 0;
+        border-bottom: 1px solid $lq-gray-light;
+        font-size: 15px;
+        font-weight: bold;
+        color: $lq-brand;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+    }
+    .lq-toc-child {
+        padding-left: 28px;
+        font-size: 13px;
+        text-transform: none;
+        letter-spacing: 0;
+        color: $lq-brand;
+    }
+    .lq-toc-link {
+        color: inherit !important;
+        text-decoration: none !important;
+        display: block;
+
+        &:hover { color: $lq-accent !important; }
+    }
+    .lq-toc-num {
+        display: inline-block;
+        min-width: 45px;
+        color: $lq-accent;
+        font-weight: bold;
+    }
+
+    // ========================================================
+    // SEÇÕES (blocos)
+    // ========================================================
+    .lq-anchor {
+        display: block;
+        position: relative;
+        top: -80px;  // offset para sticky headers (se houver)
+        visibility: hidden;
+    }
+    .lq-section {
+        background: #FFFFFF;
+        padding: 24px 32px;
+        margin-bottom: 24px;
+        border-radius: 6px;
+        box-shadow: 0 1px 4px rgba(10, 61, 98, 0.05);
+    }
+    .lq-section-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: $lq-brand;
+        border-bottom: 3px solid $lq-brand;
+        padding-bottom: 6px;
+        margin-bottom: 16px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .lq-section-title.lq-section-title-child {
+        font-size: 15px;
+        padding-left: 16px;
+        padding-bottom: 4px;
+        text-transform: none;
+        letter-spacing: 0;
+        color: $lq-brand-2;
+        border-bottom: 1px solid $lq-gray-light;
+    }
+    .lq-subsection-title {
+        font-size: 15px;
+        font-weight: bold;
+        color: $lq-brand-2;
+        margin-top: 14px;
+        margin-bottom: 6px;
+    }
+    .lq-block-body {
+        text-align: justify;
+        line-height: 1.6;
+    }
+
+    // ========================================================
+    // EQUIPAMENTOS (escopo)
+    // ========================================================
+    .lq-equip-card {
+        border: 1px solid $lq-gray-light;
+        border-left: 4px solid $lq-brand-2;
+        border-radius: 3px;
+        padding: 12px 16px;
+        margin-bottom: 14px;
+    }
+    .lq-equip-header {
+        font-weight: bold;
+        font-size: 16px;
+        color: $lq-brand;
+        border-bottom: 1px solid $lq-gray-light;
+        padding-bottom: 6px;
+        margin-bottom: 10px;
+    }
+    .lq-equip-meta {
+        font-size: 12px;
+        color: $lq-gray;
+        font-weight: normal;
+        margin-left: 8px;
+    }
+    .lq-type-block {
+        padding: 6px 0 6px 8px;
+        border-left: 3px solid $lq-accent;
+        margin: 14px 0 10px 4px;
+    }
+    .lq-type-label {
+        font-weight: bold;
+        color: $lq-brand;
+        font-size: 15px;
+        margin-bottom: 4px;
+    }
+    .lq-item-list {
+        font-size: 14px;
+        margin: 4px 0 0 12px;
+    }
+
+    // ========================================================
+    // TABELAS
+    // ========================================================
+    .lq-table {
+        font-size: 14px;
+
+        th {
+            background: $lq-bg;
+            color: $lq-brand;
+            border-bottom: 2px solid $lq-brand;
+            font-weight: bold;
+        }
+        tfoot td {
+            border-top: 2px solid $lq-brand;
+            font-weight: bold;
+            background: $lq-bg;
+            color: $lq-brand;
+        }
+    }
+
+    .lq-total-table {
+        width: 100%;
+        font-size: 14px;
+        border-collapse: collapse;
+        margin-top: 8px;
+
+        td {
+            padding: 6px 12px;
+            border-bottom: 1px solid $lq-gray-light;
+        }
+        .lq-tot-label {
+            text-align: right;
+            color: $lq-gray;
+            width: 75%;
+        }
+        .lq-tot-value {
+            text-align: right;
+            font-weight: bold;
+            color: $lq-brand;
+            width: 25%;
+        }
+        .lq-total-grand td {
+            border-top: 2px solid $lq-brand;
+            border-bottom: none;
+            font-weight: bold;
+            color: $lq-brand;
+            font-size: 16px;
+            padding-top: 10px;
+        }
+    }
+
+    // ========================================================
+    // ACEITE
+    // ========================================================
+    .lq-acceptance {
+        background: $lq-bg;
+        border-left: 4px solid $lq-accent;
+    }
+
+    // ========================================================
+    // RESPONSIVO
+    // ========================================================
+    @media (max-width: 768px) {
+        font-size: 14px;
+
+        .lq-cover-body { padding: 20px; }
+        .lq-cover-title { font-size: 22px; }
+        .lq-section { padding: 16px 18px; }
+        .lq-section-title { font-size: 16px; }
+        .lq-cover-meta {
+            padding: 12px 16px;
+            th { min-width: 80px; padding-right: 8px; }
+        }
+    }
+}

@@ -1,0 +1,443 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        F9.4 — Cotação online LabQuali no portal Odoo.
+        Inherit em sale.sale_order_portal_content: para SO com qualif
+        (has_qualif_lines=True) esconde o conteúdo padrão e renderiza
+        nosso layout (capa + índice + blocos LEGO). Demais SOs caem no
+        layout padrão Odoo. Botões nativos (Aceitar/Assinar/Pagar) ficam
+        no template pai (sale.sale_order_portal_template) e continuam a
+        funcionar — não tocamos.
+    -->
+
+    <template id="sale_order_portal_content_qualif"
+              inherit_id="sale.sale_order_portal_content"
+              name="Cotação Online Qualificação (AFR)">
+        <!-- Esconde introdução padrão -->
+        <xpath expr="//div[@id='introduction']" position="attributes">
+            <attribute name="t-if">not sale_order.has_qualif_lines</attribute>
+        </xpath>
+        <!-- Esconde corpo padrão (div que contém #informations + #details) -->
+        <xpath expr="//div[div[@id='informations']]" position="attributes">
+            <attribute name="t-if">not sale_order.has_qualif_lines</attribute>
+        </xpath>
+        <!-- Insere nosso conteúdo antes -->
+        <xpath expr="//div[@id='introduction']" position="before">
+            <t t-if="sale_order.has_qualif_lines"
+               t-call="afr_qualificacao.sale_order_online_qualif_content"/>
+        </xpath>
+    </template>
+
+    <!-- Conteúdo LabQuali — chamado via t-call do inherit acima. -->
+    <template id="sale_order_online_qualif_content"
+              name="Conteúdo Online Qualificação LabQuali">
+        <div class="lq-proposta-online">
+
+            <!-- ============================================================
+                 1. CAPA
+            ============================================================= -->
+            <div class="lq-cover">
+                <div class="lq-cover-header">
+                    <img t-if="sale_order.company_id.logo"
+                         t-att-src="image_data_uri(sale_order.company_id.logo)"
+                         alt="Logo" class="lq-cover-logo"/>
+                </div>
+                <div class="lq-brand-bar-thick"/>
+                <div class="lq-brand-bar-accent"/>
+
+                <div class="lq-cover-body">
+                    <h1 class="lq-cover-title">PROPOSTA TÉCNICO-COMERCIAL</h1>
+                    <div class="lq-cover-subtitle"><em>Qualificação de Equipamentos</em></div>
+
+                    <div class="lq-cover-meta">
+                        <table>
+                            <tr>
+                                <th>Nº:</th>
+                                <td t-out="sale_order.name or ''"/>
+                            </tr>
+                            <tr>
+                                <th>Cliente:</th>
+                                <td t-out="sale_order.partner_id.name or ''"/>
+                            </tr>
+                            <tr t-if="sale_order.partner_id.vat">
+                                <th>CNPJ/CPF:</th>
+                                <td t-out="sale_order.partner_id.vat or ''"/>
+                            </tr>
+                            <tr>
+                                <th>Data:</th>
+                                <td>
+                                    <span t-field="sale_order.date_order"
+                                          t-options='{"widget": "date"}'/>
+                                </td>
+                            </tr>
+                            <tr t-if="sale_order.validity_date">
+                                <th>Validade:</th>
+                                <td>
+                                    <span t-field="sale_order.validity_date"
+                                          t-options='{"widget": "date"}'/>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="lq-cover-footer">
+                        Emitido por <span t-out="sale_order.company_id.name or ''"/>
+                    </div>
+
+                    <img class="lq-cover-img"
+                         src="/afr_qualificacao/static/img/cover_default.jpg"
+                         alt="Qualificação de Equipamentos"/>
+                </div>
+            </div>
+
+            <!-- ============================================================
+                 2. ÍNDICE (TOC) — links nativos do browser
+            ============================================================= -->
+            <t t-set="block_numbers"
+               t-value="sale_order._proposal_block_numbering() if sale_order.proposal_block_ids.filtered('included') else {}"/>
+            <t t-if="sale_order.proposal_block_ids.filtered(lambda b: b.included and b.show_title)">
+                <div class="lq-toc">
+                    <div class="lq-section-title">Índice</div>
+                    <ul class="lq-toc-list">
+                        <t t-foreach="sale_order.proposal_block_ids.filtered(lambda b: b.included and b.show_title)" t-as="tb">
+                            <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
+                            <li t-attf-class="lq-toc-item#{' lq-toc-child' if tb.parent_id else ''}">
+                                <a t-attf-href="#lq-anchor-#{tb.id}" class="lq-toc-link">
+                                    <span class="lq-toc-num" t-if="tb_num">
+                                        <t t-esc="tb_num"/>
+                                    </span>
+                                    <span class="lq-toc-title"
+                                          t-esc="tb.title or tb.display_name"/>
+                                </a>
+                            </li>
+                        </t>
+                    </ul>
+                </div>
+            </t>
+
+            <!-- ============================================================
+                 3. BLOCOS — mesma dispatch do PDF, adaptada
+            ============================================================= -->
+            <t t-set="summary" t-value="sale_order._qualif_equipment_summary()"/>
+            <t t-set="type_descs" t-value="sale_order._qualif_type_descriptions()"/>
+
+            <t t-foreach="sale_order.proposal_block_ids.filtered('included')" t-as="block">
+                <t t-set="blk_num" t-value="block_numbers.get(block.id, '')"/>
+                <t t-set="is_child" t-value="bool(block.parent_id)"/>
+                <a t-attf-id="lq-anchor-#{block.id}" class="lq-anchor">&#160;</a>
+
+                <!-- Bloco de texto estático -->
+                <t t-if="block.block_kind == 'static'">
+                    <section class="lq-section">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title and (block.title or blk_num)">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or ''"/>
+                        </div>
+                        <div class="lq-block-body"
+                             t-out="sale_order._render_proposal_block_body(block.body)"/>
+                    </section>
+                </t>
+
+                <!-- Escopo por equipamento -->
+                <t t-if="block.block_kind == 'equipment_scope'">
+                    <section class="lq-section">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Escopo por Equipamento'"/>
+                        </div>
+                        <t t-foreach="summary" t-as="eq">
+                            <div class="lq-equip-card">
+                                <div class="lq-equip-header">
+                                    <span t-esc="eq['equipment'].name"/>
+                                    <span class="lq-equip-meta">
+                                        <t t-if="eq['equipment'].serial_number">
+                                            · S/N: <span t-esc="eq['equipment'].serial_number"/>
+                                        </t>
+                                        <t t-if="eq['equipment'].category_id">
+                                            · Categoria: <span t-esc="eq['equipment'].category_id.name"/>
+                                        </t>
+                                    </span>
+                                </div>
+                                <t t-foreach="eq['types']" t-as="tp">
+                                    <div class="lq-type-block">
+                                        <div class="lq-type-label" t-esc="tp['label']"/>
+                                        <ul class="lq-item-list">
+                                            <t t-foreach="tp['items']" t-as="it">
+                                                <li>
+                                                    <t t-if="tp['code'] == 'calibration'">
+                                                        <span t-esc="'%02d' % int(it['qty'] or 0)"/>
+                                                        <span t-esc="it['name']"/>
+                                                    </t>
+                                                    <t t-elif="it.get('subtype') == 'cycle_type'">
+                                                        <strong t-esc="it['name']"/>
+                                                        <span> — qtd: <t t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/></span>
+                                                        <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
+                                                        <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esteril</t>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span t-esc="it['name']"/>
+                                                        <t t-if="it['qty'] and it['qty'] != 1">
+                                                            — quantidade:
+                                                            <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
+                                                        </t>
+                                                    </t>
+                                                </li>
+                                            </t>
+                                        </ul>
+                                    </div>
+                                </t>
+                            </div>
+                        </t>
+                    </section>
+                </t>
+
+                <!-- Tabela de ciclos -->
+                <t t-if="block.block_kind == 'cycle_specs'">
+                    <t t-set="cycle_specs" t-value="sale_order._qualif_cycle_specs()"/>
+                    <section class="lq-section" t-if="cycle_specs">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Tabela Resumo de Ciclos'"/>
+                        </div>
+                        <t t-foreach="cycle_specs" t-as="cs">
+                            <h5 class="lq-subsection-title" t-esc="cs['equipment'].name"/>
+                            <div class="table-responsive">
+                                <table class="table table-sm lq-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Ciclo</th>
+                                            <th>Qtd</th>
+                                            <th>Temperatura</th>
+                                            <th>Tempo Esteril</th>
+                                            <th>Carga</th>
+                                            <th class="text-end">Tempo Estimado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="cs['rows']" t-as="row">
+                                            <tr>
+                                                <td t-esc="row['name']"/>
+                                                <td t-esc="row['qty']"/>
+                                                <td t-esc="row['temperature']"/>
+                                                <td t-esc="row['duration']"/>
+                                                <td t-esc="row['load_type']"/>
+                                                <td class="text-end"
+                                                    t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
+                                            </tr>
+                                        </t>
+                                    </tbody>
+                                    <t t-set="cs_total_qty" t-value="sum(r['qty'] or 0 for r in cs['rows'])"/>
+                                    <t t-set="cs_total_hours" t-value="sum(r['estimated_hours_total'] or 0.0 for r in cs['rows'])"/>
+                                    <tfoot>
+                                        <tr>
+                                            <td colspan="5">Total: <t t-esc="cs_total_qty"/> ciclo(s)</td>
+                                            <td class="text-end"
+                                                t-esc="'%.1f h · %.1f dias' % (cs_total_hours, cs_total_hours / 8.0)"/>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </t>
+                    </section>
+                </t>
+
+                <!-- Cronograma -->
+                <t t-if="block.block_kind == 'schedule'">
+                    <section class="lq-section">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Cronograma Estimado'"/>
+                        </div>
+                        <p class="text-muted small">Base de cálculo: 8 horas por dia útil.</p>
+                        <t t-set="rows" t-value="sale_order._qualif_schedule_rows()"/>
+                        <t t-if="rows">
+                            <div class="table-responsive">
+                                <table class="table table-sm lq-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Equipamento</th>
+                                            <th class="text-end">Horas</th>
+                                            <th class="text-end">Dias úteis</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="rows" t-as="r">
+                                            <tr>
+                                                <td t-esc="r['equipment'].display_name"/>
+                                                <td class="text-end" t-esc="'%.1f' % r['hours']"/>
+                                                <td class="text-end" t-esc="'%.1f' % r['days']"/>
+                                            </tr>
+                                        </t>
+                                    </tbody>
+                                    <t t-set="total_h" t-value="sum(r['hours'] for r in rows)"/>
+                                    <tfoot>
+                                        <tr>
+                                            <td><strong>TOTAL</strong></td>
+                                            <td class="text-end">
+                                                <strong t-esc="'%.1f' % total_h"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <strong t-esc="'%.1f' % (total_h / 8.0)"/>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </t>
+                    </section>
+                </t>
+
+                <!-- Normas -->
+                <t t-if="block.block_kind == 'standards_table'">
+                    <section class="lq-section" t-if="sale_order.qualif_standard_ids">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Normas Aplicáveis'"/>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm lq-table">
+                                <thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Nome</th>
+                                        <th>Organismo</th>
+                                        <th>Escopo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="sale_order.qualif_standard_ids" t-as="std">
+                                        <tr>
+                                            <td><strong t-esc="std.code"/></td>
+                                            <td t-esc="std.name"/>
+                                            <td t-esc="std.organism or ''"/>
+                                            <td t-esc="std.description or ''"/>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </t>
+
+                <!-- Resumo financeiro -->
+                <t t-if="block.block_kind == 'financial'">
+                    <section class="lq-section">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Resumo Financeiro'"/>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm lq-table">
+                                <thead>
+                                    <tr>
+                                        <th>Equipamento</th>
+                                        <th class="text-end">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="summary" t-as="eq">
+                                        <tr>
+                                            <td t-esc="eq['equipment'].name"/>
+                                            <td class="text-end">
+                                                <span t-esc="eq['subtotal']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                        <table class="lq-total-table">
+                            <tr>
+                                <td class="lq-tot-label">Subtotal:</td>
+                                <td class="lq-tot-value">
+                                    <span t-field="sale_order.amount_untaxed"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="lq-tot-label">Impostos:</td>
+                                <td class="lq-tot-value">
+                                    <span t-field="sale_order.amount_tax"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr class="lq-total-grand">
+                                <td class="lq-tot-label">TOTAL GERAL:</td>
+                                <td class="lq-tot-value">
+                                    <span t-field="sale_order.amount_total"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                        </table>
+                    </section>
+                </t>
+
+                <!-- Serviços opcionais -->
+                <t t-if="block.block_kind == 'optionals'">
+                    <t t-set="opt_lines"
+                       t-value="sale_order.order_line.filtered('is_proposal_optional')"/>
+                    <section class="lq-section" t-if="opt_lines">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Serviços Opcionais'"/>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm lq-table">
+                                <thead>
+                                    <tr>
+                                        <th>Serviço</th>
+                                        <th>Qtd</th>
+                                        <th class="text-end">Valor Unit.</th>
+                                        <th class="text-end">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="opt_lines" t-as="ol">
+                                        <tr>
+                                            <td t-esc="ol.name"/>
+                                            <td>
+                                                <span t-esc="int(ol.product_uom_qty) if ol.product_uom_qty == int(ol.product_uom_qty) else ol.product_uom_qty"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <span t-esc="ol.price_unit"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <span t-esc="ol.price_subtotal"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </t>
+
+                <!-- Aceite -->
+                <t t-if="block.block_kind == 'acceptance'">
+                    <section class="lq-section lq-acceptance">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Aceite da Proposta'"/>
+                        </div>
+                        <p class="text-muted small">
+                            Para aceitar formalmente esta proposta, utilize os botões
+                            de assinatura/pagamento disponíveis no painel lateral.
+                        </p>
+                    </section>
+                </t>
+
+            </t>
+        </div>
+    </template>
+</odoo>

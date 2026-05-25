@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.18.0",
+    "version": "16.0.4.19.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -151,9 +151,14 @@
         # F8.9 — templates de equipamento prontos (Pacote Autoclave a Vapor)
         "data/config_template_seed.xml",
         # F8.1 — Proposta LEGO: blocos e templates (section antes de template)
+        # NOTA F9.2: proposal_template_seed.xml removido daqui — migrado para
+        # post_init_hook (hooks._install_proposal_template_seed) para que o
+        # template default seja criado APENAS no install. Updates do módulo
+        # não recriam linhas eliminadas pelo utilizador.
         "data/proposal_section_seed.xml",
         "data/proposal_optional_seed.xml",
-        "data/proposal_template_seed.xml",
+        # F9.3 — Email template LabQuali para envio de proposta
+        "data/mail_template_proposal.xml",
         # Views — config (master data) com actions
         "views/sensor_kind_views.xml",
         "views/standard_views.xml",
@@ -174,6 +179,8 @@
         "views/qualificacao_os_views.xml",
         "views/qualificacao_views.xml",
         "views/sale_order_views.xml",
+        # F9.4 — Cotação online LabQuali (portal)
+        "views/sale_order_portal_template.xml",
         "views/engc_os_views.xml",
         "views/certificate_verify_templates.xml",
         "views/res_config_settings_views.xml",
@@ -197,7 +204,15 @@
             "docxtpl",
         ],
     },
+    # F9.4 — SCSS da cotação online LabQuali (portal)
+    "assets": {
+        "web.assets_frontend": [
+            "afr_qualificacao/static/src/scss/sale_portal_qualif.scss",
+        ],
+    },
     "installable": True,
     "application": True,
     "auto_install": False,
+    # F9.2 — template seed só no install (não recria deleções em updates)
+    "post_init_hook": "_install_proposal_template_seed",
 }
