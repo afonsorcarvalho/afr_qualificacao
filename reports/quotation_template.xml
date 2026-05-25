@@ -37,20 +37,17 @@
                     .address, .row.address { display: none !important; }
                     .qq-cover {
                         text-align: center;
-                        padding: 60px 40px 0 50px;
+                        padding: 60px 40px 0 40px;
                         min-height: 720px;
                         border-left: 14px solid var(--lq-accent); /* faixa laranja brand */
                         position: relative;
+                        overflow: hidden;
                     }
                     .qq-cover-img {
                         margin-top: 30px;
-                        margin-left: -50px;
-                        margin-right: -40px;
-                        width: calc(100% + 90px);
+                        width: 100%;
                         display: block;
-                        max-height: 340px;
-                        object-fit: cover;
-                        object-position: center;
+                        height: auto;
                     }
                     .qq-cover-title {
                         font-size: 28px;
