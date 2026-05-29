@@ -167,7 +167,14 @@ class AfrProposalTemplateLine(models.Model):
         # Agrupa por template e calcula
         templates = self.mapped("template_id")
         for template in templates:
-            lines = template.line_ids.sorted(lambda l: (l.sequence, l.id))
+            def _sort_key(l):
+                rec_id = l.id
+                if not isinstance(rec_id, int):
+                    # NewId (registro virtual em onchange): usa origin ou 0
+                    rec_id = getattr(rec_id, "origin", 0) or 0
+                return (l.sequence, rec_id)
+
+            lines = template.line_ids.sorted(_sort_key)
             numbers = {}
             root_counter = 0
             child_counters = {}

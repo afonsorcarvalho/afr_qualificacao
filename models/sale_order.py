@@ -571,9 +571,14 @@ class SaleOrder(models.Model):
         Suporta profundidade arbitrária (1, 1.1, 1.1.1, …).
         """
         self.ensure_one()
-        blocks = self.proposal_block_ids.filtered("included").sorted(
-            lambda b: (b.sequence, b.id)
-        )
+        def _sort_key(b):
+            rec_id = b.id
+            if not isinstance(rec_id, int):
+                # NewId (registro virtual em onchange): usa origin ou 0
+                rec_id = getattr(rec_id, "origin", 0) or 0
+            return (b.sequence, rec_id)
+
+        blocks = self.proposal_block_ids.filtered("included").sorted(_sort_key)
         numbers = {}
         root_counter = 0
         child_counters = {}  # parent_id → contagem de filhos vistos
