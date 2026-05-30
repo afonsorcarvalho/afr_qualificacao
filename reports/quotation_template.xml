@@ -107,17 +107,26 @@
                     .qq-cover-meta {
                         margin-top: 80px;
                         display: inline-block;
+                        max-width: 90%;
                         border-top: 2px solid var(--lq-brand);
                         border-bottom: 2px solid var(--lq-brand);
-                        padding: 20px 50px;
+                        padding: 20px 40px;
                         text-align: left;
                         font-size: 17px;
                         line-height: 1.8;
+                    }
+                    .qq-cover-meta div {
+                        white-space: nowrap;
                     }
                     .qq-cover-meta strong {
                         color: var(--lq-brand);
                         display: inline-block;
                         min-width: 100px;
+                        vertical-align: top;
+                    }
+                    .qq-cover-meta span {
+                        display: inline-block;
+                        vertical-align: top;
                     }
                     .qq-cover-footer {
                         margin-top: 60px;
