@@ -136,6 +136,15 @@ class SaleOrderLine(models.Model):
                 and not l.display_type
             )
             line.equipment_subtotal = sum(siblings.mapped("price_subtotal"))
+    config_template_id = fields.Many2one(
+        comodel_name="afr.qualificacao.config.template",
+        string="Pacote Aplicado",
+        copy=True,
+        help=(
+            "Pacote de equipamento usado ao gerar esta seção. Persiste o "
+            "template escolhido para restaurá-lo ao reabrir o configurador."
+        ),
+    )
     cycle_ids = fields.One2many(
         comodel_name="afr.qualificacao.cycle",
         inverse_name="sale_order_line_id",

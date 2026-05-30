@@ -13,6 +13,7 @@ Estratégia Apply: recria-do-zero (apaga linhas managed + recria; linhas
 manuais avulsas preservadas).
 """
 
+import re
 from collections import defaultdict
 
 from odoo import api, fields, models, _
@@ -213,11 +214,29 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         )
         if not managed:
             return
+
+        # Padrão: sufixo adicionado pelo action_apply ("— N ciclo(s)/malha(s)")
+        _SUFFIX = re.compile(r'\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$')
+
+        def _base_name(line_name):
+            """Remove sufixo de ciclo/malha do nome para restaurar a descrição editada."""
+            if not line_name:
+                return False
+            return _SUFFIX.sub('', line_name) or False
+
+        # Primeira passagem: captura config_template_id das linhas-seção por equip.
+        equip_template_map = {}
+        for line in managed:
+            if line.display_type == 'line_section' and line.config_template_id:
+                equip_template_map[line.equipment_id] = line.config_template_id
+
         by_equip = defaultdict(lambda: {
             "qi": False, "qo": False, "qs": False,
             "qo_cycles": [], "qd": [], "calib": [],
         })
         for line in managed:
+            if line.display_type:
+                continue  # seção/nota — skip
             bucket = by_equip[line.equipment_id]
             qt = line.qualification_type
             if qt == "installation":
@@ -229,6 +248,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                         "cycle_type_id": line.cycle_type_id.id,
                         "qty": line.qualif_cycle_qty or 1,
                         "estimated_hours": line.estimated_hours,
+                        "description": _base_name(line.name),
+                        "unit_price": line.price_unit,
                     })
                 else:
                     # QO boolean (linha única type.config)
@@ -240,12 +261,16 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "cycle_type_id": line.cycle_type_id.id,
                     "qty": line.qualif_cycle_qty or 1,
                     "estimated_hours": line.estimated_hours,
+                    "description": _base_name(line.name),
+                    "unit_price": line.price_unit,
                 })
             elif qt == "calibration":
                 bucket["calib"].append({
                     "malha_type_id": line.malha_type_id.id,
                     "qty": line.qualif_cycle_qty or 1,
                     "estimated_hours": line.estimated_hours,
+                    "description": _base_name(line.name),
+                    "unit_price": line.price_unit,
                 })
 
         cmds = []
@@ -255,6 +280,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "do_qi": b["qi"],
                 "do_qo": b["qo"],
                 "do_qs": b["qs"],
+                "config_template_id": equip_template_map.get(equip, False) and equip_template_map[equip].id,
                 "qo_line_ids": [(0, 0, x) for x in b["qo_cycles"]],
                 "qd_line_ids": [(0, 0, x) for x in b["qd"]],
                 "calib_line_ids": [(0, 0, x) for x in b["calib"]],
@@ -302,6 +328,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "name": section_label,
                 "is_qualificacao_managed": True,
                 "equipment_id": equip.id,
+                "config_template_id": eq_line.config_template_id.id if eq_line.config_template_id else False,
                 "product_uom_qty": 0,
                 "price_unit": 0,
             }))
