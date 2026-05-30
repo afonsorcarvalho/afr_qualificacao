@@ -177,6 +177,8 @@ class SaleOrder(models.Model):
         "order_line.equipment_id",
         "order_line.display_type",
         "order_line.price_subtotal",
+        "order_line.estimated_hours",
+        "order_line.qualif_cycle_qty",
         "currency_id",
     )
     def _compute_qualif_subtotals_html(self):
@@ -195,28 +197,45 @@ class SaleOrder(models.Model):
                 continue
             rows = []
             total = 0.0
+            total_hours = 0.0
             for s in summary:
-                equip_label = s["equipment"].display_name or _("Equipamento")
-                if s["equipment"].serial_number:
-                    equip_label += " — S/N: %s" % s["equipment"].serial_number
+                equip = s["equipment"]
+                equip_label = equip.display_name or _("Equipamento")
+                if equip.serial_number:
+                    equip_label += " — S/N: %s" % equip.serial_number
                 value = formatLang(
                     self.env, s["subtotal"],
                     currency_obj=order.currency_id,
                 )
+                hours = order._qualif_estimated_hours(equip)
+                days = order._qualif_estimated_days(equip)
+                total_hours += hours
+                hours_str = formatLang(self.env, hours, digits=1)
+                days_str = formatLang(self.env, days, digits=1)
                 rows.append(
                     '<tr><td style="padding:4px 12px;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s h</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s d</td>'
                     '<td style="padding:4px 12px;text-align:right;'
-                    'font-weight:bold;">%s</td></tr>' % (equip_label, value)
+                    'font-weight:bold;">%s</td></tr>'
+                    % (equip_label, hours_str, days_str, value)
                 )
                 total += s["subtotal"]
             total_str = formatLang(
                 self.env, total, currency_obj=order.currency_id,
             )
+            total_hours_str = formatLang(self.env, total_hours, digits=1)
+            total_days_str = formatLang(self.env, total_hours / 8.0, digits=1)
             rows.append(
                 '<tr style="border-top:2px solid #333;">'
                 '<td style="padding:6px 12px;font-weight:bold;">TOTAL</td>'
                 '<td style="padding:6px 12px;text-align:right;'
-                'font-weight:bold;font-size:14px;">%s</td></tr>' % total_str
+                'font-weight:bold;">%s h</td>'
+                '<td style="padding:6px 12px;text-align:right;'
+                'font-weight:bold;">%s d</td>'
+                '<td style="padding:6px 12px;text-align:right;'
+                'font-weight:bold;font-size:14px;">%s</td></tr>'
+                % (total_hours_str, total_days_str, total_str)
             )
             order.qualif_subtotals_html = (
                 '<div style="margin-top:12px;">'
@@ -227,6 +246,8 @@ class SaleOrder(models.Model):
                 'border:1px solid #ddd;font-size:12px;">'
                 '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
                 '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
+                '<th style="padding:6px 12px;text-align:right;">Horas</th>'
+                '<th style="padding:6px 12px;text-align:right;">Dias úteis</th>'
                 '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
                 '</tr></thead>'
                 '<tbody>%s</tbody>'
