@@ -58,6 +58,8 @@
                                             <field name="config_template_id"
                                                    domain="['|',('equipment_category_id','=',equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"
                                                    options="{'no_create': True}"/>
+                                            <field name="parallel_group"
+                                                   placeholder="ex: G1 (vazio = sozinho)"/>
                                         </group>
                                         <group>
                                             <field name="do_qi"/>

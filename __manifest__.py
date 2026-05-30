@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.4.20.2",
+    "version": "16.0.5.0.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -142,6 +142,8 @@
         "data/sensor_kind_seed.xml",
         "data/standard_seed.xml",
         "data/docx_templates_seed.xml",
+        # F10 — papéis metrológicos (VALIDADOR/PADRAO) p/ o plano de recursos
+        "data/instrument_function_seed.xml",
         # F8.9 — categorias de equipamento (engc.equipment.category)
         "data/equipment_category_seed.xml",
         # F8.9 — malhas comuns (Temp/Press/Umidade)

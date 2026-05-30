@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- F10 — papéis metrológicos canônicos. Os CODES VALIDADOR/PADRAO são
+         usados pelo bin-packing (_RESOURCE_ROLE_FUNCTION_CODE). NÃO renomear
+         os codes sem ajustar o algoritmo em sale_order.py. -->
+    <record id="instrument_function_validador" model="afr.qualificacao.instrument.function">
+        <field name="name">Validador (data logger)</field>
+        <field name="code">VALIDADOR</field>
+        <field name="sequence">10</field>
+    </record>
+    <record id="instrument_function_padrao" model="afr.qualificacao.instrument.function">
+        <field name="name">Padrão de Calibração</field>
+        <field name="code">PADRAO</field>
+        <field name="sequence">20</field>
+    </record>
+</odoo>

@@ -41,6 +41,7 @@
                         <group string="Specs Técnicas (Proposta)">
                             <field name="range_spec"/>
                             <field name="estimated_hours"/>
+                            <field name="standards_per_malha"/>
                         </group>
                         <group string="Normas Aplicáveis">
                             <field name="standard_ids" nolabel="1"

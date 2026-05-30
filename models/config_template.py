@@ -52,6 +52,19 @@ class AfrQualificacaoConfigTemplate(models.Model):
         string="Malhas Calibração",
         copy=True,
     )
+    # F10 — demanda fixa de pontos QD por grandeza desta categoria de
+    # equipamento. Fonte da demanda de validadores no plano de recursos.
+    qd_point_ids = fields.One2many(
+        comodel_name="afr.qualificacao.config.template.qd.point",
+        inverse_name="template_id",
+        string="Pontos QD por Grandeza",
+        copy=True,
+        help=(
+            "Quantos pontos de sensoriamento (por grandeza) os ciclos QD "
+            "deste pacote exigem. Define a demanda de canais de validador "
+            "no plano de recursos."
+        ),
+    )
     description = fields.Text(translate=True)
     # F8.1 — preço/dias sugeridos do pacote de equipamento (modelo híbrido:
     # template sugere, comercial ajusta na proposta).
@@ -76,6 +89,43 @@ class AfrQualificacaoConfigTemplate(models.Model):
     )
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
+
+
+class AfrQualificacaoConfigTemplateQdPoint(models.Model):
+    """F10 — Demanda de pontos QD por grandeza dentro de um template.
+
+    Ex.: pacote Autoclave → [(Temperatura, 12), (Pressão, 1)]. Copiado como
+    snapshot para afr.qualificacao no confirm (ver qd_point_snapshot_ids).
+    """
+
+    _name = "afr.qualificacao.config.template.qd.point"
+    _description = "Pontos QD do Template por Grandeza"
+    _order = "sensor_kind_id, id"
+
+    template_id = fields.Many2one(
+        comodel_name="afr.qualificacao.config.template",
+        required=True,
+        ondelete="cascade",
+    )
+    sensor_kind_id = fields.Many2one(
+        comodel_name="afr.qualificacao.sensor.kind",
+        string="Grandeza",
+        required=True,
+    )
+    points = fields.Integer(
+        string="Pontos",
+        default=1,
+        required=True,
+        help="Nº de pontos de sensoriamento exigidos nesta grandeza.",
+    )
+
+    _sql_constraints = [
+        (
+            "template_kind_uniq",
+            "unique(template_id, sensor_kind_id)",
+            "Uma linha de pontos QD por grandeza por template.",
+        ),
+    ]
 
 
 class AfrQualificacaoConfigTemplateQd(models.Model):

@@ -35,3 +35,5 @@ from . import test_qo_cycles
 from . import test_estimated_hours
 # 16.0.4.20.0 — billing em horas × contagem de ciclos
 from . import test_hours_vs_cycles
+# F10 (16.0.5.0.0) — plano de recursos metrológicos
+from . import test_resource_plan

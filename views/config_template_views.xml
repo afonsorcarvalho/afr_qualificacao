@@ -78,6 +78,20 @@
                                 </tree>
                             </field>
                         </page>
+                        <page string="Pontos QD (Plano de Recursos)" name="qd_points">
+                            <field name="qd_point_ids">
+                                <tree editable="bottom">
+                                    <field name="sensor_kind_id"
+                                           options="{'no_create': True}"/>
+                                    <field name="points"/>
+                                </tree>
+                            </field>
+                            <div class="text-muted small">
+                                Pontos de sensoriamento exigidos por grandeza
+                                nos ciclos QD deste pacote. Define a demanda de
+                                canais de validador no plano de recursos.
+                            </div>
+                        </page>
                         <page string="Descrição">
                             <field name="description"/>
                         </page>

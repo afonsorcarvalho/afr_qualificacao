@@ -246,6 +246,18 @@ class AfrQualificacao(models.Model):
         string="Malhas (Calibração)",
         help="Sub-records de malhas para Calibração.",
     )
+    # F10 — snapshot dos pontos QD (cópia própria do template no confirm).
+    # Mantém o plano de recursos estável mesmo que o template mude depois.
+    qd_point_snapshot_ids = fields.One2many(
+        comodel_name="afr.qualificacao.qd.point.snapshot",
+        inverse_name="qualificacao_id",
+        string="Pontos QD (snapshot)",
+        copy=False,
+        help=(
+            "Cópia congelada dos pontos QD por grandeza no momento do "
+            "confirm do SO. Independente do template de origem."
+        ),
+    )
     # F3 (16.0.3.2.0): coletas (checklist + anexos unificados)
     collect_item_ids = fields.One2many(
         comodel_name="afr.qualificacao.collect.item",
@@ -1383,4 +1395,29 @@ class AfrQualificacaoDeviation(models.Model):
         default=False,
         help="Indica se a ação corretiva foi implementada.",
     )
+
+
+class AfrQualificacaoQdPointSnapshot(models.Model):
+    """F10 — snapshot de pontos QD por grandeza numa qualificação.
+
+    Cópia própria de `config_template.qd_point_ids`, gravada no confirm do SO
+    para que o plano de recursos não dependa do template (que pode mudar).
+    """
+
+    _name = "afr.qualificacao.qd.point.snapshot"
+    _description = "Snapshot de Pontos QD por Grandeza"
+    _order = "sensor_kind_id, id"
+
+    qualificacao_id = fields.Many2one(
+        comodel_name="afr.qualificacao",
+        string="Qualificação",
+        required=True,
+        ondelete="cascade",
+    )
+    sensor_kind_id = fields.Many2one(
+        comodel_name="afr.qualificacao.sensor.kind",
+        string="Grandeza",
+        required=True,
+    )
+    points = fields.Integer(string="Pontos", default=1, required=True)
 

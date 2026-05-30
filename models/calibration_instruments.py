@@ -4,8 +4,80 @@
 F4   (16.0.3.3.0): `has_valid_certificate` em instruments + hotfix is_valid
 F4.3 (16.0.3.4.0): mapeamento grandeza/unidade ↔ instrumento via certificados,
                     permitindo casar coleta com instrumento compatível.
+F10  (16.0.5.0.0): Plano de recursos metrológicos — instrumento ganha papéis
+                    (validador/padrão via tags), capacidade por grandeza e
+                    horas de setup, alimentando o bin-packing em sale.order.
 """
 from odoo import api, fields, models
+
+
+class AfrQualificacaoInstrumentFunction(models.Model):
+    """Papel metrológico de um instrumento (tag).
+
+    M2M (não Selection) porque um mesmo ativo pode atuar como padrão de
+    calibração E como validador (data logger) simultaneamente. O algoritmo
+    de plano de recursos filtra por estas tags:
+      - demanda de pontos QD → função "validador"
+      - demanda de malha     → função "padrão"
+    """
+
+    _name = "afr.qualificacao.instrument.function"
+    _description = "Papel Metrológico de Instrumento"
+    _order = "sequence, name"
+
+    name = fields.Char(required=True, translate=True)
+    code = fields.Char(
+        help="Código curto (ex: VALIDADOR, PADRAO).",
+    )
+    sequence = fields.Integer(default=10)
+    active = fields.Boolean(default=True)
+
+    _sql_constraints = [
+        ("code_uniq", "unique(code)", "Código de papel deve ser único."),
+    ]
+
+
+class AfrQualificacaoInstrumentCapacity(models.Model):
+    """Capacidade de medição de um instrumento por grandeza.
+
+    Padrão típico = [(pressão, 1)]; logger típico = [(temp, 28), (pressão, 2)].
+    `qty` é o nº de canais/pontos simultâneos que o instrumento cobre naquela
+    grandeza. range_min/range_max ficam preparados para uso futuro (faixa de
+    medição) — NÃO usados pelo algoritmo nesta versão.
+    """
+
+    _name = "afr.qualificacao.instrument.capacity"
+    _description = "Capacidade de Medição por Grandeza"
+    _order = "instrument_id, sensor_kind_id"
+
+    instrument_id = fields.Many2one(
+        comodel_name="engc.calibration.instruments",
+        string="Instrumento",
+        required=True,
+        ondelete="cascade",
+    )
+    sensor_kind_id = fields.Many2one(
+        comodel_name="afr.qualificacao.sensor.kind",
+        string="Grandeza",
+        required=True,
+    )
+    qty = fields.Integer(
+        string="Canais",
+        default=1,
+        required=True,
+        help="Nº de canais/pontos simultâneos cobertos nesta grandeza.",
+    )
+    # Preparado para faixa de medição (NÃO usado pelo algoritmo nesta versão).
+    range_min = fields.Float(string="Faixa Mín.")
+    range_max = fields.Float(string="Faixa Máx.")
+
+    _sql_constraints = [
+        (
+            "instrument_kind_uniq",
+            "unique(instrument_id, sensor_kind_id)",
+            "Uma capacidade por grandeza por instrumento.",
+        ),
+    ]
 
 
 class EngcCalibration(models.Model):
@@ -65,6 +137,37 @@ class EngcCalibrationInstrumentsCertificates(models.Model):
 
 class EngcCalibrationInstruments(models.Model):
     _inherit = "engc.calibration.instruments"
+
+    # F10 — papéis, capacidade e setup para o plano de recursos.
+    function_ids = fields.Many2many(
+        comodel_name="afr.qualificacao.instrument.function",
+        relation="afr_instrument_function_rel",
+        column1="instrument_id",
+        column2="function_id",
+        string="Papéis Metrológicos",
+        help=(
+            "Papéis do instrumento no plano de recursos (validador, padrão "
+            "de calibração ou ambos). Um data logger pode ter os dois."
+        ),
+    )
+    measurement_capacity_ids = fields.One2many(
+        comodel_name="afr.qualificacao.instrument.capacity",
+        inverse_name="instrument_id",
+        string="Capacidade por Grandeza",
+        help=(
+            "Canais/pontos simultâneos por grandeza. Ex.: logger "
+            "[(Temp,28),(Press,2)]; padrão [(Press,1)]."
+        ),
+    )
+    setup_hours = fields.Float(
+        string="Horas de Setup",
+        default=0.0,
+        digits="Product Price",
+        help=(
+            "Tempo de instrumentação/re-instrumentação do recurso a cada "
+            "grupo de execução. Somado às horas de utilização no plano."
+        ),
+    )
 
     has_valid_certificate = fields.Boolean(
         string="Cert. Válido",

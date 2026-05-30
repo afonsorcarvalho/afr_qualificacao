@@ -77,6 +77,17 @@ class AfrQualificacaoMalhaType(models.Model):
             "configurador. Override do product.list_price; 0 = usa list_price."
         ),
     )
+    # F10 — quantos instrumentos padrão (da grandeza desta malha) cada
+    # execução exige simultaneamente. Usado no bin-packing de padrões.
+    standards_per_malha = fields.Integer(
+        string="Padrões por Malha",
+        default=1,
+        required=True,
+        help=(
+            "Nº de instrumentos padrão (da grandeza desta malha) usados "
+            "simultaneamente em cada execução. Default 1."
+        ),
+    )
     standard_ids = fields.Many2many(
         comodel_name="afr.qualificacao.standard",
         relation="afr_malha_type_standard_rel",

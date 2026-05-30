@@ -114,6 +114,45 @@
                         </form>
                     </field>
                 </page>
+                <!-- F10 — Plano de recursos metrológicos -->
+                <page string="Plano de Recursos" name="resource_plan"
+                      attrs="{'invisible': [('has_qualif_lines', '=', False)]}">
+                    <field name="has_qualif_lines" invisible="1"/>
+                    <div class="alert alert-warning" role="alert"
+                         attrs="{'invisible': [('resource_plan_dirty', '=', False)]}">
+                        <field name="resource_plan_dirty" invisible="1"/>
+                        Plano desatualizado — a cotação mudou desde o último
+                        cálculo. Clique em <b>Recalcular Plano</b>.
+                    </div>
+                    <button name="action_compute_resource_plan" type="object"
+                            string="Recalcular Plano de Recursos"
+                            class="btn-primary" icon="fa-cogs"/>
+                    <field name="resource_plan_line_ids">
+                        <tree editable="bottom" decoration-muted="not instrument_id"
+                              decoration-info="is_overridden">
+                            <field name="resource_role"/>
+                            <field name="instrument_id"
+                                   options="{'no_create': True}"/>
+                            <field name="sensor_kind_id" optional="show"
+                                   options="{'no_create': True}"/>
+                            <field name="coverage_summary"/>
+                            <field name="channels_used" optional="show"/>
+                            <field name="channels_capacity" optional="show"/>
+                            <field name="hours_resource_usage" sum="Horas"/>
+                            <field name="equipment_ids" widget="many2many_tags"
+                                   optional="hide"/>
+                            <field name="is_overridden" widget="boolean_toggle"/>
+                            <field name="note" optional="show"/>
+                        </tree>
+                    </field>
+                    <p class="text-muted">
+                        <b>Horas de Utilização</b> = tempo wall-clock de uso do
+                        recurso (janelas dos grupos paralelos + setup). NÃO
+                        confundir com as horas faturadas nas linhas do pedido.
+                        Marque <b>Ajustado Manualmente</b> para preservar uma
+                        linha ao recalcular.
+                    </p>
+                </page>
             </xpath>
         </field>
     </record>
