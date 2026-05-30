@@ -33,3 +33,5 @@ from . import test_proposal_block_edit
 from . import test_qo_cycles
 # F8.14 (16.0.4.x.0)
 from . import test_estimated_hours
+# 16.0.4.20.0 — billing em horas × contagem de ciclos
+from . import test_hours_vs_cycles

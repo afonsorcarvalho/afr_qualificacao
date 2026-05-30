@@ -68,14 +68,20 @@ class AfrQualificacaoTestCommon(TransactionCase):
         cls.sensor_press = cls.env["afr.qualificacao.sensor.kind"].search(
             [("code", "=", "PRESS")], limit=1
         )
+        # estimated_hours=1.0 nas fixtures → product_uom_qty (= horas =
+        # qty × 1) mantém paridade numérica com o nº de ciclos nos testes
+        # legados. Testes que exercitam horas≠ciclos sobrescrevem (ver
+        # test_estimated_hours e test_hours_vs_cycles).
         cls.cycle_cmax = cls.env["afr.qualificacao.cycle.type"].create({
             "name": "Test Carga Max", "code": "TQD-CMAX",
             "product_id": cls.product_qd_cmax.id,
+            "estimated_hours": 1.0,
             "equipment_category_id": cls.category.id,
         })
         cls.cycle_cmin = cls.env["afr.qualificacao.cycle.type"].create({
             "name": "Test Carga Min", "code": "TQD-CMIN",
             "product_id": cls.product_qd_cmin.id,
+            "estimated_hours": 1.0,
             "equipment_category_id": cls.category.id,
         })
         # F8.12 — cycle_type QO (sem carga) usado nos tests que antes usavam
@@ -84,17 +90,20 @@ class AfrQualificacaoTestCommon(TransactionCase):
             "name": "Test QO Sem Carga", "code": "TQO-TEST",
             "product_id": cls.product_qo.id,
             "load_type": "sem_carga",
+            "estimated_hours": 1.0,
             "equipment_category_id": cls.category.id,
         })
         cls.malha_temp = cls.env["afr.qualificacao.malha.type"].create({
             "name": "Test Malha T", "code": "TMLH-T",
             "product_id": cls.product_malha_temp.id,
             "sensor_kind_id": cls.sensor_temp.id,
+            "estimated_hours": 1.0,
             "equipment_category_id": cls.category.id,
         })
         cls.malha_press = cls.env["afr.qualificacao.malha.type"].create({
             "name": "Test Malha P", "code": "TMLH-P",
             "product_id": cls.product_malha_press.id,
+            "estimated_hours": 1.0,
             "sensor_kind_id": cls.sensor_press.id,
         })
 

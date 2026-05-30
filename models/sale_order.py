@@ -345,7 +345,7 @@ class SaleOrder(models.Model):
                         subtype = "product"
                     items.append({
                         "name": item_name,
-                        "qty": line.product_uom_qty,
+                        "qty": line.qualif_cycle_qty or line.product_uom_qty,
                         "subtype": subtype,
                         "line": line,
                         **extra,
@@ -390,7 +390,7 @@ class SaleOrder(models.Model):
                     )
                     if cfg:
                         hours = cfg.estimated_hours
-            total += (hours or 0.0) * (line.product_uom_qty or 0)
+            total += (hours or 0.0) * (line.qualif_cycle_qty or int(line.product_uom_qty or 0))
         return total
 
     def _qualif_estimated_days(self, equipment=None):
@@ -425,7 +425,7 @@ class SaleOrder(models.Model):
                     hours = line.cycle_type_id.estimated_hours
                 elif line.malha_type_id:
                     hours = line.malha_type_id.estimated_hours
-            total += (hours or 0.0) * (line.product_uom_qty or 0)
+            total += (hours or 0.0) * (line.qualif_cycle_qty or int(line.product_uom_qty or 0))
         return total
 
     def _qualif_schedule_rows(self):
@@ -672,7 +672,7 @@ class SaleOrder(models.Model):
         )
         rows = []
         for line in lines:
-            qty = int(line.product_uom_qty or 0)
+            qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
             hours = line.estimated_hours or line.cycle_type_id.estimated_hours or 0.0
             rows.append({
                 "name": line.cycle_type_id.name,
@@ -709,7 +709,7 @@ class SaleOrder(models.Model):
             rows = []
             for line in lines:
                 cycle_type = line.cycle_type_id
-                qty = int(line.product_uom_qty or 0)
+                qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
                 hours = line.estimated_hours or cycle_type.estimated_hours or 0.0
                 rows.append({
                     "name": cycle_type.name,
@@ -853,7 +853,7 @@ class SaleOrder(models.Model):
                         if not line.cycle_type_id:
                             # operational sem cycle (do_qo boolean): sem sub-records
                             continue
-                        qty = int(line.product_uom_qty or 0)
+                        qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
                         for seq in range(1, qty + 1):
                             Cycle.create({
                                 "qualificacao_id": qualif.id,
@@ -863,7 +863,7 @@ class SaleOrder(models.Model):
                             })
                 elif qtype == "calibration":
                     for line in type_lines:
-                        qty = int(line.product_uom_qty or 0)
+                        qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
                         for seq in range(1, qty + 1):
                             Malha.create({
                                 "qualificacao_id": qualif.id,

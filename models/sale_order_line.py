@@ -75,6 +75,31 @@ class SaleOrderLine(models.Model):
             "cycle_type/malha_type/type_config). Usado pelo cronograma."
         ),
     )
+    qualif_cycle_qty = fields.Integer(
+        string="Nº de Ciclos",
+        copy=True,
+        help=(
+            "Número de ciclos/malhas a executar nesta linha. Dirige a "
+            "explosão em afr.qualificacao.cycle/malha (coletas) e a "
+            "quantidade exibida na proposta. NÃO confundir com "
+            "product_uom_qty, que agora representa as HORAS faturadas "
+            "(= qualif_cycle_qty × estimated_hours)."
+        ),
+    )
+
+    @api.onchange("qualif_cycle_qty", "estimated_hours")
+    def _onchange_qualif_cycle_qty_hours(self):
+        """Mantém product_uom_qty = nº ciclos × horas/ciclo (UdM em horas).
+
+        Só atua em linhas de ciclo/malha (cycle_type_id/malha_type_id). Permite
+        ao vendedor editar nº de ciclos OU horas/ciclo no SO e refletir as horas
+        faturadas. Linhas QI/QS (sem ciclo) não são tocadas.
+        """
+        for line in self:
+            if not (line.cycle_type_id or line.malha_type_id):
+                continue
+            if line.qualif_cycle_qty and line.estimated_hours:
+                line.product_uom_qty = line.qualif_cycle_qty * line.estimated_hours
     afr_qualificacao_id = fields.Many2one(
         comodel_name="afr.qualificacao",
         string="Qualificação Gerada",

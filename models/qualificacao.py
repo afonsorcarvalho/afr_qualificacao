@@ -781,7 +781,10 @@ class AfrQualificacao(models.Model):
                 if cycle.state == "passed":
                     by_line[key][0] += 1
             for line, (passed, _total) in by_line.items():
-                line.qty_delivered = passed
+                # qty_delivered em HORAS (UdM da linha) = ciclos aprovados ×
+                # horas/ciclo, casando com product_uom_qty (horas pedidas).
+                hours = line.estimated_hours or line.cycle_type_id.estimated_hours or 0.0
+                line.qty_delivered = passed * hours
         elif self.qualification_type == "calibration":
             from collections import defaultdict
             by_line = defaultdict(lambda: [0, 0])
@@ -793,7 +796,9 @@ class AfrQualificacao(models.Model):
                 if malha.state in ("collected", "certified"):
                     by_line[key][0] += 1
             for line, (passed, _total) in by_line.items():
-                line.qty_delivered = passed
+                # qty_delivered em HORAS = malhas concluídas × horas/malha.
+                hours = line.estimated_hours or line.malha_type_id.estimated_hours or 0.0
+                line.qty_delivered = passed * hours
 
     def action_mark_rejected(self):
         """Altera o status para 'Reprovada' quando os critérios não forem atendidos."""

@@ -227,7 +227,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     # F8.8 — QO cycle-based
                     bucket["qo_cycles"].append({
                         "cycle_type_id": line.cycle_type_id.id,
-                        "qty": int(line.product_uom_qty or 1),
+                        "qty": line.qualif_cycle_qty or 1,
+                        "estimated_hours": line.estimated_hours,
                     })
                 else:
                     # QO boolean (linha única type.config)
@@ -237,12 +238,14 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             elif qt == "performance":
                 bucket["qd"].append({
                     "cycle_type_id": line.cycle_type_id.id,
-                    "qty": int(line.product_uom_qty or 1),
+                    "qty": line.qualif_cycle_qty or 1,
+                    "estimated_hours": line.estimated_hours,
                 })
             elif qt == "calibration":
                 bucket["calib"].append({
                     "malha_type_id": line.malha_type_id.id,
-                    "qty": int(line.product_uom_qty or 1),
+                    "qty": line.qualif_cycle_qty or 1,
+                    "estimated_hours": line.estimated_hours,
                 })
 
         cmds = []
@@ -320,6 +323,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "order_id": so.id,
                     "product_id": cfg.service_product_id.id,
                     "product_uom_qty": 1.0,
+                    # QI/QS não são cycle-based: 1 "estudo". qualif_cycle_qty=1
+                    # mantém o cálculo de horas (horas × qualif_cycle_qty) válido.
+                    "qualif_cycle_qty": 1,
                     "is_qualificacao_managed": True,
                     "qualification_type": qtype,
                     "equipment_id": equip.id,
@@ -331,61 +337,78 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 new_lines.append((0, 0, vals))
 
             # QO — cycle-based: 1 linha por ciclo QO declarado.
+            # product_uom_qty = HORAS (nº ciclos × horas/ciclo, UdM em horas);
+            # qualif_cycle_qty preserva o nº de ciclos (explosão + proposta).
             for qo in eq_line.qo_line_ids:
+                hours = qo.estimated_hours or qo.cycle_type_id.estimated_hours or 0.0
+                base_name = (
+                    qo.description
+                    or qo.cycle_type_id.product_id.name
+                    or qo.cycle_type_id.name
+                )
                 qo_vals = {
                     "order_id": so.id,
                     "product_id": qo.cycle_type_id.product_id.id,
-                    "product_uom_qty": qo.qty,
+                    "product_uom_qty": qo.qty * hours,
+                    "qualif_cycle_qty": qo.qty,
+                    "name": _("%s — %d ciclo(s)") % (base_name, qo.qty),
                     "is_qualificacao_managed": True,
                     "qualification_type": "operational",
                     "equipment_id": equip.id,
                     "cycle_type_id": qo.cycle_type_id.id,
                 }
-                if qo.description:
-                    qo_vals["name"] = qo.description
                 if qo.unit_price:
                     qo_vals["price_unit"] = qo.unit_price
-                hours = qo.estimated_hours or qo.cycle_type_id.estimated_hours
                 if hours:
                     qo_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, qo_vals))
 
             # QD — 1 linha por cycle_type
             for qd in eq_line.qd_line_ids:
+                hours = qd.estimated_hours or qd.cycle_type_id.estimated_hours or 0.0
+                base_name = (
+                    qd.description
+                    or qd.cycle_type_id.product_id.name
+                    or qd.cycle_type_id.name
+                )
                 qd_vals = {
                     "order_id": so.id,
                     "product_id": qd.cycle_type_id.product_id.id,
-                    "product_uom_qty": qd.qty,
+                    "product_uom_qty": qd.qty * hours,
+                    "qualif_cycle_qty": qd.qty,
+                    "name": _("%s — %d ciclo(s)") % (base_name, qd.qty),
                     "is_qualificacao_managed": True,
                     "qualification_type": "performance",
                     "equipment_id": equip.id,
                     "cycle_type_id": qd.cycle_type_id.id,
                 }
-                if qd.description:
-                    qd_vals["name"] = qd.description
                 if qd.unit_price:
                     qd_vals["price_unit"] = qd.unit_price
-                hours = qd.estimated_hours or qd.cycle_type_id.estimated_hours
                 if hours:
                     qd_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, qd_vals))
 
             # Calib — 1 linha por malha_type
             for c in eq_line.calib_line_ids:
+                hours = c.estimated_hours or c.malha_type_id.estimated_hours or 0.0
+                base_name = (
+                    c.description
+                    or c.malha_type_id.product_id.name
+                    or c.malha_type_id.name
+                )
                 c_vals = {
                     "order_id": so.id,
                     "product_id": c.malha_type_id.product_id.id,
-                    "product_uom_qty": c.qty,
+                    "product_uom_qty": c.qty * hours,
+                    "qualif_cycle_qty": c.qty,
+                    "name": _("%s — %d malha(s)") % (base_name, c.qty),
                     "is_qualificacao_managed": True,
                     "qualification_type": "calibration",
                     "equipment_id": equip.id,
                     "malha_type_id": c.malha_type_id.id,
                 }
-                if c.description:
-                    c_vals["name"] = c.description
                 if c.unit_price:
                     c_vals["price_unit"] = c.unit_price
-                hours = c.estimated_hours or c.malha_type_id.estimated_hours
                 if hours:
                     c_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, c_vals))
@@ -749,10 +772,13 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
         readonly=True,
     )
 
-    @api.depends("unit_price", "qty")
+    @api.depends("unit_price", "qty", "estimated_hours", "cycle_type_id.estimated_hours")
     def _compute_subtotal(self):
+        # Preço por hora: subtotal = taxa × (nº ciclos × horas/ciclo).
+        # Alinha com a linha SO nativa (product_uom_qty=horas × price_unit=taxa).
         for line in self:
-            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0)
+            hours = line.estimated_hours or line.cycle_type_id.estimated_hours or 0.0
+            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0) * hours
 
     @api.onchange("cycle_type_id")
     def _onchange_cycle_type_defaults(self):
@@ -809,10 +835,13 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
         readonly=True,
     )
 
-    @api.depends("unit_price", "qty")
+    @api.depends("unit_price", "qty", "estimated_hours", "cycle_type_id.estimated_hours")
     def _compute_subtotal(self):
+        # Preço por hora: subtotal = taxa × (nº ciclos × horas/ciclo).
+        # Alinha com a linha SO nativa (product_uom_qty=horas × price_unit=taxa).
         for line in self:
-            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0)
+            hours = line.estimated_hours or line.cycle_type_id.estimated_hours or 0.0
+            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0) * hours
 
     @api.onchange("cycle_type_id")
     def _onchange_cycle_type_defaults(self):
@@ -870,10 +899,13 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
         readonly=True,
     )
 
-    @api.depends("unit_price", "qty")
+    @api.depends("unit_price", "qty", "estimated_hours", "malha_type_id.estimated_hours")
     def _compute_subtotal(self):
+        # Preço por hora: subtotal = taxa × (nº malhas × horas/malha).
+        # Alinha com a linha SO nativa (product_uom_qty=horas × price_unit=taxa).
         for line in self:
-            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0)
+            hours = line.estimated_hours or line.malha_type_id.estimated_hours or 0.0
+            line.subtotal = (line.unit_price or 0.0) * (line.qty or 0) * hours
 
     @api.onchange("malha_type_id")
     def _onchange_malha_type_defaults(self):

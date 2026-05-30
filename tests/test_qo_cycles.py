@@ -27,6 +27,7 @@ class TestQoCycles(AfrQualificacaoTestCommon):
             "product_id": cls.product_qo.id,
             "temperature": "134°C",
             "duration": "3.5 min",
+            "estimated_hours": 1.0,
             "load_type": "sem_carga",
         })
         cls.cycle_qo_sensiveis = cls.env["afr.qualificacao.cycle.type"].create({
@@ -35,6 +36,7 @@ class TestQoCycles(AfrQualificacaoTestCommon):
             "product_id": cls.product_qo.id,
             "temperature": "121°C",
             "duration": "20 min",
+            "estimated_hours": 1.0,
             "load_type": "sem_carga",
         })
 
