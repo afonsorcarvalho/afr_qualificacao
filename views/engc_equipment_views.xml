@@ -185,4 +185,22 @@
         action="action_engc_equipment_qualif"
         sequence="25"/>
 
+    <!-- F10.6 — smart button "Equipamentos" no cliente -->
+    <record id="view_partner_form_afr_equipment_button" model="ir.ui.view">
+        <field name="name">res.partner.form.afr.equipment.button</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_afr_equipments"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-wrench">
+                    <field name="afr_equipment_count" widget="statinfo"
+                           string="Equipamentos"/>
+                </button>
+            </xpath>
+        </field>
+    </record>
+
 </odoo>
