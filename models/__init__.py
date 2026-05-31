@@ -24,3 +24,4 @@ from . import engc_os
 from . import res_config_settings        # F4 (16.0.3.3.0)
 from . import calibration_instruments    # F4 (16.0.3.3.0)
 from . import resource_plan              # F10 (16.0.5.0.0)
+from . import engc_equipment             # F10.5 (16.0.5.4.0)

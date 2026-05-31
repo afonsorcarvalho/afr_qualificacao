@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- F10.5 — View de equipamento focada em Qualificação:
+         só campos de interesse; aba OS de Qualificação (não engc.os);
+         sem Histórico de Paradas / Outros. -->
+    <record id="view_engc_equipment_qualif_form" model="ir.ui.view">
+        <field name="name">engc.equipment.qualif.form</field>
+        <field name="model">engc.equipment</field>
+        <field name="priority">99</field>
+        <field name="arch" type="xml">
+            <form string="Equipamento (Qualificação)">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_afr_qualificacao_os"
+                                type="object"
+                                class="oe_stat_button"
+                                icon="fa-clipboard"
+                                attrs="{'invisible': [('afr_qualificacao_os_count','=',0)]}">
+                            <field name="afr_qualificacao_os_count"
+                                   widget="statinfo" string="OS Qualif"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"
+                                   placeholder="(gerado de categoria + modelo + série + marca)"/></h1>
+                    </div>
+                    <group>
+                        <group string="Identificação">
+                            <field name="client_id"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="category_id"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="marca_id"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="model"/>
+                            <field name="serial_number"/>
+                            <field name="partner_reference"/>
+                            <field name="anvisa_code"/>
+                            <field name="tag"/>
+                        </group>
+                        <group string="Localização / Estado">
+                            <!-- sempre carregado: domain check_company de
+                                 department/location_id depende dele -->
+                            <field name="company_id" invisible="1"/>
+                            <field name="state"/>
+                            <field name="location_id"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="department"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="means_of_aquisition_id"
+                                   options="{'no_create_edit': True}"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Ordens de Serviço de Qualificação"
+                              name="qualif_os">
+                            <field name="afr_qualificacao_os_ids" readonly="1">
+                                <tree create="false" delete="false">
+                                    <field name="name"/>
+                                    <field name="date_planned_start"/>
+                                    <field name="tecnico_default_id"/>
+                                    <field name="state" widget="badge"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Qualificações" name="qualifs">
+                            <field name="afr_qualificacao_ids" readonly="1">
+                                <tree create="false" delete="false">
+                                    <field name="name"/>
+                                    <field name="qualification_type"/>
+                                    <field name="planned_date"/>
+                                    <field name="execution_date"/>
+                                    <field name="state" widget="badge"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_engc_equipment_qualif_tree" model="ir.ui.view">
+        <field name="name">engc.equipment.qualif.tree</field>
+        <field name="model">engc.equipment</field>
+        <field name="arch" type="xml">
+            <tree string="Equipamentos">
+                <field name="name"/>
+                <field name="client_id"/>
+                <field name="category_id"/>
+                <field name="serial_number"/>
+                <field name="state"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_engc_equipment_qualif_search" model="ir.ui.view">
+        <field name="name">engc.equipment.qualif.search</field>
+        <field name="model">engc.equipment</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="serial_number"/>
+                <field name="client_id"/>
+                <field name="category_id"/>
+                <filter name="group_client" string="Cliente"
+                        context="{'group_by': 'client_id'}"/>
+                <filter name="group_category" string="Categoria"
+                        context="{'group_by': 'category_id'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_engc_equipment_qualif" model="ir.actions.act_window">
+        <field name="name">Equipamentos</field>
+        <field name="res_model">engc.equipment</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_engc_equipment_qualif_search"/>
+        <field name="context">{
+            'form_view_ref': 'afr_qualificacao.view_engc_equipment_qualif_form',
+            'tree_view_ref': 'afr_qualificacao.view_engc_equipment_qualif_tree',
+        }</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Cadastre equipamentos de clientes para qualificação
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu em Vendas -->
+    <menuitem
+        id="menu_engc_equipment_qualif_sale"
+        name="Equipamentos"
+        parent="sale.sale_menu_root"
+        action="action_engc_equipment_qualif"
+        sequence="25"/>
+
+</odoo>
