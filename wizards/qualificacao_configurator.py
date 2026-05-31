@@ -18,6 +18,7 @@ from collections import defaultdict
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools.misc import formatLang
 
 
 # F8.4/F8.7 — passos do configurador guiado, em ordem.
@@ -86,6 +87,49 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         compute="_compute_review_counts",
         string="Equipamentos",
     )
+    # F10.2 — resumo read-only da Revisão (HTML). NÃO reutilizar o o2m
+    # equipment_line_ids na Revisão: duplicar o campo na mesma view quebra a
+    # tree editável do Escopo (some o "adicionar equipamento").
+    review_summary_html = fields.Html(
+        compute="_compute_review_summary_html",
+        string="Resumo",
+        sanitize=False,
+    )
+
+    @api.depends(
+        "equipment_line_ids.equipment_id",
+        "equipment_line_ids.estimated_hours_total",
+        "equipment_line_ids.subtotal",
+    )
+    def _compute_review_summary_html(self):
+        for wiz in self:
+            rows = []
+            for el in wiz.equipment_line_ids:
+                value = formatLang(
+                    self.env, el.subtotal or 0.0,
+                    currency_obj=wiz.currency_id,
+                )
+                hours = formatLang(self.env, el.estimated_hours_total or 0.0, digits=2)
+                rows.append(
+                    '<tr><td style="padding:4px 12px;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s h</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
+                    % (el.equipment_id.display_name or "", hours, value)
+                )
+            if not rows:
+                wiz.review_summary_html = (
+                    '<p class="text-muted">Sem equipamentos no escopo.</p>'
+                )
+                continue
+            wiz.review_summary_html = (
+                '<table style="border-collapse:collapse;width:100%%;'
+                'border:1px solid #ddd;font-size:13px;">'
+                '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
+                '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
+                '<th style="padding:6px 12px;text-align:right;">Horas</th>'
+                '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
+                '</tr></thead><tbody>%s</tbody></table>'
+            ) % "".join(rows)
 
     @api.depends("equipment_line_ids.subtotal")
     def _compute_total_estimated(self):

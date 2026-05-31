@@ -135,15 +135,7 @@
                         <p>
                             Revise o escopo antes de aplicar ao pedido.
                         </p>
-                        <field name="equipment_line_ids" readonly="1" nolabel="1">
-                            <tree create="false" delete="false" edit="false">
-                                <field name="equipment_id"/>
-                                <field name="estimated_hours_total"
-                                       string="Horas" sum="Horas"/>
-                                <field name="currency_id" invisible="1"/>
-                                <field name="subtotal" sum="Total"/>
-                            </tree>
-                        </field>
+                        <field name="review_summary_html" nolabel="1" readonly="1"/>
                         <group>
                             <group/>
                             <group string="Totais">
