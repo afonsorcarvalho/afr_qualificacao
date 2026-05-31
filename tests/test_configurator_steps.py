@@ -1,8 +1,8 @@
-"""Testes F8.4 — configurador guiado multi-step.
+"""Testes do configurador guiado.
 
-Cobre navegação entre etapas (escopo → opcionais → blocos → revisão),
-validação ao avançar, seed de blocos ao entrar na etapa Blocos e o
-fluxo completo até Aplicar.
+F10.2 — fluxo reduzido a 2 etapas: Escopo → Revisão. Blocos da proposta
+editados no form do SO; serviços opcionais adicionados manualmente. Os blocos
+são semeados no Aplicar.
 """
 
 from odoo.exceptions import UserError
@@ -30,20 +30,12 @@ class TestConfiguratorSteps(AfrQualificacaoTestCommon):
     def test_wizard_starts_on_escopo(self):
         self.assertEqual(self._wizard().step, "escopo")
 
-    def test_next_step_advances(self):
-        """F8.7 — Escopo avança para Blocos (Blocos antes de Opcionais)."""
+    def test_next_step_advances_to_revisao(self):
+        """F10.2 — Escopo avança direto para Revisão (2 etapas)."""
         wiz = self._wizard()
         self._add_equipment(wiz)
         wiz.action_next_step()
-        self.assertEqual(wiz.step, "blocos")
-
-    def test_step_order_blocos_before_opcionais(self):
-        """F8.7 — ordem: escopo → blocos → opcionais → revisão."""
-        wiz = self._wizard()
-        self._add_equipment(wiz)
-        wiz.action_next_step()
-        wiz.action_next_step()
-        self.assertEqual(wiz.step, "opcionais")
+        self.assertEqual(wiz.step, "revisao")
 
     def test_next_from_escopo_requires_equipment(self):
         """Avançar do escopo sem equipamento é bloqueado."""
@@ -53,29 +45,19 @@ class TestConfiguratorSteps(AfrQualificacaoTestCommon):
 
     def test_prev_step_goes_back(self):
         wiz = self._wizard()
-        wiz.step = "opcionais"
+        wiz.step = "revisao"
         wiz.action_prev_step()
-        self.assertEqual(wiz.step, "blocos")
+        self.assertEqual(wiz.step, "escopo")
 
-    def test_entering_blocos_seeds_blocks(self):
-        """Ir para a etapa Blocos semeia os blocos da proposta."""
+    def test_full_flow_to_apply_seeds_blocks(self):
+        """Fluxo escopo → revisão → aplicar; Aplicar semeia os blocos."""
         wiz = self._wizard()
         self._add_equipment(wiz)
-        self.assertFalse(wiz.sale_order_id.proposal_block_ids)
-        wiz._go_to_step("blocos")
-        self.assertEqual(wiz.step, "blocos")
-        self.assertTrue(wiz.sale_order_id.proposal_block_ids)
-
-    def test_full_flow_to_apply(self):
-        """Fluxo escopo → opcionais → blocos → revisão → aplicar."""
-        wiz = self._wizard()
-        self._add_equipment(wiz)
-        wiz.action_next_step()   # → opcionais
-        wiz.action_next_step()   # → blocos (semeia)
         wiz.action_next_step()   # → revisão
         self.assertEqual(wiz.step, "revisao")
-        self.assertTrue(wiz.sale_order_id.proposal_block_ids)
         wiz.action_apply()
         self.assertTrue(
             wiz.sale_order_id.order_line.filtered("is_qualificacao_managed")
         )
+        # blocos semeados no Aplicar (template default da empresa)
+        self.assertTrue(wiz.sale_order_id.proposal_block_ids)

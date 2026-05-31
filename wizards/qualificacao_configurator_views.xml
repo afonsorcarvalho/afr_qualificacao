@@ -9,7 +9,7 @@
             <form string="Configurador de Qualificações">
                 <header>
                     <field name="step" widget="statusbar"
-                           statusbar_visible="escopo,blocos,opcionais,revisao"/>
+                           statusbar_visible="escopo,revisao"/>
                 </header>
                 <sheet>
                     <group>
@@ -20,7 +20,6 @@
                         <group>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="currency_id" invisible="1"/>
-                            <field name="total_estimated"/>
                         </group>
                     </group>
 
@@ -131,71 +130,36 @@
                         </field>
                     </div>
 
-                    <!-- ETAPA 3 — OPCIONAIS -->
-                    <div attrs="{'invisible': [('step', '!=', 'opcionais')]}">
-                        <p>
-                            Selecione serviços opcionais — viram linhas extra
-                            do pedido (fora do escopo de qualificação).
-                        </p>
-                        <group>
-                            <field name="optional_ids" nolabel="1"
-                                   widget="many2many_tags"
-                                   options="{'no_create': True, 'no_create_edit': True}"/>
-                        </group>
-                    </div>
-
-                    <!-- ETAPA 2 — BLOCOS DA PROPOSTA -->
-                    <div attrs="{'invisible': [('step', '!=', 'blocos')]}">
-                        <p>
-                            Monte a proposta como peças de lego: reordene
-                            (alça), ligue/desligue e edite o conteúdo de cada
-                            bloco. Os blocos vêm do Template de Proposta.
-                        </p>
-                        <field name="proposal_block_ids">
-                            <tree editable="bottom">
-                                <field name="sequence" widget="handle"/>
-                                <field name="included" widget="boolean_toggle"/>
-                                <field name="block_kind"/>
-                                <field name="title"/>
-                                <field name="page_break" widget="boolean_toggle"/>
-                                <field name="section_id" optional="hide"/>
-                                <button name="action_edit_block" type="object"
-                                        string="Editar" icon="fa-pencil"
-                                        class="btn-link"/>
-                            </tree>
-                            <form>
-                                <group>
-                                    <field name="block_kind"/>
-                                    <field name="title"/>
-                                    <field name="included"/>
-                                    <field name="section_id" readonly="1"/>
-                                </group>
-                                <separator string="Conteúdo (aceita {{ expressões }})"/>
-                                <field name="body"/>
-                            </form>
-                        </field>
-                    </div>
-
-                    <!-- ETAPA 4 — REVISÃO -->
+                    <!-- ETAPA 2 — REVISÃO -->
                     <div attrs="{'invisible': [('step', '!=', 'revisao')]}">
                         <p>
-                            Revise a proposta antes de aplicar ao pedido.
+                            Revise o escopo antes de aplicar ao pedido.
                         </p>
-                        <group>
-                            <group string="Resumo">
-                                <field name="equipment_count"/>
-                                <field name="optional_count"/>
-                                <field name="block_count"/>
-                            </group>
-                            <group string="Valores">
+                        <field name="equipment_line_ids" readonly="1" nolabel="1">
+                            <tree create="false" delete="false" edit="false">
+                                <field name="equipment_id"/>
+                                <field name="estimated_hours_total"
+                                       string="Horas" sum="Horas"/>
                                 <field name="currency_id" invisible="1"/>
+                                <field name="subtotal" sum="Total"/>
+                            </tree>
+                        </field>
+                        <group>
+                            <group/>
+                            <group string="Totais">
+                                <field name="currency_id" invisible="1"/>
+                                <field name="equipment_count"/>
+                                <field name="estimated_hours_total"/>
+                                <field name="estimated_days_total"/>
                                 <field name="total_estimated"/>
                             </group>
                         </group>
                         <p>
                             "Aplicar ao Pedido" recria as linhas de
-                            qualificação e opcionais e mantém os blocos
-                            montados na etapa anterior.
+                            qualificação. Os blocos de texto da proposta são
+                            editados no próprio pedido (aba Proposta); serviços
+                            opcionais (pasta, viagem, diária) são adicionados
+                            como linhas avulsas no pedido.
                         </p>
                     </div>
                 </sheet>

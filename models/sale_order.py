@@ -799,6 +799,41 @@ class SaleOrder(models.Model):
         }
 
 
+    @api.onchange("partner_id")
+    def _onchange_partner_id_qualif_equipment_warning(self):
+        """Avisa ao trocar o cliente se há equipamentos de qualificação que
+        pertencem a outro cliente — eles podem não ser do cliente escolhido.
+
+        Onchange não bloqueia a troca (Odoo não tem confirm nativo aqui); o
+        aviso lista os equipamentos divergentes para o usuário revisar o
+        escopo / reabrir o configurador.
+        """
+        managed = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and l.equipment_id
+        )
+        equips = managed.mapped("equipment_id")
+        if not equips:
+            return
+        mismatched = equips.filtered(
+            lambda e: e.client_id and e.client_id != self.partner_id
+        )
+        if not mismatched:
+            return
+        return {
+            "warning": {
+                "title": _("Cliente alterado — confira os equipamentos"),
+                "message": _(
+                    "Esta cotação já tem equipamentos de qualificação que "
+                    "pertencem a outro cliente e podem não ser de %s:\n%s\n\n"
+                    "Revise o escopo (reabra o Configurador) antes de "
+                    "confirmar."
+                ) % (
+                    self.partner_id.display_name or _("(sem cliente)"),
+                    "\n".join("• %s" % e.display_name for e in mismatched),
+                ),
+            }
+        }
+
     # ------------------------------------------------------------------
     # F10 — helpers usados no confirm. O plano de recursos em si vive em
     # afr.qualificacao.os (operacional/PCP), não no SO.

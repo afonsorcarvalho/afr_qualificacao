@@ -21,7 +21,7 @@ from odoo.exceptions import UserError, ValidationError
 
 
 # F8.4/F8.7 — passos do configurador guiado, em ordem.
-_STEP_ORDER = ["escopo", "blocos", "opcionais", "revisao"]
+_STEP_ORDER = ["escopo", "revisao"]
 
 
 class AfrQualificacaoConfigurator(models.TransientModel):
@@ -66,22 +66,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         compute="_compute_wizard_estimated_totals",
         digits=(8, 1),
     )
-    # F8.2 — serviços opcionais incluídos como linhas extra na cotação
-    optional_ids = fields.Many2many(
-        comodel_name="afr.proposal.optional",
-        string="Serviços Opcionais",
-        help=(
-            "Opcionais (pasta impressa, viagem, diária adicional) gerados "
-            "como linhas extra do pedido — fora do escopo de qualificação."
-        ),
-    )
-    # F8.4 — configurador guiado multi-step
+    # F8.4 — configurador guiado multi-step (F10.2: reduzido a Escopo→Revisão;
+    # blocos editados no form do SO; opcionais adicionados manualmente).
     step = fields.Selection(
         selection=[
             ("escopo", "1. Escopo"),
-            ("blocos", "2. Blocos da Proposta"),
-            ("opcionais", "3. Opcionais"),
-            ("revisao", "4. Revisão"),
+            ("revisao", "2. Revisão"),
         ],
         default="escopo",
         required=True,
@@ -92,22 +82,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         string="Template de Proposta",
         help="Define os blocos de texto da proposta. Aplicado ao pedido.",
     )
-    proposal_block_ids = fields.One2many(
-        related="sale_order_id.proposal_block_ids",
-        readonly=False,
-        string="Blocos da Proposta",
-    )
-    block_count = fields.Integer(
-        compute="_compute_review_counts",
-        string="Blocos",
-    )
     equipment_count = fields.Integer(
         compute="_compute_review_counts",
         string="Equipamentos",
-    )
-    optional_count = fields.Integer(
-        compute="_compute_review_counts",
-        string="Opcionais",
     )
 
     @api.depends("equipment_line_ids.subtotal")
@@ -122,12 +99,10 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             wiz.estimated_hours_total = hours
             wiz.estimated_days_total = hours / 8.0 if hours else 0.0
 
-    @api.depends("proposal_block_ids", "equipment_line_ids", "optional_ids")
+    @api.depends("equipment_line_ids")
     def _compute_review_counts(self):
         for wiz in self:
-            wiz.block_count = len(wiz.proposal_block_ids)
             wiz.equipment_count = len(wiz.equipment_line_ids)
-            wiz.optional_count = len(wiz.optional_ids)
 
     # ------------------------------------------------------------------
     # F8.4 — navegação guiada entre etapas
@@ -153,8 +128,6 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     def _go_to_step(self, target):
         """Move o wizard para `target` e reabre o modal."""
         self.step = target
-        if target == "blocos":
-            self._ensure_blocks_seeded()
         return self._reopen()
 
     def action_next_step(self):
@@ -175,40 +148,16 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             return self._go_to_step(_STEP_ORDER[idx - 1])
         return self._reopen()
 
-    def _ensure_blocks_seeded(self):
-        """Garante que a SO tem blocos para a etapa 'Blocos' (idempotente)."""
-        self.ensure_one()
-        so = self.sale_order_id
-        if (
-            self.proposal_template_id
-            and so.proposal_template_id != self.proposal_template_id
-        ):
-            so.proposal_template_id = self.proposal_template_id
-        if not so.proposal_block_ids:
-            so._seed_proposal_blocks()
-
     # ------------------------------------------------------------------
     # Carrega matriz a partir de linhas SO existentes (idempotência)
     # ------------------------------------------------------------------
     def _load_from_existing_lines(self):
-        """Lê linhas SO managed, agrupa por equipment_id, popula equipment_line_ids.
-
-        Carrega também os serviços opcionais existentes de volta em
-        `optional_ids` (idempotência ao reabrir o configurador).
-        """
+        """Lê linhas SO managed, agrupa por equipment_id, popula equipment_line_ids."""
         self.ensure_one()
         # F8.4 — herda o template de proposta da SO
         self.proposal_template_id = self.sale_order_id.proposal_template_id
         so_lines = self.sale_order_id.order_line
-        # Opcionais existentes → optional_ids
-        opt_lines = so_lines.filtered("is_proposal_optional")
-        if opt_lines:
-            opts = self.env["afr.proposal.optional"].search(
-                [("product_id", "in", opt_lines.mapped("product_id").ids)]
-            )
-            if opts:
-                self.optional_ids = [(6, 0, opts.ids)]
-        # Equipamentos managed (exclui linhas de opcionais)
+        # Equipamentos managed (exclui linhas de opcionais avulsas)
         managed = so_lines.filtered(
             lambda l: l.is_qualificacao_managed and not l.is_proposal_optional
         )
@@ -447,26 +396,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     c_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, c_vals))
 
-        # Serviços opcionais → linhas managed marcadas is_proposal_optional
-        # (apagadas/recriadas no re-apply junto das demais linhas managed,
-        # mas excluídas da geração de qualificações no confirm do SO).
-        for opt in self.optional_ids:
-            price = opt.default_price or (
-                opt.product_id.list_price if opt.product_id else 0.0
-            )
-            new_lines.append((0, 0, {
-                "order_id": so.id,
-                "product_id": opt.product_id.id,
-                "name": opt.name,
-                "product_uom_qty": opt.default_qty or 1.0,
-                "price_unit": price,
-                "is_qualificacao_managed": True,
-                "is_proposal_optional": True,
-            }))
-
         so.write({"order_line": new_lines})
-        # F8.2/F8.4 — aplica o template e semeia blocos (idempotente —
-        # preserva blocos já montados/editados na etapa "Blocos").
+        # F8.2 — aplica o template e semeia blocos da proposta (idempotente —
+        # preserva blocos já montados/editados no form do SO).
         if self.proposal_template_id:
             so.proposal_template_id = self.proposal_template_id
         so._seed_proposal_blocks()

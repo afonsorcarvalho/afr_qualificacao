@@ -61,46 +61,53 @@ class TestProposalBuilder(AfrQualificacaoTestCommon):
         self.assertEqual(eq.qd_line_ids.cycle_type_id, self.cycle_cmax)
         self.assertEqual(eq.qd_line_ids.qty, 2)
 
+    # --- troca de cliente com equipamentos no escopo ----------------------
+
+    def test_change_partner_warns_on_foreign_equipment(self):
+        """F10.3 — trocar cliente com equipamentos de outro cliente no escopo
+        retorna aviso (equip1.client_id = self.partner)."""
+        so = self._new_so()
+        wiz = self._configurator_for(so)
+        self._equipment_line(wiz, self.equip1, do_qi=True)
+        wiz.action_apply()
+        other = self.env["res.partner"].create({"name": "Outro Cliente"})
+        so.partner_id = other
+        result = so._onchange_partner_id_qualif_equipment_warning()
+        self.assertTrue(result and result.get("warning"))
+        self.assertIn(self.equip1.display_name, result["warning"]["message"])
+
+    def test_change_partner_no_warning_when_same_client(self):
+        """Sem divergência (equipamento é do cliente) → sem aviso."""
+        so = self._new_so()
+        wiz = self._configurator_for(so)
+        self._equipment_line(wiz, self.equip1, do_qi=True)
+        wiz.action_apply()
+        # equip1.client_id == self.partner == so.partner_id → sem aviso
+        self.assertFalse(so._onchange_partner_id_qualif_equipment_warning())
+
     # --- serviços opcionais -----------------------------------------------
 
-    def test_apply_creates_optional_line(self):
-        """Opcional selecionado vira linha de SO marcada is_proposal_optional."""
-        so = self._new_so()
-        wiz = self._configurator_for(so)
-        self._equipment_line(wiz, self.equip1, do_qi=True)
-        wiz.optional_ids = [(6, 0, self.optional.ids)]
-        wiz.action_apply()
-        opt_lines = so.order_line.filtered("is_proposal_optional")
-        self.assertEqual(len(opt_lines), 1)
-        self.assertEqual(opt_lines.product_id, self.optional.product_id)
-        self.assertTrue(opt_lines.is_qualificacao_managed)
-
     def test_optional_line_does_not_generate_qualificacao(self):
-        """Linha de opcional é excluída da geração de qualificações."""
+        """F10.2 — opcionais não vêm mais do configurador (linha avulsa
+        manual). A linha is_proposal_optional continua excluída da geração
+        de qualificações no confirm."""
         so = self._new_so()
         wiz = self._configurator_for(so)
         self._equipment_line(wiz, self.equip1, do_qi=True)
-        wiz.optional_ids = [(6, 0, self.optional.ids)]
         wiz.action_apply()
+        # Vendedor adiciona o opcional manualmente como linha avulsa.
+        self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": self.optional.product_id.id,
+            "name": self.optional.name,
+            "product_uom_qty": 1.0,
+            "is_proposal_optional": True,
+        })
         so.action_confirm()
+        # Só QI gerou qualificação; a linha opcional foi ignorada.
         self.assertEqual(len(so.qualificacao_ids), 1)
         self.assertEqual(
             so.qualificacao_ids.qualification_type, "installation"
-        )
-
-    def test_reapply_does_not_duplicate_optional_lines(self):
-        """Re-apply do configurador não duplica linhas de opcional."""
-        so = self._new_so()
-        wiz = self._configurator_for(so)
-        self._equipment_line(wiz, self.equip1, do_qi=True)
-        wiz.optional_ids = [(6, 0, self.optional.ids)]
-        wiz.action_apply()
-        wiz2 = self._configurator_for(so)
-        wiz2._load_from_existing_lines()
-        self.assertEqual(wiz2.optional_ids, self.optional)
-        wiz2.action_apply()
-        self.assertEqual(
-            len(so.order_line.filtered("is_proposal_optional")), 1
         )
 
     # --- blocos da proposta -----------------------------------------------
