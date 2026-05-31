@@ -246,6 +246,18 @@ class AfrQualificacao(models.Model):
         string="Malhas (Calibração)",
         help="Sub-records de malhas para Calibração.",
     )
+    # F10 — grupo de execução paralela do equipamento nesta OS. Propagado da
+    # section line do SO no confirm; editável na OS p/ ajuste de PCP. Mesmo
+    # rótulo não-vazio entre equipamentos = rodam simultâneos no plano.
+    parallel_group = fields.Char(
+        string="Grupo Paralelo",
+        copy=False,
+        help=(
+            "Rótulo de execução simultânea. Equipamentos (qualifs) com o MESMO "
+            "rótulo não-vazio rodam em paralelo no plano de recursos da OS; "
+            "vazio = executado sozinho."
+        ),
+    )
     # F10 — snapshot dos pontos QD (cópia própria do template no confirm).
     # Mantém o plano de recursos estável mesmo que o template mude depois.
     qd_point_snapshot_ids = fields.One2many(

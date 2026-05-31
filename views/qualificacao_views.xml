@@ -171,6 +171,8 @@
                             <field name="planned_date"/>
                             <field name="execution_date"/>
                             <field name="approver_id" options="{'no_create_edit': True}"/>
+                            <field name="parallel_group"
+                                   placeholder="ex: G1 (vazio = sozinho)"/>
                         </group>
                     </group>
                     <notebook>

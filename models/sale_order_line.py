@@ -232,38 +232,3 @@ class SaleOrderLine(models.Model):
             self.malha_type_id = False
         if warning:
             return {"warning": warning}
-
-    # F10 — campos cuja mudança invalida o plano de recursos.
-    _RESOURCE_PLAN_DIRTY_FIELDS = frozenset({
-        "product_uom_qty", "qualif_cycle_qty", "estimated_hours",
-        "equipment_id", "parallel_group", "cycle_type_id", "malha_type_id",
-        "config_template_id", "is_qualificacao_managed", "display_type",
-    })
-
-    def _mark_resource_plan_dirty(self):
-        """Marca SOs (com plano já calculado) como desatualizadas."""
-        orders = self.mapped("order_id").filtered(
-            lambda o: o.resource_plan_line_ids and not o.resource_plan_dirty
-        )
-        if orders:
-            orders.write({"resource_plan_dirty": True})
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        lines = super().create(vals_list)
-        lines.filtered("is_qualificacao_managed")._mark_resource_plan_dirty()
-        return lines
-
-    def write(self, vals):
-        res = super().write(vals)
-        if self._RESOURCE_PLAN_DIRTY_FIELDS & set(vals):
-            self._mark_resource_plan_dirty()
-        return res
-
-    def unlink(self):
-        orders = self.mapped("order_id")
-        res = super().unlink()
-        orders.filtered(
-            lambda o: o.resource_plan_line_ids and not o.resource_plan_dirty
-        ).write({"resource_plan_dirty": True})
-        return res

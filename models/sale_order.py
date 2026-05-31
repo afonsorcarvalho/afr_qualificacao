@@ -101,24 +101,6 @@ class SaleOrder(models.Model):
         string="Total OSs engc (legacy)",
     )
 
-    # F10 — Plano de recursos metrológicos (validadores + padrões) sugerido
-    # a partir da cotação. Persistido; regenerado via botão (preserva overrides).
-    resource_plan_line_ids = fields.One2many(
-        comodel_name="afr.qualificacao.resource.plan.line",
-        inverse_name="order_id",
-        string="Plano de Recursos",
-        copy=False,
-    )
-    resource_plan_dirty = fields.Boolean(
-        string="Plano Desatualizado",
-        default=False,
-        copy=False,
-        help=(
-            "True quando o SO mudou (linhas, equipamentos, grupos paralelos) "
-            "desde o último cálculo do plano de recursos. Recalcule."
-        ),
-    )
-
     has_qualif_lines = fields.Boolean(
         compute="_compute_has_qualif_lines",
         string="Possui Linhas de Qualificação",
@@ -816,29 +798,13 @@ class SaleOrder(models.Model):
             "domain": [("id", "in", self.engc_os_ids.ids)],
         }
 
+
     # ------------------------------------------------------------------
-    # F10 — Plano de recursos metrológicos (bin-packing)
+    # F10 — helpers usados no confirm. O plano de recursos em si vive em
+    # afr.qualificacao.os (operacional/PCP), não no SO.
     # ------------------------------------------------------------------
-    # Papel do plano → code da tag afr.qualificacao.instrument.function
-    _RESOURCE_ROLE_FUNCTION_CODE = {
-        "validador": "VALIDADOR",
-        "padrao": "PADRAO",
-    }
-
-    def action_compute_resource_plan(self):
-        """Regenera o plano de recursos metrológicos (bin-packing).
-
-        Preserva linhas com is_overridden=True (ajustadas pelo técnico) e
-        regenera apenas o restante. Limpa resource_plan_dirty ao fim.
-        """
-        for order in self:
-            order._compute_resource_plan()
-            order.resource_plan_dirty = False
-        return True
-
-    # ---- demanda ------------------------------------------------------
     def _qd_template_for(self, equipment):
-        """Template de equipamento (da section line) p/ ler pontos QD."""
+        """Template de equipamento (da section line) p/ snapshot dos pontos QD."""
         self.ensure_one()
         section = self.order_line.filtered(
             lambda l: l.display_type == "line_section"
@@ -852,30 +818,8 @@ class SaleOrder(models.Model):
         )[:1]
         return any_line.config_template_id if any_line else False
 
-    def _qd_points_for(self, equipment):
-        """Pontos QD por grandeza p/ um equipamento (dict {sensor_kind: points}).
-
-        Pós-confirm: usa o SNAPSHOT da qualif QD (estável, independe do
-        template). Em cotação: lê o template vivo da section line.
-        """
-        self.ensure_one()
-        qualif = self.env["afr.qualificacao"].search([
-            ("sale_order_id", "=", self.id),
-            ("equipment_id", "=", equipment.id),
-            ("qualification_type", "=", "performance"),
-        ], limit=1)
-        if qualif and qualif.qd_point_snapshot_ids:
-            return {
-                s.sensor_kind_id: s.points
-                for s in qualif.qd_point_snapshot_ids
-            }
-        tpl = self._qd_template_for(equipment)
-        if tpl:
-            return {p.sensor_kind_id: p.points for p in tpl.qd_point_ids}
-        return {}
-
-    def _parallel_group_for(self, equipment):
-        """Rótulo de grupo paralelo do equipamento (section line → fallback)."""
+    def _parallel_group_for_equipment(self, equipment):
+        """parallel_group da section line do equipamento (propagado à qualif)."""
         self.ensure_one()
         section = self.order_line.filtered(
             lambda l: l.display_type == "line_section"
@@ -888,280 +832,6 @@ class SaleOrder(models.Model):
             lambda l: l.equipment_id == equipment and l.parallel_group
         )[:1]
         return (other.parallel_group or "").strip()
-
-    # ---- instrumentos -------------------------------------------------
-    def _instrument_capacity(self, instrument):
-        """{sensor_kind: canais} a partir de measurement_capacity_ids."""
-        return {
-            c.sensor_kind_id: c.qty
-            for c in instrument.measurement_capacity_ids
-            if c.qty > 0
-        }
-
-    def _available_instruments(self, role, sensor_kind=None):
-        """Instrumentos com papel `role`, certificado válido e (opcional)
-        capacidade na grandeza `sensor_kind`."""
-        code = self._RESOURCE_ROLE_FUNCTION_CODE[role]
-        Instr = self.env["engc.calibration.instruments"]
-        candidates = Instr.search([("function_ids.code", "=", code)])
-        result = []
-        for instr in candidates:
-            if not instr.has_valid_certificate:
-                continue
-            cap = self._instrument_capacity(instr)
-            if sensor_kind is not None and cap.get(sensor_kind, 0) <= 0:
-                continue
-            result.append(instr)
-        return result
-
-    def _bin_pack_validators(self, instruments, needed):
-        """Greedy multidimensional: escolhe o conjunto mínimo de instrumentos
-        cobrindo `needed` (dict grandeza→canais). Prefere caixa única que
-        cubra tudo. Retorna (chosen_list, remaining_dict)."""
-        remaining = {k: v for k, v in needed.items() if v > 0}
-        pool = list(instruments)
-        chosen = []
-        guard = 0
-        while any(v > 0 for v in remaining.values()) and pool:
-            best, best_score = None, 0
-            for instr in pool:
-                cap = self._instrument_capacity(instr)
-                score = sum(
-                    min(cap.get(k, 0), remaining[k]) for k in remaining
-                )
-                if score > best_score:
-                    best, best_score = instr, score
-            if not best or best_score <= 0:
-                break
-            chosen.append(best)
-            pool.remove(best)
-            cap = self._instrument_capacity(best)
-            for k in list(remaining):
-                remaining[k] = max(0, remaining[k] - cap.get(k, 0))
-            guard += 1
-            if guard > 200:
-                break
-        return chosen, remaining
-
-    # ---- rotina principal --------------------------------------------
-    def _compute_resource_plan(self):
-        """Bin-packing único: demanda → grupos paralelos → frota + horas."""
-        self.ensure_one()
-        Line = self.env["afr.qualificacao.resource.plan.line"]
-
-        # Preserva overrides; regenera o resto. As linhas overridden já
-        # satisfazem parte da demanda → descontadas mais abaixo p/ evitar
-        # duplicação.
-        overridden = self.resource_plan_line_ids.filtered("is_overridden")
-        (self.resource_plan_line_ids - overridden).unlink()
-
-        managed = self.order_line.filtered(
-            lambda l: l.is_qualificacao_managed
-            and not l.display_type
-            and not l.is_proposal_optional
-        )
-        equipments = []
-        for line in managed:
-            if line.equipment_id and line.equipment_id not in equipments:
-                equipments.append(line.equipment_id)
-
-        # 1. Demanda por equipamento -----------------------------------
-        demand = {}
-        for eq in equipments:
-            malha_lines = managed.filtered(
-                lambda l: l.equipment_id == eq
-                and l.qualification_type == "calibration"
-                and l.malha_type_id
-            )
-            malha_simul = defaultdict(int)   # grandeza → padrões simultâneos
-            malha_hours = defaultdict(float)  # grandeza → Σ duração×qty×padrões
-            for l in malha_lines:
-                kind = l.malha_type_id.sensor_kind_id
-                spm = l.malha_type_id.standards_per_malha or 1
-                qty = l.qualif_cycle_qty or int(l.product_uom_qty or 0)
-                # NOTA: "campo próprio da malha" resolveu p/ malha_type
-                # (o record afr.qualificacao.malha não tem horas próprias).
-                hours = (
-                    l.estimated_hours
-                    or l.malha_type_id.estimated_hours
-                    or 0.0
-                )
-                # Dentro de 1 equipamento as malhas rodam sequencialmente →
-                # demanda simultânea = máx de padrões por execução.
-                malha_simul[kind] = max(malha_simul[kind], spm)
-                malha_hours[kind] += hours * qty * spm
-            demand[eq] = {
-                "qd_points": self._qd_points_for(eq),
-                "qd_hours": self._qualif_section_hours(eq, "qd"),
-                "malha_simul": dict(malha_simul),
-                "malha_hours": dict(malha_hours),
-                "group": self._parallel_group_for(eq),
-            }
-
-        # 2. Agrupa por parallel_group (vazio = singleton) -------------
-        groups = OrderedDict()
-        solo = 0
-        for eq in equipments:
-            g = demand[eq]["group"]
-            if g:
-                groups.setdefault(g, []).append(eq)
-            else:
-                groups["\x00solo%d" % solo] = [eq]
-                solo += 1
-
-        # 3-4. Validadores: capacidade necessária + janelas ------------
-        cap_needed = defaultdict(int)
-        group_window = {}
-        group_qd_kinds = {}
-        for gkey, eqs in groups.items():
-            gsum = defaultdict(int)
-            for eq in eqs:
-                for kind, pts in demand[eq]["qd_points"].items():
-                    gsum[kind] += pts
-            for kind, total in gsum.items():
-                cap_needed[kind] = max(cap_needed[kind], total)
-            group_window[gkey] = max(
-                (demand[eq]["qd_hours"] for eq in eqs), default=0.0
-            )
-            group_qd_kinds[gkey] = {k for k, v in gsum.items() if v > 0}
-        # Desconta capacidade já coberta por validadores overridden.
-        for ov in overridden.filtered(
-            lambda l: l.resource_role == "validador" and l.instrument_id
-        ):
-            for kind, q in self._instrument_capacity(ov.instrument_id).items():
-                if kind in cap_needed:
-                    cap_needed[kind] = max(0, cap_needed[kind] - q)
-        cap_needed = {k: v for k, v in cap_needed.items() if v > 0}
-
-        # 5. Padrões: nº simultâneo por grandeza + horas ---------------
-        std_needed = defaultdict(int)
-        std_groups = defaultdict(set)
-        std_hours = defaultdict(float)
-        for gkey, eqs in groups.items():
-            gsum = defaultdict(int)
-            for eq in eqs:
-                for kind, simul in demand[eq]["malha_simul"].items():
-                    gsum[kind] += simul
-                for kind, h in demand[eq]["malha_hours"].items():
-                    std_hours[kind] += h
-                    std_groups[kind].add(gkey)
-            for kind, total in gsum.items():
-                std_needed[kind] = max(std_needed[kind], total)
-        # Desconta padrões já cobertos por linhas overridden.
-        for ov in overridden.filtered(
-            lambda l: l.resource_role == "padrao" and l.sensor_kind_id
-        ):
-            k = ov.sensor_kind_id
-            if k in std_needed:
-                std_needed[k] = max(0, std_needed[k] - 1)
-        std_needed = {k: v for k, v in std_needed.items() if v > 0}
-
-        vals_list = []
-
-        # --- linhas de validador ---
-        validator_equips = [
-            eq for eq in equipments if demand[eq]["qd_points"]
-        ]
-        if cap_needed:
-            instruments = self._available_instruments("validador")
-            chosen, remaining = self._bin_pack_validators(
-                instruments, cap_needed
-            )
-            for instr in chosen:
-                cap = self._instrument_capacity(instr)
-                served = [
-                    g for g in groups
-                    if group_qd_kinds[g] & set(cap)
-                ]
-                hours = sum(
-                    group_window[g] + instr.setup_hours for g in served
-                )
-                used = {
-                    k: min(cap.get(k, 0), cap_needed.get(k, 0))
-                    for k in cap_needed if cap.get(k, 0) > 0
-                }
-                vals_list.append({
-                    "order_id": self.id,
-                    "resource_role": "validador",
-                    "instrument_id": instr.id,
-                    "equipment_ids": [(6, 0, [e.id for e in validator_equips])],
-                    "channels_used": sum(used.values()),
-                    "channels_capacity": sum(cap.values()),
-                    "coverage_summary": ", ".join(
-                        "%s×%d" % (k.name, used[k]) for k in used
-                    ),
-                    "hours_resource_usage": hours,
-                })
-            # demanda não coberta → linha genérica
-            leftover = {k: v for k, v in remaining.items() if v > 0}
-            if leftover:
-                vals_list.append({
-                    "order_id": self.id,
-                    "resource_role": "validador",
-                    "equipment_ids": [(6, 0, [e.id for e in validator_equips])],
-                    "channels_used": sum(leftover.values()),
-                    "coverage_summary": ", ".join(
-                        "%s×%d" % (k.name, v) for k, v in leftover.items()
-                    ),
-                    "note": _(
-                        "Sem instrumento validador disponível p/ a demanda."
-                    ),
-                })
-
-        # equipamentos com ciclo QD mas sem pontos (template ausente)
-        for eq in equipments:
-            has_qd_cycles = any(
-                l.equipment_id == eq
-                and l.qualification_type == "performance"
-                and l.cycle_type_id
-                for l in managed
-            )
-            if has_qd_cycles and not demand[eq]["qd_points"]:
-                vals_list.append({
-                    "order_id": self.id,
-                    "resource_role": "validador",
-                    "equipment_ids": [(6, 0, [eq.id])],
-                    "note": _(
-                        "Equipamento %s sem pontos QD configurados "
-                        "(template ausente)."
-                    ) % (eq.display_name or eq.id),
-                })
-
-        # --- linhas de padrão ---
-        for kind, n in std_needed.items():
-            instruments = self._available_instruments("padrao", kind)
-            chosen, acc = [], 0
-            for instr in instruments:
-                if acc >= n:
-                    break
-                chosen.append(instr)
-                acc += max(1, self._instrument_capacity(instr).get(kind, 0))
-            ngroups = len(std_groups[kind])
-            per = std_hours[kind] / n if n else 0.0
-            equips_kind = [
-                eq for eq in equipments if kind in demand[eq]["malha_hours"]
-            ]
-            for i in range(n):
-                instr = chosen[i] if i < len(chosen) else False
-                hours = per + (instr.setup_hours if instr else 0.0) * ngroups
-                vals = {
-                    "order_id": self.id,
-                    "resource_role": "padrao",
-                    "sensor_kind_id": kind.id,
-                    "equipment_ids": [(6, 0, [e.id for e in equips_kind])],
-                    "coverage_summary": kind.name,
-                    "hours_resource_usage": hours,
-                }
-                if instr:
-                    vals["instrument_id"] = instr.id
-                else:
-                    vals["note"] = _(
-                        "Sem instrumento padrão disponível p/ %s."
-                    ) % kind.name
-                vals_list.append(vals)
-
-        if vals_list:
-            Line.create(vals_list)
 
     # ------------------------------------------------------------------
     # Confirm → gera engc.os + afr.qualificacao + sub-records
@@ -1339,5 +1009,7 @@ class SaleOrder(models.Model):
             "company_id": self.company_id.id,
             "sale_order_id": self.id,
             "os_id": os.id,
+            # F10 — propaga grupo paralelo da section line p/ a qualif (OS).
+            "parallel_group": self._parallel_group_for_equipment(equipment) or False,
             # engc_os_id deprecated — não preenchido para SOs novas.
         }

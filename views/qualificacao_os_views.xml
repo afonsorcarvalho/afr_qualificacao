@@ -138,6 +138,7 @@
                                     <field name="name"/>
                                     <field name="equipment_id"/>
                                     <field name="qualification_type"/>
+                                    <field name="parallel_group" optional="show"/>
                                     <field name="responsible_id"
                                            widget="many2one_avatar_user"/>
                                     <field name="execution_date"/>
@@ -148,6 +149,46 @@
                                            decoration-danger="state == 'rejected'"/>
                                 </tree>
                             </field>
+                        </page>
+
+                        <!-- F10 — Plano de recursos metrológicos -->
+                        <page string="Plano de Recursos" name="resource_plan">
+                            <div class="alert alert-warning" role="alert"
+                                 attrs="{'invisible': [('resource_plan_dirty', '=', False)]}">
+                                <field name="resource_plan_dirty" invisible="1"/>
+                                Plano desatualizado — a OS mudou desde o último
+                                cálculo. Clique em <b>Recalcular Plano</b>.
+                            </div>
+                            <button name="action_compute_resource_plan" type="object"
+                                    string="Recalcular Plano de Recursos"
+                                    class="btn-primary" icon="fa-cogs"/>
+                            <field name="resource_plan_line_ids">
+                                <tree editable="bottom"
+                                      decoration-muted="not instrument_id and not is_overridden"
+                                      decoration-info="is_overridden">
+                                    <field name="resource_role"/>
+                                    <field name="instrument_id"
+                                           options="{'no_create': True}"/>
+                                    <field name="sensor_kind_id" optional="show"
+                                           options="{'no_create': True}"/>
+                                    <field name="coverage_summary"/>
+                                    <field name="channels_used" optional="show"/>
+                                    <field name="channels_capacity" optional="show"/>
+                                    <field name="hours_resource_usage" sum="Horas"/>
+                                    <field name="equipment_ids" widget="many2many_tags"
+                                           optional="hide"/>
+                                    <field name="is_overridden" widget="boolean_toggle"/>
+                                    <field name="note" optional="show"/>
+                                </tree>
+                            </field>
+                            <p class="text-muted">
+                                <b>Horas de Utilização</b> = tempo wall-clock de uso
+                                do recurso (janelas dos grupos paralelos + setup).
+                                NÃO confundir com horas faturadas. Marque
+                                <b>Ajustado Manualmente</b> para preservar uma linha
+                                ao recalcular. Grupo paralelo é editável por
+                                qualificação (aba Qualificações).
+                            </p>
                         </page>
 
                         <page string="Coletas / Checklist" name="coletas">

@@ -1,27 +1,29 @@
-"""F10 (16.0.5.0.0) — Plano de recursos metrológicos por cotação.
+"""F10 (16.0.5.0.0) — Plano de recursos metrológicos por OS de qualificação.
 
-Sugere, a partir da cotação (sale.order), quantos VALIDADORES (data loggers,
-por canais) e quantos PADRÕES de calibração (por grandeza) serão necessários
-para cobrir os ciclos QD e as malhas dos equipamentos orçados — além das
-HORAS de utilização de cada recurso (wall-clock).
+Sugere, a partir da OS de Qualificação (afr.qualificacao.os) e dos seus
+sub-records reais (ciclos QD, malhas, snapshot de pontos QD), quantos
+VALIDADORES (data loggers, por canais) e quantos PADRÕES de calibração (por
+grandeza) serão necessários — além das HORAS de utilização de cada recurso
+(wall-clock). Serve ao PCP/planejamento de campo.
 
 Modelo `afr.qualificacao.resource.plan.line`: uma linha por recurso sugerido.
-A lógica de geração (bin-packing) vive em `sale.order.action_compute_resource_plan`.
+A lógica de geração (bin-packing) vive em
+`afr.qualificacao.os.action_compute_resource_plan`.
 """
 
 from odoo import api, fields, models
 
 
 class AfrQualificacaoResourcePlanLine(models.Model):
-    """Linha do plano de recursos metrológicos de um sale.order."""
+    """Linha do plano de recursos metrológicos de uma OS de qualificação."""
 
     _name = "afr.qualificacao.resource.plan.line"
     _description = "Linha de Plano de Recursos Metrológicos"
-    _order = "order_id, resource_role, sensor_kind_id, id"
+    _order = "os_id, resource_role, sensor_kind_id, id"
 
-    order_id = fields.Many2one(
-        comodel_name="sale.order",
-        string="Pedido",
+    os_id = fields.Many2one(
+        comodel_name="afr.qualificacao.os",
+        string="OS de Qualificação",
         required=True,
         ondelete="cascade",
         index=True,
@@ -80,6 +82,15 @@ class AfrQualificacaoResourcePlanLine(models.Model):
             "NÃO confundir com as horas FATURADAS na linha do SO."
         ),
     )
+    equipment_count = fields.Integer(
+        compute="_compute_equipment_count",
+        string="Nº Equip.",
+    )
+
+    @api.depends("equipment_ids")
+    def _compute_equipment_count(self):
+        for r in self:
+            r.equipment_count = len(r.equipment_ids)
     is_overridden = fields.Boolean(
         string="Ajustado Manualmente",
         help=(
@@ -90,7 +101,7 @@ class AfrQualificacaoResourcePlanLine(models.Model):
     note = fields.Char(string="Observação")
 
     company_id = fields.Many2one(
-        related="order_id.company_id",
+        related="os_id.company_id",
         store=True,
         readonly=True,
     )

@@ -1,11 +1,17 @@
-"""F10 — Testes do plano de recursos metrológicos (bin-packing).
+"""F10 — Testes do plano de recursos metrológicos (bin-packing), na OS.
+
+O plano vive em `afr.qualificacao.os` (operacional/PCP) e lê demanda dos
+SUB-RECORDS reais materializados no confirm do SO:
+  - pontos QD → snapshot `qd_point_snapshot_ids` da qualif performance
+  - horas QD → Σ horas dos ciclos QD reais (afr.qualificacao.cycle)
+  - malhas   → registros afr.qualificacao.malha reais
 
 Cenário núcleo: 2 equipamentos no MESMO grupo paralelo, cada um com QD
 (12 pontos temp + 1 press, do template) e 3 malhas de temperatura.
 
 Demanda simultânea no grupo:
   - pontos QD: temp = 12+12 = 24 ; press = 1+1 = 2
-  - janela QD do grupo = máx das horas QD por equip = 2.0 h
+  - janela QD do grupo = máx das horas QD por equip = 2 ciclos × 1h = 2.0 h
   - padrões temp simultâneos = 1 (por equip) × 2 equips = 2
 
 Frota esperada:
@@ -32,8 +38,7 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
         future = today + timedelta(days=200)
         past = today - timedelta(days=30)
 
-        # Reusa as tags semeadas (data/instrument_function_seed.xml); cria só
-        # se ausente (evita violar o unique de code).
+        # Reusa tags semeadas; cria só se ausente (unique de code).
         cls.func_validador = Func.search(
             [("code", "=", "VALIDADOR")], limit=1
         ) or Func.create({"name": "Validador", "code": "VALIDADOR"})
@@ -75,7 +80,7 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
             "Padrão Press 1", cls.func_padrao, [(cls.sensor_press, 1)], 1.0,
         )
 
-        # Template com pontos QD: temp=12, press=1
+        # Template com pontos QD: temp=12, press=1 (vira snapshot no confirm).
         cls.tpl = cls.env["afr.qualificacao.config.template"].create({
             "name": "Pacote QD Test",
             "equipment_category_id": cls.category.id,
@@ -85,64 +90,63 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
             ],
         })
 
-        cls.so = cls._build_so(cls, parallel_group="G1")
-
-    def _build_so(self, parallel_group=""):
-        """Cria SO com 2 equips no mesmo grupo: QD (2 ciclos) + 3 malhas temp."""
-        SO = self.env["sale.order"]
-        SOL = self.env["sale.order.line"]
-        order = SO.create({"partner_id": self.partner.id})
+    def _build_os(self, parallel_group="G1"):
+        """Configura SO (2 equips, QD 2 ciclos + 3 malhas temp) e confirma →
+        retorna a afr.qualificacao.os gerada."""
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create(
+            {"sale_order_id": so.id}
+        )
+        specs = []
         for equip in (self.equip1, self.equip2):
-            # section line do equipamento (carrega template + grupo paralelo)
-            SOL.create({
-                "order_id": order.id,
-                "display_type": "line_section",
-                "name": equip.display_name,
-                "is_qualificacao_managed": True,
+            specs.append({
                 "equipment_id": equip.id,
                 "config_template_id": self.tpl.id,
                 "parallel_group": parallel_group,
+                "qd_line_ids": [(0, 0, {
+                    "cycle_type_id": self.cycle_cmax.id,
+                    "qty": 2,
+                    "estimated_hours": 1.0,
+                })],
+                "calib_line_ids": [(0, 0, {
+                    "malha_type_id": self.malha_temp.id,
+                    "qty": 3,
+                    "estimated_hours": 1.0,
+                })],
             })
-            # QD: 2 ciclos × 1h
-            SOL.create({
-                "order_id": order.id,
-                "product_id": self.product_qd_cmax.id,
-                "is_qualificacao_managed": True,
-                "equipment_id": equip.id,
-                "qualification_type": "performance",
-                "cycle_type_id": self.cycle_cmax.id,
-                "estimated_hours": 1.0,
-                "qualif_cycle_qty": 2,
-                "product_uom_qty": 2,
-            })
-            # Calib: 3 malhas temp × 1h
-            SOL.create({
-                "order_id": order.id,
-                "product_id": self.product_malha_temp.id,
-                "is_qualificacao_managed": True,
-                "equipment_id": equip.id,
-                "qualification_type": "calibration",
-                "malha_type_id": self.malha_temp.id,
-                "estimated_hours": 1.0,
-                "qualif_cycle_qty": 3,
-                "product_uom_qty": 3,
-            })
-        return order
+        wiz.equipment_line_ids = [(0, 0, s) for s in specs]
+        wiz.action_apply()
+        so.action_confirm()
+        return so.qualificacao_os_ids
+
+    def test_snapshot_and_parallel_group_propagated_on_confirm(self):
+        os = self._build_os(parallel_group="G1")
+        perf = os.qualificacao_ids.filtered(
+            lambda q: q.qualification_type == "performance"
+        )
+        self.assertTrue(perf)
+        # snapshot QD copiado do template
+        for q in perf:
+            snap = {s.sensor_kind_id: s.points for s in q.qd_point_snapshot_ids}
+            self.assertEqual(snap.get(self.sensor_temp), 12)
+            self.assertEqual(snap.get(self.sensor_press), 1)
+        # parallel_group propagado p/ qualif
+        self.assertTrue(all(
+            q.parallel_group == "G1" for q in os.qualificacao_ids
+        ))
 
     def test_fleet_single_logger_two_temp_standards(self):
-        self.so.action_compute_resource_plan()
-        lines = self.so.resource_plan_line_ids
+        os = self._build_os(parallel_group="G1")
+        os.action_compute_resource_plan()
+        lines = os.resource_plan_line_ids
 
         validadores = lines.filtered(lambda l: l.resource_role == "validador")
         padroes = lines.filtered(lambda l: l.resource_role == "padrao")
 
-        # 1 validador cobre tudo (temp 24/28, press 2/2)
         self.assertEqual(len(validadores), 1, "esperado 1 validador")
         self.assertEqual(validadores.instrument_id, self.logger1)
-        # vencido jamais sugerido
         self.assertNotIn(self.logger_expired, lines.mapped("instrument_id"))
 
-        # 2 padrões de temperatura
         self.assertEqual(len(padroes), 2, "esperado 2 padrões temp")
         self.assertTrue(all(
             p.sensor_kind_id == self.sensor_temp for p in padroes
@@ -151,41 +155,33 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
             set(padroes.mapped("instrument_id").ids),
             {self.std_temp_1.id, self.std_temp_2.id},
         )
-
-        # nenhum padrão de pressão (não há malha press)
         self.assertNotIn(self.std_press_1, padroes.mapped("instrument_id"))
 
-        # horas de utilização: validador = janela(2) + setup(2) = 4.0
+        # validador = janela(2) + setup(2) = 4.0
         self.assertAlmostEqual(validadores.hours_resource_usage, 4.0, places=2)
         # padrão temp = (6 std-horas / 2) + setup(1)×1 grupo = 4.0
         for p in padroes:
             self.assertAlmostEqual(p.hours_resource_usage, 4.0, places=2)
 
-        # dirty limpo após compute
-        self.assertFalse(self.so.resource_plan_dirty)
+        self.assertFalse(os.resource_plan_dirty)
 
     def test_singleton_groups_when_no_parallel_label(self):
-        """Sem rótulo de grupo, cada equip roda sozinho → demanda QD por grupo
-        cai p/ 12 temp; 1 logger ainda cobre. Padrões temp simultâneos = 1."""
-        so = self._build_so(parallel_group="")
-        so.action_compute_resource_plan()
-        padroes = so.resource_plan_line_ids.filtered(
+        """Sem rótulo, cada equip roda sozinho → 1 padrão temp simultâneo."""
+        os = self._build_os(parallel_group="")
+        os.action_compute_resource_plan()
+        padroes = os.resource_plan_line_ids.filtered(
             lambda l: l.resource_role == "padrao"
         )
-        # cada grupo singleton tem 1 malha temp simultânea → máx = 1 padrão
         self.assertEqual(len(padroes), 1)
 
     def test_compute_preserves_overridden_lines(self):
-        so = self._build_so(parallel_group="G1")
-        so.action_compute_resource_plan()
-        # técnico ajusta uma linha
-        a_line = so.resource_plan_line_ids[0]
+        os = self._build_os(parallel_group="G1")
+        os.action_compute_resource_plan()
+        a_line = os.resource_plan_line_ids[0]
         a_line.write({"is_overridden": True, "hours_resource_usage": 99.0})
-        before = len(so.resource_plan_line_ids)
-        so.action_compute_resource_plan()
-        # linha overridden permanece intacta
-        self.assertIn(a_line, so.resource_plan_line_ids)
+        before = len(os.resource_plan_line_ids)
+        os.action_compute_resource_plan()
+        self.assertIn(a_line, os.resource_plan_line_ids)
         self.assertAlmostEqual(a_line.hours_resource_usage, 99.0, places=2)
         self.assertTrue(a_line.is_overridden)
-        # plano não duplica (regenera apenas as não-overridden)
-        self.assertEqual(len(so.resource_plan_line_ids), before)
+        self.assertEqual(len(os.resource_plan_line_ids), before)
