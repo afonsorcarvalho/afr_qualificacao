@@ -100,8 +100,16 @@
                 <field name="name"/>
                 <field name="client_id"/>
                 <field name="category_id"/>
+                <field name="marca_id" optional="show"/>
                 <field name="serial_number"/>
-                <field name="state"/>
+                <field name="location_id" optional="hide"/>
+                <field name="anvisa_code" optional="hide"/>
+                <field name="afr_qualificacao_os_count" string="OS Qualif"
+                       optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'in_use'"
+                       decoration-warning="state == 'out_of_use'"
+                       decoration-danger="state == 'useless'"/>
             </tree>
         </field>
     </record>
@@ -111,14 +119,40 @@
         <field name="model">engc.equipment</field>
         <field name="arch" type="xml">
             <search>
-                <field name="name"/>
-                <field name="serial_number"/>
+                <field name="name" string="Equipamento"
+                       filter_domain="['|','|','|',('name','ilike',self),('serial_number','ilike',self),('model','ilike',self),('anvisa_code','ilike',self)]"/>
                 <field name="client_id"/>
                 <field name="category_id"/>
-                <filter name="group_client" string="Cliente"
-                        context="{'group_by': 'client_id'}"/>
-                <filter name="group_category" string="Categoria"
-                        context="{'group_by': 'category_id'}"/>
+                <field name="marca_id"/>
+                <field name="serial_number"/>
+                <field name="location_id"/>
+                <!-- Filtros de estado -->
+                <filter name="st_in_use" string="Em uso"
+                        domain="[('state','=','in_use')]"/>
+                <filter name="st_out_of_use" string="Fora de uso"
+                        domain="[('state','=','out_of_use')]"/>
+                <filter name="st_useless" string="Inservível"
+                        domain="[('state','=','useless')]"/>
+                <separator/>
+                <!-- Filtros de qualificação -->
+                <filter name="com_qualif" string="Com Qualificação"
+                        domain="[('afr_qualificacao_ids','!=',False)]"/>
+                <filter name="sem_qualif" string="Sem Qualificação"
+                        domain="[('afr_qualificacao_ids','=',False)]"/>
+                <filter name="com_calib" string="Com Calibração"
+                        domain="[('calibrations_ids','!=',False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_client" string="Cliente"
+                            context="{'group_by': 'client_id'}"/>
+                    <filter name="group_category" string="Categoria"
+                            context="{'group_by': 'category_id'}"/>
+                    <filter name="group_marca" string="Marca"
+                            context="{'group_by': 'marca_id'}"/>
+                    <filter name="group_state" string="Estado"
+                            context="{'group_by': 'state'}"/>
+                    <filter name="group_location" string="Local de Uso"
+                            context="{'group_by': 'location_id'}"/>
+                </group>
             </search>
         </field>
     </record>
