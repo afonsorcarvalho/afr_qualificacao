@@ -217,16 +217,11 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 return False
             return _SUFFIX.sub('', line_name) or False
 
-        # Primeira passagem: captura config_template_id + parallel_group das
-        # linhas-seção por equip (F10 — preserva grupo paralelo no re-apply).
+        # Primeira passagem: captura config_template_id das linhas-seção por equip.
         equip_template_map = {}
-        equip_pgroup_map = {}
         for line in managed:
-            if line.display_type == 'line_section':
-                if line.config_template_id:
-                    equip_template_map[line.equipment_id] = line.config_template_id
-                if line.parallel_group:
-                    equip_pgroup_map[line.equipment_id] = line.parallel_group
+            if line.display_type == 'line_section' and line.config_template_id:
+                equip_template_map[line.equipment_id] = line.config_template_id
 
         by_equip = defaultdict(lambda: {
             "qi": False, "qo": False, "qs": False,
@@ -279,7 +274,6 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "do_qo": b["qo"],
                 "do_qs": b["qs"],
                 "config_template_id": equip_template_map.get(equip, False) and equip_template_map[equip].id,
-                "parallel_group": equip_pgroup_map.get(equip, False),
                 "qo_line_ids": [(0, 0, x) for x in b["qo_cycles"]],
                 "qd_line_ids": [(0, 0, x) for x in b["qd"]],
                 "calib_line_ids": [(0, 0, x) for x in b["calib"]],
@@ -328,7 +322,6 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "is_qualificacao_managed": True,
                 "equipment_id": equip.id,
                 "config_template_id": eq_line.config_template_id.id if eq_line.config_template_id else False,
-                "parallel_group": eq_line.parallel_group or False,
                 "product_uom_qty": 0,
                 "price_unit": 0,
             }))
@@ -515,15 +508,6 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
     equipment_category_id = fields.Many2one(
         related="equipment_id.category_id",
         readonly=True,
-    )
-    # F10 — grupo de execução paralela (carregado/gravado na section line).
-    parallel_group = fields.Char(
-        string="Grupo Paralelo",
-        help=(
-            "Equipamentos com o MESMO rótulo não-vazio rodam em paralelo "
-            "(compartilham janela de tempo no plano de recursos); vazio = "
-            "executado sozinho."
-        ),
     )
     do_qi = fields.Boolean(string="QI")
     do_qo = fields.Boolean(string="QO")

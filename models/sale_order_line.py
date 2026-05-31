@@ -56,19 +56,6 @@ class SaleOrderLine(models.Model):
         copy=True,
         help="Equipamento associado a esta linha de qualificação.",
     )
-    # F10 — agrupamento de execução simultânea por equipamento. Mora na
-    # section line (display_type='line_section') que agrupa o equipamento no
-    # SO; engc.os ainda não existe em tempo de cotação. Mesmo rótulo não-vazio
-    # = equipamentos rodam em paralelo; vazio = roda sozinho (sequencial).
-    parallel_group = fields.Char(
-        string="Grupo Paralelo",
-        copy=True,
-        help=(
-            "Rótulo de execução simultânea. Equipamentos com o MESMO rótulo "
-            "não-vazio rodam em paralelo (compartilham janela de tempo); "
-            "vazio = executado sozinho."
-        ),
-    )
     cycle_type_id = fields.Many2one(
         comodel_name="afr.qualificacao.cycle.type",
         string="Tipo de Ciclo (QD)",

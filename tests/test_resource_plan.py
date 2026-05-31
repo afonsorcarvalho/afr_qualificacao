@@ -91,8 +91,10 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
         })
 
     def _build_os(self, parallel_group="G1"):
-        """Configura SO (2 equips, QD 2 ciclos + 3 malhas temp) e confirma →
-        retorna a afr.qualificacao.os gerada."""
+        """Configura SO (2 equips, QD 2 ciclos + 3 malhas temp), confirma e
+        define o grupo paralelo nas qualifs da OS (PCP) → retorna a OS.
+
+        F10.4 — parallel_group é definido na OS (não na cotação)."""
         so = self.env["sale.order"].create({"partner_id": self.partner.id})
         wiz = self.env["afr.qualificacao.configurator"].create(
             {"sale_order_id": so.id}
@@ -102,7 +104,6 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
             specs.append({
                 "equipment_id": equip.id,
                 "config_template_id": self.tpl.id,
-                "parallel_group": parallel_group,
                 "qd_line_ids": [(0, 0, {
                     "cycle_type_id": self.cycle_cmax.id,
                     "qty": 2,
@@ -117,23 +118,22 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
         wiz.equipment_line_ids = [(0, 0, s) for s in specs]
         wiz.action_apply()
         so.action_confirm()
-        return so.qualificacao_os_ids
+        os = so.qualificacao_os_ids
+        if parallel_group:
+            os.qualificacao_ids.write({"parallel_group": parallel_group})
+        return os
 
-    def test_snapshot_and_parallel_group_propagated_on_confirm(self):
-        os = self._build_os(parallel_group="G1")
+    def test_qd_point_snapshot_on_confirm(self):
+        """Snapshot QD copiado do template no confirm (independe do template)."""
+        os = self._build_os(parallel_group="")
         perf = os.qualificacao_ids.filtered(
             lambda q: q.qualification_type == "performance"
         )
         self.assertTrue(perf)
-        # snapshot QD copiado do template
         for q in perf:
             snap = {s.sensor_kind_id: s.points for s in q.qd_point_snapshot_ids}
             self.assertEqual(snap.get(self.sensor_temp), 12)
             self.assertEqual(snap.get(self.sensor_press), 1)
-        # parallel_group propagado p/ qualif
-        self.assertTrue(all(
-            q.parallel_group == "G1" for q in os.qualificacao_ids
-        ))
 
     def test_fleet_single_logger_two_temp_standards(self):
         os = self._build_os(parallel_group="G1")

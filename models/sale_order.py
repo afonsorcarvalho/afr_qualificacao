@@ -10,6 +10,7 @@
   cotação (inherit condicional em `sale.report_saleorder_document`).
 """
 
+import re
 from collections import OrderedDict, defaultdict
 
 from markupsafe import Markup
@@ -17,6 +18,10 @@ from markupsafe import Markup
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
+
+
+# Sufixo "— N ciclo(s)/malha(s)" anexado pelo configurador ao nome da linha.
+_QTY_SUFFIX_RE = re.compile(r"\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$")
 
 
 # Selection labels (mantidos em sync com sale_order_line.qualification_type).
@@ -349,11 +354,13 @@ class SaleOrder(models.Model):
                         extra["temperature"] = line.cycle_type_id.temperature or ""
                         extra["duration"] = line.cycle_type_id.duration or ""
                     elif line.malha_type_id:
-                        # F8.10 — calib na proposta: "Calibração de <malha>"
-                        # (prefixo de quantidade aplicado no render do report;
-                        # line.name é geralmente o nome do produto e fica
-                        # menos informativo que o nome da malha).
-                        item_name = "Calibração de %s" % line.malha_type_id.name
+                        # F10.4 — calib na proposta usa a DESCRIÇÃO da linha
+                        # (line.name sem o sufixo "— N malha(s)"), não o nome
+                        # do produto. Fallback p/ "Calibração de <malha>".
+                        desc = _QTY_SUFFIX_RE.sub("", line.name or "").strip()
+                        item_name = desc or (
+                            "Calibração de %s" % line.malha_type_id.name
+                        )
                         subtype = "malha_type"
                     else:
                         # QI/QO/QS: line.name = descrição (default Odoo
@@ -853,21 +860,6 @@ class SaleOrder(models.Model):
         )[:1]
         return any_line.config_template_id if any_line else False
 
-    def _parallel_group_for_equipment(self, equipment):
-        """parallel_group da section line do equipamento (propagado à qualif)."""
-        self.ensure_one()
-        section = self.order_line.filtered(
-            lambda l: l.display_type == "line_section"
-            and l.equipment_id == equipment
-            and l.parallel_group
-        )[:1]
-        if section:
-            return section.parallel_group.strip()
-        other = self.order_line.filtered(
-            lambda l: l.equipment_id == equipment and l.parallel_group
-        )[:1]
-        return (other.parallel_group or "").strip()
-
     # ------------------------------------------------------------------
     # Confirm → gera engc.os + afr.qualificacao + sub-records
     # ------------------------------------------------------------------
@@ -1044,7 +1036,6 @@ class SaleOrder(models.Model):
             "company_id": self.company_id.id,
             "sale_order_id": self.id,
             "os_id": os.id,
-            # F10 — propaga grupo paralelo da section line p/ a qualif (OS).
-            "parallel_group": self._parallel_group_for_equipment(equipment) or False,
+            # F10.4 — parallel_group definido manualmente na OS (não vem do SO).
             # engc_os_id deprecated — não preenchido para SOs novas.
         }
