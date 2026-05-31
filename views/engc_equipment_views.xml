@@ -153,6 +153,10 @@
                     <filter name="group_location" string="Local de Uso"
                             context="{'group_by': 'location_id'}"/>
                 </group>
+                <searchpanel>
+                    <field name="category_id" string="Categoria"
+                           select="one" icon="fa-cubes" enable_counters="1"/>
+                </searchpanel>
             </search>
         </field>
     </record>
