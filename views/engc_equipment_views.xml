@@ -75,6 +75,17 @@
                                 </tree>
                             </field>
                         </page>
+                        <page string="Calibrações e Ensaios" name="calibracoes">
+                            <field name="calibrations_ids" readonly="1">
+                                <tree create="false" delete="false">
+                                    <field name="name"/>
+                                    <field name="date_calibration"/>
+                                    <field name="date_next_calibration"/>
+                                    <field name="technician_id"/>
+                                    <field name="state" widget="badge"/>
+                                </tree>
+                            </field>
+                        </page>
                     </notebook>
                 </sheet>
             </form>
