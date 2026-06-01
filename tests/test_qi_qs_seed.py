@@ -87,3 +87,43 @@ class TestQiQsSeed(TransactionCase):
             qi.service_product_id.product_template_variant_value_ids.mapped("name"),
         )
         self.assertAlmostEqual(qi.default_unit_price, 999.0, places=2)
+
+    def test_no_xmlid_collision_with_legacy_5_7_0_product(self):
+        """Simula DB upgradeada do 16.0.5.7.0: o xmlid antigo
+        `afr_qualificacao.product_qi_service` aponta para um `product.product`.
+
+        O hook 16.0.5.9.0 usa sufixos `_tmpl` distintos, logo:
+        - NÃO levanta (sem colisão no ImdData.create);
+        - cria um template NOVO com o xmlid `product_qi_service_tmpl`;
+        - o xmlid antigo `product_qi_service` permanece intacto, ainda
+          apontando para o product.product legado.
+        """
+        ImdData = self.env["ir.model.data"]
+        legacy_product = self.env["product.product"].create({
+            "name": "QI Legacy 5.7.0", "type": "service",
+            "detailed_type": "service", "sale_ok": True,
+        })
+        ImdData.create({
+            "name": "product_qi_service",
+            "module": "afr_qualificacao",
+            "model": "product.product",
+            "res_id": legacy_product.id,
+            "noupdate": True,
+        })
+
+        # Não deve levantar (sem colisão de (module, name) no ImdData.create).
+        _install_qi_qs_type_config(self.env)
+
+        # Novo template com o xmlid distinto `_tmpl`.
+        new_tmpl = self.env.ref(
+            "afr_qualificacao.product_qi_service_tmpl", raise_if_not_found=False
+        )
+        self.assertTrue(new_tmpl, "esperado template novo com sufixo _tmpl")
+        self.assertEqual(new_tmpl._name, "product.template")
+
+        # xmlid antigo intocado: ainda mapeia o product.product legado.
+        legacy = self.env.ref(
+            "afr_qualificacao.product_qi_service", raise_if_not_found=False
+        )
+        self.assertEqual(legacy, legacy_product)
+        self.assertEqual(legacy._name, "product.product")

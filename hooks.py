@@ -44,10 +44,14 @@ PARTE_01_NAME = "Parte 01"
 
 # Produtos serviço genéricos por tipo (preço 0; comercial ajusta no
 # orçamento). Tuple: (xmlid_suffix, nome, has_parte).
+# NOTA: os sufixos usam o pós-fixo `_tmpl` para NÃO colidirem com os xmlids
+# antigos `product_qi_service`/`product_qs_service` que o 16.0.5.7.0 registrou
+# como `product.product`. Estes aqui são `product.template`. Ver migration
+# 16.0.5.9.0 / _ensure_parte_repoint.
 QUALIF_SERVICE_PRODUCTS = {
-    "installation": ("product_qi_service", "Qualificação de Instalação (QI)", True),
-    "operational": ("product_qo_service", "Qualificação de Operação (QO)", True),
-    "software": ("product_qs_service", "Qualificação de Software (QS)", False),
+    "installation": ("product_qi_service_tmpl", "Qualificação de Instalação (QI)", True),
+    "operational": ("product_qo_service_tmpl", "Qualificação de Operação (QO)", True),
+    "software": ("product_qs_service_tmpl", "Qualificação de Software (QS)", False),
 }
 
 
