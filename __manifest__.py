@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.5.8.0",
+    "version": "16.0.5.9.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -139,6 +139,7 @@
         "security/ir.model.access.csv",
         # Data seeds
         "data/sequences.xml",
+        "data/product_attribute_parte_seed.xml",
         "data/sensor_kind_seed.xml",
         "data/standard_seed.xml",
         "data/docx_templates_seed.xml",

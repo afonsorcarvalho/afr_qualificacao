@@ -43,3 +43,6 @@ from . import test_qi_qs_seed
 from . import test_proposal_venda_calibracao
 
 from . import test_work_hours_per_day
+
+# 16.0.5.9.0 — atributo Parte + variantes QI/QO
+from . import test_partes_qi_qo

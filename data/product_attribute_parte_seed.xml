@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="product_attribute_parte" model="product.attribute">
+        <field name="name">Parte</field>
+        <field name="create_variant">always</field>
+        <field name="display_type">radio</field>
+    </record>
+    <record id="product_attribute_value_parte_01" model="product.attribute.value">
+        <field name="name">Parte 01</field>
+        <field name="attribute_id" ref="product_attribute_parte"/>
+        <field name="sequence">10</field>
+    </record>
+    <record id="product_attribute_value_parte_02" model="product.attribute.value">
+        <field name="name">Parte 02</field>
+        <field name="attribute_id" ref="product_attribute_parte"/>
+        <field name="sequence">20</field>
+    </record>
+</odoo>

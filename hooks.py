@@ -37,38 +37,46 @@ PROPOSAL_TEMPLATE_LINES = [
 
 
 # Produtos serviço genéricos por tipo (preço 0; comercial ajusta no
-# orçamento). Idempotente via xmlid. (xmlid_suffix, nome).
-QI_QS_SERVICE_PRODUCTS = {
-    "installation": ("product_qi_service", "Qualificação de Instalação (QI)"),
-    "software": ("product_qs_service", "Qualificação de Software (QS)"),
+# orçamento). Tuple: (xmlid_suffix, nome, has_parte).
+QUALIF_SERVICE_PRODUCTS = {
+    "installation": ("product_qi_service", "Qualificação de Instalação (QI)", True),
+    "operational": ("product_qo_service", "Qualificação de Operação (QO)", True),
+    "software": ("product_qs_service", "Qualificação de Software (QS)", False),
 }
 
 
-def _install_qi_qs_type_config(env):
-    """Garante produtos serviço + type.config p/ QI e QS no install.
+def _parte_variant(template, value_name):
+    """Retorna o product.product do template cujo valor de atributo Parte == value_name."""
+    for variant in template.product_variant_ids:
+        names = variant.product_template_variant_value_ids.mapped("name")
+        if value_name in names:
+            return variant
+    return template.product_variant_id  # fallback (sem atributo)
 
-    O configurador (action_apply) levanta UserError se não houver
-    afr.qualificacao.type.config para 'installation'/'software' na empresa
-    — quebrando fresh-installs/deploys que não têm os dados cadastrados à
-    mão (como o labquali tem). Este seed cria o mínimo viável (produto
-    preço 0 + config por empresa) para o configurador funcionar.
+
+def _install_qualif_type_configs(env):
+    """Garante produtos serviço + type.config p/ QI, QO e QS no install.
+
+    QI e QO recebem o atributo 'Parte' (Parte 01 / Parte 02) → 2 variantes cada.
+    type_config installation/operational apontam para o variante Parte 01.
 
     Idempotente e multi-company: só cria o que falta. Em DBs que já têm os
     registros (labquali configurado manualmente), não faz nada — preserva
     a customização. Roda só no install (post_init), nunca em upgrade, logo
     nunca colide com a constraint unique(qualification_type, company_id).
     """
-    Product = env["product.product"]
+    Template = env["product.template"]
     TypeConfig = env["afr.qualificacao.type.config"]
     ImdData = env["ir.model.data"]
+    attr = env.ref("afr_qualificacao.product_attribute_parte", raise_if_not_found=False)
+    val01 = env.ref("afr_qualificacao.product_attribute_value_parte_01", raise_if_not_found=False)
+    val02 = env.ref("afr_qualificacao.product_attribute_value_parte_02", raise_if_not_found=False)
 
-    prod_by_type = {}
-    for qtype, (xmlid_suffix, name) in QI_QS_SERVICE_PRODUCTS.items():
-        prod = env.ref(
-            f"afr_qualificacao.{xmlid_suffix}", raise_if_not_found=False
-        )
-        if not prod:
-            prod = Product.create({
+    tmpl_by_type = {}
+    for qtype, (suffix, name, has_parte) in QUALIF_SERVICE_PRODUCTS.items():
+        tmpl = env.ref(f"afr_qualificacao.{suffix}", raise_if_not_found=False)
+        if not tmpl:
+            tmpl = Template.create({
                 "name": name,
                 "type": "service",
                 "detailed_type": "service",
@@ -77,31 +85,46 @@ def _install_qi_qs_type_config(env):
                 "list_price": 0.0,
             })
             ImdData.create({
-                "name": xmlid_suffix,
+                "name": suffix,
                 "module": "afr_qualificacao",
-                "model": "product.product",
-                "res_id": prod.id,
+                "model": "product.template",
+                "res_id": tmpl.id,
                 "noupdate": True,
             })
-        prod_by_type[qtype] = prod
+        # Adiciona atributo Parte se ainda não tiver e o atributo seed existe.
+        if has_parte and attr and val01 and val02 and not tmpl.attribute_line_ids.filtered(
+            lambda l: l.attribute_id == attr
+        ):
+            tmpl.write({"attribute_line_ids": [(0, 0, {
+                "attribute_id": attr.id,
+                "value_ids": [(6, 0, [val01.id, val02.id])],
+            })]})
+        tmpl_by_type[qtype] = tmpl
 
     # type.config por empresa. active_test=False p/ não recriar sobre um
     # registro inativo e violar a constraint unique.
     for company in env["res.company"].search([]):
-        for qtype in ("installation", "software"):
+        for qtype in ("installation", "operational", "software"):
             exists = TypeConfig.with_context(active_test=False).search([
                 ("qualification_type", "=", qtype),
                 ("company_id", "=", company.id),
             ], limit=1)
             if exists:
                 continue
+            tmpl = tmpl_by_type[qtype]
+            has_parte = QUALIF_SERVICE_PRODUCTS[qtype][2]
+            product = _parte_variant(tmpl, "Parte 01") if has_parte else tmpl.product_variant_id
             TypeConfig.create({
                 "qualification_type": qtype,
                 "company_id": company.id,
-                "service_product_id": prod_by_type[qtype].id,
+                "service_product_id": product.id,
                 "default_unit_price": 0.0,
                 "estimated_hours": 0.0,
             })
+
+
+# Backward-compat alias — mantém imports existentes funcionando.
+_install_qi_qs_type_config = _install_qualif_type_configs
 
 
 def _ensure_company_data_block(env):
@@ -152,8 +175,8 @@ def _install_proposal_template_seed(cr, registry):
     """
     env = api.Environment(cr, SUPERUSER_ID, {})
 
-    # Seed QI/QS type.config (independente do template; idempotente).
-    _install_qi_qs_type_config(env)
+    # Seed QI/QO/QS type.config (independente do template; idempotente).
+    _install_qualif_type_configs(env)
 
     template = env.ref(
         "afr_qualificacao.proposal_template_labquali",
