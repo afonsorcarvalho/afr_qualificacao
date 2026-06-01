@@ -426,7 +426,9 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
         TypeConfig = self.env["afr.qualificacao.type.config"]
-        lines = self.order_line.filtered("is_qualificacao_managed")
+        lines = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and not l.part01_declined
+        )
         if equipment:
             lines = lines.filtered(lambda l: l.equipment_id == equipment)
         total = 0.0
@@ -477,6 +479,7 @@ class SaleOrder(models.Model):
             return 0.0
         lines = self.order_line.filtered(
             lambda l: l.is_qualificacao_managed
+            and not l.part01_declined
             and l.equipment_id == equipment
             and l.qualification_type == qtype
         )
@@ -499,7 +502,9 @@ class SaleOrder(models.Model):
         """
         self.ensure_one()
         equipments = []
-        for line in self.order_line.filtered("is_qualificacao_managed"):
+        for line in self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and not l.part01_declined
+        ):
             if line.equipment_id and line.equipment_id not in equipments:
                 equipments.append(line.equipment_id)
         rows = []

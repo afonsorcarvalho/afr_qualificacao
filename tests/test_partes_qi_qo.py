@@ -218,3 +218,37 @@ class TestReportPartes(AfrQualificacaoTestCommon):
         # nenhuma row vem da linha declinada (qty=0)
         for r in rows:
             self.assertFalse(r.get("declined"))
+
+    def test_declined_part01_contributes_zero_hours(self):
+        """Discriminante: linha QI Parte 01 declinada NÃO infla horas.
+
+        Cenário: cfg installation com estimated_hours=8.0; a Parte 01 QI
+        é declinada (qty=0); só a malha (Parte 02, estimated_hours=1.0 ×
+        qty=1 = 1.0h) deve contar.
+
+        Pré-fix: _qualif_estimated_hours contava a linha declinada via
+        fallback cfg.estimated_hours (qualif_cycle_qty=1) → 8.0 + 1.0 = 9.0.
+        Pós-fix: linha declinada excluída → 1.0 (só malha).
+        """
+        TC = self.env["afr.qualificacao.type.config"]
+        cfg = TC.get_config_for("installation", self.company)
+        cfg.estimated_hours = 8.0  # inflaria as horas se a declinada contasse
+
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+
+        equip = self.equip1
+        # Confirma o setup: existe linha QI Parte 01 declinada neste equip.
+        declined = so.order_line.filtered(
+            lambda l: l.equipment_id == equip
+            and l.qualification_type == "installation"
+            and l.part01_declined
+        )
+        self.assertTrue(declined, "setup: deve haver linha QI Parte 01 declinada")
+        # Confirma que a malha (Parte 02) existe e vale 1.0h.
+        malha = so.order_line.filtered(
+            lambda l: l.equipment_id == equip and l.malha_type_id
+        )
+        self.assertTrue(malha)
+
+        # Só a malha conta (1.0h); a Parte 01 declinada (8.0h) é excluída.
+        self.assertEqual(so._qualif_estimated_hours(equip), 1.0)
