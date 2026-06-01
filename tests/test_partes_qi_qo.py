@@ -278,3 +278,34 @@ class TestRenderPartes(AfrQualificacaoTestCommon):
         html_ok = str(block_ok._html_declined_items(so_ok))
         self.assertIn("Itens Não Solicitados", html_decl)
         self.assertEqual(html_ok.strip(), "")
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestPortalPartes(AfrQualificacaoTestCommon):
+    def _render_portal(self, so):
+        # garante bloco escopo incluído
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id, "block_kind": "equipment_scope",
+            "included": True,
+        })
+        html = self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": so},
+        )
+        return str(html)
+
+    def test_portal_groups_partes_and_seal(self):
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        html = self._render_portal(so)
+        self.assertIn("PARTE 01", html)
+        self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
+
+    def test_portal_declined_box(self):
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        html = self._render_portal(so)
+        self.assertIn("Itens Não Solicitados", html)
+
+    def test_portal_no_box_when_not_declined(self):
+        so = self._apply(do_qi=True, calib=1)
+        html = self._render_portal(so)
+        self.assertNotIn("Itens Não Solicitados", html)

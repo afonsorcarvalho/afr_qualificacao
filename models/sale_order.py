@@ -418,6 +418,18 @@ class SaleOrder(models.Model):
             })
         return out
 
+    def _qualif_part_header(self, part, code):
+        """Rótulo de cabeçalho por Parte (compartilhado PDF + portal)."""
+        if part == "01":
+            return "PARTE 01 — Verificações"
+        if part == "02":
+            if code == "installation":
+                return "PARTE 02 — Calibrações"
+            if code == "operational":
+                return "PARTE 02 — Ciclos de Operação"
+            return "PARTE 02"
+        return ""
+
     def _qualif_estimated_hours(self, equipment=None):
         """F8.14 — soma horas estimadas das qualif lines do SO.
 

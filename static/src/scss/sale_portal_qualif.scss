@@ -230,6 +230,49 @@ $lq-bg: #F5F7FA;
         margin: 4px 0 0 12px;
     }
 
+    // Sub-cabeçalho de Parte (01/02) dentro do escopo
+    .lq-part-title {
+        font-weight: bold;
+        color: $lq-brand-2;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin: 8px 0 2px;
+    }
+    // Item declinado (selo "NÃO SOLICITADO EXECUÇÃO")
+    .lq-strike {
+        text-decoration: line-through;
+        color: $lq-gray;
+    }
+    .lq-declined {
+        font-weight: bold;
+        color: $lq-accent;
+        text-transform: uppercase;
+        font-size: 12px;
+    }
+    .lq-ref-price {
+        color: $lq-gray;
+        font-size: 13px;
+    }
+
+    // Box institucional "Itens Não Solicitados para Execução"
+    .lq-declined-box {
+        margin-top: 16px;
+        padding: 14px 18px;
+        background: $lq-bg;
+        border-left: 4px solid $lq-accent;
+        border-radius: 4px;
+        font-size: 14px;
+
+        p { margin: 6px 0 10px; color: $lq-gray; }
+    }
+    .lq-declined-title {
+        font-weight: bold;
+        color: $lq-accent;
+        font-size: 15px;
+        text-transform: uppercase;
+    }
+
     // ========================================================
     // TABELAS
     // ========================================================

@@ -294,16 +294,12 @@ class AfrProposalBlock(models.Model):
         return Markup("").join(parts) or Markup("<p></p>")
 
     def _part_header(self, part, code):
-        """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho."""
-        if part == "01":
-            return "PARTE 01 — Verificações"
-        if part == "02":
-            if code == "installation":
-                return "PARTE 02 — Calibrações"
-            if code == "operational":
-                return "PARTE 02 — Ciclos de Operação"
-            return "PARTE 02"
-        return ""
+        """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho.
+
+        Delega ao helper compartilhado em sale.order (PDF + portal usam o
+        mesmo rótulo).
+        """
+        return self.sale_order_id._qualif_part_header(part, code)
 
     def _html_declined_items(self, order):
         """Box institucional 'Itens Não Solicitados para Execução' (formato c).
