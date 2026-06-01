@@ -233,6 +233,12 @@
                         background-color: var(--lq-gray-light);
                         color: var(--lq-brand);
                     }
+                    .qq-part-title { margin: 6px 0 2px; font-size: 0.95em; color: #444; }
+                    .qq-strike { text-decoration: line-through; color: #888; }
+                    .qq-declined { color: #c0392b; font-weight: bold; text-transform: uppercase; font-size: 0.8em; }
+                    .qq-ref-price { color: #888; font-size: 0.85em; }
+                    .qq-declined-box { border: 1px solid #c0392b; padding: 8px 12px; margin-top: 14px; page-break-inside: avoid; }
+                    .qq-declined-box h4 { color: #c0392b; margin: 0 0 6px; }
                     .qq-equip-schedule {
                         border-top: 1px solid var(--lq-gray-light);
                         padding-top: 8px;

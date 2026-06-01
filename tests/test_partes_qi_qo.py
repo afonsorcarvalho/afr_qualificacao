@@ -252,3 +252,29 @@ class TestReportPartes(AfrQualificacaoTestCommon):
 
         # Só a malha conta (1.0h); a Parte 01 declinada (8.0h) é excluída.
         self.assertEqual(so._qualif_estimated_hours(equip), 1.0)
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestRenderPartes(AfrQualificacaoTestCommon):
+    def _scope_block(self, so):
+        return self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id, "block_kind": "equipment_scope",
+        })
+
+    def test_scope_html_groups_partes_and_seal(self):
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        block = self._scope_block(so)
+        html = str(block._html_equipment_scope(so))
+        self.assertIn("PARTE 01", html)
+        self.assertIn("PARTE 02", html)
+        self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
+
+    def test_declined_box_present_only_when_declined(self):
+        so_decl = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        so_ok = self._apply(do_qi=True, calib=1)
+        block_decl = self._scope_block(so_decl)
+        block_ok = self._scope_block(so_ok)
+        html_decl = str(block_decl._html_declined_items(so_decl))
+        html_ok = str(block_ok._html_declined_items(so_ok))
+        self.assertIn("Itens Não Solicitados", html_decl)
+        self.assertEqual(html_ok.strip(), "")

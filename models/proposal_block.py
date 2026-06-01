@@ -252,22 +252,96 @@ class AfrProposalBlock(models.Model):
                     Markup("<p><strong>%s</strong></p>") % escape(tipo["label"])
                 )
                 is_calib = tipo["code"] == "calibration"
-                items = []
-                for it in tipo["items"]:
-                    if is_calib:
-                        items.append(Markup("<li>%02d %s</li>") % (
-                            int(it["qty"] or 0), escape(it["name"]),
-                        ))
-                    else:
-                        suffix = (
-                            Markup(" — qtd: %s") % it["qty"]
-                            if it["qty"] and it["qty"] != 1 else Markup("")
+                # Subagrupa por Parte (01 → 02 → sem tag), estável.
+                for part in ("01", "02", ""):
+                    group = [
+                        it for it in tipo["items"]
+                        if (it.get("part") or "") == part
+                    ]
+                    if not group:
+                        continue
+                    header = self._part_header(part, tipo["code"])
+                    if header:
+                        parts.append(
+                            Markup("<p class='qq-part-title'><strong>%s</strong></p>")
+                            % escape(header)
                         )
-                        items.append(Markup("<li>%s%s</li>") % (
-                            escape(it["name"]), suffix,
-                        ))
-                parts.append(Markup("<ul>%s</ul>") % Markup("").join(items))
+                    items = []
+                    for it in group:
+                        if it.get("declined"):
+                            items.append(Markup(
+                                "<li><span class='qq-strike'>%s</span> "
+                                "<span class='qq-declined'>NÃO SOLICITADO EXECUÇÃO</span> "
+                                "<span class='qq-ref-price'>(ref.: %s)</span></li>"
+                            ) % (
+                                escape(it["name"]),
+                                escape(self._money(order, it["ref_price"])),
+                            ))
+                        elif is_calib:
+                            items.append(Markup("<li>%02d %s</li>") % (
+                                int(it["qty"] or 0), escape(it["name"]),
+                            ))
+                        else:
+                            suffix = (
+                                Markup(" — qtd: %s") % it["qty"]
+                                if it["qty"] and it["qty"] != 1 else Markup("")
+                            )
+                            items.append(Markup("<li>%s%s</li>") % (
+                                escape(it["name"]), suffix,
+                            ))
+                    parts.append(Markup("<ul>%s</ul>") % Markup("").join(items))
+        parts.append(self._html_declined_items(order))
         return Markup("").join(parts) or Markup("<p></p>")
+
+    def _part_header(self, part, code):
+        """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho."""
+        if part == "01":
+            return "PARTE 01 — Verificações"
+        if part == "02":
+            if code == "installation":
+                return "PARTE 02 — Calibrações"
+            if code == "operational":
+                return "PARTE 02 — Ciclos de Operação"
+            return "PARTE 02"
+        return ""
+
+    def _html_declined_items(self, order):
+        """Box institucional 'Itens Não Solicitados para Execução' (formato c).
+
+        Vazio se não houver Parte 01 declinada. Texto p/ Vigilância/auditoria.
+        """
+        declined = order._qualif_declined_items()
+        if not declined:
+            return Markup("")
+        rows = Markup("").join(
+            Markup(
+                "<tr><td>%s</td><td>%s</td><td>%s</td>"
+                "<td style='text-align:right;'>%s</td></tr>"
+            ) % (
+                escape(d["equipment"].display_name or ""),
+                escape(d["label"]),
+                escape(d["name"]),
+                escape(self._money(order, d["ref_price"])),
+            )
+            for d in declined
+        )
+        intro = (
+            "Os itens listados abaixo integram o escopo técnico recomendado "
+            "da qualificação, conforme exigências da Vigilância Sanitária "
+            "aplicáveis, porém não foram solicitados para execução pelo "
+            "cliente nesta contratação. O registro é mantido para fins de "
+            "rastreabilidade documental e eventual auditoria, evidenciando "
+            "que a não realização decorreu de opção do contratante."
+        )
+        return Markup(
+            "<div class='qq-declined-box'>"
+            "<h4>Itens Não Solicitados para Execução</h4>"
+            "<p>%s</p>"
+            "<table class='qq-table'><thead><tr>"
+            "<th>Equipamento</th><th>Tipo</th><th>Item</th>"
+            "<th style='text-align:right;'>Valor de referência</th>"
+            "</tr></thead><tbody>%s</tbody></table></div>"
+        ) % (escape(intro), rows)
 
     def _html_cycle_specs(self, order):
         parts = []
