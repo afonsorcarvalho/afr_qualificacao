@@ -129,6 +129,30 @@ class TestApplyPartes(AfrQualificacaoTestCommon):
         self.assertEqual(len(p01), 1)
         self.assertEqual(p01.product_uom_qty, 1.0)
 
+    def test_qi_part01_price_from_variant_not_default_unit_price(self):
+        """Guard: o preço da Parte 01 QI vem do lst_price do variante
+        (cfg.service_product_id.lst_price), NÃO do cfg.default_unit_price.
+
+        Discriminante: setamos default_unit_price=999.0 com lst_price=1000.0.
+        - Código correto (linha ~391: price_unit = lst_price) → 1000.0.
+        - Código revertido (price_unit = default_unit_price) → 999.0.
+        Assertar ==1000.0 e !=999.0 falha se alguém reverter a linha.
+        """
+        TC = self.env["afr.qualificacao.type.config"]
+        cfg = TC.get_config_for("installation", self.company)
+        # Premissa: variante a 1000.0 (vinda da fixture product_qi.list_price).
+        self.assertEqual(cfg.service_product_id.lst_price, 1000.0)
+        cfg.default_unit_price = 999.0
+        self.assertNotEqual(cfg.default_unit_price, cfg.service_product_id.lst_price)
+
+        so = self._apply(do_qi=True, calib=1)
+        p01 = so.order_line.filtered(
+            lambda l: l.qualification_type == "installation" and l.part == "01"
+        )
+        self.assertEqual(len(p01), 1)
+        self.assertEqual(p01.price_unit, 1000.0)
+        self.assertNotEqual(p01.price_unit, 999.0)
+
     def test_qi_part01_declined_zero_qty(self):
         so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
         p01 = so.order_line.filtered(lambda l: l.part == "01" and l.part01_declined)
