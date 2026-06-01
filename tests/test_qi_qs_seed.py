@@ -10,7 +10,7 @@ unique(qualification_type, company_id)).
 
 from odoo.tests.common import TransactionCase
 
-from ..hooks import _install_qi_qs_type_config
+from ..hooks import _install_qi_qs_type_config, PARTE_01_NAME
 
 
 class TestQiQsSeed(TransactionCase):
@@ -56,11 +56,15 @@ class TestQiQsSeed(TransactionCase):
         self.assertEqual(second, first, "seed não deve recriar/duplicar")
 
     def test_preserves_existing_config(self):
-        # Empresa com config manual pré-existente: seed não toca nela.
-        manual_product = self.env["product.product"].create({
+        # Empresa com config manual pré-existente (produto QI SEM atributo Parte,
+        # como numa DB pré-16.0.5.9.0). O seed preserva o registro, o TEMPLATE e
+        # o preço, mas repoint para a variante Parte 01 desse mesmo template
+        # (necessário p/ o price_extra das partes funcionar).
+        manual_template = self.env["product.template"].create({
             "name": "QI Manual", "type": "service",
             "detailed_type": "service", "sale_ok": True,
         })
+        manual_product = manual_template.product_variant_id
         manual = self.TypeConfig.create({
             "qualification_type": "installation",
             "company_id": self.fresh_company.id,
@@ -70,9 +74,16 @@ class TestQiQsSeed(TransactionCase):
         _install_qi_qs_type_config(self.env)
 
         cfgs = self._configs(self.fresh_company)
-        # QI manual preservada (mesmo registro, mesmo produto/preço) + QO + QS criadas.
+        # QI manual preservada (mesmo registro + mesmo template + mesmo preço)
+        # mas repointada p/ variante Parte 01; + QO + QS criadas.
         self.assertEqual(len(cfgs), 3)
         qi = cfgs.filtered(lambda c: c.qualification_type == "installation")
-        self.assertEqual(qi, manual)
-        self.assertEqual(qi.service_product_id, manual_product)
+        self.assertEqual(qi, manual, "mesmo registro de config (não recriado)")
+        # Template preservado (atributo anexado ao produto configurado).
+        self.assertEqual(qi.service_product_id.product_tmpl_id, manual_template)
+        # Repointado p/ a variante Parte 01 desse template.
+        self.assertIn(
+            PARTE_01_NAME,
+            qi.service_product_id.product_template_variant_value_ids.mapped("name"),
+        )
         self.assertAlmostEqual(qi.default_unit_price, 999.0, places=2)

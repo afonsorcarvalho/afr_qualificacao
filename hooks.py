@@ -115,14 +115,23 @@ def _install_qualif_type_configs(env):
     # registro inativo e violar a constraint unique.
     for company in env["res.company"].search([]):
         for qtype in ("installation", "operational", "software"):
+            has_parte = QUALIF_SERVICE_PRODUCTS[qtype][2]
             exists = TypeConfig.with_context(active_test=False).search([
                 ("qualification_type", "=", qtype),
                 ("company_id", "=", company.id),
             ], limit=1)
             if exists:
+                # software (sem Parte): preserva a config existente como antes.
+                if not has_parte:
+                    continue
+                # installation/operational: em DBs upgradeadas de <16.0.5.9.0,
+                # a config existente aponta para o produto QI/QO ANTIGO (sem
+                # atributo Parte / sem variantes). Garante que passa a apontar
+                # para a variante Parte 01 DO PRODUTO JÁ CONFIGURADO (preserva
+                # o produto/pricing do utilizador em vez de trocar pelo seed).
+                _ensure_parte_repoint(exists, attr, val01, val02)
                 continue
             tmpl = tmpl_by_type[qtype]
-            has_parte = QUALIF_SERVICE_PRODUCTS[qtype][2]
             product = _parte_variant(tmpl, PARTE_01_NAME) if has_parte else tmpl.product_variant_id
             TypeConfig.create({
                 "qualification_type": qtype,
@@ -131,6 +140,41 @@ def _install_qualif_type_configs(env):
                 "default_unit_price": 0.0,
                 "estimated_hours": 0.0,
             })
+
+
+def _ensure_parte_repoint(cfg, attr, val01, val02):
+    """Garante que um type_config installation/operational existente aponte
+    para a variante 'Parte 01' do produto que ele JÁ usa.
+
+    Preserva o produto/pricing configurado pelo utilizador: anexa o atributo
+    'Parte' ao template já apontado (se faltar) — criando as 2 variantes — e
+    repoint a config para a variante Parte 01 desse mesmo template.
+
+    Idempotente: se a config já aponta para uma variante Parte 01, não faz
+    nada. Seguro se attr/val01/val02 ou o produto não estiverem disponíveis.
+    """
+    if not (attr and val01 and val02):
+        return
+    product = cfg.service_product_id
+    if not product:
+        return
+    # Já é uma variante Parte 01 → nada a fazer.
+    if PARTE_01_NAME in product.product_template_variant_value_ids.mapped("name"):
+        return
+    existing_tmpl = product.product_tmpl_id
+    if not existing_tmpl:
+        return
+    # Anexa o atributo Parte ao template já configurado, se ainda não tiver.
+    # IMPORTANTE: este write regenera as variantes (create_variant='always'),
+    # arquivando a variante sem-atributo. Só depois resolvemos a Parte 01.
+    if not existing_tmpl.attribute_line_ids.filtered(
+        lambda l: l.attribute_id == attr
+    ):
+        existing_tmpl.write({"attribute_line_ids": [(0, 0, {
+            "attribute_id": attr.id,
+            "value_ids": [(6, 0, [val01.id, val02.id])],
+        })]})
+    cfg.service_product_id = _parte_variant(existing_tmpl, PARTE_01_NAME)
 
 
 # Backward-compat alias — mantém imports existentes funcionando.

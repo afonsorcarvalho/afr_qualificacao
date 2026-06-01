@@ -57,6 +57,64 @@ class TestPartesCatalog(TransactionCase):
         self.assertTrue(qs_cfg, "type_config p/ software deve existir na empresa fresh")
         self.assertEqual(qs_cfg.service_product_id.type, "service")
 
+    def test_upgrade_repoints_existing_installation_to_parte01(self):
+        """Simula DB upgradeada de <16.0.5.9.0: já existe um type_config
+        'installation' apontando para um produto QI ANTIGO (sem atributo
+        Parte / sem variantes). O hook deve:
+          1. anexar o atributo Parte ao MESMO template (preserva o produto);
+          2. repoint a config para a variante Parte 01 desse template.
+
+        Discriminante: no código antigo (bare `continue`), a config mantém o
+        produto plano → 'Parte 01' NÃO está em product_template_variant_value_ids
+        → este teste falha. No código novo, passa.
+        """
+        company = self.env["res.company"].create({"name": "Upgrade Repoint Test"})
+        # Produto QI antigo: service, SEM atributo Parte (1 variante única).
+        old_tmpl = self.env["product.template"].create({
+            "name": "QI Antigo Upgrade",
+            "type": "service",
+            "detailed_type": "service",
+            "list_price": 1234.0,
+        })
+        old_variant = old_tmpl.product_variant_id
+        self.assertEqual(len(old_tmpl.product_variant_ids), 1)
+        self.assertNotIn(
+            PARTE_01_NAME,
+            old_variant.product_template_variant_value_ids.mapped("name"),
+        )
+        # type_config installation pré-existente apontando para o produto antigo.
+        cfg = self.TypeConfig.create({
+            "qualification_type": "installation",
+            "company_id": company.id,
+            "service_product_id": old_variant.id,
+            "default_unit_price": 0.0,
+            "estimated_hours": 0.0,
+        })
+
+        # Executa o hook (idempotente). Deve repoint a config existente.
+        _install_qualif_type_configs(self.env)
+
+        cfg.invalidate_recordset()
+        repointed = cfg.service_product_id
+        part_vals = repointed.product_template_variant_value_ids.mapped("name")
+        self.assertIn(
+            PARTE_01_NAME, part_vals,
+            "config installante existente deve passar a apontar p/ variante Parte 01",
+        )
+        # Template preservado: a variante Parte 01 pertence ao MESMO template
+        # do produto originalmente configurado (não trocado pelo seed).
+        self.assertEqual(
+            repointed.product_tmpl_id, old_tmpl,
+            "deve preservar o template configurado, anexando o atributo a ele",
+        )
+        # 2 variantes (Parte 01 / Parte 02) foram criadas no template antigo.
+        self.assertEqual(len(old_tmpl.product_variant_ids), 2)
+
+        # Idempotente: rodar de novo não muda nada.
+        _install_qualif_type_configs(self.env)
+        cfg.invalidate_recordset()
+        self.assertEqual(cfg.service_product_id, repointed)
+
 
 @tagged("post_install", "-at_install", "afr_qualificacao")
 class TestPartFields(TransactionCase):
