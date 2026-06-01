@@ -905,6 +905,7 @@ class SaleOrder(models.Model):
             lambda l: l.is_qualificacao_managed
             and not l.display_type
             and not l.is_proposal_optional
+            and not l.part01_declined
         )
         if not managed:
             return

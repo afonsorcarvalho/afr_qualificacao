@@ -231,6 +231,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
 
         by_equip = defaultdict(lambda: {
             "qi": False, "qo": False, "qs": False,
+            "qi_part01_declined": False,
+            "do_qo_part01": False, "qo_part01_declined": False,
             "qo_cycles": [], "qd": [], "calib": [],
         })
         for line in managed:
@@ -240,9 +242,11 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             qt = line.qualification_type
             if qt == "installation":
                 bucket["qi"] = True
+                if line.part01_declined:
+                    bucket["qi_part01_declined"] = True
             elif qt == "operational":
                 if line.cycle_type_id:
-                    # F8.8 — QO cycle-based
+                    # F8.8 — QO cycle-based (Parte 02)
                     bucket["qo_cycles"].append({
                         "cycle_type_id": line.cycle_type_id.id,
                         "qty": line.qualif_cycle_qty or 1,
@@ -250,8 +254,13 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                         "description": _base_name(line.name),
                         "unit_price": line.price_unit,
                     })
+                elif line.part == "01":
+                    # QO Parte 01 (Verificações)
+                    bucket["do_qo_part01"] = True
+                    if line.part01_declined:
+                        bucket["qo_part01_declined"] = True
                 else:
-                    # QO boolean (linha única type.config)
+                    # QO boolean legado (linha única type.config)
                     bucket["qo"] = True
             elif qt == "software":
                 bucket["qs"] = True
@@ -279,6 +288,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "do_qi": b["qi"],
                 "do_qo": b["qo"],
                 "do_qs": b["qs"],
+                "qi_part01_declined": b["qi_part01_declined"],
+                "do_qo_part01": b["do_qo_part01"],
+                "qo_part01_declined": b["qo_part01_declined"],
                 "config_template_id": equip_template_map.get(equip, False) and equip_template_map[equip].id,
                 "qo_line_ids": [(0, 0, x) for x in b["qo_cycles"]],
                 "qd_line_ids": [(0, 0, x) for x in b["qd"]],
@@ -299,11 +311,22 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         for eq_line in self.equipment_line_ids:
             if not (
                 eq_line.do_qi or eq_line.do_qs
+                or eq_line.do_qo_part01
                 or eq_line.qo_line_ids or eq_line.qd_line_ids
                 or eq_line.calib_line_ids
             ):
                 raise UserError(_(
                     "Equipamento %s sem qualificações selecionadas."
+                ) % (eq_line.equipment_id.display_name or "?"))
+            if eq_line.qi_part01_declined and not eq_line.calib_line_ids:
+                raise UserError(_(
+                    "Equipamento %s: Parte 01 da QI declinada exige ao menos "
+                    "uma malha (Parte 02). Não há contratação só da Parte 01."
+                ) % (eq_line.equipment_id.display_name or "?"))
+            if eq_line.qo_part01_declined and not eq_line.qo_line_ids:
+                raise UserError(_(
+                    "Equipamento %s: Parte 01 da QO declinada exige ao menos "
+                    "um ciclo (Parte 02)."
                 ) % (eq_line.equipment_id.display_name or "?"))
 
         so = self.sale_order_id
@@ -361,7 +384,41 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     vals["price_unit"] = cfg.default_unit_price
                 if cfg.estimated_hours:
                     vals["estimated_hours"] = cfg.estimated_hours
+                if qtype == "installation":
+                    vals["part"] = "01"
+                    # Preço da Parte 01 = preço do variante Parte=01 (price_extra),
+                    # sobrescreve o default_unit_price setado acima.
+                    vals["price_unit"] = cfg.service_product_id.lst_price
+                    if eq_line.qi_part01_declined:
+                        vals["part01_declined"] = True
+                        vals["product_uom_qty"] = 0.0  # não soma ao total
                 new_lines.append((0, 0, vals))
+
+            # QO Parte 01 (Verificações) — 1 execução por equipamento.
+            if eq_line.do_qo_part01:
+                cfg = TypeConfig.get_config_for("operational", so.company_id)
+                if not cfg:
+                    raise UserError(_(
+                        "Sem configuração de produto para QO (operational) na "
+                        "empresa %s."
+                    ) % so.company_id.display_name)
+                qo_p1_vals = {
+                    "order_id": so.id,
+                    "product_id": cfg.service_product_id.id,
+                    "product_uom_qty": 1.0,
+                    "qualif_cycle_qty": 1,
+                    "is_qualificacao_managed": True,
+                    "qualification_type": "operational",
+                    "equipment_id": equip.id,
+                    "part": "01",
+                    "price_unit": cfg.service_product_id.lst_price,
+                }
+                if cfg.estimated_hours:
+                    qo_p1_vals["estimated_hours"] = cfg.estimated_hours
+                if eq_line.qo_part01_declined:
+                    qo_p1_vals["part01_declined"] = True
+                    qo_p1_vals["product_uom_qty"] = 0.0
+                new_lines.append((0, 0, qo_p1_vals))
 
             # QO — cycle-based: 1 linha por ciclo QO declarado.
             # product_uom_qty = HORAS (nº ciclos × horas/ciclo, UdM em horas);
@@ -383,6 +440,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "qualification_type": "operational",
                     "equipment_id": equip.id,
                     "cycle_type_id": qo.cycle_type_id.id,
+                    "part": "02",
                 }
                 if qo.unit_price:
                     qo_vals["price_unit"] = qo.unit_price
@@ -433,6 +491,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "qualification_type": "calibration",
                     "equipment_id": equip.id,
                     "malha_type_id": c.malha_type_id.id,
+                    "part": "02",
                 }
                 if c.unit_price:
                     c_vals["price_unit"] = c.unit_price
