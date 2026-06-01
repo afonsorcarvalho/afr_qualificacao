@@ -558,6 +558,18 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         default=8.0,
         help="Horas úteis/dia deste equipamento (puxada do template, editável).",
     )
+    qi_part01_declined = fields.Boolean(
+        string="QI Parte 01 não solicitada",
+        help="Cliente não solicitou execução das verificações (Parte 01) da QI.",
+    )
+    do_qo_part01 = fields.Boolean(
+        string="QO Parte 01 (Verificações)",
+        help="Verificações da QO (Parte 01), 1 execução por equipamento.",
+    )
+    qo_part01_declined = fields.Boolean(
+        string="QO Parte 01 não solicitada",
+        help="Cliente não solicitou execução das verificações (Parte 01) da QO.",
+    )
     # F8.2 — template de equipamento: autofill QI/QO/QS + ciclos + malhas
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",

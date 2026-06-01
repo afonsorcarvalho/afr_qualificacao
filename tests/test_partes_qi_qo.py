@@ -77,3 +77,12 @@ class TestPartFields(TransactionCase):
         self.assertEqual(line.price_subtotal, 0.0)
         self.assertEqual(so.amount_total, 0.0)
         self.assertEqual(line.price_unit, 1000.0)
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestConfiguratorParte(TransactionCase):
+    def test_equipment_line_has_parte_fields(self):
+        eq_model = self.env["afr.qualificacao.configurator.equipment"]
+        fields_ = eq_model.fields_get()
+        for fname in ("qi_part01_declined", "do_qo_part01", "qo_part01_declined"):
+            self.assertIn(fname, fields_)
