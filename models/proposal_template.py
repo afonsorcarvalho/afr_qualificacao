@@ -27,6 +27,7 @@ PROPOSAL_BLOCK_KINDS = [
     ("standards_table", "Tabela de Normas"),
     ("financial", "Resumo Financeiro"),
     ("optionals", "Serviços Opcionais"),
+    ("sales_items", "Tabela de Itens (Venda + Calibração)"),
     ("acceptance", "Aceite / Assinatura"),
 ]
 

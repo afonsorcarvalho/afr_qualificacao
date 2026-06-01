@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Proposta Venda + Calibração (doc 4 LabQuali) + bloco institucional
+        Dados Cadastrais. noupdate="1": cliente edita sem perder em upgrade.
+        Textos lift de docs/Exemplos diversos/4 - Proposta de Venda + Calibração.doc
+        e REFERENCIA_PROPOSTAS_LABQUALI.md (§5, §6, §7).
+    -->
+
+    <!-- ===== Seções de texto ===== -->
+    <record id="sec_vc_objetivo" model="afr.proposal.section">
+        <field name="code">SEC-VC-OBJETIVO</field>
+        <field name="name">Objetivo</field>
+        <field name="category">objetivo</field>
+        <field name="sequence">10</field>
+        <field name="body" type="html">
+            <div>
+                <p>Esta proposta tem por objetivo o fornecimento de serviços de
+                Calibração de Instrumentos de Medição, bem como o fornecimento de
+                instrumentos e equipamentos destinados ao monitoramento, controle e
+                segurança de processos, para <strong>{{ partner.name }}</strong>,
+                conforme especificações técnicas e necessidade operacional.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="sec_vc_metodologia" model="afr.proposal.section">
+        <field name="code">SEC-VC-METODOLOGIA</field>
+        <field name="name">Metodologia de Execução</field>
+        <field name="category">metodologia</field>
+        <field name="sequence">20</field>
+        <field name="body" type="html">
+            <div>
+                <p>Os serviços são executados segundo critérios de qualidade e
+                princípios organizacionais, atendendo às exigências normativas e
+                legislações aplicáveis a cada processo.</p>
+                <p>Utilizam-se Padrões de Medição calibrados e rastreados à RBC —
+                Rede Brasileira de Calibração / INMETRO, assegurando
+                confiabilidade metrológica, rastreabilidade dos resultados e
+                conformidade técnica.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="sec_vc_escopo" model="afr.proposal.section">
+        <field name="code">SEC-VC-ESCOPO</field>
+        <field name="name">Escopo</field>
+        <field name="category">escopo</field>
+        <field name="sequence">30</field>
+        <field name="body" type="html">
+            <div>
+                <p>O escopo do fornecimento limita-se aos equipamentos,
+                instrumentos, produtos e serviços listados nesta proposta.</p>
+                <p>Além dos serviços de calibração, poderão ser contemplados o
+                fornecimento de instrumentos calibrados para monitoramento de
+                temperatura e umidade, equipamentos para controle de processos e
+                válvulas de segurança, conforme especificação técnica e
+                necessidade do cliente.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="sec_vc_procedimento" model="afr.proposal.section">
+        <field name="code">SEC-VC-PROCEDIMENTO</field>
+        <field name="name">Procedimento de Calibração</field>
+        <field name="category">normas</field>
+        <field name="sequence">40</field>
+        <field name="body" type="html">
+            <div>
+                <p><strong>Calibração:</strong> operação que estabelece, sob
+                condições específicas, em uma primeira etapa, uma relação entre os
+                valores e as incertezas de medição fornecidas por padrões e as
+                indicações correspondentes com as incertezas associadas; em uma
+                segunda etapa, utiliza esta informação para estabelecer uma
+                relação visando a obtenção de um resultado de medição a partir de
+                uma indicação. (NBR 16328:2014)</p>
+                <ul>
+                    <li>Serão utilizados Padrões de Medição calibrados e
+                    rastreados à RBC — Rede Brasileira de Calibração / INMETRO;</li>
+                    <li>Os critérios de aceitação serão determinados pelo cliente
+                    e de acordo com os protocolos de calibração formalizados;</li>
+                    <li>Os certificados emitidos contêm tabelas com a média dos
+                    valores coletados, a incerteza de medição expandida com nível
+                    de confiança de 95% e o coeficiente de abrangência (K), além
+                    dos dados dos padrões utilizados e cópia de seus respectivos
+                    certificados de calibração;</li>
+                    <li>Quando aplicável, os instrumentos fornecidos poderão ser
+                    entregues acompanhados de Certificado de Calibração, conforme
+                    especificação técnica ou requisito do processo.</li>
+                </ul>
+            </div>
+        </field>
+    </record>
+
+    <record id="sec_vc_condicoes" model="afr.proposal.section">
+        <field name="code">SEC-VC-CONDICOES</field>
+        <field name="name">Condições Comerciais</field>
+        <field name="category">condicoes</field>
+        <field name="sequence">50</field>
+        <field name="body" type="html">
+            <div>
+                <p>Valor total dos serviços com impostos inclusos.</p>
+                <p><strong>Opções de Frete (Correios):</strong></p>
+                <ul>
+                    <li>SEDEX HOJE — entrega no mesmo dia da postagem;</li>
+                    <li>SEDEX — dia da postagem + 1 dia útil;</li>
+                    <li>Motoboy — aproximadamente 50 minutos.</li>
+                </ul>
+                <p>Previsão de dias para execução dos serviços conforme acordado.
+                Prazo de entrega dos Certificados: 15 dias.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="sec_vc_documentacao" model="afr.proposal.section">
+        <field name="code">SEC-VC-DOCUMENTACAO</field>
+        <field name="name">Fornecimento da Documentação</field>
+        <field name="category">condicoes</field>
+        <field name="sequence">60</field>
+        <field name="body" type="html">
+            <div>
+                <p>O valor total apresentado contempla o envio da documentação em
+                formato digital, assinada eletronicamente com certificação digital
+                (tecnologia, segurança e integridade).</p>
+                <p>Documentação impressa em pastas personalizadas é opcional —
+                cobra-se o valor das pastas e o envio pelo correio (Sedex).</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="sec_vc_pagamento" model="afr.proposal.section">
+        <field name="code">SEC-VC-PAGAMENTO</field>
+        <field name="name">Condições de Pagamento</field>
+        <field name="category">financeiro</field>
+        <field name="sequence">70</field>
+        <field name="body" type="html">
+            <div><p>À vista, faturado na aprovação.</p></div>
+        </field>
+    </record>
+
+    <record id="sec_vc_validade" model="afr.proposal.section">
+        <field name="code">SEC-VC-VALIDADE</field>
+        <field name="name">Validade da Proposta</field>
+        <field name="category">condicoes</field>
+        <field name="sequence">80</field>
+        <field name="body" type="html">
+            <div><p>Esta proposta é válida por 60 dias.</p></div>
+        </field>
+    </record>
+
+    <record id="sec_vc_observacoes" model="afr.proposal.section">
+        <field name="code">SEC-VC-OBSERVACOES</field>
+        <field name="name">Observações</field>
+        <field name="category">custom</field>
+        <field name="sequence">90</field>
+        <field name="body" type="html">
+            <div>
+                <p>O preço apresentado nesta proposta sofrerá alteração caso a
+                quantidade de equipamentos seja alterada.</p>
+            </div>
+        </field>
+    </record>
+
+    <!-- ===== Seção institucional Dados Cadastrais (comum a todas) ===== -->
+    <record id="sec_dados_cadastrais" model="afr.proposal.section">
+        <field name="code">SEC-DADOS-CADASTRAIS</field>
+        <field name="name">Dados Cadastrais — LabQuali</field>
+        <field name="category">credenciais</field>
+        <field name="sequence">200</field>
+        <field name="body" type="html">
+            <div>
+                <p><strong>Nome Fantasia:</strong> LabQuali Qualificações<br/>
+                <strong>Razão Social:</strong> LabQuali Qualificações Ltda.<br/>
+                <strong>CNPJ:</strong> 52.230.210/0001-70<br/>
+                <strong>Inscrição Estadual:</strong> 125.705.737.113<br/>
+                <strong>Inscrição Municipal:</strong> 341232<br/>
+                <strong>Endereço:</strong> Rua Arujá, nº 47 — Vila Curuçá, Santo
+                André — SP — CEP: 09291-250<br/>
+                <strong>E-mail comercial:</strong> comercial@labquali.com.br</p>
+
+                <p><strong>Dados Bancários</strong><br/>
+                Banco: Itaú · Agência: 666-4 · Conta Corrente: 99108-7<br/>
+                Chave PIX: 52.230.210/0001-70 (CNPJ)</p>
+
+                <p><strong>Responsáveis</strong><br/>
+                Paulo Neves — Responsável Técnico — Cel.: (11) 99721-0293<br/>
+                Bruno Neves — Gerente Técnico — Cel.: (11) 94282-6708<br/>
+                Ariel Neves — Administrativo / Financeiro — Cel.: (11) 99461-3056</p>
+
+                <p><strong>Registros Técnicos</strong><br/>
+                Registro da Empresa no CREA-SP: 2535551<br/>
+                Responsável Técnico: Paulo Rogério das Neves — Engenheiro Mecânico
+                — CREA-SP: 0682576030 (Registro Ativo) — Certidão: CI 3381050/2024</p>
+            </div>
+        </field>
+    </record>
+
+    <!-- ===== Template Venda + Calibração ===== -->
+    <record id="proposal_template_venda_calib" model="afr.proposal.template">
+        <field name="name">Proposta Venda + Calibração</field>
+        <field name="code">TPL-VENDA-CALIB</field>
+        <field name="sequence">30</field>
+    </record>
+
+    <record id="tpl_vc_l01" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">10</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_objetivo"/>
+        <field name="page_break" eval="True"/>
+    </record>
+    <record id="tpl_vc_l02" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">20</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_metodologia"/>
+    </record>
+    <record id="tpl_vc_l03" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">30</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_escopo"/>
+    </record>
+    <record id="tpl_vc_l04" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">40</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_procedimento"/>
+    </record>
+    <record id="tpl_vc_l05" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">50</field>
+        <field name="block_kind">sales_items</field>
+        <field name="title">Equipamentos a serem Calibrados</field>
+        <field name="page_break" eval="True"/>
+    </record>
+    <record id="tpl_vc_l06" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">60</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_condicoes"/>
+    </record>
+    <record id="tpl_vc_l07" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">70</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_documentacao"/>
+    </record>
+    <record id="tpl_vc_l08" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">80</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_pagamento"/>
+    </record>
+    <record id="tpl_vc_l09" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">90</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_validade"/>
+    </record>
+    <record id="tpl_vc_l10" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">100</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_vc_observacoes"/>
+    </record>
+    <record id="tpl_vc_l11" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">110</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="sec_dados_cadastrais"/>
+        <field name="page_break" eval="True"/>
+    </record>
+    <record id="tpl_vc_l12" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">120</field>
+        <field name="block_kind">acceptance</field>
+    </record>
+    <record id="tpl_vc_l13" model="afr.proposal.template.line">
+        <field name="template_id" ref="proposal_template_venda_calib"/>
+        <field name="sequence">125</field>
+        <field name="block_kind">static</field>
+        <field name="section_id" ref="proposal_section_aceite"/>
+    </record>
+</odoo>

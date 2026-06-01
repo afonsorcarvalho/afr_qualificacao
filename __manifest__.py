@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.5.5.0",
+    "version": "16.0.5.7.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -159,6 +159,7 @@
         # não recriam linhas eliminadas pelo utilizador.
         "data/proposal_section_seed.xml",
         "data/proposal_optional_seed.xml",
+        "data/proposal_venda_calibracao_seed.xml",
         # F9.3 — Email template LabQuali para envio de proposta
         "data/mail_template_proposal.xml",
         # Views — config (master data) com actions

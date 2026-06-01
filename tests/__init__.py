@@ -37,3 +37,7 @@ from . import test_estimated_hours
 from . import test_hours_vs_cycles
 # F10 (16.0.5.0.0) — plano de recursos metrológicos
 from . import test_resource_plan
+
+from . import test_qi_qs_seed
+
+from . import test_proposal_venda_calibracao

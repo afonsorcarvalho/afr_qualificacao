@@ -4,10 +4,11 @@
         Inherit do template padrão Odoo `sale.report_saleorder_document`.
 
         Estratégia (preserva fallback Odoo):
-        1. Adiciona `t-if="not doc.has_qualif_lines"` no <div class="page">
-           original — esconde quando SO tem qualif.
-        2. Insere novo <div class="page" t-if="doc.has_qualif_lines"> antes,
-           com layout dedicado (capa + sumário + descritivo + escopo +
+        1. Adiciona `t-if="not (doc.has_qualif_lines or doc.proposal_block_ids.filtered('included'))"`
+           no <div class="page"> original — esconde quando SO tem linhas de
+           qualificação OU blocos de proposta incluídos.
+        2. Insere novo <div class="page" t-if="doc.has_qualif_lines or doc.proposal_block_ids.filtered('included')">
+           antes, com layout dedicado (capa + sumário + descritivo + escopo +
            normas + resumo financeiro + condições + aceite).
 
         Mantém `web.external_layout` (logo + footer) em ambos os fluxos.
@@ -20,12 +21,12 @@
 
         <!-- Condiciona o div page original — fallback Odoo padrão -->
         <xpath expr="//div[hasclass('page')]" position="attributes">
-            <attribute name="t-if">not doc.has_qualif_lines</attribute>
+            <attribute name="t-if">not (doc.has_qualif_lines or doc.proposal_block_ids.filtered('included'))</attribute>
         </xpath>
 
         <!-- Insere novo div page com layout dedicado -->
         <xpath expr="//div[hasclass('page')]" position="before">
-            <div class="page qq-page" t-if="doc.has_qualif_lines">
+            <div class="page qq-page" t-if="doc.has_qualif_lines or doc.proposal_block_ids.filtered('included')">
                 <!-- F9.2: remove base href tag from web.minimal_layout.
                      wkhtmltopdf respects base tag; with it, "#anchor" hrefs
                      resolve to absolute URLs, breaking internal PDF links.
@@ -774,6 +775,67 @@
                                             </td>
                                         </tr>
                                     </t>
+                                </table>
+                            </div>
+                        </t>
+
+                        <!-- Tabela de itens de venda (Venda + Calibração) -->
+                        <t t-if="block.block_kind == 'sales_items'">
+                            <t t-set="sale_lines" t-value="doc.order_line.filtered(lambda l: not l.display_type and not l.is_proposal_optional)"/>
+                            <div t-att-class="sec_class" t-if="sale_lines">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Equipamentos a serem Calibrados'"/>
+                                </div>
+                                <table class="qq-table">
+                                    <tr>
+                                        <th>Descrição</th>
+                                        <th style="width: 10%;">Quant.</th>
+                                        <th style="width: 20%; text-align: right;">Valor Unitário</th>
+                                        <th style="width: 20%; text-align: right;">Valor Total</th>
+                                    </tr>
+                                    <t t-foreach="sale_lines" t-as="sl">
+                                        <tr>
+                                            <td><span t-esc="sl.name"/></td>
+                                            <td>
+                                                <span t-esc="int(sl.product_uom_qty) if sl.product_uom_qty == int(sl.product_uom_qty) else sl.product_uom_qty"/>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <span t-esc="sl.price_unit"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <span t-esc="sl.price_subtotal"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </table>
+                                <t t-set="vc_subtotal" t-value="sum(sale_lines.mapped('price_subtotal'))"/>
+                                <t t-set="vc_total" t-value="sum(sale_lines.mapped('price_total'))"/>
+                                <table class="qq-total-table">
+                                    <tr>
+                                        <td class="qq-tot-label">Subtotal:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-esc="vc_subtotal"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="qq-tot-label">Impostos:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-esc="vc_total - vc_subtotal"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                    <tr class="qq-total-grand">
+                                        <td class="qq-tot-label">TOTAL GERAL:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-esc="vc_total"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
                                 </table>
                             </div>
                         </t>
