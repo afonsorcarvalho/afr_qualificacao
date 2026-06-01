@@ -55,3 +55,25 @@ class TestPartesCatalog(TransactionCase):
         ], limit=1)
         self.assertTrue(qs_cfg, "type_config p/ software deve existir na empresa fresh")
         self.assertEqual(qs_cfg.service_product_id.type, "service")
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestPartFields(TransactionCase):
+    def _mk_order(self):
+        partner = self.env["res.partner"].create({"name": "Cli Parte"})
+        return self.env["sale.order"].create({"partner_id": partner.id})
+
+    def test_declined_line_excluded_from_total(self):
+        so = self._mk_order()
+        prod = self.env["product.product"].create({
+            "name": "Verif QI", "type": "service", "list_price": 1000.0,
+        })
+        line = self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": prod.id,
+            "product_uom_qty": 0.0, "price_unit": 1000.0,
+            "part": "01", "part01_declined": True,
+            "is_qualificacao_managed": True,
+        })
+        self.assertEqual(line.price_subtotal, 0.0)
+        self.assertEqual(so.amount_total, 0.0)
+        self.assertEqual(line.price_unit, 1000.0)

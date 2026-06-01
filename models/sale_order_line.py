@@ -94,6 +94,25 @@ class SaleOrderLine(models.Model):
             "(= qualif_cycle_qty × estimated_hours)."
         ),
     )
+    part = fields.Selection(
+        selection=[("01", "Parte 01"), ("02", "Parte 02")],
+        string="Parte",
+        copy=True,
+        help=(
+            "Parte da qualificação (QI/QO). Parte 01 = verificações "
+            "(declinável); Parte 02 = calibrações (QI) / ciclos (QO)."
+        ),
+    )
+    part01_declined = fields.Boolean(
+        string="Parte 01 Não Solicitada",
+        default=False,
+        copy=True,
+        help=(
+            "Cliente não solicitou execução da Parte 01. A linha aparece na "
+            "proposta com preço de referência e selo 'NÃO SOLICITADO "
+            "EXECUÇÃO', mas não soma ao total (product_uom_qty=0)."
+        ),
+    )
 
     @api.onchange("qualif_cycle_qty", "estimated_hours")
     def _onchange_qualif_cycle_qty_hours(self):
@@ -184,6 +203,10 @@ class SaleOrderLine(models.Model):
             # Serviço opcional (F8.2): linha managed sem equipamento/tipo —
             # não é linha de qualificação, pular consistência.
             if line.is_proposal_optional:
+                continue
+            # Parte 01 declinada: linha de referência (qty=0, não gera
+            # qualificação), pular consistência.
+            if line.part01_declined:
                 continue
             if not line.equipment_id:
                 raise ValidationError(_(
