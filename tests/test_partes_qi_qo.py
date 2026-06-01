@@ -13,7 +13,7 @@ só cria type_configs ausentes — ao passar uma empresa nova, sempre cria do ze
 from odoo.tests.common import TransactionCase
 from odoo.tests import tagged
 
-from ..hooks import _install_qualif_type_configs
+from ..hooks import _install_qualif_type_configs, PARTE_01_NAME
 
 
 @tagged("post_install", "-at_install", "afr_qualificacao")
@@ -33,7 +33,7 @@ class TestPartesCatalog(TransactionCase):
         attr = self.env.ref("afr_qualificacao.product_attribute_parte")
         self.assertEqual(attr.create_variant, "always")
         vals = attr.value_ids.mapped("name")
-        self.assertIn("Parte 01", vals)
+        self.assertIn(PARTE_01_NAME, vals)
         self.assertIn("Parte 02", vals)
 
     def test_qi_qo_products_have_parte_variants(self):
@@ -45,5 +45,13 @@ class TestPartesCatalog(TransactionCase):
             self.assertTrue(cfg, "type_config p/ %s deve existir na empresa fresh" % qtype)
             variant = cfg.service_product_id
             part_vals = variant.product_template_variant_value_ids.mapped("name")
-            self.assertIn("Parte 01", part_vals)
+            self.assertIn(PARTE_01_NAME, part_vals)
             self.assertEqual(len(variant.product_tmpl_id.product_variant_ids), 2)
+
+        # QS (software) tem variante única (sem atributo Parte) — valida que é service.
+        qs_cfg = self.TypeConfig.with_context(active_test=False).search([
+            ("qualification_type", "=", "software"),
+            ("company_id", "=", self.fresh_company.id),
+        ], limit=1)
+        self.assertTrue(qs_cfg, "type_config p/ software deve existir na empresa fresh")
+        self.assertEqual(qs_cfg.service_product_id.type, "service")

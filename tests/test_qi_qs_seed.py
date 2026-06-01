@@ -1,6 +1,6 @@
-"""F-seed — Garante que o post_init cria type.config p/ QI/QS.
+"""F-seed — Garante que o post_init cria type.config p/ QI/QO/QS.
 
-Sem afr.qualificacao.type.config para 'installation'/'software', o
+Sem afr.qualificacao.type.config para 'installation'/'operational'/'software', o
 configurador (action_apply) levanta UserError. O hook _install_qi_qs_type_config
 semeia o mínimo viável (produto serviço preço 0 + config por empresa) para
 fresh-installs/deploys funcionarem. Estes testes validam criação numa empresa
@@ -26,7 +26,7 @@ class TestQiQsSeed(TransactionCase):
     def _configs(self, company):
         return self.TypeConfig.with_context(active_test=False).search([
             ("company_id", "=", company.id),
-            ("qualification_type", "in", ("installation", "software")),
+            ("qualification_type", "in", ("installation", "operational", "software")),
         ])
 
     def test_creates_qi_qs_for_fresh_company(self):
@@ -37,9 +37,9 @@ class TestQiQsSeed(TransactionCase):
         _install_qi_qs_type_config(self.env)
 
         cfgs = self._configs(self.fresh_company)
-        self.assertEqual(len(cfgs), 2, "esperado QI + QS")
+        self.assertEqual(len(cfgs), 3, "esperado QI + QO + QS")
         types = set(cfgs.mapped("qualification_type"))
-        self.assertEqual(types, {"installation", "software"})
+        self.assertEqual(types, {"installation", "operational", "software"})
         for cfg in cfgs:
             self.assertTrue(cfg.service_product_id, "config precisa de produto")
             self.assertEqual(cfg.service_product_id.type, "service")
@@ -48,7 +48,7 @@ class TestQiQsSeed(TransactionCase):
     def test_idempotent_no_duplicates(self):
         _install_qi_qs_type_config(self.env)
         first = self._configs(self.fresh_company)
-        self.assertEqual(len(first), 2)
+        self.assertEqual(len(first), 3)
 
         # Segunda chamada não deve duplicar nem violar a constraint unique.
         _install_qi_qs_type_config(self.env)
@@ -70,8 +70,8 @@ class TestQiQsSeed(TransactionCase):
         _install_qi_qs_type_config(self.env)
 
         cfgs = self._configs(self.fresh_company)
-        # QI manual preservada (mesmo registro, mesmo produto/preço) + QS criada.
-        self.assertEqual(len(cfgs), 2)
+        # QI manual preservada (mesmo registro, mesmo produto/preço) + QO + QS criadas.
+        self.assertEqual(len(cfgs), 3)
         qi = cfgs.filtered(lambda c: c.qualification_type == "installation")
         self.assertEqual(qi, manual)
         self.assertEqual(qi.service_product_id, manual_product)

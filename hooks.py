@@ -8,7 +8,11 @@ Para dados que devem permanecer atualizáveis (sections, opcionais, etc.),
 manter em data/*.xml com noupdate="1".
 """
 
+import logging
+
 from odoo import api, SUPERUSER_ID
+
+_logger = logging.getLogger(__name__)
 
 
 # Estrutura do template default "Proposta LabQuali QI/QO/QD".
@@ -36,6 +40,8 @@ PROPOSAL_TEMPLATE_LINES = [
 ]
 
 
+PARTE_01_NAME = "Parte 01"
+
 # Produtos serviço genéricos por tipo (preço 0; comercial ajusta no
 # orçamento). Tuple: (xmlid_suffix, nome, has_parte).
 QUALIF_SERVICE_PRODUCTS = {
@@ -51,6 +57,10 @@ def _parte_variant(template, value_name):
         names = variant.product_template_variant_value_ids.mapped("name")
         if value_name in names:
             return variant
+    _logger.warning(
+        "Parte variant '%s' não encontrado no template %s — usando variante padrão.",
+        value_name, template.display_name,
+    )
     return template.product_variant_id  # fallback (sem atributo)
 
 
@@ -113,7 +123,7 @@ def _install_qualif_type_configs(env):
                 continue
             tmpl = tmpl_by_type[qtype]
             has_parte = QUALIF_SERVICE_PRODUCTS[qtype][2]
-            product = _parte_variant(tmpl, "Parte 01") if has_parte else tmpl.product_variant_id
+            product = _parte_variant(tmpl, PARTE_01_NAME) if has_parte else tmpl.product_variant_id
             TypeConfig.create({
                 "qualification_type": qtype,
                 "company_id": company.id,
