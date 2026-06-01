@@ -171,6 +171,61 @@ class TestApplyPartes(AfrQualificacaoTestCommon):
         self.assertTrue(eq.do_qo_part01)
         self.assertTrue(eq.qo_part01_declined)
 
+    def test_full_combo_qi_qo_declined_coherence(self):
+        """Cenário combinado num único equip: QI + QO, ambas Parte 01
+        declinadas, com Parte 02 (malha QI + ciclo QO) executadas.
+
+        Combo válido: qi_part01_declined exige calib>=1; qo_part01_declined
+        exige qo_cycles>=1.
+        """
+        so = self._apply(
+            do_qi=True, qi_part01_declined=True,
+            do_qo_part01=True, qo_part01_declined=True,
+            qo_cycles=1, calib=1,
+        )
+
+        # Exatamente 2 linhas declinadas (QI P01 + QO P01).
+        declined = so.order_line.filtered(lambda l: l.part01_declined)
+        self.assertEqual(len(declined), 2)
+        for l in declined:
+            self.assertEqual(l.product_uom_qty, 0.0)
+            self.assertEqual(l.part, "01")
+            self.assertTrue(l.part01_declined)
+        # Uma de cada tipo.
+        self.assertEqual(
+            set(declined.mapped("qualification_type")),
+            {"installation", "operational"},
+        )
+
+        # Parte 02: malha QI (com malha_type_id) e ciclo QO (com cycle_type_id).
+        malha_p02 = so.order_line.filtered(lambda l: l.malha_type_id)
+        cycle_p02 = so.order_line.filtered(
+            lambda l: l.cycle_type_id and l.qualification_type == "operational"
+        )
+        self.assertTrue(malha_p02)
+        self.assertTrue(cycle_p02)
+        self.assertTrue(all(l.part == "02" for l in malha_p02))
+        self.assertTrue(all(l.part == "02" for l in cycle_p02))
+
+        # amount_total = só as linhas não-declinadas (as duas Parte 02);
+        # as declinadas (qty=0) contribuem 0.
+        non_declined = so.order_line.filtered(lambda l: not l.part01_declined)
+        # Calculado a partir dos totais (com imposto) da malha + ciclo (Parte 02),
+        # que é o que amount_total soma. As declinadas (qty=0) somam 0.
+        parte02 = malha_p02 | cycle_p02
+        expected = sum(parte02.mapped("price_total"))
+        self.assertGreater(expected, 0.0)
+        self.assertEqual(so.amount_total, expected)
+        self.assertEqual(so.amount_untaxed, sum(parte02.mapped("price_subtotal")))
+        # As linhas Parte 02 (malha + ciclo) são todas não-declinadas e
+        # carregam todo o valor: as eventuais demais linhas não-declinadas
+        # têm preço 0 (não inflam o total).
+        self.assertTrue(parte02.ids)
+        self.assertLessEqual(set(parte02.ids), set(non_declined.ids))
+
+        # Helper de declinados reporta exatamente 2.
+        self.assertEqual(len(so._qualif_declined_items()), 2)
+
     def test_confirm_declined_qi_skips_installation_qualif(self):
         """Linha QI Parte 01 declinada (qty=0) NÃO gera qualificação; a
         malha (Parte 02) gera normalmente."""
