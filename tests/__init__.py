@@ -41,3 +41,5 @@ from . import test_resource_plan
 from . import test_qi_qs_seed
 
 from . import test_proposal_venda_calibracao
+
+from . import test_work_hours_per_day

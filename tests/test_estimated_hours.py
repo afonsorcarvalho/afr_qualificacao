@@ -93,6 +93,15 @@ class TestEstimatedHours(AfrQualificacaoTestCommon):
         line._onchange_cycle_type_defaults()
         self.assertAlmostEqual(line.estimated_hours, 2.0)
 
+    def test_malha_type_default_propagates_to_subline_via_onchange(self):
+        """_onchange_malha_type_defaults seta estimated_hours = malha.estimated_hours."""
+        line = self.env["afr.qualificacao.configurator.calib.line"].new({
+            "malha_type_id": self.malha_temp.id,
+            "qty": 1,
+        })
+        line._onchange_malha_type_defaults()
+        self.assertAlmostEqual(line.estimated_hours, 4.0)
+
     def test_subline_override_persists_to_so_line(self):
         """Override estimated_hours na subline propaga via action_apply."""
         so = self.env["sale.order"].create({"partner_id": self.partner.id})

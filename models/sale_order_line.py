@@ -75,6 +75,14 @@ class SaleOrderLine(models.Model):
             "cycle_type/malha_type/type_config). Usado pelo cronograma."
         ),
     )
+    work_hours_per_day = fields.Float(
+        string="Jornada (h/dia)",
+        default=8.0,
+        help=(
+            "Horas úteis/dia do equipamento (congelado da proposta; usado "
+            "no cronograma). Editável."
+        ),
+    )
     qualif_cycle_qty = fields.Integer(
         string="Nº de Ciclos",
         copy=True,

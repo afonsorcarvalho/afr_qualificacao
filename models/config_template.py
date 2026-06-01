@@ -87,6 +87,14 @@ class AfrQualificacaoConfigTemplate(models.Model):
         string="Dias Estimados",
         help="Dias de execução estimados do pacote completo.",
     )
+    work_hours_per_day = fields.Float(
+        string="Jornada (h/dia)",
+        default=8.0,
+        help=(
+            "Horas úteis por dia usadas no cálculo de dias do cronograma "
+            "(dias = horas estimadas ÷ jornada). Default 8h."
+        ),
+    )
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
 

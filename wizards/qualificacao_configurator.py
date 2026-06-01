@@ -136,12 +136,18 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         for wiz in self:
             wiz.total_estimated = sum(wiz.equipment_line_ids.mapped("subtotal"))
 
-    @api.depends("equipment_line_ids.estimated_hours_total")
+    @api.depends(
+        "equipment_line_ids.estimated_hours_total",
+        "equipment_line_ids.estimated_days_total",
+    )
     def _compute_wizard_estimated_totals(self):
         for wiz in self:
-            hours = sum(wiz.equipment_line_ids.mapped("estimated_hours_total"))
-            wiz.estimated_hours_total = hours
-            wiz.estimated_days_total = hours / 8.0 if hours else 0.0
+            wiz.estimated_hours_total = sum(
+                wiz.equipment_line_ids.mapped("estimated_hours_total")
+            )
+            wiz.estimated_days_total = sum(
+                wiz.equipment_line_ids.mapped("estimated_days_total")
+            )
 
     @api.depends("equipment_line_ids")
     def _compute_review_counts(self):
@@ -324,6 +330,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "config_template_id": eq_line.config_template_id.id if eq_line.config_template_id else False,
                 "product_uom_qty": 0,
                 "price_unit": 0,
+                "work_hours_per_day": eq_line.work_hours_per_day or 8.0,
             }))
 
             # QI/QS via type.config (single line, sem ciclos)
@@ -544,7 +551,12 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         string="Dias Úteis",
         compute="_compute_estimated_totals",
         digits=(8, 1),
-        help="Horas estimadas / 8 (1 dia útil = 8h).",
+        help="Horas estimadas / jornada (1 dia útil = jornada h/dia).",
+    )
+    work_hours_per_day = fields.Float(
+        string="Jornada (h/dia)",
+        default=8.0,
+        help="Horas úteis/dia deste equipamento (puxada do template, editável).",
     )
     # F8.2 — template de equipamento: autofill QI/QO/QS + ciclos + malhas
     config_template_id = fields.Many2one(
@@ -565,6 +577,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.do_qi = tpl.do_qi
         self.do_qo = tpl.do_qo
         self.do_qs = tpl.do_qs
+        self.work_hours_per_day = tpl.work_hours_per_day or 8.0
         self.qo_line_ids = [(5, 0, 0)] + [
             (0, 0, {
                 "cycle_type_id": line.cycle_type_id.id,
@@ -660,7 +673,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             el.subtotal = total
 
     @api.depends(
-        "do_qi", "do_qs",
+        "do_qi", "do_qs", "work_hours_per_day",
         "qo_line_ids.estimated_hours", "qo_line_ids.qty",
         "qd_line_ids.estimated_hours", "qd_line_ids.qty",
         "calib_line_ids.estimated_hours", "calib_line_ids.qty",
@@ -685,7 +698,9 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 h = line.estimated_hours or line.malha_type_id.estimated_hours
                 hours += (h or 0.0) * (line.qty or 0)
             el.estimated_hours_total = hours
-            el.estimated_days_total = hours / 8.0 if hours else 0.0
+            el.estimated_days_total = (
+                hours / (el.work_hours_per_day or 8.0) if hours else 0.0
+            )
 
     @api.constrains("wizard_id", "equipment_id")
     def _check_unique_equipment(self):
@@ -988,6 +1003,7 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                 "do_qi": self.do_qi,
                 "do_qo": self.do_qo,
                 "do_qs": self.do_qs,
+                "work_hours_per_day": 8.0,
                 "qo_line_ids": [
                     (0, 0, {
                         "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,

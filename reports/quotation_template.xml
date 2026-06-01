@@ -632,34 +632,35 @@
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
                                     <span t-esc="block.title or 'Cronograma Estimado'"/>
                                 </div>
-                                <p class="text-muted" style="font-size: 14px; margin-bottom: 12px;">
-                                    <em>Base de cálculo: 8 horas por dia útil.</em>
-                                </p>
                                 <t t-set="rows" t-value="doc._qualif_schedule_rows()"/>
                                 <t t-if="rows">
                                     <table class="qq-table">
                                         <thead>
                                             <tr>
                                                 <th>Equipamento</th>
-                                                <th style="text-align: right; width: 18%;">Horas</th>
-                                                <th style="text-align: right; width: 18%;">Dias úteis</th>
+                                                <th style="text-align: right; width: 15%;">h/dia</th>
+                                                <th style="text-align: right; width: 15%;">Horas</th>
+                                                <th style="text-align: right; width: 15%;">Dias úteis</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <t t-foreach="rows" t-as="r">
                                                 <tr>
                                                     <td t-esc="r['equipment'].display_name"/>
+                                                    <td style="text-align: right;" t-esc="'%.1f' % r['work_hours_per_day']"/>
                                                     <td style="text-align: right;" t-esc="'%.1f' % r['hours']"/>
                                                     <td style="text-align: right;" t-esc="'%.1f' % r['days']"/>
                                                 </tr>
                                             </t>
                                         </tbody>
                                         <t t-set="total_h" t-value="sum(r['hours'] for r in rows)"/>
+                                        <t t-set="total_d" t-value="sum(r['days'] for r in rows)"/>
                                         <tfoot>
                                             <tr>
                                                 <td><strong>TOTAL</strong></td>
+                                                <td></td>
                                                 <td style="text-align: right;"><strong t-esc="'%.1f' % total_h"/></td>
-                                                <td style="text-align: right;"><strong t-esc="'%.1f' % (total_h / 8.0)"/></td>
+                                                <td style="text-align: right;"><strong t-esc="'%.1f' % total_d"/></td>
                                             </tr>
                                         </tfoot>
                                     </table>

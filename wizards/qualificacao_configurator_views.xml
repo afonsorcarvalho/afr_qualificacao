@@ -65,6 +65,7 @@
                                             <field name="currency_id" invisible="1"/>
                                             <field name="subtotal"/>
                                             <field name="estimated_hours_total" readonly="1"/>
+                                            <field name="work_hours_per_day"/>
                                             <field name="estimated_days_total" readonly="1"/>
                                         </group>
                                     </group>

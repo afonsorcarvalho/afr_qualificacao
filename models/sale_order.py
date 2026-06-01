@@ -203,6 +203,7 @@ class SaleOrder(models.Model):
             rows = []
             total = 0.0
             total_hours = 0.0
+            total_days = 0.0
             for s in summary:
                 equip = s["equipment"]
                 equip_label = equip.display_name or _("Equipamento")
@@ -215,6 +216,7 @@ class SaleOrder(models.Model):
                 hours = order._qualif_estimated_hours(equip)
                 days = order._qualif_estimated_days(equip)
                 total_hours += hours
+                total_days += days
                 hours_str = formatLang(self.env, hours, digits=1)
                 days_str = formatLang(self.env, days, digits=1)
                 rows.append(
@@ -230,7 +232,7 @@ class SaleOrder(models.Model):
                 self.env, total, currency_obj=order.currency_id,
             )
             total_hours_str = formatLang(self.env, total_hours, digits=1)
-            total_days_str = formatLang(self.env, total_hours / 8.0, digits=1)
+            total_days_str = formatLang(self.env, total_days, digits=1)
             rows.append(
                 '<tr style="border-top:2px solid #333;">'
                 '<td style="padding:6px 12px;font-weight:bold;">TOTAL</td>'
@@ -421,9 +423,19 @@ class SaleOrder(models.Model):
             total += (hours or 0.0) * (line.qualif_cycle_qty or int(line.product_uom_qty or 0))
         return total
 
+    def _qualif_work_hours_per_day(self, equipment):
+        """Jornada (h/dia) do equipamento — lê da section line; fallback 8.0."""
+        self.ensure_one()
+        section = self.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.equipment_id == equipment
+        )[:1]
+        return section.work_hours_per_day or 8.0
+
     def _qualif_estimated_days(self, equipment=None):
-        """F8.14 — horas / 8 (Float decimal — 1 dia útil = 8h)."""
-        return self._qualif_estimated_hours(equipment) / 8.0
+        """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
+        wh = self._qualif_work_hours_per_day(equipment) if equipment else 8.0
+        return self._qualif_estimated_hours(equipment) / (wh or 8.0)
 
     def _qualif_section_hours(self, equipment, phase):
         """F8.14 — soma horas só de uma fase (qo/qd/calibration) por equip.
@@ -470,10 +482,12 @@ class SaleOrder(models.Model):
         rows = []
         for eq in equipments:
             hours = self._qualif_estimated_hours(eq)
+            wh = self._qualif_work_hours_per_day(eq)
             rows.append({
                 "equipment": eq,
                 "hours": hours,
-                "days": hours / 8.0 if hours else 0.0,
+                "work_hours_per_day": wh,
+                "days": hours / wh if hours else 0.0,
             })
         return rows
 

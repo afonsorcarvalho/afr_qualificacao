@@ -40,6 +40,7 @@
                             <field name="price_base"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="estimated_days"/>
+                            <field name="work_hours_per_day"/>
                         </group>
                     </group>
                     <notebook>

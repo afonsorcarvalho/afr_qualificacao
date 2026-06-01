@@ -302,26 +302,31 @@ class AfrProposalBlock(models.Model):
             "<table class='qq-table'>"
             "<thead><tr><th>Equipamento</th>"
             "<th style='text-align:right;'>Horas</th>"
+            "<th style='text-align:right;'>h/dia</th>"
             "<th style='text-align:right;'>Dias úteis</th></tr></thead><tbody>"
         )]
         total_h = 0.0
+        total_d = 0.0
         for r in rows:
             body.append(Markup(
                 "<tr><td>%s</td>"
                 "<td style='text-align:right;'>%.1f</td>"
+                "<td style='text-align:right;'>%.1f</td>"
                 "<td style='text-align:right;'>%.2f</td></tr>"
             ) % (
                 escape(r["equipment"].display_name or ""),
-                r["hours"], r["days"],
+                r["hours"], r["work_hours_per_day"], r["days"],
             ))
             total_h += r["hours"]
+            total_d += r["days"]
         body.append(Markup(
             "</tbody>"
             "<tfoot><tr><td><strong>TOTAL</strong></td>"
             "<td style='text-align:right;'><strong>%.1f</strong></td>"
+            "<td></td>"
             "<td style='text-align:right;'><strong>%.2f</strong></td></tr></tfoot>"
             "</table>"
-        ) % (total_h, total_h / 8.0 if total_h else 0.0))
+        ) % (total_h, total_d))
         return Markup("").join(body)
 
     def _html_standards(self, order):
