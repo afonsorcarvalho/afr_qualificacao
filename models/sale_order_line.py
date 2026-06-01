@@ -190,6 +190,7 @@ class SaleOrderLine(models.Model):
         "equipment_id",
         "cycle_type_id",
         "malha_type_id",
+        "part01_declined",
     )
     def _check_qualificacao_consistency(self):
         for line in self:
