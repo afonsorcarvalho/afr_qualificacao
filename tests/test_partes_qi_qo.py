@@ -93,34 +93,6 @@ class TestConfiguratorParte(TransactionCase):
 class TestApplyPartes(AfrQualificacaoTestCommon):
     """action_apply: gera Parte 01 (QI/QO), tag Parte 02, validação de declínio."""
 
-    def _apply(self, do_qi=False, qi_part01_declined=False,
-               do_qo_part01=False, qo_part01_declined=False,
-               calib=0, qo_cycles=0):
-        so = self.env["sale.order"].create({"partner_id": self.partner.id})
-        eq_vals = {
-            "equipment_id": self.equip1.id,
-            "do_qi": do_qi,
-            "qi_part01_declined": qi_part01_declined,
-            "do_qo_part01": do_qo_part01,
-            "qo_part01_declined": qo_part01_declined,
-        }
-        if calib:
-            eq_vals["calib_line_ids"] = [
-                (0, 0, {"malha_type_id": self.malha_temp.id, "qty": 1})
-                for _ in range(calib)
-            ]
-        if qo_cycles:
-            eq_vals["qo_line_ids"] = [
-                (0, 0, {"cycle_type_id": self.cycle_qo_test.id, "qty": 1})
-                for _ in range(qo_cycles)
-            ]
-        wiz = self.env["afr.qualificacao.configurator"].create({
-            "sale_order_id": so.id,
-        })
-        wiz.equipment_line_ids = [(0, 0, eq_vals)]
-        wiz.action_apply()
-        return so
-
     def test_qi_part01_line_created(self):
         so = self._apply(do_qi=True, calib=1)
         p01 = so.order_line.filtered(
@@ -214,3 +186,35 @@ class TestApplyPartes(AfrQualificacaoTestCommon):
         self.assertEqual(
             calib_line.afr_qualificacao_id.qualification_type, "calibration"
         )
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestReportPartes(AfrQualificacaoTestCommon):
+    """Helpers de relatório expõem part/declined/ref_price e excluem
+    linhas declinadas do cronograma. Reusa `_apply` do common base."""
+
+    def test_summary_items_have_part_and_declined(self):
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        summary = so._qualif_equipment_summary()
+        qi = [t for e in summary for t in e["types"] if t["code"] == "installation"][0]
+        p01 = [i for i in qi["items"] if i.get("part") == "01"]
+        self.assertTrue(p01)
+        self.assertTrue(p01[0]["declined"])
+        self.assertGreaterEqual(p01[0]["ref_price"], 0.0)
+
+    def test_declined_items_helper(self):
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        declined = so._qualif_declined_items()
+        self.assertEqual(len(declined), 1)
+        self.assertEqual(declined[0]["qualification_type"], "installation")
+
+    def test_non_declined_has_no_declined_items(self):
+        so = self._apply(do_qi=True, calib=1)
+        self.assertEqual(so._qualif_declined_items(), [])
+
+    def test_declined_excluded_from_schedule(self):
+        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
+        rows = so._qualif_schedule_rows()
+        # nenhuma row vem da linha declinada (qty=0)
+        for r in rows:
+            self.assertFalse(r.get("declined"))

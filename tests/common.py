@@ -147,6 +147,39 @@ class AfrQualificacaoTestCommon(TransactionCase):
             "marca_id": cls.marca.id,
         })
 
+    def _apply(self, do_qi=False, qi_part01_declined=False,
+               do_qo_part01=False, qo_part01_declined=False,
+               calib=0, qo_cycles=0):
+        """Cria SO + wizard configurador com 1 equipment line e aplica.
+
+        Helper compartilhado pelos testes de Partes (TestApplyPartes,
+        TestReportPartes). Retorna o sale.order com as linhas geradas.
+        """
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        eq_vals = {
+            "equipment_id": self.equip1.id,
+            "do_qi": do_qi,
+            "qi_part01_declined": qi_part01_declined,
+            "do_qo_part01": do_qo_part01,
+            "qo_part01_declined": qo_part01_declined,
+        }
+        if calib:
+            eq_vals["calib_line_ids"] = [
+                (0, 0, {"malha_type_id": self.malha_temp.id, "qty": 1})
+                for _ in range(calib)
+            ]
+        if qo_cycles:
+            eq_vals["qo_line_ids"] = [
+                (0, 0, {"cycle_type_id": self.cycle_qo_test.id, "qty": 1})
+                for _ in range(qo_cycles)
+            ]
+        wiz = self.env["afr.qualificacao.configurator"].create({
+            "sale_order_id": so.id,
+        })
+        wiz.equipment_line_ids = [(0, 0, eq_vals)]
+        wiz.action_apply()
+        return so
+
     def _get_relatorio(self, os):
         """F4.8: cria/cacheia um relatorio dummy para a OS, usado em tests
         que precisam materializar cycles/malhas como passed/failed (gate

@@ -378,6 +378,10 @@ class SaleOrder(models.Model):
                         "qty": line.qualif_cycle_qty or line.product_uom_qty,
                         "subtype": subtype,
                         "line": line,
+                        "part": line.part or "",
+                        "declined": line.part01_declined,
+                        # declinada: price_subtotal=0; usar price_unit como referência
+                        "ref_price": line.price_unit if line.part01_declined else line.price_subtotal,
                         **extra,
                     })
                     type_subtotal += line.price_subtotal
@@ -394,6 +398,25 @@ class SaleOrder(models.Model):
                 "subtotal": equip_subtotal,
             })
         return summary
+
+    def _qualif_declined_items(self):
+        """Linhas Parte 01 declinadas, p/ o box 'Itens Não Solicitados'."""
+        self.ensure_one()
+        out = []
+        for line in self.order_line.sorted(key=lambda l: (
+            l.equipment_id.name or "", l.sequence,
+        )):
+            if not (line.is_qualificacao_managed and line.part01_declined):
+                continue
+            out.append({
+                "equipment": line.equipment_id,
+                "qualification_type": line.qualification_type or "",
+                "label": QUALIF_TYPE_LABELS.get(
+                    line.qualification_type, line.qualification_type or ""),
+                "name": line.name or (line.product_id.display_name or ""),
+                "ref_price": line.price_unit,
+            })
+        return out
 
     def _qualif_estimated_hours(self, equipment=None):
         """F8.14 — soma horas estimadas das qualif lines do SO.
