@@ -305,6 +305,8 @@ class AfrProposalBlock(models.Model):
         """Box institucional 'Itens Não Solicitados para Execução' (formato c).
 
         Vazio se não houver Parte 01 declinada. Texto p/ Vigilância/auditoria.
+        Título e corpo lidos de afr.proposal.section(sec_declined_items_box)
+        para que o cliente possa editar na biblioteca de seções.
         """
         declined = order._qualif_declined_items()
         if not declined:
@@ -321,23 +323,30 @@ class AfrProposalBlock(models.Model):
             )
             for d in declined
         )
-        intro = (
-            "Os itens listados abaixo integram o escopo técnico recomendado "
+        section = self.env.ref(
+            "afr_qualificacao.sec_declined_items_box", raise_if_not_found=False
+        )
+        title = escape(section.name) if section else escape(
+            "Itens Não Solicitados para Execução"
+        )
+        # section.body is already Markup with <p>...</p>; fallback bakes <p> in.
+        intro = section.body if (section and section.body) else Markup(
+            "<p>Os itens listados abaixo integram o escopo técnico recomendado "
             "da qualificação, conforme exigências da Vigilância Sanitária "
             "aplicáveis, porém não foram solicitados para execução pelo "
             "cliente nesta contratação. O registro é mantido para fins de "
             "rastreabilidade documental e eventual auditoria, evidenciando "
-            "que a não realização decorreu de opção do contratante."
+            "que a não realização decorreu de opção do contratante.</p>"
         )
         return Markup(
             "<div class='qq-declined-box'>"
-            "<h4>Itens Não Solicitados para Execução</h4>"
-            "<p>%s</p>"
+            "<h4>%s</h4>"
+            "%s"
             "<table class='qq-table'><thead><tr>"
             "<th>Equipamento</th><th>Tipo</th><th>Item</th>"
             "<th style='text-align:right;'>Valor de referência</th>"
             "</tr></thead><tbody>%s</tbody></table></div>"
-        ) % (escape(intro), rows)
+        ) % (title, intro, rows)
 
     def _html_cycle_specs(self, order):
         parts = []

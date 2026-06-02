@@ -72,7 +72,7 @@
                                                             </tr>
                                                             <t t-foreach="part_items[1:]" t-as="it">
                                                                 <tr t-att-class="'qq-scope-declined' if it.get('declined') else ''">
-                                                                    <td class="qq-scope-item-name">
+                                                                    <td class="qq-scope-description">
                                                                         <t t-if="it.get('declined')">
                                                                             <span class="qq-strike" t-esc="it['name']"/>
                                                                             <span class="qq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
@@ -101,9 +101,15 @@
                                 </t>
                                 <!-- Box de auditoria: itens não solicitados para execução. -->
                                 <t t-set="declined_items" t-value="doc._qualif_declined_items()"/>
+                                <t t-set="declined_section" t-value="doc.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>
                                 <div t-if="declined_items" class="qq-declined-box">
-                                    <h4>Itens Não Solicitados para Execução</h4>
-                                    <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
+                                    <h4 t-esc="declined_section.name if declined_section else 'Itens Não Solicitados para Execução'"/>
+                                    <t t-if="declined_section and declined_section.body">
+                                        <div t-out="declined_section.body"/>
+                                    </t>
+                                    <t t-else="">
+                                        <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
+                                    </t>
                                     <table class="qq-table">
                                         <thead>
                                             <tr>

@@ -237,9 +237,15 @@
                             </div>
                         </t>
                         <t t-set="declined" t-value="sale_order._qualif_declined_items()"/>
+                        <t t-set="declined_section" t-value="sale_order.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>
                         <div t-if="declined" class="lq-declined-box">
-                            <div class="lq-declined-title">Itens Não Solicitados para Execução</div>
-                            <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
+                            <div class="lq-declined-title" t-esc="declined_section.name if declined_section else 'Itens Não Solicitados para Execução'"/>
+                            <t t-if="declined_section and declined_section.body">
+                                <div t-out="declined_section.body"/>
+                            </t>
+                            <t t-else="">
+                                <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
+                            </t>
                             <table class="lq-table">
                                 <thead>
                                     <tr>

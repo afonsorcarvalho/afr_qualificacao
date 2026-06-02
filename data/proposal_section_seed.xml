@@ -270,4 +270,16 @@
         </field>
     </record>
 
+    <!-- F8.17 — Box auditoria "Itens Não Solicitados para Execução" (editável) -->
+    <record id="sec_declined_items_box" model="afr.proposal.section">
+        <field name="name">Itens Não Solicitados para Execução</field>
+        <field name="category">custom</field>
+        <field name="sequence">150</field>
+        <field name="body" type="html">
+            <div>
+                <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
+            </div>
+        </field>
+    </record>
+
 </odoo>
