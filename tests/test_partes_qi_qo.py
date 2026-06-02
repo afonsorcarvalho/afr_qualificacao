@@ -434,3 +434,41 @@ class TestPortalPartes(AfrQualificacaoTestCommon):
         so = self._apply(do_qi=True, calib=1)
         html = self._render_portal(so)
         self.assertNotIn("Itens Não Solicitados", html)
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestPdfReportPartes(AfrQualificacaoTestCommon):
+    """Render do RELATÓRIO PDF real (sale.report_saleorder_document via
+    report_saleorder_document_qualif) — caminho que o builder NÃO exercita.
+
+    O bloco equipment_scope inline do PDF só renderiza quando a SO tem
+    proposal_block_ids incluídos (gate t-if/t-foreach 'included'); por isso
+    criamos explicitamente um bloco equipment_scope incluído, como faz
+    TestPortalPartes._render_portal.
+    """
+
+    def _render_report_html(self, so):
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "equipment_scope",
+            "included": True,
+        })
+        report = self.env.ref("sale.action_report_saleorder")
+        html, _content_type = report._render_qweb_html(report.report_name, so.ids)
+        return html.decode("utf-8") if isinstance(html, bytes) else html
+
+    def test_pdf_report_groups_partes_seal_and_box(self):
+        so = self._apply(
+            do_qi=True, qi_part01_declined=True,
+            do_qo_part01=True, qo_cycles=1, calib=1,
+        )
+        html = self._render_report_html(so)
+        # Sanidade: caminho LEGO (bloco) ativo, não o fallback fixo.
+        self.assertIn("Escopo por Equipamento", html)
+        # Agrupamento por Parte 01 (QI declinada) + Parte 02 (malha/ciclo).
+        self.assertIn("PARTE 01", html)
+        self.assertIn("PARTE 02", html)
+        # Selo do item declinado.
+        self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
+        # Box de auditoria.
+        self.assertIn("Itens Não Solicitados", html)

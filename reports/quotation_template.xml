@@ -548,31 +548,45 @@
                                                 <div class="qq-type-label">
                                                     <span t-esc="tp['label']"/>
                                                 </div>
-                                                <ul class="qq-item-list">
-                                                    <t t-foreach="tp['items']" t-as="it">
-                                                        <li>
-                                                            <!-- Calibração: "0N Calibração de X" -->
-                                                            <t t-if="tp['code'] == 'calibration'">
-                                                                <span t-esc="'%02d' % int(it['qty'] or 0)"/>
-                                                                <span t-esc="it['name']"/>
+                                                <!-- Agrupa por Parte 01/02/(sem tag), espelhando o portal. -->
+                                                <t t-foreach="['01', '02', '']" t-as="pcode">
+                                                    <t t-set="part_items" t-value="[i for i in tp['items'] if (i.get('part') or '') == pcode]"/>
+                                                    <t t-if="part_items">
+                                                        <t t-set="phdr" t-value="doc._qualif_part_header(pcode, tp['code'])"/>
+                                                        <div t-if="phdr" class="qq-part-title" t-esc="phdr"/>
+                                                        <ul class="qq-item-list">
+                                                            <t t-foreach="part_items" t-as="it">
+                                                                <li>
+                                                                    <!-- Item declinado: selo + valor de referência -->
+                                                                    <t t-if="it.get('declined')">
+                                                                        <span class="qq-strike" t-esc="it['name']"/>
+                                                                        <span class="qq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
+                                                                        <span class="qq-ref-price"> (ref.: <t t-esc="it['ref_price']" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>)</span>
+                                                                    </t>
+                                                                    <!-- Calibração: "0N Calibração de X" -->
+                                                                    <t t-elif="tp['code'] == 'calibration'">
+                                                                        <span t-esc="'%02d' % int(it['qty'] or 0)"/>
+                                                                        <span t-esc="it['name']"/>
+                                                                    </t>
+                                                                    <!-- F8.16 — QO/QD: ciclo + qtd + temperatura + tempo esterilização -->
+                                                                    <t t-elif="it.get('subtype') == 'cycle_type'">
+                                                                        <strong t-esc="it['name']"/>
+                                                                        <span> — qtd: <t t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/></span>
+                                                                        <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
+                                                                        <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esterilização</t>
+                                                                    </t>
+                                                                    <t t-else="">
+                                                                        <span t-esc="it['name']"/>
+                                                                        <t t-if="it['qty'] and it['qty'] != 1">
+                                                                            — quantidade:
+                                                                            <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
+                                                                        </t>
+                                                                    </t>
+                                                                </li>
                                                             </t>
-                                                            <!-- F8.16 — QO/QD: ciclo + qtd + temperatura + tempo esterilização -->
-                                                            <t t-elif="it.get('subtype') == 'cycle_type'">
-                                                                <strong t-esc="it['name']"/>
-                                                                <span> — qtd: <t t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/></span>
-                                                                <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
-                                                                <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esterilização</t>
-                                                            </t>
-                                                            <t t-else="">
-                                                                <span t-esc="it['name']"/>
-                                                                <t t-if="it['qty'] and it['qty'] != 1">
-                                                                    — quantidade:
-                                                                    <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
-                                                                </t>
-                                                            </t>
-                                                        </li>
+                                                        </ul>
                                                     </t>
-                                                </ul>
+                                                </t>
                                             </div>
                                         </t>
                                         <!-- F8.10 — subtotal por equipamento removido do escopo
@@ -580,6 +594,25 @@
 
                                     </div>
                                 </t>
+                                <!-- Box de auditoria: itens não solicitados para execução. -->
+                                <t t-set="declined_items" t-value="doc._qualif_declined_items()"/>
+                                <div t-if="declined_items" class="qq-declined-box">
+                                    <h4>Itens Não Solicitados para Execução</h4>
+                                    <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
+                                    <table class="qq-table">
+                                        <thead><tr><th>Equipamento</th><th>Tipo</th><th>Item</th><th style="text-align:right;">Valor de referência</th></tr></thead>
+                                        <tbody>
+                                            <t t-foreach="declined_items" t-as="d">
+                                                <tr>
+                                                    <td t-esc="d['equipment'].display_name"/>
+                                                    <td t-esc="d['label']"/>
+                                                    <td t-esc="d['name']"/>
+                                                    <td style="text-align:right;" t-esc="d['ref_price']" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                                </tr>
+                                            </t>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </t>
 
