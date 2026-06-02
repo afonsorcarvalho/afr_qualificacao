@@ -239,7 +239,36 @@ $lq-bg: #F5F7FA;
         letter-spacing: 0.3px;
         margin: 8px 0 2px;
     }
-    // Tabela condensada de escopo (Parte | Item | Qtd)
+    // F8.16 — Tabela condensada hierárquica de escopo (Equip → Tipo → Parte → Itens)
+    .lq-scope-table {
+        width: 100%;
+        margin: 4px 0 8px;
+        table-layout: auto;
+        border-collapse: collapse;
+
+        td {
+            padding: 5px 8px;
+            border-bottom: 1px solid $lq-gray-light;
+        }
+    }
+    .lq-scope-equip-header td {
+        border-bottom: 1px solid $lq-gray-light;
+        padding: 8px;
+        font-weight: bold;
+        font-size: 16px;
+        color: $lq-brand;
+    }
+    .lq-scope-equip-num {
+        font-weight: bold;
+        color: $lq-brand;
+        margin-right: 4px;
+    }
+    .lq-scope-type-num {
+        font-weight: bold;
+        color: $lq-brand-2;
+        margin-right: 4px;
+    }
+    // Linha de tipo (Qualificação ...) — fundo azul claro, negrito, maiúsculas
     .lq-scope-type-row td {
         background: $lq-bg;
         color: $lq-brand-2;
@@ -248,8 +277,39 @@ $lq-bg: #F5F7FA;
         letter-spacing: 0.3px;
         font-size: 13px;
     }
-    .lq-scope-declined td {
+    // Sub-linha de calibração — mais leve (fundo branco)
+    .lq-scope-type-row-calib td {
+        background: #FFFFFF;
+        font-size: 12px;
+    }
+    .lq-scope-parte {
+        width: 90px;
+        font-weight: bold;
+        color: $lq-brand-2;
+        text-transform: uppercase;
+        font-size: 13px;
+        vertical-align: top;
+    }
+    .lq-scope-description {
+        font-size: 14px;
+        color: #212529;
+    }
+    .lq-scope-item-name {
+        font-size: 13px;
+        color: #212529;
+        padding-left: 16px;
+    }
+    .lq-scope-declined td,
+    .lq-scope-declined .lq-scope-description,
+    .lq-scope-declined .lq-scope-item-name {
         color: $lq-gray;
+    }
+    // Linha de cabeçalho de equipamento dentro do box de declinados
+    .lq-declined-equip-row td {
+        background: $lq-bg;
+        font-weight: bold;
+        color: $lq-brand-2;
+        padding: 4px 10px;
     }
     // Item declinado (selo "NÃO SOLICITADO EXECUÇÃO")
     .lq-strike {
