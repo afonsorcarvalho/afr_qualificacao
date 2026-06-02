@@ -160,46 +160,47 @@
                                         </t>
                                     </span>
                                 </div>
-                                <t t-foreach="eq['types']" t-as="tp">
-                                    <div class="lq-type-block">
-                                        <div class="lq-type-label" t-esc="tp['label']"/>
-                                        <t t-foreach="['01', '02', '']" t-as="pcode">
-                                            <t t-set="part_items" t-value="[i for i in tp['items'] if (i.get('part') or '') == pcode]"/>
-                                            <t t-if="part_items">
-                                                <t t-set="phdr" t-value="sale_order._qualif_part_header(pcode, tp['code'])"/>
-                                                <div t-if="phdr" class="lq-part-title" t-esc="phdr"/>
-                                                <ul class="lq-item-list">
-                                                    <t t-foreach="part_items" t-as="it">
-                                                        <li>
+                                <table class="table table-sm lq-table lq-scope-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:12%;">Parte</th>
+                                            <th>Item</th>
+                                            <th style="width:10%; text-align:right;">Qtd</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="eq['types']" t-as="tp">
+                                            <tr class="lq-scope-type-row"><td colspan="3" t-esc="tp['label']"/></tr>
+                                            <t t-foreach="['01', '02', '']" t-as="pcode">
+                                                <t t-set="part_items" t-value="[i for i in tp['items'] if (i.get('part') or '') == pcode]"/>
+                                                <t t-foreach="part_items" t-as="it">
+                                                    <tr t-att-class="'lq-scope-declined' if it.get('declined') else ''">
+                                                        <td t-esc="it['part'] or '—'"/>
+                                                        <td>
                                                             <t t-if="it.get('declined')">
                                                                 <span class="lq-strike" t-esc="it['name']"/>
                                                                 <span class="lq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
                                                                 <span class="lq-ref-price"> (ref.: <t t-esc="it['ref_price']" t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>)</span>
                                                             </t>
-                                                            <t t-elif="tp['code'] == 'calibration'">
-                                                                <span t-esc="'%02d' % int(it['qty'] or 0)"/>
-                                                                <span t-esc="it['name']"/>
-                                                            </t>
                                                             <t t-elif="it.get('subtype') == 'cycle_type'">
-                                                                <strong t-esc="it['name']"/>
-                                                                <span> — qtd: <t t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/></span>
+                                                                <span t-esc="it['name']"/>
                                                                 <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
                                                                 <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esterilização</t>
                                                             </t>
                                                             <t t-else="">
                                                                 <span t-esc="it['name']"/>
-                                                                <t t-if="it['qty'] and it['qty'] != 1">
-                                                                    — quantidade:
-                                                                    <span t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/>
-                                                                </t>
                                                             </t>
-                                                        </li>
-                                                    </t>
-                                                </ul>
+                                                        </td>
+                                                        <td style="text-align:right;">
+                                                            <t t-if="it.get('declined')">—</t>
+                                                            <t t-else=""><t t-esc="int(it['qty']) if it['qty'] == int(it['qty']) else it['qty']"/></t>
+                                                        </td>
+                                                    </tr>
+                                                </t>
                                             </t>
                                         </t>
-                                    </div>
-                                </t>
+                                    </tbody>
+                                </table>
                             </div>
                         </t>
                         <t t-set="declined" t-value="sale_order._qualif_declined_items()"/>

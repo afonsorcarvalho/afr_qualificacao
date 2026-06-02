@@ -239,6 +239,18 @@ $lq-bg: #F5F7FA;
         letter-spacing: 0.3px;
         margin: 8px 0 2px;
     }
+    // Tabela condensada de escopo (Parte | Item | Qtd)
+    .lq-scope-type-row td {
+        background: $lq-bg;
+        color: $lq-brand-2;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        font-size: 13px;
+    }
+    .lq-scope-declined td {
+        color: $lq-gray;
+    }
     // Item declinado (selo "NÃO SOLICITADO EXECUÇÃO")
     .lq-strike {
         text-decoration: line-through;

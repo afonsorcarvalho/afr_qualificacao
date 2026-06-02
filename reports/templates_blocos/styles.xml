@@ -166,6 +166,10 @@
                         color: var(--lq-brand);
                     }
                     .qq-part-title { margin: 6px 0 2px; font-size: 0.95em; color: #444; }
+                    .qq-scope-table { margin: 4px 0 8px; }
+                    .qq-scope-table th { background:#f0f0f0; }
+                    .qq-scope-type-row td { background:#eef1f8; font-weight:bold; text-transform:uppercase; font-size:0.82em; color:#2c3e6b; padding:3px 6px; }
+                    .qq-scope-declined td { color:#999; }
                     .qq-strike { text-decoration: line-through; color: #888; }
                     .qq-declined { color: #c0392b; font-weight: bold; text-transform: uppercase; font-size: 0.8em; }
                     .qq-ref-price { color: #888; font-size: 0.85em; }

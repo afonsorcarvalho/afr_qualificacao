@@ -422,7 +422,7 @@ class TestPortalPartes(AfrQualificacaoTestCommon):
     def test_portal_groups_partes_and_seal(self):
         so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
         html = self._render_portal(so)
-        self.assertIn("PARTE 01", html)
+        self.assertIn("Qualificação de Instalação", html)
         self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
 
     def test_portal_declined_box(self):
@@ -465,9 +465,9 @@ class TestPdfReportPartes(AfrQualificacaoTestCommon):
         html = self._render_report_html(so)
         # Sanidade: caminho LEGO (bloco) ativo, não o fallback fixo.
         self.assertIn("Escopo por Equipamento", html)
-        # Agrupamento por Parte 01 (QI declinada) + Parte 02 (malha/ciclo).
-        self.assertIn("PARTE 01", html)
-        self.assertIn("PARTE 02", html)
+        # Tabela condensada: seção por qualificação + linha de cabeçalho de tipo.
+        self.assertIn("qq-scope-type-row", html)
+        self.assertIn("Qualificação de Instalação", html)
         # Selo do item declinado.
         self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
         # Box de auditoria.
