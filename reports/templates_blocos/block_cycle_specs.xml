@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_block_cycle_specs">
+                            <t t-set="cycle_specs" t-value="doc._qualif_cycle_specs()"/>
+                            <div t-att-class="sec_class" t-if="cycle_specs">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Tabela Resumo de Ciclos'"/>
+                                </div>
+                                <t t-foreach="cycle_specs" t-as="cs">
+                                    <div class="qq-subsection-title">
+                                        <span t-esc="cs['equipment'].name"/>
+                                    </div>
+                                    <table class="qq-table">
+                                        <tr>
+                                            <th>Ciclo</th>
+                                            <th style="width: 8%;">Qtd</th>
+                                            <th style="width: 15%;">Temperatura</th>
+                                            <th style="width: 15%;">Tempo Esterilização</th>
+                                            <th style="width: 15%;">Carga</th>
+                                            <th style="width: 18%; text-align: right;">Tempo Estimado</th>
+                                        </tr>
+                                        <t t-foreach="cs['rows']" t-as="row">
+                                            <tr>
+                                                <td t-esc="row['name']"/>
+                                                <td t-esc="row['qty']"/>
+                                                <td t-esc="row['temperature']"/>
+                                                <td t-esc="row['duration']"/>
+                                                <td t-esc="row['load_type']"/>
+                                                <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
+                                            </tr>
+                                        </t>
+                                        <t t-set="cs_total_qty" t-value="sum(r['qty'] or 0 for r in cs['rows'])"/>
+                                        <t t-set="cs_total_hours" t-value="sum(r['estimated_hours_total'] or 0.0 for r in cs['rows'])"/>
+                                        <tfoot>
+                                            <tr>
+                                                <td colspan="5">Total: <t t-esc="cs_total_qty"/> ciclo(s)</td>
+                                                <td style="text-align: right;">
+                                                    <t t-esc="'%.1f h · %.1f dias' % (cs_total_hours, cs_total_hours / 8.0)"/>
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </t>
+                            </div>
+    </template>
+</odoo>

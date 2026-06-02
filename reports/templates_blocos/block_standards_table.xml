@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_block_standards_table">
+                            <div t-att-class="sec_class" t-if="doc.qualif_standard_ids">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Normas Aplicáveis'"/>
+                                </div>
+                                <table class="qq-table">
+                                    <tr>
+                                        <th style="width: 22%;">Código</th>
+                                        <th style="width: 38%;">Nome</th>
+                                        <th style="width: 15%;">Organismo</th>
+                                        <th>Escopo</th>
+                                    </tr>
+                                    <t t-foreach="doc.qualif_standard_ids" t-as="std">
+                                        <tr>
+                                            <td><strong t-esc="std.code"/></td>
+                                            <td><span t-esc="std.name"/></td>
+                                            <td><span class="qq-norma-organism" t-esc="std.organism or ''"/></td>
+                                            <td><span t-esc="std.description or ''"/></td>
+                                        </tr>
+                                    </t>
+                                </table>
+                            </div>
+    </template>
+</odoo>

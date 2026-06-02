@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_block_financial">
+                            <div t-att-class="sec_class">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Resumo Financeiro'"/>
+                                </div>
+                                <table class="qq-table">
+                                    <tr>
+                                        <th>Equipamento</th>
+                                        <th style="text-align: right;">Subtotal</th>
+                                    </tr>
+                                    <t t-foreach="summary" t-as="eq">
+                                        <tr>
+                                            <td><span t-esc="eq['equipment'].name"/></td>
+                                            <td style="text-align: right;">
+                                                <span t-esc="eq['subtotal']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </table>
+                                <table class="qq-total-table">
+                                    <tr>
+                                        <td class="qq-tot-label">Subtotal:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-field="doc.amount_untaxed"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="qq-tot-label">Impostos:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-field="doc.amount_tax"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                    <tr class="qq-total-grand">
+                                        <td class="qq-tot-label">TOTAL GERAL:</td>
+                                        <td class="qq-tot-value">
+                                            <span t-field="doc.amount_total"
+                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+    </template>
+</odoo>

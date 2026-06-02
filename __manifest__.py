@@ -203,6 +203,17 @@
         "reports/qualificacao_certificate_template.xml",
         "reports/qualificacao_certificate_report.xml",
         "reports/calibration_certificate_inherit.xml",
+        # Blocos extraídos do quotation_template (t-call) — carregar antes
+        "reports/templates_blocos/styles.xml",
+        "reports/templates_blocos/block_static.xml",
+        "reports/templates_blocos/block_equipment_scope.xml",
+        "reports/templates_blocos/block_cycle_specs.xml",
+        "reports/templates_blocos/block_schedule.xml",
+        "reports/templates_blocos/block_standards_table.xml",
+        "reports/templates_blocos/block_financial.xml",
+        "reports/templates_blocos/block_optionals.xml",
+        "reports/templates_blocos/block_sales_items.xml",
+        "reports/templates_blocos/block_acceptance.xml",
         "reports/quotation_template.xml",
     ],
     "external_dependencies": {

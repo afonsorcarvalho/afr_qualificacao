@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_block_static">
+                            <div t-att-class="sec_class">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title and (block.title or blk_num)">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or ''"/>
+                                </div>
+                                <div class="qq-block-body"
+                                     t-out="doc._render_proposal_block_body(block.body)"/>
+                            </div>
+    </template>
+</odoo>

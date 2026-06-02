@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_block_acceptance">
+                            <div t-attf-class="#{sec_class} qq-signature-block">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Aceite da Proposta'"/>
+                                </div>
+                                <div class="qq-signature-row">
+                                    <div class="qq-signature-col">
+                                        <div class="qq-signature-line"/>
+                                        <div class="qq-signature-label">
+                                            <strong>CLIENTE</strong><br/>
+                                            <span t-field="doc.partner_id.name"/><br/>
+                                            Nome, cargo, assinatura e carimbo
+                                        </div>
+                                    </div>
+                                    <div class="qq-signature-col">
+                                        <div class="qq-signature-line"/>
+                                        <div class="qq-signature-label">
+                                            <strong>EMPRESA</strong><br/>
+                                            <span t-field="doc.company_id.name"/><br/>
+                                            Nome, cargo, assinatura
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 30px; text-align: center; font-size: 14px;">
+                                    <strong>Local e data:</strong>
+                                    ____________________________________, ____ / ____ / ________
+                                </div>
+                            </div>
+    </template>
+</odoo>

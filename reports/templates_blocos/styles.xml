@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_styles">
+                <style>
+                    /* Paleta LabQuali — vars CSS (--lq-*) definidas globalmente
+                       em afr_labquali_layout (external_layout_labquali template).
+                       Regra: azul dominante (≥70%), laranja acento (≤15%), cinzas (15%). */
+                    /* Font sizes aumentados ~30% sobre baseline conforme request user. */
+                    .qq-page { color: #212529; font-size: 16px; }
+                    /* Esconde bloco de endereço do partner injetado por
+                       `web.external_layout_standard` (duplicava info da capa). */
+                    .address, .row.address { display: none !important; }
+                    .qq-cover {
+                        text-align: center;
+                        padding: 60px 40px 0 40px;
+                        min-height: 720px;
+                        border-left: 14px solid var(--lq-accent); /* faixa laranja brand */
+                        position: relative;
+                        overflow: hidden;
+                    }
+                    .qq-cover-img {
+                        margin-top: 30px;
+                        width: 100%;
+                        display: block;
+                        height: auto;
+                    }
+                    .qq-cover-title {
+                        font-size: 28px;
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        margin-top: 80px;
+                        letter-spacing: 1px;
+                    }
+                    .qq-cover-subtitle {
+                        font-size: 16px;
+                        color: var(--lq-gray);
+                        margin-top: 10px;
+                        font-style: italic;
+                    }
+                    .qq-cover-meta {
+                        margin-top: 80px;
+                        display: inline-block;
+                        max-width: 90%;
+                        border-top: 2px solid var(--lq-brand);
+                        border-bottom: 2px solid var(--lq-brand);
+                        padding: 20px 40px;
+                        text-align: left;
+                        font-size: 17px;
+                        line-height: 1.8;
+                    }
+                    .qq-cover-meta div {
+                        white-space: nowrap;
+                    }
+                    .qq-cover-meta strong {
+                        color: var(--lq-brand);
+                        display: inline-block;
+                        min-width: 100px;
+                        vertical-align: top;
+                    }
+                    .qq-cover-meta span {
+                        display: inline-block;
+                        vertical-align: top;
+                    }
+                    .qq-cover-footer {
+                        margin-top: 60px;
+                        font-size: 13px;
+                        color: var(--lq-gray);
+                    }
+                    .qq-section { page-break-before: always; padding-top: 10px; }
+                    /* F9.1 — título de bloco filho: visualmente distinto do pai
+                       (sem uppercase, sem letter-spacing, font menor, indent,
+                       border mais fina). Selector encadeado para ter
+                       especificidade maior que .qq-section-title (que vem depois
+                       no arquivo). Espelha estilo do TOC.qq-toc-child. */
+                    .qq-section-title.qq-section-title-child {
+                        font-size: 15px;
+                        font-weight: bold;
+                        padding-left: 16px;
+                        padding-bottom: 4px;
+                        margin-bottom: 8px;
+                        text-transform: none;
+                        letter-spacing: 0;
+                        color: var(--lq-brand-2);
+                        border-bottom: 1px solid var(--lq-gray-light);
+                    }
+                    /* F9.2 — Índice (TOC) — formatação igual aos títulos, sem visual de link */
+                    .qq-toc { padding: 30px 20px; }
+                    .qq-toc-list {
+                        list-style: none;
+                        padding-left: 0;
+                        margin: 20px 0;
+                    }
+                    .qq-toc-item {
+                        padding: 10px 0;
+                        border-bottom: 1px solid var(--lq-gray-light);
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                    }
+                    .qq-toc-child {
+                        padding-left: 28px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        text-transform: none;
+                        letter-spacing: 0;
+                        color: var(--lq-brand);
+                    }
+                    .qq-toc-link {
+                        color: inherit !important;
+                        text-decoration: none !important;
+                        display: block;
+                    }
+                    .qq-toc-num {
+                        display: inline-block;
+                        min-width: 45px;
+                        color: var(--lq-accent);
+                        font-weight: bold;
+                    }
+                    .qq-toc-title { color: inherit; }
+                    /* Continua na mesma página da seção anterior (sem quebra).
+                       Agrupa: Sumário+Descritivo e Financeiro+Condições+Aceite. */
+                    .qq-section-cont { page-break-before: avoid; padding-top: 18px; }
+                    .qq-section-title {
+                        font-size: 18px;
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        border-bottom: 3px solid var(--lq-brand);
+                        padding: 6px 0;
+                        margin-bottom: 12px;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                    }
+                    .qq-subsection-title {
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: var(--lq-brand-2);
+                        margin-top: 14px;
+                        margin-bottom: 6px;
+                    }
+                    .qq-table {
+                        width: 100%;
+                        font-size: 14px;
+                        border-collapse: collapse;
+                        margin-bottom: 10px;
+                    }
+                    .qq-table th {
+                        background-color: var(--lq-gray-light);
+                        color: var(--lq-brand);
+                        border-bottom: 2px solid var(--lq-brand);
+                        padding: 8px 10px;
+                        text-align: left;
+                        font-weight: bold;
+                    }
+                    .qq-table td {
+                        padding: 7px 10px;
+                        border-bottom: 1px solid var(--lq-gray-light);
+                        vertical-align: top;
+                    }
+                    .qq-table tfoot td {
+                        border-top: 2px solid var(--lq-brand);
+                        font-weight: bold;
+                        padding: 6px 10px;
+                        background-color: var(--lq-gray-light);
+                        color: var(--lq-brand);
+                    }
+                    .qq-part-title { margin: 6px 0 2px; font-size: 0.95em; color: #444; }
+                    .qq-strike { text-decoration: line-through; color: #888; }
+                    .qq-declined { color: #c0392b; font-weight: bold; text-transform: uppercase; font-size: 0.8em; }
+                    .qq-ref-price { color: #888; font-size: 0.85em; }
+                    .qq-declined-box { border: 1px solid #c0392b; padding: 8px 12px; margin-top: 14px; page-break-inside: avoid; }
+                    .qq-declined-box h4 { color: #c0392b; margin: 0 0 6px; }
+                    .qq-equip-schedule {
+                        border-top: 1px solid var(--lq-gray-light);
+                        padding-top: 8px;
+                        margin-top: 10px;
+                        font-size: 14px;
+                        color: var(--lq-brand);
+                        text-align: right;
+                    }
+                    .qq-equip-card {
+                        border: 1px solid var(--lq-gray-light);
+                        border-left: 4px solid var(--lq-brand-2); /* destaque azul médio */
+                        border-radius: 3px;
+                        padding: 12px 14px;
+                        margin-bottom: 14px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-equip-header {
+                        border-bottom: 1px solid var(--lq-gray-light);
+                        padding-bottom: 6px;
+                        margin-bottom: 10px;
+                        font-weight: bold;
+                        font-size: 17px;
+                        color: var(--lq-brand);
+                    }
+                    .qq-equip-meta {
+                        font-size: 13px;
+                        color: var(--lq-gray);
+                        font-weight: normal;
+                        margin-left: 8px;
+                    }
+                    .qq-type-block {
+                        padding: 6px 0 6px 8px;
+                        border-left: 3px solid var(--lq-accent); /* acento laranja */
+                        margin: 14px 0 10px 4px;
+                    }
+                    .qq-subsection-title + .qq-table,
+                    .qq-section-title + .qq-table {
+                        margin-top: 10px;
+                    }
+                    .qq-type-label {
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        font-size: 16px;
+                    }
+                    .qq-item-list {
+                        font-size: 14px;
+                        color: #212529;
+                        margin: 4px 0 0 12px;
+                    }
+                    .qq-equip-subtotal {
+                        text-align: right;
+                        font-weight: bold;
+                        font-size: 17px;
+                        color: var(--lq-brand);
+                        border-top: 1px solid var(--lq-gray-light);
+                        padding-top: 8px;
+                        margin-top: 8px;
+                    }
+                    .qq-descritivo-block {
+                        margin-bottom: 14px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-descritivo-label {
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        font-size: 16px;
+                        margin-bottom: 4px;
+                    }
+                    .qq-descritivo-text {
+                        font-size: 14px;
+                        color: #212529;
+                        text-align: justify;
+                        line-height: 1.5;
+                        white-space: pre-line;
+                    }
+                    .qq-total-table {
+                        width: 100%;
+                        font-size: 14px;
+                        border-collapse: collapse;
+                        margin-top: -10px;
+                        margin-bottom: 10px;
+                    }
+                    .qq-total-table td {
+                        padding: 6px 10px;
+                        border-bottom: 1px solid var(--lq-gray-light);
+                    }
+                    .qq-total-table .qq-tot-label { text-align: right; color: var(--lq-gray); width: 75%; }
+                    .qq-total-table .qq-tot-value { text-align: right; font-weight: bold; color: var(--lq-brand); width: 25%; }
+                    .qq-total-grand td {
+                        border-top: 2px solid var(--lq-brand);
+                        border-bottom: none;
+                        padding-top: 8px;
+                        font-weight: bold;
+                        color: var(--lq-brand);
+                        font-size: 16px;
+                    }
+                    .qq-conditions-grid {
+                        display: table;
+                        width: 100%;
+                        margin-bottom: 16px;
+                    }
+                    .qq-conditions-cell {
+                        display: table-cell;
+                        width: 33%;
+                        padding: 8px 12px;
+                        border: 1px solid var(--lq-gray-light);
+                        border-top: 3px solid var(--lq-brand-2); /* top stripe azul médio */
+                        vertical-align: top;
+                        font-size: 14px;
+                    }
+                    .qq-conditions-cell strong {
+                        display: block;
+                        color: var(--lq-brand);
+                        margin-bottom: 4px;
+                    }
+                    .qq-signature-block {
+                        margin-top: 40px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-signature-row {
+                        display: table;
+                        width: 100%;
+                        margin-top: 60px;
+                    }
+                    .qq-signature-col {
+                        display: table-cell;
+                        width: 50%;
+                        text-align: center;
+                        padding: 0 20px;
+                    }
+                    .qq-signature-line {
+                        border-bottom: 1px solid var(--lq-brand);
+                        margin-bottom: 8px;
+                        height: 1px;
+                    }
+                    .qq-signature-label {
+                        font-size: 13px;
+                        color: var(--lq-gray);
+                    }
+                    .qq-norma-organism {
+                        font-size: 13px;
+                        color: var(--lq-gray);
+                    }
+                    /* F8.3 — corpo de bloco de texto estático (HTML livre) */
+                    .qq-block-body {
+                        font-size: 14px;
+                        color: #212529;
+                        line-height: 1.5;
+                        text-align: justify;
+                    }
+                    .qq-block-body table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 8px 0;
+                        font-size: 13px;
+                    }
+                    .qq-block-body td, .qq-block-body th {
+                        border: 1px solid var(--lq-gray-light);
+                        padding: 5px 8px;
+                    }
+                    .qq-block-body th {
+                        background-color: var(--lq-gray-light);
+                        color: var(--lq-brand);
+                    }
+                </style>
+    </template>
+</odoo>

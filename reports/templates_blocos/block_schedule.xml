@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="qq_block_schedule">
+                            <div t-att-class="sec_class">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Cronograma Estimado'"/>
+                                </div>
+                                <t t-set="rows" t-value="doc._qualif_schedule_rows()"/>
+                                <t t-if="rows">
+                                    <table class="qq-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Equipamento</th>
+                                                <th style="text-align: right; width: 15%;">h/dia</th>
+                                                <th style="text-align: right; width: 15%;">Horas</th>
+                                                <th style="text-align: right; width: 15%;">Dias úteis</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <t t-foreach="rows" t-as="r">
+                                                <tr>
+                                                    <td t-esc="r['equipment'].display_name"/>
+                                                    <td style="text-align: right;" t-esc="'%.1f' % r['work_hours_per_day']"/>
+                                                    <td style="text-align: right;" t-esc="'%.1f' % r['hours']"/>
+                                                    <td style="text-align: right;" t-esc="'%.1f' % r['days']"/>
+                                                </tr>
+                                            </t>
+                                        </tbody>
+                                        <t t-set="total_h" t-value="sum(r['hours'] for r in rows)"/>
+                                        <t t-set="total_d" t-value="sum(r['days'] for r in rows)"/>
+                                        <tfoot>
+                                            <tr>
+                                                <td><strong>TOTAL</strong></td>
+                                                <td></td>
+                                                <td style="text-align: right;"><strong t-esc="'%.1f' % total_h"/></td>
+                                                <td style="text-align: right;"><strong t-esc="'%.1f' % total_d"/></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </t>
+                            </div>
+    </template>
+</odoo>
