@@ -57,9 +57,10 @@ class TestQiQsSeed(TransactionCase):
 
     def test_preserves_existing_config(self):
         # Empresa com config manual pré-existente (produto QI SEM atributo Parte,
-        # como numa DB pré-16.0.5.9.0). O seed preserva o registro, o TEMPLATE e
-        # o preço, mas repoint para a variante Parte 01 desse mesmo template
-        # (necessário p/ o price_extra das partes funcionar).
+        # como numa DB pré-16.0.5.9.0). Contrato SIMÉTRICO: o seed preserva o
+        # REGISTRO de config (mesma identidade + mesmo default_unit_price), mas
+        # repoint service_product_id p/ a variante Parte 01 do produto-SEMENTE
+        # (_tmpl) — o produto manual do utilizador fica intocado.
         manual_template = self.env["product.template"].create({
             "name": "QI Manual", "type": "service",
             "detailed_type": "service", "sale_ok": True,
@@ -74,18 +75,32 @@ class TestQiQsSeed(TransactionCase):
         _install_qi_qs_type_config(self.env)
 
         cfgs = self._configs(self.fresh_company)
-        # QI manual preservada (mesmo registro + mesmo template + mesmo preço)
-        # mas repointada p/ variante Parte 01; + QO + QS criadas.
+        # QI manual preservada (mesmo registro + mesmo default_unit_price) mas
+        # repointada p/ variante Parte 01 do seed; + QO + QS criadas.
         self.assertEqual(len(cfgs), 3)
         qi = cfgs.filtered(lambda c: c.qualification_type == "installation")
         self.assertEqual(qi, manual, "mesmo registro de config (não recriado)")
-        # Template preservado (atributo anexado ao produto configurado).
-        self.assertEqual(qi.service_product_id.product_tmpl_id, manual_template)
-        # Repointado p/ a variante Parte 01 desse template.
+        # Repoint SIMÉTRICO: aponta para o template-SEMENTE, não para o manual.
+        seed_tmpl = self.env.ref("afr_qualificacao.product_qi_service_tmpl")
+        self.assertEqual(qi.service_product_id.product_tmpl_id, seed_tmpl)
+        self.assertNotEqual(
+            qi.service_product_id.product_tmpl_id, manual_template,
+            "não deve apontar para o produto manual do utilizador",
+        )
+        # Variante Parte 01 do seed.
         self.assertIn(
             PARTE_01_NAME,
             qi.service_product_id.product_template_variant_value_ids.mapped("name"),
         )
+        # Produto manual INTOCADO: continua com 1 variante e sem atributo Parte.
+        self.assertEqual(len(manual_template.product_variant_ids), 1)
+        self.assertFalse(
+            manual_template.attribute_line_ids.filtered(
+                lambda l: PARTE_01_NAME in l.value_ids.mapped("name")
+            ),
+            "produto manual não deve receber o atributo Parte",
+        )
+        # default_unit_price (campo do PRÓPRIO registro de config) preservado.
         self.assertAlmostEqual(qi.default_unit_price, 999.0, places=2)
 
     def test_no_xmlid_collision_with_legacy_5_7_0_product(self):

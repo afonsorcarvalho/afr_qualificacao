@@ -60,13 +60,14 @@ class TestPartesCatalog(TransactionCase):
     def test_upgrade_repoints_existing_installation_to_parte01(self):
         """Simula DB upgradeada de <16.0.5.9.0: já existe um type_config
         'installation' apontando para um produto QI ANTIGO (sem atributo
-        Parte / sem variantes). O hook deve:
-          1. anexar o atributo Parte ao MESMO template (preserva o produto);
-          2. repoint a config para a variante Parte 01 desse template.
+        Parte / sem variantes). Contrato SIMÉTRICO: o hook deve repoint a
+        config para a variante Parte 01 do PRODUTO-SEMENTE (_tmpl), SEM mutar
+        o produto antigo do utilizador.
 
-        Discriminante: no código antigo (bare `continue`), a config mantém o
-        produto plano → 'Parte 01' NÃO está em product_template_variant_value_ids
-        → este teste falha. No código novo, passa.
+        Discriminante: se o repoint apontasse para o template ANTIGO (código
+        anterior, que anexava o atributo Parte ao old_tmpl), as asserções
+        `product_tmpl_id == seed_tmpl` e `!= old_tmpl` falhariam, e old_tmpl
+        teria 2 variantes em vez de 1.
         """
         company = self.env["res.company"].create({"name": "Upgrade Repoint Test"})
         # Produto QI antigo: service, SEM atributo Parte (1 variante única).
@@ -101,14 +102,25 @@ class TestPartesCatalog(TransactionCase):
             PARTE_01_NAME, part_vals,
             "config installante existente deve passar a apontar p/ variante Parte 01",
         )
-        # Template preservado: a variante Parte 01 pertence ao MESMO template
-        # do produto originalmente configurado (não trocado pelo seed).
+        # Repoint SIMÉTRICO: a variante Parte 01 pertence ao template-SEMENTE
+        # (_tmpl), NÃO ao produto antigo do utilizador.
+        seed_tmpl = self.env.ref("afr_qualificacao.product_qi_service_tmpl")
         self.assertEqual(
-            repointed.product_tmpl_id, old_tmpl,
-            "deve preservar o template configurado, anexando o atributo a ele",
+            repointed.product_tmpl_id, seed_tmpl,
+            "deve apontar para a variante Parte 01 do produto-semente",
         )
-        # 2 variantes (Parte 01 / Parte 02) foram criadas no template antigo.
-        self.assertEqual(len(old_tmpl.product_variant_ids), 2)
+        self.assertNotEqual(
+            repointed.product_tmpl_id, old_tmpl,
+            "não deve apontar para o template antigo do utilizador",
+        )
+        # Produto antigo INTOCADO: continua com 1 variante e sem atributo Parte.
+        self.assertEqual(len(old_tmpl.product_variant_ids), 1)
+        self.assertFalse(
+            old_tmpl.attribute_line_ids.filtered(
+                lambda l: PARTE_01_NAME in l.value_ids.mapped("name")
+            ),
+            "produto antigo não deve receber o atributo Parte",
+        )
 
         # Idempotente: rodar de novo não muda nada.
         _install_qualif_type_configs(self.env)
