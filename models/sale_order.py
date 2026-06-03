@@ -148,6 +148,21 @@ class SaleOrder(models.Model):
         copy=True,
     )
 
+    # ═════════════════════════════════════════════════════════════
+    # CREATE — sequência SO C[YY]-[MM]-NNNN
+    # ═════════════════════════════════════════════════════════════
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if not vals.get("name") or vals["name"] == _("New"):
+                vals["name"] = (
+                    self.env["ir.sequence"].next_by_code(
+                        "afr.qualificacao.sale.order"
+                    )
+                    or _("New")
+                )
+        return super().create(vals_list)
+
     @api.depends("qualificacao_ids")
     def _compute_qualificacao_count(self):
         for order in self:
