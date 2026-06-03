@@ -977,9 +977,20 @@ class SaleOrder(models.Model):
         CollectItem = self.env["afr.qualificacao.collect.item"]
 
         # 1 OS por SO (reusa se já existe — re-confirmação parcial)
-        os = self.qualificacao_os_ids[:1] or QualifOs.create(
-            self._prepare_qualificacao_os_values()
-        )
+        # Fallback: busca por nome derivado caso OS tenha sido desvinculada
+        os = self.qualificacao_os_ids[:1]
+        if not os:
+            so_name = self.name or ""
+            os_name = ("OS" + so_name[1:]) if so_name.startswith("C") else None
+            if os_name:
+                os = QualifOs.search([
+                    ("name", "=", os_name),
+                    ("company_id", "=", self.company_id.id),
+                ], limit=1)
+                if os and os not in self.qualificacao_os_ids:
+                    self.write({"qualificacao_os_ids": [(4, os.id)]})
+            if not os:
+                os = QualifOs.create(self._prepare_qualificacao_os_values())
 
         # Agrupa linhas por equipamento
         by_equipment = defaultdict(lambda: self.env["sale.order.line"])
