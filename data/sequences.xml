@@ -21,4 +21,15 @@
         <field name="company_id" eval="False"/>
     </record>
 
+    <!-- Sequence: Contrato / SO de Qualificação — C[YY]-[MM]-NNNN reset anual -->
+    <record id="seq_afr_qualificacao_sale_order" model="ir.sequence">
+        <field name="name">Contrato de Qualificação (SO)</field>
+        <field name="code">afr.qualificacao.sale.order</field>
+        <field name="prefix">C%(y)s-%(month)s-</field>
+        <field name="padding">4</field>
+        <field name="use_date_range" eval="True"/>
+        <field name="implementation">no_gap</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
 </odoo>
