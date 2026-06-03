@@ -17,6 +17,13 @@ class AfrQualificacaoOs(models.Model):
     _description = "Ordem de Serviço de Qualificação"
     _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "name desc, id desc"
+    _sql_constraints = [
+        (
+            "name_company_uniq",
+            "unique(name, company_id)",
+            "Já existe uma OS de Qualificação com este código nesta empresa.",
+        ),
+    ]
 
     # ───────── Identificação ─────────
     name = fields.Char(
