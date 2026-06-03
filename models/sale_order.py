@@ -1080,13 +1080,21 @@ class SaleOrder(models.Model):
                     CollectItem.create(vals)
 
     def _prepare_qualificacao_os_values(self):
-        """Hook: valores para criar afr.qualificacao.os a partir do SO."""
+        """Hook: valores para criar afr.qualificacao.os a partir do SO.
+
+        Nome derivado: substitui 'C' inicial pelo prefixo 'OS'.
+        Ex: C26-06-0001 → OS26-06-0001
+        Fallback: se SO não tem formato esperado, nome gerado por sequência no create().
+        """
         self.ensure_one()
-        return {
+        vals = {
             "sale_order_id": self.id,
             "company_id": self.company_id.id,
-            # tecnico_default_id + datas planejadas: gestor preenche pós-confirm
         }
+        so_name = self.name or ""
+        if so_name.startswith("C") and len(so_name) > 1:
+            vals["name"] = "OS" + so_name[1:]
+        return vals
 
     def _prepare_qualificacao_values(self, equipment, qualification_type, os):
         """Hook: valores para criar afr.qualificacao vinculada à OS qualif.
