@@ -45,6 +45,7 @@
                 <field name="equipment_id" optional="show"/>
                 <field name="cycle_type_id" optional="hide"/>
                 <field name="malha_type_id" optional="hide"/>
+                <field name="is_proposal_optional" string="Opcional" optional="show" widget="boolean_toggle"/>
             </xpath>
 
             <!-- Painel "Subtotais por Equipamento" — visível quando SO

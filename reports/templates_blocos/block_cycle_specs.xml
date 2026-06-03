@@ -9,11 +9,12 @@
                                     <span t-esc="block.title or 'Tabela Resumo de Ciclos'"/>
                                 </div>
                                 <t t-foreach="cycle_specs" t-as="cs">
-                                    <div class="qq-subsection-title">
-                                        <span t-esc="cs['equipment'].name"/>
-                                    </div>
                                     <table class="qq-table">
-                                        <tr>
+                                        <thead>
+                                            <tr class="qq-scope-equip-header">
+                                                <th colspan="6" t-esc="cs['equipment'].name"/>
+                                            </tr>
+                                            <tr>
                                             <th>Ciclo</th>
                                             <th style="width: 8%;">Qtd</th>
                                             <th style="width: 15%;">Temperatura</th>
@@ -21,6 +22,7 @@
                                             <th style="width: 15%;">Carga</th>
                                             <th style="width: 18%; text-align: right;">Tempo Estimado</th>
                                         </tr>
+                                        </thead>
                                         <t t-foreach="cs['rows']" t-as="row">
                                             <tr>
                                                 <td t-esc="row['name']"/>

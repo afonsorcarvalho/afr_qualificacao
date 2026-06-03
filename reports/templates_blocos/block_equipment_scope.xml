@@ -40,7 +40,7 @@
                                                     <t t-else="">
                                                         <t t-set="type_num" t-value="equip_letter + '.' + str(last_main_num) + '.1'"/>
                                                     </t>
-                                                    <tr t-att-class="'qq-scope-type-row' + (' qq-scope-type-row-calib' if tp['code'] == 'calibration' else '')">
+                                                    <tr t-if="tp['code'] != 'calibration'" t-att-class="'qq-scope-type-row'">
                                                         <td colspan="2">
                                                             <span class="qq-scope-type-num"><t t-esc="type_num"/></span>
                                                             <span t-esc="tp['label']"/>
