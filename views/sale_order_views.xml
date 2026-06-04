@@ -46,6 +46,12 @@
                 <field name="cycle_type_id" optional="hide"/>
                 <field name="malha_type_id" optional="hide"/>
                 <field name="is_proposal_optional" string="Opcional" optional="show" widget="boolean_toggle"/>
+                <field name="optional_qty" string="Qtd Opc."
+                       attrs="{'invisible': [('is_proposal_optional', '=', False)]}"
+                       optional="show"/>
+                <field name="optional_accepted" string="Aceito"
+                       attrs="{'invisible': [('is_proposal_optional', '=', False)]}"
+                       widget="boolean_toggle" optional="show"/>
             </xpath>
 
             <!-- Painel "Subtotais por Equipamento" — visível quando SO

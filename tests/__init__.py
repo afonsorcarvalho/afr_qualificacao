@@ -52,3 +52,6 @@ from . import test_sequence_naming
 
 # Process type label for equipment category
 from . import test_process_type
+
+# Opcional aceito — qty/total/geração condicionados a optional_accepted
+from . import test_optional_accepted

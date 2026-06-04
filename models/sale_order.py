@@ -941,6 +941,8 @@ class SaleOrder(models.Model):
     # ------------------------------------------------------------------
     def action_confirm(self):
         """Override: após confirmar SO, gera estrutura de qualificações."""
+        for order in self:
+            order.order_line._sync_optional_qty()
         result = super().action_confirm()
         for order in self:
             order._create_qualificacoes_from_lines()
@@ -966,8 +968,9 @@ class SaleOrder(models.Model):
         managed = self.order_line.filtered(
             lambda l: l.is_qualificacao_managed
             and not l.display_type
-            and not l.is_proposal_optional
             and not l.part01_declined
+            and not (l.is_proposal_optional and not l.optional_accepted)
+            and not (l.is_proposal_optional and not l.qualification_type)
         )
         if not managed:
             return

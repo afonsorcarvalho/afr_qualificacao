@@ -114,6 +114,51 @@ class SaleOrderLine(models.Model):
         ),
     )
 
+    optional_accepted = fields.Boolean(
+        string="Opcional Aceito",
+        default=False,
+        copy=True,
+        help="Opcional autorizado pelo cliente. Quando aceito, soma ao total, "
+             "vai à fatura e — se for qualificação — gera afr.qualificacao + OS.",
+    )
+    optional_qty = fields.Float(
+        string="Qtd. do Opcional",
+        default=1.0,
+        copy=True,
+        help="Quantidade pretendida do opcional. Guardada enquanto não aceito "
+             "(product_uom_qty fica 0); aplicada quando aceito.",
+    )
+
+    @api.onchange("optional_accepted", "optional_qty", "is_proposal_optional")
+    def _onchange_optional_sync_qty(self):
+        """Linha opcional: aplica a qty efetiva conforme aceite/tipo."""
+        for line in self:
+            if line.is_proposal_optional:
+                line.product_uom_qty = line._optional_target_qty()
+
+    def _optional_target_qty(self):
+        """Qty efetiva de uma linha opcional:
+        - não aceito → 0
+        - aceito + ciclo/malha → HORAS (qualif_cycle_qty × estimated_hours)
+        - aceito + serviço → optional_qty
+        """
+        self.ensure_one()
+        if not self.optional_accepted:
+            return 0.0
+        if self.cycle_type_id or self.malha_type_id:
+            return (self.qualif_cycle_qty or 0) * (self.estimated_hours or 0.0)
+        return self.optional_qty
+
+    def _sync_optional_qty(self):
+        """Aplica a regra de qty dos opcionais (chamável fora de onchange)."""
+        for line in self:
+            if not line.is_proposal_optional:
+                continue
+            target = line._optional_target_qty()
+            if line.product_uom_qty != target:
+                line.product_uom_qty = target
+        return True
+
     @api.onchange("qualif_cycle_qty", "estimated_hours")
     def _onchange_qualif_cycle_qty_hours(self):
         """Mantém product_uom_qty = nº ciclos × horas/ciclo (UdM em horas).
@@ -201,9 +246,10 @@ class SaleOrderLine(models.Model):
             # equipamentos no SO. Não geram qualificação.
             if line.display_type:
                 continue
-            # Serviço opcional (F8.2): linha managed sem equipamento/tipo —
-            # não é linha de qualificação, pular consistência.
-            if line.is_proposal_optional:
+            # Opcional de SERVIÇO (sem qualification_type) — não é linha de
+            # qualificação, pula consistência. Opcional de QUALIFICAÇÃO
+            # (com qualification_type) segue as regras normais abaixo.
+            if line.is_proposal_optional and not line.qualification_type:
                 continue
             # Parte 01 declinada: linha de referência (qty=0, não gera
             # qualificação), pular consistência.
