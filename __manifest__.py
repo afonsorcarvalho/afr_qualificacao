@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.5.10.0",
+    "version": "16.0.5.11.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -185,6 +185,7 @@
         "views/sale_order_views.xml",
         # F10.5 — equipamento focado em Qualificação + menu em Vendas
         "views/engc_equipment_views.xml",
+        "views/equipment_category_views.xml",
         # F9.4 — Cotação online LabQuali (portal)
         "views/sale_order_portal_template.xml",
         "views/engc_os_views.xml",

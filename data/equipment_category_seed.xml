@@ -8,26 +8,32 @@
 
     <record id="cat_autoclave_vapor" model="engc.equipment.category">
         <field name="name">Autoclave a Vapor</field>
+        <field name="process_type">esterilizacao</field>
     </record>
 
     <record id="cat_termodesinfectora" model="engc.equipment.category">
         <field name="name">Termodesinfectora</field>
+        <field name="process_type">desinfeccao</field>
     </record>
 
     <record id="cat_lavadora_ultrassonica" model="engc.equipment.category">
         <field name="name">Lavadora Ultrassônica</field>
+        <field name="process_type">lavagem</field>
     </record>
 
     <record id="cat_refrigerador_camara" model="engc.equipment.category">
         <field name="name">Refrigerador / Câmara Climática</field>
+        <field name="process_type">monitoramento</field>
     </record>
 
     <record id="cat_estufa_esterilizacao" model="engc.equipment.category">
         <field name="name">Estufa de Esterilização</field>
+        <field name="process_type">esterilizacao</field>
     </record>
 
     <record id="cat_autoclave_gas" model="engc.equipment.category">
         <field name="name">Autoclave a Gás (ETO)</field>
+        <field name="process_type">esterilizacao</field>
     </record>
 
 </odoo>

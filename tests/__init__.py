@@ -49,3 +49,6 @@ from . import test_partes_qi_qo
 
 # 16.0.5.10.0 — SO/OS sequence naming C[YY]-[MM]-NNNN
 from . import test_sequence_naming
+
+# Process type label for equipment category
+from . import test_process_type

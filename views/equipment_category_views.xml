@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_equipment_category_form_process_type" model="ir.ui.view">
+        <field name="name">engc.equipment.category.form.process.type</field>
+        <field name="model">engc.equipment.category</field>
+        <field name="inherit_id" ref="engc_os.view_form_engc_os_equipment_category"/>
+        <field name="arch" type="xml">
+            <field name="maintenance_plan" position="after">
+                <field name="process_type"/>
+            </field>
+        </field>
+    </record>
+</odoo>

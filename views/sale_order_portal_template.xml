@@ -291,7 +291,7 @@
                                             <th>Ciclo</th>
                                             <th>Qtd</th>
                                             <th>Temperatura</th>
-                                            <th>Tempo Esteril</th>
+                                            <th><t t-esc="cs['time_label']"/></th>
                                             <th>Carga</th>
                                             <th class="text-end">Tempo Estimado</th>
                                         </tr>

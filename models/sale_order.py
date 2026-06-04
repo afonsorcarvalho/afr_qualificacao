@@ -816,7 +816,14 @@ class SaleOrder(models.Model):
                     "load_type": load_labels.get(cycle_type.load_type, ""),
                     "estimated_hours_total": hours * qty,
                 })
-            result.append({"equipment": equip, "rows": rows})
+            result.append({
+                "equipment": equip,
+                "rows": rows,
+                "time_label": (
+                    equip.category_id._qualif_time_label()
+                    if equip.category_id else _("Tempo de Esterilização")
+                ),
+            })
         return result
 
     def action_open_configurator(self):

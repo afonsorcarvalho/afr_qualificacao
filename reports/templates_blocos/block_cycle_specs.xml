@@ -18,7 +18,7 @@
                                             <th>Ciclo</th>
                                             <th style="width: 8%;">Qtd</th>
                                             <th style="width: 15%;">Temperatura</th>
-                                            <th style="width: 15%;">Tempo Esterilização</th>
+                                            <th style="width: 15%;"><t t-esc="cs['time_label']"/></th>
                                             <th style="width: 15%;">Carga</th>
                                             <th style="width: 18%; text-align: right;">Tempo Estimado</th>
                                         </tr>
