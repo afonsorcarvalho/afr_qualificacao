@@ -61,3 +61,6 @@ from . import test_optional_wizard
 
 # Fase 3 — subtotal de referência dos opcionais (mesmo não aceitos)
 from . import test_optional_ref_subtotal
+
+# Fase 4 — toggle de opcional pelo portal
+from . import test_portal_optional

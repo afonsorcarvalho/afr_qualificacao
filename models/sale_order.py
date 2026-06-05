@@ -1138,3 +1138,21 @@ class SaleOrder(models.Model):
             # F10.4 — parallel_group definido manualmente na OS (não vem do SO).
             # engc_os_id deprecated — não preenchido para SOs novas.
         }
+
+    def _portal_toggle_optional(self, line_id, accepted):
+        """Grava optional_accepted numa linha opcional, a partir do portal.
+        Valida estado editável + pertença + tipo. Retorna dict de estado."""
+        self.ensure_one()
+        if self.state not in ("draft", "sent"):
+            raise UserError(_(
+                "Esta cotação já foi confirmada; os opcionais não podem "
+                "mais ser alterados."))
+        line = self.order_line.filtered(lambda l: l.id == int(line_id))
+        if not line or not line.is_proposal_optional:
+            raise UserError(_("Item opcional inválido."))
+        line.optional_accepted = bool(accepted)
+        line._sync_optional_qty()
+        return {
+            "accepted": line.optional_accepted,
+            "amount_total": self.amount_total,
+        }

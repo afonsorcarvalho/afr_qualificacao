@@ -483,8 +483,18 @@
                                     <t t-foreach="opt_lines" t-as="ol">
                                         <tr>
                                             <td class="text-center">
-                                                <t t-if="ol.optional_accepted">&#9745;</t>
-                                                <t t-else="">&#9744;</t>
+                                                <t t-if="sale_order.state in ('draft', 'sent')">
+                                                    <input type="checkbox"
+                                                           class="o_qualif_opt_toggle"
+                                                           t-att-checked="ol.optional_accepted and 'checked' or None"
+                                                           t-att-data-order-id="sale_order.id"
+                                                           t-att-data-line-id="ol.id"
+                                                           t-att-data-token="sale_order.access_token"/>
+                                                </t>
+                                                <t t-else="">
+                                                    <t t-if="ol.optional_accepted">&#9745;</t>
+                                                    <t t-else="">&#9744;</t>
+                                                </t>
                                             </td>
                                             <td t-esc="ol.name"/>
                                             <td>
@@ -504,6 +514,9 @@
                             </table>
                             <p class="text-muted" style="font-size: 12px;">
                                 &#9745; = autorizado pelo cliente. Apenas os itens marcados entram no total da proposta.
+                                <t t-if="sale_order.state in ('draft', 'sent')">
+                                    <br/>Marque os opcionais desejados — o total atualiza automaticamente.
+                                </t>
                             </p>
                         </div>
                     </section>

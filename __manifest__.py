@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.5.14.0",
+    "version": "16.0.5.15.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -226,6 +226,7 @@
     "assets": {
         "web.assets_frontend": [
             "afr_qualificacao/static/src/scss/sale_portal_qualif.scss",
+            "afr_qualificacao/static/src/js/optional_portal.js",
         ],
     },
     "installable": True,
