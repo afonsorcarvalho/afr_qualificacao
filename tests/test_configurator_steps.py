@@ -30,10 +30,12 @@ class TestConfiguratorSteps(AfrQualificacaoTestCommon):
     def test_wizard_starts_on_escopo(self):
         self.assertEqual(self._wizard().step, "escopo")
 
-    def test_next_step_advances_to_revisao(self):
-        """F10.2 — Escopo avança direto para Revisão (2 etapas)."""
+    def test_next_step_advances_to_opcionais(self):
+        """F2 — Escopo → Opcionais → Revisão (3 etapas)."""
         wiz = self._wizard()
         self._add_equipment(wiz)
+        wiz.action_next_step()
+        self.assertEqual(wiz.step, "opcionais")
         wiz.action_next_step()
         self.assertEqual(wiz.step, "revisao")
 
@@ -47,12 +49,16 @@ class TestConfiguratorSteps(AfrQualificacaoTestCommon):
         wiz = self._wizard()
         wiz.step = "revisao"
         wiz.action_prev_step()
+        self.assertEqual(wiz.step, "opcionais")
+        wiz.action_prev_step()
         self.assertEqual(wiz.step, "escopo")
 
     def test_full_flow_to_apply_seeds_blocks(self):
-        """Fluxo escopo → revisão → aplicar; Aplicar semeia os blocos."""
+        """Fluxo escopo → opcionais → revisão → aplicar; Aplicar semeia os blocos."""
         wiz = self._wizard()
         self._add_equipment(wiz)
+        wiz.action_next_step()   # → opcionais
+        self.assertEqual(wiz.step, "opcionais")
         wiz.action_next_step()   # → revisão
         self.assertEqual(wiz.step, "revisao")
         wiz.action_apply()

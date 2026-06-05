@@ -128,6 +128,13 @@ class SaleOrderLine(models.Model):
         help="Quantidade pretendida do opcional. Guardada enquanto não aceito "
              "(product_uom_qty fica 0); aplicada quando aceito.",
     )
+    optional_id = fields.Many2one(
+        comodel_name="afr.proposal.optional",
+        string="Catálogo Opcional",
+        copy=True,
+        help="Item de catálogo que originou esta linha opcional de serviço. "
+             "Permite repopular o configurador sem re-busca por produto.",
+    )
 
     @api.onchange("optional_accepted", "optional_qty", "is_proposal_optional")
     def _onchange_optional_sync_qty(self):

@@ -22,7 +22,7 @@ from odoo.tools.misc import formatLang
 
 
 # F8.4/F8.7 — passos do configurador guiado, em ordem.
-_STEP_ORDER = ["escopo", "revisao"]
+_STEP_ORDER = ["escopo", "opcionais", "revisao"]
 
 
 class AfrQualificacaoConfigurator(models.TransientModel):
@@ -52,6 +52,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         inverse_name="wizard_id",
         string="Equipamentos",
     )
+    optional_service_ids = fields.One2many(
+        "afr.qualificacao.configurator.optional", "wizard_id",
+        string="Serviços Opcionais")
+    optional_qualif_ids = fields.One2many(
+        "afr.qualificacao.configurator.optional.qualif", "wizard_id",
+        string="Qualificações Opcionais")
     total_estimated = fields.Monetary(
         compute="_compute_total_estimated",
         currency_field="currency_id",
@@ -72,7 +78,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     step = fields.Selection(
         selection=[
             ("escopo", "1. Escopo"),
-            ("revisao", "2. Revisão"),
+            ("opcionais", "2. Opcionais"),
+            ("revisao", "3. Revisão"),
         ],
         default="escopo",
         required=True,
@@ -299,6 +306,36 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         if cmds:
             self.equipment_line_ids = cmds
 
+        # Opcionais existentes → repopula as duas secções do step Opcionais.
+        opt_lines = so_lines.filtered("is_proposal_optional")
+        svc_cmds, qualif_cmds = [], []
+        for line in opt_lines:
+            if line.qualification_type:
+                qualif_cmds.append((0, 0, {
+                    "equipment_id": line.equipment_id.id,
+                    "qualification_type": line.qualification_type,
+                    "cycle_type_id": line.cycle_type_id.id or False,
+                    "malha_type_id": line.malha_type_id.id or False,
+                    "qty": line.qualif_cycle_qty or 1,
+                    "estimated_hours": line.estimated_hours,
+                    "accepted": line.optional_accepted,
+                }))
+            else:
+                opt_catalog = line.optional_id or self.env[
+                    "afr.proposal.optional"].search(
+                    [("product_id", "=", line.product_id.id)], limit=1)
+                if opt_catalog:
+                    svc_cmds.append((0, 0, {
+                        "optional_id": opt_catalog.id,
+                        "qty": line.optional_qty or line.product_uom_qty or 1.0,
+                        "unit_price": line.price_unit,
+                        "accepted": line.optional_accepted,
+                    }))
+        if svc_cmds:
+            self.optional_service_ids = svc_cmds
+        if qualif_cmds:
+            self.optional_qualif_ids = qualif_cmds
+
     # ------------------------------------------------------------------
     # Apply — recria-do-zero
     # ------------------------------------------------------------------
@@ -498,6 +535,56 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 if hours:
                     c_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, c_vals))
+
+        for opt in self.optional_service_ids:
+            price = opt.unit_price or opt.optional_id.product_id.list_price
+            new_lines.append((0, 0, {
+                "order_id": so.id,
+                "product_id": opt.optional_id.product_id.id,
+                "name": opt.optional_id.name,
+                "is_qualificacao_managed": True,
+                "is_proposal_optional": True,
+                "optional_accepted": opt.accepted,
+                "optional_qty": opt.qty,
+                "optional_id": opt.optional_id.id,
+                "price_unit": price,
+                "product_uom_qty": opt.qty if opt.accepted else 0.0,
+            }))
+
+        for oq in self.optional_qualif_ids:
+            ct = oq.cycle_type_id
+            mt = oq.malha_type_id
+            product = (ct.product_id if ct else mt.product_id if mt else False)
+            if not product:
+                raise UserError(_(
+                    "Qualificação opcional de %s requer Tipo de Ciclo ou "
+                    "Tipo de Malha."
+                ) % (oq.equipment_id.display_name or "?"))
+            hours = oq.estimated_hours or (
+                ct.estimated_hours if ct else mt.estimated_hours if mt else 0.0)
+            base_name = (ct.name if ct else mt.name if mt else _("Opcional"))
+            qty_hours = (oq.qty or 1) * hours
+            vals = {
+                "order_id": so.id,
+                "product_id": product.id,
+                "name": _("%s — %d (opcional)") % (base_name, oq.qty or 1),
+                "is_qualificacao_managed": True,
+                "is_proposal_optional": True,
+                "optional_accepted": oq.accepted,
+                "optional_qty": oq.qty or 1,
+                "qualification_type": oq.qualification_type,
+                "equipment_id": oq.equipment_id.id,
+                "qualif_cycle_qty": oq.qty or 1,
+                "estimated_hours": hours,
+                "product_uom_qty": qty_hours if oq.accepted else 0.0,
+            }
+            if ct:
+                vals["cycle_type_id"] = ct.id
+            if mt:
+                vals["malha_type_id"] = mt.id
+            if oq.qualification_type in ("operational", "calibration"):
+                vals["part"] = "02"
+            new_lines.append((0, 0, vals))
 
         so.write({"order_line": new_lines})
         # F8.2 — aplica o template e semeia blocos da proposta (idempotente —
@@ -1214,3 +1301,59 @@ class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
                     line.unit_price = line.malha_type_id.default_unit_price or prod.list_price
                 if not line.estimated_hours:
                     line.estimated_hours = line.malha_type_id.estimated_hours
+
+
+class AfrQualificacaoConfiguratorOptional(models.TransientModel):
+    _name = "afr.qualificacao.configurator.optional"
+    _description = "Serviço opcional do configurador"
+
+    wizard_id = fields.Many2one("afr.qualificacao.configurator",
+                                required=True, ondelete="cascade")
+    optional_id = fields.Many2one("afr.proposal.optional",
+                                  string="Serviço Opcional", required=True)
+    qty = fields.Float(string="Qtd", default=1.0)
+    unit_price = fields.Monetary(string="Preço Unit.")
+    currency_id = fields.Many2one(related="wizard_id.currency_id")
+    accepted = fields.Boolean(string="Aceito", default=False)
+
+    @api.onchange("optional_id")
+    def _onchange_optional_id(self):
+        for line in self:
+            if line.optional_id:
+                line.qty = line.optional_id.default_qty or 1.0
+                line.unit_price = (line.optional_id.default_price
+                                   or line.optional_id.product_id.list_price)
+
+
+class AfrQualificacaoConfiguratorOptionalQualif(models.TransientModel):
+    _name = "afr.qualificacao.configurator.optional.qualif"
+    _description = "Qualificação opcional do configurador"
+
+    wizard_id = fields.Many2one("afr.qualificacao.configurator",
+                                required=True, ondelete="cascade")
+    equipment_id = fields.Many2one("engc.equipment", string="Equipamento",
+                                   required=True)
+    qualification_type = fields.Selection([
+        ("performance", "QD (Desempenho)"),
+        ("calibration", "Calibração"),
+        ("operational", "QO (Operação)"),
+    ], string="Tipo", required=True, default="performance")
+    cycle_type_id = fields.Many2one("afr.qualificacao.cycle.type",
+                                    string="Tipo de Ciclo")
+    malha_type_id = fields.Many2one("afr.qualificacao.malha.type",
+                                    string="Tipo de Malha")
+    qty = fields.Integer(string="Nº Ciclos/Malhas", default=1)
+    estimated_hours = fields.Float(string="Horas/Ciclo")
+    accepted = fields.Boolean(string="Aceito", default=False)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_id(self):
+        for line in self:
+            if line.cycle_type_id:
+                line.estimated_hours = line.cycle_type_id.estimated_hours
+
+    @api.onchange("malha_type_id")
+    def _onchange_malha_type_id(self):
+        for line in self:
+            if line.malha_type_id:
+                line.estimated_hours = line.malha_type_id.estimated_hours

@@ -137,7 +137,32 @@
                         </field>
                     </div>
 
-                    <!-- ETAPA 2 — REVISÃO -->
+                    <!-- ETAPA 2 — OPCIONAIS -->
+                    <div attrs="{'invisible': [('step', '!=', 'opcionais')]}">
+                        <separator string="Serviços Opcionais"/>
+                        <field name="optional_service_ids">
+                            <tree editable="bottom">
+                                <field name="optional_id"/>
+                                <field name="qty"/>
+                                <field name="unit_price"/>
+                                <field name="accepted" widget="boolean_toggle"/>
+                            </tree>
+                        </field>
+                        <separator string="Qualificações Opcionais"/>
+                        <field name="optional_qualif_ids">
+                            <tree editable="bottom">
+                                <field name="equipment_id"/>
+                                <field name="qualification_type"/>
+                                <field name="cycle_type_id"/>
+                                <field name="malha_type_id"/>
+                                <field name="qty"/>
+                                <field name="estimated_hours"/>
+                                <field name="accepted" widget="boolean_toggle"/>
+                            </tree>
+                        </field>
+                    </div>
+
+                    <!-- ETAPA 3 — REVISÃO -->
                     <div attrs="{'invisible': [('step', '!=', 'revisao')]}">
                         <p>
                             Revise o escopo antes de aplicar ao pedido.

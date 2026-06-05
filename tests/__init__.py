@@ -55,3 +55,6 @@ from . import test_process_type
 
 # Opcional aceito — qty/total/geração condicionados a optional_accepted
 from . import test_optional_accepted
+
+# Fase 2 — opcionais no wizard configurador (serviço + qualificação)
+from . import test_optional_wizard
