@@ -37,8 +37,11 @@
                                         </tr>
                                     </t>
                                 </table>
-                                <p style="font-size: 10px; color: #666; margin-top: 4px;">
-                                    &#9745; = autorizado pelo cliente. Apenas os itens marcados entram no total da proposta.
+                                <p style="font-size: 13px; font-weight: bold; color: #b45309; margin-top: 6px;">
+                                    &#9745; Marque com X os serviços opcionais que deseja CONTRATAR.
+                                </p>
+                                <p style="font-size: 10px; color: #666; margin-top: 2px;">
+                                    Apenas os itens marcados (&#9745;) entram no total da proposta.
                                 </p>
                             </div>
     </template>

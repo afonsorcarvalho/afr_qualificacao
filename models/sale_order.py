@@ -199,6 +199,8 @@ class SaleOrder(models.Model):
         "order_line.price_subtotal",
         "order_line.estimated_hours",
         "order_line.qualif_cycle_qty",
+        "order_line.is_proposal_optional",
+        "order_line.optional_accepted",
         "currency_id",
     )
     def _compute_qualif_subtotals_html(self):
@@ -259,7 +261,7 @@ class SaleOrder(models.Model):
                 'font-weight:bold;font-size:14px;">%s</td></tr>'
                 % (total_hours_str, total_days_str, total_str)
             )
-            order.qualif_subtotals_html = (
+            html = (
                 '<div style="margin-top:12px;">'
                 '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
                 'Subtotais por Equipamento'
@@ -275,6 +277,57 @@ class SaleOrder(models.Model):
                 '<tbody>%s</tbody>'
                 '</table></div>'
             ) % "".join(rows)
+            html += order._qualif_optionals_subtotals_html()
+            order.qualif_subtotals_html = html
+
+    def _qualif_optionals_subtotals_html(self):
+        """Tabela HTML 'Subtotais de Opcionais' (só os aceitos). Vazio se
+        não houver opcionais aceitos. Anexada abaixo dos subtotais por
+        equipamento no painel do form do SO."""
+        self.ensure_one()
+        accepted = self.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.optional_accepted)
+        if not accepted:
+            return ""
+        rows = []
+        total = 0.0
+        for line in accepted:
+            qty = line.optional_qty
+            qty_str = (str(int(qty)) if qty == int(qty)
+                       else formatLang(self.env, qty, digits=2))
+            value = formatLang(self.env, line.price_subtotal,
+                               currency_obj=self.currency_id)
+            rows.append(
+                '<tr><td style="padding:4px 12px;">%s</td>'
+                '<td style="padding:4px 12px;text-align:right;">%s</td>'
+                '<td style="padding:4px 12px;text-align:right;'
+                'font-weight:bold;">%s</td></tr>'
+                % (line.name or "", qty_str, value)
+            )
+            total += line.price_subtotal
+        total_str = formatLang(self.env, total, currency_obj=self.currency_id)
+        rows.append(
+            '<tr style="border-top:2px solid #333;">'
+            '<td style="padding:6px 12px;font-weight:bold;">TOTAL OPCIONAIS</td>'
+            '<td></td>'
+            '<td style="padding:6px 12px;text-align:right;'
+            'font-weight:bold;font-size:14px;">%s</td></tr>' % total_str
+        )
+        return (
+            '<div style="margin-top:12px;">'
+            '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
+            'Subtotais de Opcionais (aceitos)'
+            '</div>'
+            '<table style="border-collapse:collapse;min-width:50%%;'
+            'border:1px solid #ddd;font-size:12px;">'
+            '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
+            '<th style="padding:6px 12px;text-align:left;">Serviço</th>'
+            '<th style="padding:6px 12px;text-align:right;">Qtd</th>'
+            '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
+            '</tr></thead>'
+            '<tbody>%s</tbody>'
+            '</table></div>'
+        ) % "".join(rows)
 
     @api.depends(
         "order_line.is_qualificacao_managed",

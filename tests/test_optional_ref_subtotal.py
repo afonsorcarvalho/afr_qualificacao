@@ -48,3 +48,34 @@ class TestOptionalRefSubtotal(AfrQualificacaoTestCommon):
             "order_id": so.id, "product_id": self._svc().id, "name": "Normal",
             "product_uom_qty": 1.0, "price_unit": 150.0})
         self.assertEqual(line.optional_ref_subtotal, 0.0)
+
+    def _so_with_qualif_line(self):
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self.cycle_cmax.product_id.id,
+            "name": "Ciclo", "is_qualificacao_managed": True,
+            "qualification_type": "performance", "equipment_id": self.equip1.id,
+            "cycle_type_id": self.cycle_cmax.id, "qualif_cycle_qty": 1,
+            "estimated_hours": 2.0, "price_unit": 100.0})
+        return so
+
+    def test_subtotals_html_includes_accepted_optional(self):
+        so = self._so_with_qualif_line()
+        line = self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self._svc().id, "name": "Pasta Opt",
+            "is_proposal_optional": True, "optional_accepted": True,
+            "optional_qty": 1.0, "price_unit": 150.0})
+        line._sync_optional_qty()
+        html = so.qualif_subtotals_html or ""
+        self.assertIn("Subtotais de Opcionais", html)
+        self.assertIn("Pasta Opt", html)
+        self.assertIn("TOTAL OPCIONAIS", html)
+
+    def test_subtotals_html_no_optional_section_when_none_accepted(self):
+        so = self._so_with_qualif_line()
+        self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self._svc().id, "name": "Pasta Opt",
+            "is_proposal_optional": True, "optional_accepted": False,
+            "optional_qty": 1.0, "price_unit": 150.0})
+        html = so.qualif_subtotals_html or ""
+        self.assertNotIn("Subtotais de Opcionais", html)

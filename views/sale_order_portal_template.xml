@@ -512,8 +512,11 @@
                                     </t>
                                 </tbody>
                             </table>
+                            <p style="font-size: 14px; font-weight: bold; color: #b45309;">
+                                &#9745; Marque com X os serviços opcionais que deseja CONTRATAR.
+                            </p>
                             <p class="text-muted" style="font-size: 12px;">
-                                &#9745; = autorizado pelo cliente. Apenas os itens marcados entram no total da proposta.
+                                Apenas os itens marcados (&#9745;) entram no total da proposta.
                                 <t t-if="sale_order.state in ('draft', 'sent')">
                                     <br/>Marque os opcionais desejados — o total atualiza automaticamente.
                                 </t>
