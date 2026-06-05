@@ -151,7 +151,9 @@
                         <separator string="Qualificações Opcionais"/>
                         <field name="optional_qualif_ids">
                             <tree editable="bottom">
-                                <field name="equipment_id"/>
+                                <field name="equipment_id"
+                                       domain="[('client_id','=',parent.partner_id)]"
+                                       options="{'no_create': True}"/>
                                 <field name="qualification_type"/>
                                 <field name="cycle_type_id"/>
                                 <field name="malha_type_id"/>
