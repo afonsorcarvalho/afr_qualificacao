@@ -58,3 +58,6 @@ from . import test_optional_accepted
 
 # Fase 2 — opcionais no wizard configurador (serviço + qualificação)
 from . import test_optional_wizard
+
+# Fase 3 — subtotal de referência dos opcionais (mesmo não aceitos)
+from . import test_optional_ref_subtotal

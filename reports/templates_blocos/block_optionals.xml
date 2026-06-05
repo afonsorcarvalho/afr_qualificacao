@@ -10,28 +10,36 @@
                                 </div>
                                 <table class="qq-table">
                                     <tr>
+                                        <th style="width: 6%;"></th>
                                         <th>Serviço</th>
                                         <th style="width: 10%;">Qtd</th>
-                                        <th style="width: 20%; text-align: right;">Valor Unit.</th>
-                                        <th style="width: 20%; text-align: right;">Subtotal</th>
+                                        <th style="width: 18%; text-align: right;">Valor Unit.</th>
+                                        <th style="width: 18%; text-align: right;">Subtotal (ref.)</th>
                                     </tr>
                                     <t t-foreach="opt_lines" t-as="ol">
                                         <tr>
+                                            <td style="text-align: center; font-size: 13px;">
+                                                <t t-if="ol.optional_accepted">&#9745;</t>
+                                                <t t-else="">&#9744;</t>
+                                            </td>
                                             <td><span t-esc="ol.name"/></td>
                                             <td>
-                                                <span t-esc="int(ol.product_uom_qty) if ol.product_uom_qty == int(ol.product_uom_qty) else ol.product_uom_qty"/>
+                                                <span t-esc="int(ol.optional_qty) if ol.optional_qty == int(ol.optional_qty) else ol.optional_qty"/>
                                             </td>
                                             <td style="text-align: right;">
                                                 <span t-esc="ol.price_unit"
                                                       t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                             </td>
                                             <td style="text-align: right;">
-                                                <span t-esc="ol.price_subtotal"
+                                                <span t-esc="ol.optional_ref_subtotal"
                                                       t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                             </td>
                                         </tr>
                                     </t>
                                 </table>
+                                <p style="font-size: 10px; color: #666; margin-top: 4px;">
+                                    &#9745; = autorizado pelo cliente. Apenas os itens marcados entram no total da proposta.
+                                </p>
                             </div>
     </template>
 </odoo>

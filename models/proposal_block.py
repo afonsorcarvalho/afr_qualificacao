@@ -450,19 +450,22 @@ class AfrProposalBlock(models.Model):
         opt_lines = order.order_line.filtered("is_proposal_optional")
         rows = Markup("").join(
             Markup(
-                "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
+                "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>"
             ) % (
+                "☑" if line.optional_accepted else "☐",
                 escape(line.name or ""),
-                line.product_uom_qty,
+                line.optional_qty,
                 escape(self._money(order, line.price_unit)),
-                escape(self._money(order, line.price_subtotal)),
+                escape(self._money(order, line.optional_ref_subtotal)),
             )
             for line in opt_lines
         )
         return Markup(
-            "<table><thead><tr><th>Serviço</th><th>Qtd</th>"
-            "<th>Valor Unit.</th><th>Subtotal</th></tr></thead>"
+            "<table><thead><tr><th></th><th>Serviço</th><th>Qtd</th>"
+            "<th>Valor Unit.</th><th>Subtotal (ref.)</th></tr></thead>"
             "<tbody>%s</tbody></table>"
+            "<p style='font-size:10px;color:#666'>☑ = autorizado pelo "
+            "cliente. Apenas os itens marcados entram no total.</p>"
         ) % rows
 
     def _html_acceptance(self, order):

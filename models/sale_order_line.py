@@ -135,6 +135,24 @@ class SaleOrderLine(models.Model):
         help="Item de catálogo que originou esta linha opcional de serviço. "
              "Permite repopular o configurador sem re-busca por produto.",
     )
+    optional_ref_subtotal = fields.Monetary(
+        string="Subtotal Referência",
+        compute="_compute_optional_ref_subtotal",
+        currency_field="currency_id",
+        help="Preço de referência do opcional (preço unit. × qtd pretendida), "
+             "mostrado na proposta mesmo quando ainda não aceito.",
+    )
+
+    @api.depends("is_proposal_optional", "price_unit", "optional_qty",
+                 "qualif_cycle_qty", "estimated_hours", "cycle_type_id",
+                 "malha_type_id")
+    def _compute_optional_ref_subtotal(self):
+        for line in self:
+            if line.is_proposal_optional:
+                line.optional_ref_subtotal = (
+                    line.price_unit * line._optional_full_qty())
+            else:
+                line.optional_ref_subtotal = 0.0
 
     @api.onchange("optional_accepted", "optional_qty", "is_proposal_optional")
     def _onchange_optional_sync_qty(self):
@@ -143,18 +161,18 @@ class SaleOrderLine(models.Model):
             if line.is_proposal_optional:
                 line.product_uom_qty = line._optional_target_qty()
 
-    def _optional_target_qty(self):
-        """Qty efetiva de uma linha opcional:
-        - não aceito → 0
-        - aceito + ciclo/malha → HORAS (qualif_cycle_qty × estimated_hours)
-        - aceito + serviço → optional_qty
-        """
+    def _optional_full_qty(self):
+        """Qty de uma linha opcional SE aceita (ignora o estado aceito):
+        ciclo/malha → qualif_cycle_qty × estimated_hours; serviço → optional_qty."""
         self.ensure_one()
-        if not self.optional_accepted:
-            return 0.0
         if self.cycle_type_id or self.malha_type_id:
             return (self.qualif_cycle_qty or 0) * (self.estimated_hours or 0.0)
         return self.optional_qty
+
+    def _optional_target_qty(self):
+        """Qty efetiva: 0 se não aceito, senão a qty cheia."""
+        self.ensure_one()
+        return self._optional_full_qty() if self.optional_accepted else 0.0
 
     def _sync_optional_qty(self):
         """Aplica a regra de qty dos opcionais (chamável fora de onchange)."""
