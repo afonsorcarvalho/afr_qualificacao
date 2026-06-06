@@ -138,6 +138,68 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 '</tr></thead><tbody>%s</tbody></table>'
             ) % "".join(rows)
 
+    optional_summary_html = fields.Html(
+        compute="_compute_optional_summary_html",
+        string="Resumo Opcionais",
+        sanitize=False,
+    )
+
+    @api.depends(
+        "optional_service_ids.accepted", "optional_service_ids.qty",
+        "optional_service_ids.unit_price",
+        "optional_qualif_ids.accepted", "optional_qualif_ids.qty",
+        "optional_qualif_ids.estimated_hours",
+        "optional_qualif_ids.cycle_type_id", "optional_qualif_ids.malha_type_id",
+    )
+    def _compute_optional_summary_html(self):
+        for wiz in self:
+            rows = []
+            total = 0.0
+            for opt in wiz.optional_service_ids.filtered("accepted"):
+                sub = (opt.unit_price or 0.0) * (opt.qty or 0.0)
+                total += sub
+                rows.append(
+                    '<tr><td style="padding:4px 12px;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
+                    % (opt.optional_id.name or "",
+                       formatLang(self.env, opt.qty or 0.0, digits=2),
+                       formatLang(self.env, sub, currency_obj=wiz.currency_id))
+                )
+            for oq in wiz.optional_qualif_ids.filtered("accepted"):
+                prod = (oq.cycle_type_id.product_id
+                        or oq.malha_type_id.product_id)
+                hours = (oq.qty or 0) * (oq.estimated_hours or 0.0)
+                sub = hours * (prod.list_price if prod else 0.0)
+                total += sub
+                name = (oq.cycle_type_id.name or oq.malha_type_id.name or "?")
+                rows.append(
+                    '<tr><td style="padding:4px 12px;">%s (opcional)</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%d</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
+                    % (name, oq.qty or 1,
+                       formatLang(self.env, sub, currency_obj=wiz.currency_id))
+                )
+            if not rows:
+                wiz.optional_summary_html = ""
+                continue
+            rows.append(
+                '<tr style="border-top:2px solid #333;">'
+                '<td style="padding:6px 12px;font-weight:bold;">TOTAL OPCIONAIS</td>'
+                '<td></td>'
+                '<td style="padding:6px 12px;text-align:right;font-weight:bold;">%s</td>'
+                '</tr>' % formatLang(self.env, total, currency_obj=wiz.currency_id)
+            )
+            wiz.optional_summary_html = (
+                '<table style="border-collapse:collapse;width:100%%;'
+                'border:1px solid #ddd;font-size:13px;">'
+                '<thead><tr style="background:#f9f9f9;border-bottom:1px solid #ccc;">'
+                '<th style="padding:6px 12px;text-align:left;">Opcional Selecionado</th>'
+                '<th style="padding:6px 12px;text-align:right;">Qtd</th>'
+                '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
+                '</tr></thead><tbody>%s</tbody></table>'
+            ) % "".join(rows)
+
     @api.depends("equipment_line_ids.subtotal")
     def _compute_total_estimated(self):
         for wiz in self:

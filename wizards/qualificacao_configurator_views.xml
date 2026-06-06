@@ -170,6 +170,10 @@
                             Revise o escopo antes de aplicar ao pedido.
                         </p>
                         <field name="review_summary_html" nolabel="1" readonly="1"/>
+                        <separator string="Opcionais Selecionados"
+                                   attrs="{'invisible': [('optional_summary_html', 'in', (False, ''))]}"/>
+                        <field name="optional_summary_html" nolabel="1" readonly="1"
+                               attrs="{'invisible': [('optional_summary_html', 'in', (False, ''))]}"/>
                         <group>
                             <group/>
                             <group string="Totais">
