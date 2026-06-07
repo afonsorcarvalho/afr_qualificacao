@@ -54,15 +54,17 @@
                        widget="boolean_toggle" optional="show"/>
             </xpath>
 
-            <!-- Painel "Subtotais por Equipamento" — visível quando SO
-                 tem linhas de qualificação. Section lines no Odoo usam
-                 colspan=99, impossível injetar coluna por section, então
-                 mostra resumo agregado abaixo do tree de order_line. -->
+            <!-- has_qualif_lines: campo invisível necessário para o attrs do qualif_subtotals_html -->
             <xpath expr="//field[@name='order_line']" position="after">
                 <field name="has_qualif_lines" invisible="1"/>
+            </xpath>
+
+            <!-- Subtotais por equipamento: lado direito (sale_total group), acima do tax_totals -->
+            <xpath expr="//group[@name='sale_total']/field[@name='tax_totals']" position="before">
                 <field name="qualif_subtotals_html"
                        nolabel="1"
                        readonly="1"
+                       colspan="2"
                        attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
             </xpath>
 

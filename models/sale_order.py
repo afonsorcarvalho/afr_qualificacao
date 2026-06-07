@@ -262,11 +262,11 @@ class SaleOrder(models.Model):
                 % (total_hours_str, total_days_str, total_str)
             )
             html = (
-                '<div style="margin-top:12px;">'
+                '<div style="margin-top:12px;width:100%%;">'
                 '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
                 'Subtotais por Equipamento'
                 '</div>'
-                '<table style="border-collapse:collapse;min-width:50%%;'
+                '<table style="border-collapse:collapse;width:100%%;'
                 'border:1px solid #ddd;font-size:12px;">'
                 '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
                 '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
@@ -314,11 +314,11 @@ class SaleOrder(models.Model):
             'font-weight:bold;font-size:14px;">%s</td></tr>' % total_str
         )
         return (
-            '<div style="margin-top:12px;">'
+            '<div style="margin-top:12px;width:100%%;">'
             '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
             'Subtotais de Opcionais (aceitos)'
             '</div>'
-            '<table style="border-collapse:collapse;min-width:50%%;'
+            '<table style="border-collapse:collapse;width:100%%;'
             'border:1px solid #ddd;font-size:12px;">'
             '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
             '<th style="padding:6px 12px;text-align:left;">Serviço</th>'

@@ -433,24 +433,28 @@
                             </table>
                         </div>
                         <table class="lq-total-table">
+                            <t t-set="equip_total" t-value="sum(eq['subtotal'] for eq in summary)"/>
+                            <t t-set="optional_total" t-value="sum(l.price_subtotal for l in sale_order.order_line if l.is_proposal_optional and l.optional_accepted)"/>
                             <tr>
                                 <td class="lq-tot-label">Subtotal:</td>
                                 <td class="lq-tot-value">
-                                    <span t-field="sale_order.amount_untaxed"
+                                    <span t-esc="equip_total"
                                           t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
                                 </td>
                             </tr>
-                            <tr>
-                                <td class="lq-tot-label">Impostos:</td>
-                                <td class="lq-tot-value">
-                                    <span t-field="sale_order.amount_tax"
-                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                </td>
-                            </tr>
+                            <t t-if="optional_total">
+                                <tr>
+                                    <td class="lq-tot-label">Opcionais:</td>
+                                    <td class="lq-tot-value">
+                                        <span t-esc="optional_total"
+                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                    </td>
+                                </tr>
+                            </t>
                             <tr class="lq-total-grand">
                                 <td class="lq-tot-label">TOTAL GERAL:</td>
                                 <td class="lq-tot-value">
-                                    <span t-field="sale_order.amount_total"
+                                    <span t-esc="equip_total + optional_total"
                                           t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
                                 </td>
                             </tr>
