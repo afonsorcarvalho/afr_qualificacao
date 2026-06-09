@@ -117,28 +117,6 @@ class AfrQualificacao(models.Model):
         string="Observações",
         help="Resumo dos principais detalhes coletados durante a qualificação.",
     )
-    deviation_ids = fields.One2many(
-        comodel_name="afr.qualificacao.deviation",
-        inverse_name="qualificacao_id",
-        string="Desvios",
-        help="Registros de desvios identificados durante as etapas de qualificação.",
-    )
-    step_ids = fields.One2many(
-        comodel_name="afr.qualificacao.step",
-        inverse_name="qualificacao_id",
-        string="Etapas de teste",
-        help="Lista de roteiros executados para validar o equipamento.",
-    )
-    step_count = fields.Integer(
-        string="Total de etapas",
-        compute="_compute_step_count",
-        help="Total de etapas vinculadas a esta qualificação.",
-    )
-    deviation_count = fields.Integer(
-        string="Total de desvios",
-        compute="_compute_deviation_count",
-        help="Total de desvios registrados na qualificação.",
-    )
     docx_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.docx.template",
         string="Template DOCX",
@@ -536,18 +514,6 @@ class AfrQualificacao(models.Model):
                 record.partner_id = record.sale_order_id.partner_id
             elif record.equipment_id and not record.partner_id:
                 record.partner_id = record.equipment_id.client_id
-
-    @api.depends("step_ids")
-    def _compute_step_count(self):
-        """Calcula a quantidade de etapas associadas à qualificação."""
-        for record in self:
-            record.step_count = len(record.step_ids)
-
-    @api.depends("deviation_ids")
-    def _compute_deviation_count(self):
-        """Calcula a quantidade de desvios associados à qualificação."""
-        for record in self:
-            record.deviation_count = len(record.deviation_ids)
 
     # ------------------------------------------------------------------
     # Computes — sub-records + agregações comerciais
@@ -1308,105 +1274,6 @@ class AfrQualificacao(models.Model):
             "url": "/web/content/%s" % attachment.id,
             "target": "new",
         }
-
-
-class AfrQualificacaoStep(models.Model):
-    """Etapas executadas durante uma qualificação de equipamento."""
-
-    _name = "afr.qualificacao.step"
-    _description = "Etapa de Qualificação"
-    _order = "sequence, id"
-
-    qualificacao_id = fields.Many2one(
-        comodel_name="afr.qualificacao",
-        string="Qualificação",
-        required=True,
-        ondelete="cascade",
-        help="Qualificação à qual esta etapa pertence.",
-    )
-    name = fields.Char(
-        string="Descrição da etapa",
-        required=True,
-        help="Identificação clara da etapa executada.",
-    )
-    sequence = fields.Integer(
-        string="Sequência",
-        default=10,
-        help="Ordem de execução sugerida para a etapa.",
-    )
-    acceptance_criteria = fields.Text(
-        string="Critérios de aceitação",
-        help="Condições esperadas conforme protocolos da etapa.",
-    )
-    result_notes = fields.Text(
-        string="Resultados observados",
-        help="Registro textual dos resultados obtidos na execução.",
-    )
-    approved = fields.Selection(
-        selection=[
-            ("pending", "Pendente"),
-            ("yes", "Aprovado"),
-            ("no", "Reprovado"),
-        ],
-        string="Resultado",
-        default="pending",
-        help="Resultado final da etapa conforme validação realizada.",
-    )
-    deviation_ids = fields.One2many(
-        comodel_name="afr.qualificacao.deviation",
-        inverse_name="step_id",
-        string="Desvios associados",
-        help="Desvios vinculados a esta etapa específica.",
-    )
-
-
-class AfrQualificacaoDeviation(models.Model):
-    """Registra desvios identificados durante a qualificação."""
-
-    _name = "afr.qualificacao.deviation"
-    _description = "Desvio de Qualificação"
-    _order = "create_date desc"
-
-    qualificacao_id = fields.Many2one(
-        comodel_name="afr.qualificacao",
-        string="Qualificação",
-        required=True,
-        ondelete="cascade",
-        help="Qualificação em que o desvio foi identificado.",
-    )
-    step_id = fields.Many2one(
-        comodel_name="afr.qualificacao.step",
-        string="Etapa",
-        ondelete="set null",
-        help="Etapa da qualificação em que o desvio ocorreu.",
-    )
-    name = fields.Char(
-        string="Título do desvio",
-        required=True,
-        help="Título resumido para facilitar a identificação do desvio.",
-    )
-    description = fields.Text(
-        string="Descrição detalhada",
-        help="Detalhes completos do desvio encontrado durante a qualificação.",
-    )
-    corrective_action = fields.Text(
-        string="Ação corretiva",
-        help="Plano de ação definido para tratar o desvio identificado.",
-    )
-    responsible_id = fields.Many2one(
-        comodel_name="res.users",
-        string="Responsável",
-        help="Usuário que acompanhará a execução da ação corretiva.",
-    )
-    deadline_date = fields.Date(
-        string="Prazo",
-        help="Data limite desejada para conclusão da ação corretiva.",
-    )
-    resolved = fields.Boolean(
-        string="Resolvido",
-        default=False,
-        help="Indica se a ação corretiva foi implementada.",
-    )
 
 
 class AfrQualificacaoQdPointSnapshot(models.Model):

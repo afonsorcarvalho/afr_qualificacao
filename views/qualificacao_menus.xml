@@ -49,15 +49,6 @@
     />
 
     <menuitem
-        id="menu_afr_qualificacao_deviation"
-        name="Desvios"
-        parent="menu_afr_qualificacao_root"
-        action="afr_qualificacao.action_afr_qualificacao_deviation"
-        sequence="20"
-        groups="afr_qualificacao.group_afr_qualificacao_user"
-    />
-
-    <menuitem
         id="menu_afr_qualificacao_config"
         name="Configurações"
         parent="menu_afr_qualificacao_root"

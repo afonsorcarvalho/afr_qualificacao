@@ -67,3 +67,6 @@ from . import test_portal_optional
 
 # Descrição de venda por variante (product.product)
 from . import test_variant_description
+
+# 16.0.5.20.0 — remoção step/deviation + aba Coletas
+from . import test_remove_models_coletas

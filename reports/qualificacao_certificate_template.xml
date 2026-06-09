@@ -59,30 +59,6 @@
                             </div>
                         </div>
 
-                        <br/>
-                        <h4>Etapas de Qualificação</h4>
-                        <table class="table table-sm table-bordered" t-if="o.step_ids">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Etapa</th>
-                                    <th>Critério</th>
-                                    <th>Resultado</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr t-foreach="o.step_ids" t-as="step">
-                                    <td><span t-field="step.sequence"/></td>
-                                    <td><span t-field="step.name"/></td>
-                                    <td><span t-field="step.acceptance_criteria"/></td>
-                                    <td><span t-field="step.result_notes"/></td>
-                                    <td><span t-field="step.approved"/></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <p t-if="not o.step_ids"><em>Sem etapas registradas.</em></p>
-
                         <!-- QD: tabela de ciclos -->
                         <t t-if="o.qualification_type == 'performance' and o.cycle_ids">
                             <h4>Ciclos Executados (QD)</h4>
@@ -132,29 +108,6 @@
                                         <td><span t-field="m.sensor_serial"/></td>
                                         <td><span t-field="m.state"/></td>
                                         <td><span t-field="m.executed_date" t-options="{'widget': 'date'}"/></td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </t>
-
-                        <!-- Desvios -->
-                        <t t-if="o.deviation_ids">
-                            <h4>Desvios Identificados</h4>
-                            <table class="table table-sm table-bordered">
-                                <thead>
-                                    <tr>
-                                        <th>Título</th>
-                                        <th>Descrição</th>
-                                        <th>Ação Corretiva</th>
-                                        <th>Resolvido</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr t-foreach="o.deviation_ids" t-as="dev">
-                                        <td><span t-field="dev.name"/></td>
-                                        <td><span t-field="dev.description"/></td>
-                                        <td><span t-field="dev.corrective_action"/></td>
-                                        <td><span t-field="dev.resolved"/></td>
                                     </tr>
                                 </tbody>
                             </table>
