@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.5.18.0",
+    "version": "16.0.5.19.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -168,6 +168,7 @@
         "views/standard_views.xml",
         "views/cycle_type_views.xml",
         "views/malha_type_views.xml",
+        "views/product_product_views.xml",
         "views/config_template_views.xml",
         # F8.1 — Proposta LEGO: views master data (actions; menus em qualificacao_menus.xml)
         "views/proposal_section_views.xml",

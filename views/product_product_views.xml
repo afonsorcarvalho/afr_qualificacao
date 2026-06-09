@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form da variante: campo abaixo da descrição de vendas do template -->
+    <record id="product_variant_form_variant_desc" model="ir.ui.view">
+        <field name="name">product.product.form.variant.desc</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_normal_form_view"/>
+        <field name="arch" type="xml">
+            <field name="description_sale" position="after">
+                <field name="variant_description_sale"
+                       placeholder="Descrição específica desta variante (substitui a do template quando preenchida)"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Tree de variantes: coluna opcional (oculta por padrão) -->
+    <record id="product_variant_tree_variant_desc" model="ir.ui.view">
+        <field name="name">product.product.tree.variant.desc</field>
+        <field name="model">product.product</field>
+        <field name="inherit_id" ref="product.product_product_tree_view"/>
+        <field name="arch" type="xml">
+            <field name="default_code" position="after">
+                <field name="variant_description_sale" optional="hide"/>
+            </field>
+        </field>
+    </record>
+
+</odoo>
