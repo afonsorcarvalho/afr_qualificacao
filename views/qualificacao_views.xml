@@ -313,17 +313,16 @@
                                     <field name="invoice_count" readonly="1"/>
                                 </group>
                             </group>
-                            <group string="Linhas do Pedido">
-                                <field name="sale_order_line_ids" nolabel="1">
-                                    <tree>
-                                        <field name="product_id"/>
-                                        <field name="qualification_type"/>
-                                        <field name="product_uom_qty"/>
-                                        <field name="qty_delivered"/>
-                                        <field name="invoice_status"/>
-                                    </tree>
-                                </field>
-                            </group>
+                            <separator string="Linhas do Pedido"/>
+                            <field name="sale_order_line_ids" nolabel="1">
+                                <tree>
+                                    <field name="product_id"/>
+                                    <field name="qualification_type"/>
+                                    <field name="product_uom_qty"/>
+                                    <field name="qty_delivered"/>
+                                    <field name="invoice_status"/>
+                                </tree>
+                            </field>
                         </page>
                         <page string="Observações">
                             <field name="notes" widget="html" options="{'codeview': True}"/>
