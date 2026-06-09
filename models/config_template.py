@@ -8,7 +8,8 @@ Filtrável por `equipment_category_id` para sugerir templates relevantes ao
 tipo de equipamento sendo orçado.
 """
 
-from odoo import api, fields, models
+from odoo import api, fields, models, _
+from odoo.exceptions import ValidationError
 
 
 class AfrQualificacaoConfigTemplate(models.Model):
@@ -173,8 +174,7 @@ class AfrQualificacaoConfigTemplateQd(models.Model):
     def _check_qty_positive(self):
         for record in self:
             if record.qty < 1:
-                from odoo.exceptions import ValidationError
-                raise ValidationError("Quantidade deve ser ≥ 1.")
+                raise ValidationError(_("Quantidade deve ser ≥ 1."))
 
 
 class AfrQualificacaoConfigTemplateQo(models.Model):
@@ -215,8 +215,7 @@ class AfrQualificacaoConfigTemplateQo(models.Model):
     def _check_qty_positive(self):
         for record in self:
             if record.qty < 1:
-                from odoo.exceptions import ValidationError
-                raise ValidationError("Quantidade deve ser ≥ 1.")
+                raise ValidationError(_("Quantidade deve ser ≥ 1."))
 
 
 class AfrQualificacaoConfigTemplateCalib(models.Model):
@@ -256,5 +255,4 @@ class AfrQualificacaoConfigTemplateCalib(models.Model):
     def _check_qty_positive(self):
         for record in self:
             if record.qty < 1:
-                from odoo.exceptions import ValidationError
-                raise ValidationError("Quantidade deve ser ≥ 1.")
+                raise ValidationError(_("Quantidade deve ser ≥ 1."))

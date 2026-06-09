@@ -8,14 +8,14 @@ aplicáveis a cada categoria de equipamento (ex: autoclave vs estufa) durante
 o wizard configurador.
 """
 
-from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo import fields, models
 
 
 class AfrQualificacaoCycleType(models.Model):
     """Tipo de ciclo de qualificação de desempenho (QD)."""
 
     _name = "afr.qualificacao.cycle.type"
+    _inherit = "afr.product.service.mixin"
     _description = "Tipo de Ciclo de Qualificação (QD)"
     _order = "sequence, name"
 
@@ -102,14 +102,3 @@ class AfrQualificacaoCycleType(models.Model):
         default=lambda self: self.env.company,
     )
     active = fields.Boolean(default=True)
-
-    @api.constrains("product_id")
-    def _check_product_is_service(self):
-        for record in self:
-            if record.product_id and record.product_id.type != "service":
-                raise ValidationError(
-                    _(
-                        "Produto '%s' não é do tipo serviço."
-                    )
-                    % record.product_id.display_name
-                )

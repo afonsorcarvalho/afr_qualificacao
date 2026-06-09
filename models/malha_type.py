@@ -8,14 +8,14 @@ Reusa `engc.equipment.category` para filtrar malhas por categoria de
 equipamento no wizard configurador.
 """
 
-from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo import fields, models
 
 
 class AfrQualificacaoMalhaType(models.Model):
     """Tipo de malha de calibração."""
 
     _name = "afr.qualificacao.malha.type"
+    _inherit = "afr.product.service.mixin"
     _description = "Tipo de Malha de Calibração"
     _order = "sensor_kind_id, sequence, name"
 
@@ -105,14 +105,3 @@ class AfrQualificacaoMalhaType(models.Model):
         default=lambda self: self.env.company,
     )
     active = fields.Boolean(default=True)
-
-    @api.constrains("product_id")
-    def _check_product_is_service(self):
-        for record in self:
-            if record.product_id and record.product_id.type != "service":
-                raise ValidationError(
-                    _(
-                        "Produto '%s' não é do tipo serviço."
-                    )
-                    % record.product_id.display_name
-                )

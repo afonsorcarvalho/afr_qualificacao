@@ -1,5 +1,6 @@
 """Inicializa os modelos do módulo afr_qualificacao."""
 
+from . import product_service_mixin
 from . import sensor_kind
 from . import qualificacao_standard
 from . import cycle_type

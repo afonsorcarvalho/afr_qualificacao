@@ -8,14 +8,14 @@ Cada opcional aponta para um `product.product` de serviço; quando
 selecionado no wizard configurador, vira uma linha da `sale.order`.
 """
 
-from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo import fields, models
 
 
 class AfrProposalOptional(models.Model):
     """Serviço opcional/extra disponível para incluir numa cotação."""
 
     _name = "afr.proposal.optional"
+    _inherit = "afr.product.service.mixin"
     _description = "Serviço Opcional de Proposta"
     _order = "sequence, name"
 
@@ -67,12 +67,3 @@ class AfrProposalOptional(models.Model):
     )
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
-
-    @api.constrains("product_id")
-    def _check_product_is_service(self):
-        for record in self:
-            if record.product_id and record.product_id.type != "service":
-                raise ValidationError(
-                    _("Produto '%s' não é do tipo serviço.")
-                    % record.product_id.display_name
-                )
