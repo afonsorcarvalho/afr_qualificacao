@@ -12,9 +12,15 @@
                         <field name="procedimento_id"/>
                         <field name="overwrite_existing"/>
                     </group>
-                    <group string="Qualificações alvo">
-                        <field name="qualificacao_ids" nolabel="1" widget="many2many_tags"/>
-                    </group>
+                    <separator string="Qualificações alvo"/>
+                    <field name="qualificacao_ids" nolabel="1">
+                        <tree>
+                            <field name="name"/>
+                            <field name="equipment_id"/>
+                            <field name="qualification_type"/>
+                            <field name="state"/>
+                        </tree>
+                    </field>
                 </sheet>
                 <footer>
                     <button name="action_apply" type="object"
