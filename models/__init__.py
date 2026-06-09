@@ -28,3 +28,4 @@ from . import resource_plan              # F10 (16.0.5.0.0)
 from . import engc_equipment             # F10.5 (16.0.5.4.0)
 from . import res_partner                 # F10.6 (16.0.5.5.0)
 from . import engc_equipment_category
+from . import product_product

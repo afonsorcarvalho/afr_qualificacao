@@ -64,3 +64,6 @@ from . import test_optional_ref_subtotal
 
 # Fase 4 — toggle de opcional pelo portal
 from . import test_portal_optional
+
+# Descrição de venda por variante (product.product)
+from . import test_variant_description
