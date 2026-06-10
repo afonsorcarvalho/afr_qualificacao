@@ -91,7 +91,7 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
             {"equipment_id": self.equip1.id, "do_qi": True},
         ])
         qualif = so.qualificacao_ids
-        # proc_qi tem 2 items target=qualificacao → 2 collect.items
+        # proc_category tem 2 items QI target=qualificacao → 2 collect.items
         self.assertEqual(len(qualif.collect_item_ids), 2)
         names = qualif.collect_item_ids.mapped("name")
         self.assertIn("Foto plaqueta", names)
@@ -103,7 +103,7 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
             "qd_line_ids": [(0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 3})],
         }])
         qd = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "performance")
-        # proc_qd_autoclave: 2 items cycle + 1 qualificacao = 2*3 + 1 = 7
+        # proc_category (fase QD): 2 items cycle + 1 qualificacao = 2*3 + 1 = 7
         self.assertEqual(len(qd.collect_item_ids), 7)
         cycle_items = qd.collect_item_ids.filtered(lambda c: c.cycle_id)
         self.assertEqual(len(cycle_items), 6)  # 2 items × 3 cycles

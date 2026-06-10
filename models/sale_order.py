@@ -1117,18 +1117,21 @@ class SaleOrder(models.Model):
 
                 # F3 (16.0.3.2.0): explode procedimento default em collect.items
                 # sudo: vendedor pode confirmar SO sem precisar de grupos qualif
-                proc = Procedimento.sudo().resolve_for(qtype, equipment.category_id)
+                # F1 16.0.6.0.0: 1 proc por categoria; filtra itens pela fase (qtype)
+                proc = Procedimento.sudo().resolve_for(equipment.category_id)
                 if proc:
-                    self._explode_collect_items(CollectItem.sudo(), qualif, proc)
+                    self._explode_collect_items(CollectItem.sudo(), qualif, proc, qtype)
 
-    def _explode_collect_items(self, CollectItem, qualif, procedimento):
-        """F3: Cria N collect.items por procedimento.item conforme target_level.
+    def _explode_collect_items(self, CollectItem, qualif, procedimento, phase):
+        """F3/F1: Cria N collect.items por procedimento.item conforme target_level.
 
+        Filtra os itens do procedimento pela `phase` da qualificação (F1).
         target_level=qualificacao → 1 item por qualif
         target_level=cycle → 1 item por cycle existente (qualif QD)
         target_level=malha → 1 item por malha existente (qualif Calib)
         """
-        for pi in procedimento.item_ids:
+        items = procedimento.item_ids.filtered(lambda pi: pi.phase == phase)
+        for pi in items:
             base_vals = {
                 "name": pi.name,
                 "sequence": pi.sequence,
