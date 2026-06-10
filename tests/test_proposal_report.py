@@ -129,6 +129,39 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         html = self._render(so)
         self.assertNotIn("qq-equip-schedule", html)
 
+    def test_cycle_specs_line_overrides_cycle_type(self):
+        """Proposta lê specs da LINHA quando preenchidas; fallback no cycle_type."""
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        prod = self.cycle_cmax.product_id
+        common = {
+            "order_id": so.id, "product_id": prod.id,
+            "is_qualificacao_managed": True, "qualification_type": "performance",
+            "equipment_id": self.equip1.id, "cycle_type_id": self.cycle_cmax.id,
+            "qualif_cycle_qty": 1, "estimated_hours": 1.0,
+        }
+        self.env["sale.order.line"].create({
+            **common, "name": "Override",
+            "temperature": "999°C", "duration": "99 min", "load_type": "vazio",
+        })
+        self.env["sale.order.line"].create({**common, "name": "Fallback"})
+        specs = so._qualif_cycle_specs()
+        rows = specs[0]["rows"]
+        # Ordenar por name para garantir ordem determinística
+        rows_by_name = {r["name"]: r for r in rows}
+        # A linha override usa cycle_type.name como "name" no row, mas
+        # podemos verificar pelas specs: uma linha deve ter 999°C e outra 134°C
+        temps = {r["temperature"] for r in rows}
+        self.assertIn("999°C", temps, "Linha com override deve mostrar 999°C")
+        self.assertIn("134°C", temps, "Linha sem override deve cair no cycle_type (134°C)")
+        # Verificar a linha override completa
+        override_row = next(r for r in rows if r["temperature"] == "999°C")
+        self.assertEqual(override_row["duration"], "99 min")
+        self.assertEqual(override_row["load_type"], "Câmara Vazia")
+        # Verificar a linha fallback
+        fallback_row = next(r for r in rows if r["temperature"] == "134°C")
+        self.assertEqual(fallback_row["duration"], "7 min")
+        self.assertEqual(fallback_row["load_type"], "Com Carga")
+
     def test_render_schedule_block(self):
         """Bloco schedule renderiza tabela equipamento × horas × dias."""
         self.cycle_cmax.estimated_hours = 2.0

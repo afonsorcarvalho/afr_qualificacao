@@ -421,8 +421,8 @@ class SaleOrder(models.Model):
                         subtype = "cycle_type"
                         # F8.16 — bullets QO/QD precisam de temp/tempo
                         # esteril pra exibir junto do ciclo no Escopo.
-                        extra["temperature"] = line.cycle_type_id.temperature or ""
-                        extra["duration"] = line.cycle_type_id.duration or ""
+                        extra["temperature"] = line.temperature or line.cycle_type_id.temperature or ""
+                        extra["duration"] = line.duration or line.cycle_type_id.duration or ""
                     elif line.malha_type_id:
                         # F10.4 — calib na proposta usa a DESCRIÇÃO da linha
                         # (line.name sem o sufixo "— N malha(s)"), não o nome
@@ -827,8 +827,8 @@ class SaleOrder(models.Model):
             rows.append({
                 "name": line.cycle_type_id.name,
                 "qty": qty,
-                "temperature": line.cycle_type_id.temperature or "",
-                "duration": line.cycle_type_id.duration or "",
+                "temperature": line.temperature or line.cycle_type_id.temperature or "",
+                "duration": line.duration or line.cycle_type_id.duration or "",
                 "estimated_hours_total": hours * qty,
             })
         return rows
@@ -864,9 +864,11 @@ class SaleOrder(models.Model):
                 rows.append({
                     "name": cycle_type.name,
                     "qty": qty,
-                    "temperature": cycle_type.temperature or "",
-                    "duration": cycle_type.duration or "",
-                    "load_type": load_labels.get(cycle_type.load_type, ""),
+                    "temperature": line.temperature or cycle_type.temperature or "",
+                    "duration": line.duration or cycle_type.duration or "",
+                    "load_type": load_labels.get(
+                        line.load_type or cycle_type.load_type, ""
+                    ),
                     "estimated_hours_total": hours * qty,
                 })
             result.append({
