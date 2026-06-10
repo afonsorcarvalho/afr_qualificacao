@@ -95,39 +95,6 @@ class AfrQualificacaoProcedimento(models.Model):
         copy=True,
         string="Itens (esperados)",
     )
-    # F1: facetas por fase (mesma relação, domain disjunto) p/ o editor notebook.
-    # Distintas de item_ids p/ que o default_phase do context funcione por aba.
-    # copy=False: a duplicação é feita só por item_ids (evita cópia múltipla).
-    item_installation_ids = fields.One2many(
-        "afr.qualificacao.procedimento.item", "procedimento_id",
-        domain=[("phase", "=", "installation")],
-        context={"default_phase": "installation"},
-        string="Itens QI", copy=False,
-    )
-    item_operational_ids = fields.One2many(
-        "afr.qualificacao.procedimento.item", "procedimento_id",
-        domain=[("phase", "=", "operational")],
-        context={"default_phase": "operational"},
-        string="Itens QO", copy=False,
-    )
-    item_performance_ids = fields.One2many(
-        "afr.qualificacao.procedimento.item", "procedimento_id",
-        domain=[("phase", "=", "performance")],
-        context={"default_phase": "performance"},
-        string="Itens QD", copy=False,
-    )
-    item_software_ids = fields.One2many(
-        "afr.qualificacao.procedimento.item", "procedimento_id",
-        domain=[("phase", "=", "software")],
-        context={"default_phase": "software"},
-        string="Itens QS", copy=False,
-    )
-    item_calibration_ids = fields.One2many(
-        "afr.qualificacao.procedimento.item", "procedimento_id",
-        domain=[("phase", "=", "calibration")],
-        context={"default_phase": "calibration"},
-        string="Itens Calibração", copy=False,
-    )
     item_count = fields.Integer(compute="_compute_item_count")
 
     _sql_constraints = [
@@ -142,36 +109,6 @@ class AfrQualificacaoProcedimento(models.Model):
     def _compute_item_count(self):
         for r in self:
             r.item_count = len(r.item_ids)
-
-    @api.onchange("item_installation_ids")
-    def _onchange_stamp_phase_installation(self):
-        for it in self.item_installation_ids:
-            if it.phase != "installation":
-                it.phase = "installation"
-
-    @api.onchange("item_operational_ids")
-    def _onchange_stamp_phase_operational(self):
-        for it in self.item_operational_ids:
-            if it.phase != "operational":
-                it.phase = "operational"
-
-    @api.onchange("item_performance_ids")
-    def _onchange_stamp_phase_performance(self):
-        for it in self.item_performance_ids:
-            if it.phase != "performance":
-                it.phase = "performance"
-
-    @api.onchange("item_software_ids")
-    def _onchange_stamp_phase_software(self):
-        for it in self.item_software_ids:
-            if it.phase != "software":
-                it.phase = "software"
-
-    @api.onchange("item_calibration_ids")
-    def _onchange_stamp_phase_calibration(self):
-        for it in self.item_calibration_ids:
-            if it.phase != "calibration":
-                it.phase = "calibration"
 
     @api.model
     def resolve_for(self, equipment_category):
