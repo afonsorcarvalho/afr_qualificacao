@@ -169,3 +169,18 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         self.assertEqual(len(qualif.collect_item_ids), 2)
         self.assertIn("Foto plaqueta", names)
         self.assertNotIn("Dados qualificador térmico", names)  # item QD fica de fora
+
+    # ─────────────────────────────────────────────────────────────
+    # Facetas por fase do editor (One2many distintas, domain disjunto)
+    # ─────────────────────────────────────────────────────────────
+    def test_phase_facet_fields_filter(self):
+        p = self.proc_category
+        self.assertEqual(set(p.item_installation_ids.mapped("phase")), {"installation"})
+        self.assertEqual(set(p.item_performance_ids.mapped("phase")), {"performance"})
+        self.assertEqual(set(p.item_calibration_ids.mapped("phase")), {"calibration"})
+        self.assertFalse(p.item_operational_ids)
+        self.assertFalse(p.item_software_ids)
+        # união das facetas == item_ids completo
+        union = (p.item_installation_ids | p.item_performance_ids
+                 | p.item_calibration_ids)
+        self.assertEqual(union, p.item_ids)

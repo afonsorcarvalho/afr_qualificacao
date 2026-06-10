@@ -95,6 +95,39 @@ class AfrQualificacaoProcedimento(models.Model):
         copy=True,
         string="Itens (esperados)",
     )
+    # F1: facetas por fase (mesma relação, domain disjunto) p/ o editor notebook.
+    # Distintas de item_ids p/ que o default_phase do context funcione por aba.
+    # copy=False: a duplicação é feita só por item_ids (evita cópia múltipla).
+    item_installation_ids = fields.One2many(
+        "afr.qualificacao.procedimento.item", "procedimento_id",
+        domain=[("phase", "=", "installation")],
+        context={"default_phase": "installation"},
+        string="Itens QI", copy=False,
+    )
+    item_operational_ids = fields.One2many(
+        "afr.qualificacao.procedimento.item", "procedimento_id",
+        domain=[("phase", "=", "operational")],
+        context={"default_phase": "operational"},
+        string="Itens QO", copy=False,
+    )
+    item_performance_ids = fields.One2many(
+        "afr.qualificacao.procedimento.item", "procedimento_id",
+        domain=[("phase", "=", "performance")],
+        context={"default_phase": "performance"},
+        string="Itens QD", copy=False,
+    )
+    item_software_ids = fields.One2many(
+        "afr.qualificacao.procedimento.item", "procedimento_id",
+        domain=[("phase", "=", "software")],
+        context={"default_phase": "software"},
+        string="Itens QS", copy=False,
+    )
+    item_calibration_ids = fields.One2many(
+        "afr.qualificacao.procedimento.item", "procedimento_id",
+        domain=[("phase", "=", "calibration")],
+        context={"default_phase": "calibration"},
+        string="Itens Calibração", copy=False,
+    )
     item_count = fields.Integer(compute="_compute_item_count")
 
     _sql_constraints = [

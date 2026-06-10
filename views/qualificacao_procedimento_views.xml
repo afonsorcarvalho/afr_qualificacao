@@ -35,9 +35,7 @@
                     <field name="description" placeholder="Breve descrição do procedimento (aparece para o técnico em campo)."/>
                     <notebook>
                         <page string="QI · Instalação">
-                            <field name="item_ids" mode="tree"
-                                   domain="[('phase', '=', 'installation')]"
-                                   context="{'default_phase': 'installation'}">
+                            <field name="item_installation_ids">
                                 <tree editable="bottom">
                                     <field name="phase" column_invisible="1"/>
                                     <field name="sequence" widget="handle"/>
@@ -57,9 +55,7 @@
                             </field>
                         </page>
                         <page string="QO · Operacional">
-                            <field name="item_ids" mode="tree"
-                                   domain="[('phase', '=', 'operational')]"
-                                   context="{'default_phase': 'operational'}">
+                            <field name="item_operational_ids">
                                 <tree editable="bottom">
                                     <field name="phase" column_invisible="1"/>
                                     <field name="sequence" widget="handle"/>
@@ -79,9 +75,7 @@
                             </field>
                         </page>
                         <page string="QD · Desempenho">
-                            <field name="item_ids" mode="tree"
-                                   domain="[('phase', '=', 'performance')]"
-                                   context="{'default_phase': 'performance'}">
+                            <field name="item_performance_ids">
                                 <tree editable="bottom">
                                     <field name="phase" column_invisible="1"/>
                                     <field name="sequence" widget="handle"/>
@@ -101,9 +95,7 @@
                             </field>
                         </page>
                         <page string="QS · Software">
-                            <field name="item_ids" mode="tree"
-                                   domain="[('phase', '=', 'software')]"
-                                   context="{'default_phase': 'software'}">
+                            <field name="item_software_ids">
                                 <tree editable="bottom">
                                     <field name="phase" column_invisible="1"/>
                                     <field name="sequence" widget="handle"/>
@@ -123,9 +115,7 @@
                             </field>
                         </page>
                         <page string="Calibração">
-                            <field name="item_ids" mode="tree"
-                                   domain="[('phase', '=', 'calibration')]"
-                                   context="{'default_phase': 'calibration'}">
+                            <field name="item_calibration_ids">
                                 <tree editable="bottom">
                                     <field name="phase" column_invisible="1"/>
                                     <field name="sequence" widget="handle"/>
