@@ -170,3 +170,30 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         self.assertIn("Foto plaqueta", names)
         self.assertNotIn("Dados qualificador térmico", names)  # item QD fica de fora
 
+    # ─────────────────────────────────────────────────────────────
+    # Nome do collect.item ciclo/malha = display_name do ciclo/malha
+    # ─────────────────────────────────────────────────────────────
+    def test_explosion_name_is_malha_display_name(self):
+        so = self._confirm_so_with([{
+            "equipment_id": self.equip1.id,
+            "calib_line_ids": [(0, 0, {"malha_type_id": self.malha_temp.id, "qty": 1})],
+        }])
+        calib = so.qualificacao_ids.filtered(
+            lambda q: q.qualification_type == "calibration")
+        items = calib.collect_item_ids.filtered(lambda c: c.malha_id)
+        self.assertTrue(items)
+        for ci in items:
+            self.assertEqual(ci.name, ci.malha_id.display_name)
+
+    def test_explosion_name_is_cycle_display_name(self):
+        so = self._confirm_so_with([{
+            "equipment_id": self.equip1.id,
+            "qd_line_ids": [(0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 1})],
+        }])
+        qd = so.qualificacao_ids.filtered(
+            lambda q: q.qualification_type == "performance")
+        items = qd.collect_item_ids.filtered(lambda c: c.cycle_id)
+        self.assertTrue(items)
+        for ci in items:
+            self.assertEqual(ci.name, ci.cycle_id.display_name)
+

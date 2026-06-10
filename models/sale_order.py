@@ -1147,13 +1147,13 @@ class SaleOrder(models.Model):
                 for cycle in qualif.cycle_ids:
                     vals = dict(base_vals)
                     vals["cycle_id"] = cycle.id
-                    vals["name"] = _("%s — Ciclo %d") % (pi.name, cycle.sequence)
+                    vals["name"] = cycle.display_name
                     CollectItem.create(vals)
             elif pi.target_level == "malha":
                 for malha in qualif.malha_ids:
                     vals = dict(base_vals)
                     vals["malha_id"] = malha.id
-                    vals["name"] = _("%s — Malha %d") % (pi.name, malha.sequence)
+                    vals["name"] = malha.display_name
                     CollectItem.create(vals)
 
     def _prepare_qualificacao_os_values(self):
