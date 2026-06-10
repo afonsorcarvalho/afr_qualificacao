@@ -1000,6 +1000,16 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
         string="Horas",
         digits="Product Price",
     )
+    temperature = fields.Char(string="Temperatura")
+    duration = fields.Char(string="Tempo")
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -1029,6 +1039,12 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
                 if not line.estimated_hours:
                     line.estimated_hours = line.cycle_type_id.estimated_hours
+                if not line.temperature:
+                    line.temperature = line.cycle_type_id.temperature
+                if not line.duration:
+                    line.duration = line.cycle_type_id.duration
+                if not line.load_type:
+                    line.load_type = line.cycle_type_id.load_type
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -1063,6 +1079,16 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
         string="Horas",
         digits="Product Price",
     )
+    temperature = fields.Char(string="Temperatura")
+    duration = fields.Char(string="Tempo")
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     subtotal = fields.Monetary(
         compute="_compute_subtotal",
@@ -1092,6 +1118,12 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
                 if not line.estimated_hours:
                     line.estimated_hours = line.cycle_type_id.estimated_hours
+                if not line.temperature:
+                    line.temperature = line.cycle_type_id.temperature
+                if not line.duration:
+                    line.duration = line.cycle_type_id.duration
+                if not line.load_type:
+                    line.load_type = line.cycle_type_id.load_type
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -1280,6 +1312,16 @@ class AfrQualificacaoConfiguratorBulkQo(models.TransientModel):
         string="Horas",
         digits="Product Price",
     )
+    temperature = fields.Char(string="Temperatura")
+    duration = fields.Char(string="Tempo")
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
 
     @api.onchange("cycle_type_id")
@@ -1293,6 +1335,12 @@ class AfrQualificacaoConfiguratorBulkQo(models.TransientModel):
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
                 if not line.estimated_hours:
                     line.estimated_hours = line.cycle_type_id.estimated_hours
+                if not line.temperature:
+                    line.temperature = line.cycle_type_id.temperature
+                if not line.duration:
+                    line.duration = line.cycle_type_id.duration
+                if not line.load_type:
+                    line.load_type = line.cycle_type_id.load_type
 
 
 class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
@@ -1315,6 +1363,16 @@ class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
         string="Horas",
         digits="Product Price",
     )
+    temperature = fields.Char(string="Temperatura")
+    duration = fields.Char(string="Tempo")
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
 
     @api.onchange("cycle_type_id")
@@ -1328,6 +1386,12 @@ class AfrQualificacaoConfiguratorBulkQd(models.TransientModel):
                     line.unit_price = line.cycle_type_id.default_unit_price or prod.list_price
                 if not line.estimated_hours:
                     line.estimated_hours = line.cycle_type_id.estimated_hours
+                if not line.temperature:
+                    line.temperature = line.cycle_type_id.temperature
+                if not line.duration:
+                    line.duration = line.cycle_type_id.duration
+                if not line.load_type:
+                    line.load_type = line.cycle_type_id.load_type
 
 
 class AfrQualificacaoConfiguratorBulkCalib(models.TransientModel):
