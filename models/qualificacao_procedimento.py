@@ -143,6 +143,36 @@ class AfrQualificacaoProcedimento(models.Model):
         for r in self:
             r.item_count = len(r.item_ids)
 
+    @api.onchange("item_installation_ids")
+    def _onchange_stamp_phase_installation(self):
+        for it in self.item_installation_ids:
+            if it.phase != "installation":
+                it.phase = "installation"
+
+    @api.onchange("item_operational_ids")
+    def _onchange_stamp_phase_operational(self):
+        for it in self.item_operational_ids:
+            if it.phase != "operational":
+                it.phase = "operational"
+
+    @api.onchange("item_performance_ids")
+    def _onchange_stamp_phase_performance(self):
+        for it in self.item_performance_ids:
+            if it.phase != "performance":
+                it.phase = "performance"
+
+    @api.onchange("item_software_ids")
+    def _onchange_stamp_phase_software(self):
+        for it in self.item_software_ids:
+            if it.phase != "software":
+                it.phase = "software"
+
+    @api.onchange("item_calibration_ids")
+    def _onchange_stamp_phase_calibration(self):
+        for it in self.item_calibration_ids:
+            if it.phase != "calibration":
+                it.phase = "calibration"
+
     @api.model
     def resolve_for(self, equipment_category):
         """Retorna o procedimento da categoria (ou fallback de categoria vazia).
