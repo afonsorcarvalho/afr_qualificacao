@@ -81,6 +81,9 @@
                                                     <field name="cycle_type_id"
                                                            domain="['|', ('equipment_category_id','=',parent.equipment_category_id), ('equipment_category_id','=',False), ('load_type','in',['vazio','sem_carga']), ('active','=',True)]"/>
                                                     <field name="description"/>
+                                                    <field name="temperature"/>
+                                                    <field name="duration"/>
+                                                    <field name="load_type"/>
                                                     <field name="qty"/>
                                                     <field name="unit_price"/>
                                                     <field name="estimated_hours"/>
@@ -95,6 +98,9 @@
                                                     <field name="cycle_type_id"
                                                            domain="['|', ('equipment_category_id','=',parent.equipment_category_id), ('equipment_category_id','=',False), ('load_type','=','com_carga'), ('active','=',True)]"/>
                                                     <field name="description"/>
+                                                    <field name="temperature"/>
+                                                    <field name="duration"/>
+                                                    <field name="load_type"/>
                                                     <field name="qty"/>
                                                     <field name="unit_price"/>
                                                     <field name="estimated_hours"/>
@@ -242,6 +248,9 @@
                                 <tree editable="bottom">
                                     <field name="cycle_type_id"/>
                                     <field name="description"/>
+                                    <field name="temperature"/>
+                                    <field name="duration"/>
+                                    <field name="load_type"/>
                                     <field name="qty"/>
                                     <field name="unit_price"/>
                                     <field name="estimated_hours"/>
@@ -253,6 +262,9 @@
                                 <tree editable="bottom">
                                     <field name="cycle_type_id"/>
                                     <field name="description"/>
+                                    <field name="temperature"/>
+                                    <field name="duration"/>
+                                    <field name="load_type"/>
                                     <field name="qty"/>
                                     <field name="unit_price"/>
                                     <field name="estimated_hours"/>

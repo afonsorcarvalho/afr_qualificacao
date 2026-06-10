@@ -51,6 +51,9 @@
                                     <field name="cycle_type_id"
                                            domain="[('load_type','in',['vazio','sem_carga']),('active','=',True)]"/>
                                     <field name="description"/>
+                                    <field name="temperature"/>
+                                    <field name="duration"/>
+                                    <field name="load_type"/>
                                     <field name="estimated_hours"/>
                                     <field name="qty"/>
                                 </tree>
@@ -63,6 +66,9 @@
                                     <field name="cycle_type_id"
                                            domain="[('load_type','=','com_carga'),('active','=',True)]"/>
                                     <field name="description"/>
+                                    <field name="temperature"/>
+                                    <field name="duration"/>
+                                    <field name="load_type"/>
                                     <field name="estimated_hours"/>
                                     <field name="qty"/>
                                 </tree>
