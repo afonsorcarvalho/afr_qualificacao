@@ -145,3 +145,27 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         qualif = so.qualificacao_ids
         self.assertEqual(qualif.qualification_type, "software")
         self.assertEqual(len(qualif.collect_item_ids), 0)
+
+    # ─────────────────────────────────────────────────────────────
+    # Wizard "Aplicar Procedimento": filtra itens pela fase da qualif
+    # ─────────────────────────────────────────────────────────────
+    def test_wizard_apply_filters_by_phase(self):
+        # confirma SO com 1 qualif QI (proc_category auto-explode os itens QI)
+        so = self._confirm_so_with([
+            {"equipment_id": self.equip1.id, "do_qi": True},
+        ])
+        qualif = so.qualificacao_ids
+        os = so.qualificacao_os_ids
+        # limpa coletas auto-explodidas no confirm p/ isolar o efeito do wizard
+        qualif.collect_item_ids.unlink()
+        wiz = self.env["afr.qualificacao.os.apply.procedimento.wizard"].create({
+            "os_id": os.id,
+            "procedimento_id": self.proc_category.id,
+            "qualificacao_ids": [(6, 0, qualif.ids)],
+        })
+        wiz.action_apply()
+        names = qualif.collect_item_ids.mapped("name")
+        # proc_category tem QI(2) + QD(3) + Calib(1); qualif QI recebe só os 2 QI
+        self.assertEqual(len(qualif.collect_item_ids), 2)
+        self.assertIn("Foto plaqueta", names)
+        self.assertNotIn("Dados qualificador térmico", names)  # item QD fica de fora

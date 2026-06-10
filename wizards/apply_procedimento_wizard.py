@@ -53,9 +53,6 @@ class AfrQualificacaoOsApplyProcedimentoWizard(models.TransientModel):
         Item = self.env["afr.qualificacao.collect.item"]
         total = 0
         for qualif in self.qualificacao_ids:
-            # Filtra qualifs incompatíveis com o tipo aplicável do procedimento
-            if qualif.qualification_type != self.procedimento_id.applicable_qualification_type:
-                continue
             if self.overwrite_existing:
                 existing = qualif.collect_item_ids.filtered(
                     lambda c: c.procedimento_item_id in self.procedimento_id.item_ids
@@ -76,7 +73,10 @@ class AfrQualificacaoOsApplyProcedimentoWizard(models.TransientModel):
     def _explode_for_qualif(self, Item, qualif, procedimento):
         """Cria N collect.items conforme target_level de cada procedimento.item."""
         created = 0
-        for pi in procedimento.item_ids:
+        items = procedimento.item_ids.filtered(
+            lambda pi: pi.phase == qualif.qualification_type
+        )
+        for pi in items:
             base_vals = {
                 "name": pi.name,
                 "sequence": pi.sequence,
