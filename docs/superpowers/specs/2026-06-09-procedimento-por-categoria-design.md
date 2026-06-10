@@ -5,6 +5,31 @@ Módulo: afr_qualificacao
 Versão alvo: 16.0.6.0.0 (mudança estrutural — major bump)
 Fase: **F1** (core + minimizadores grátis). Biblioteca de passos + Seed = F2 (spec futuro).
 
+## ⚠️ ATUALIZAÇÃO DE EXECUÇÃO (2026-06-10) — editor NÃO é notebook
+
+O **pivot core foi entregue como especificado** (1 proc/categoria, `phase` por
+item, `resolve_for(category)` + fallback, explosão/wizard filtram por fase,
+migração 16.0.6.0.0). **MAS o editor notebook-por-fase com auto-set NÃO funciona
+no Odoo 16 OWL** e foi abandonado:
+
+- Renderizar o mesmo comodel (`procedimento.item`) em 5 abas faz o web client
+  **colapsar o `default_phase` do context por comodel** (a última aba, Calibração,
+  vence em todas). Campos One2many distintos por fase (faceta) **não resolvem** —
+  o colapso é por comodel, não por campo.
+- `@api.onchange` por faceta **não dispara no "add line" puro**, e o `domain` da
+  faceta faz a linha nova **sumir da aba** quando a fase não bate.
+- `column_invisible="1"` na coluna phase **vaza** pelo mesmo motivo (multi-render).
+
+**Decisão (validada via agent-browser):** editor = **tree flat único** sobre
+`item_ids` com coluna **`phase` editável + visível + required** (`default_order=
+"phase, sequence"`). O usuário escolhe a fase por item; sem abas, sem domain, sem
+context. Round-trip validado (salva `phase` correto). Seções 2.1 e "View" abaixo
+(notebook/auto-set) ficam **OBSOLETAS** — ver commit `8b2fc94`.
+
+Implicação p/ F2: a "biblioteca de passos" + seed continuam o caminho p/ config
+mínima; a organização visual por fase (se desejada) precisaria de outra técnica
+(ex.: grupos read-only + um editor à parte), não o multi-render de abas.
+
 ## Problema
 
 Hoje o template `afr.qualificacao.procedimento` tem chave
