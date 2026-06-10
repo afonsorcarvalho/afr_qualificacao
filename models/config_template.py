@@ -167,8 +167,35 @@ class AfrQualificacaoConfigTemplateQd(models.Model):
             "cycle_type/malha_type.estimated_hours."
         ),
     )
+    temperature = fields.Char(string="Temperatura")
+    duration = fields.Char(string="Tempo")
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_defaults(self):
+        for line in self:
+            ct = line.cycle_type_id
+            if not ct:
+                continue
+            if not line.description:
+                line.description = ct.product_id.name or ct.name
+            if not line.estimated_hours:
+                line.estimated_hours = ct.estimated_hours
+            if not line.temperature:
+                line.temperature = ct.temperature
+            if not line.duration:
+                line.duration = ct.duration
+            if not line.load_type:
+                line.load_type = ct.load_type
 
     @api.constrains("qty")
     def _check_qty_positive(self):
@@ -208,8 +235,35 @@ class AfrQualificacaoConfigTemplateQo(models.Model):
             "cycle_type/malha_type.estimated_hours."
         ),
     )
+    temperature = fields.Char(string="Temperatura")
+    duration = fields.Char(string="Tempo")
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+    )
     qty = fields.Integer(string="Quantidade", default=1, required=True)
     sequence = fields.Integer(default=10)
+
+    @api.onchange("cycle_type_id")
+    def _onchange_cycle_type_defaults(self):
+        for line in self:
+            ct = line.cycle_type_id
+            if not ct:
+                continue
+            if not line.description:
+                line.description = ct.product_id.name or ct.name
+            if not line.estimated_hours:
+                line.estimated_hours = ct.estimated_hours
+            if not line.temperature:
+                line.temperature = ct.temperature
+            if not line.duration:
+                line.duration = ct.duration
+            if not line.load_type:
+                line.load_type = ct.load_type
 
     @api.constrains("qty")
     def _check_qty_positive(self):
