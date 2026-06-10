@@ -75,6 +75,28 @@ class SaleOrderLine(models.Model):
             "cycle_type/malha_type/type_config). Usado pelo cronograma."
         ),
     )
+    # Specs de ciclo override por linha (proposta lê daqui; fallback cycle_type).
+    # Só exibição na tabela de ciclos — não afeta QO/QD nem preço.
+    temperature = fields.Char(
+        string="Temperatura",
+        copy=True,
+        help="Override da temperatura do ciclo nesta proposta. Vazio = usa cycle_type.",
+    )
+    duration = fields.Char(
+        string="Tempo",
+        copy=True,
+        help="Override do tempo do ciclo nesta proposta. Vazio = usa cycle_type.",
+    )
+    load_type = fields.Selection(
+        selection=[
+            ("vazio", "Câmara Vazia"),
+            ("sem_carga", "Sem Carga"),
+            ("com_carga", "Com Carga"),
+        ],
+        string="Tipo de Carga",
+        copy=True,
+        help="Override do tipo de carga exibido na proposta. Vazio = usa cycle_type.",
+    )
     work_hours_per_day = fields.Float(
         string="Jornada (h/dia)",
         default=8.0,
