@@ -205,8 +205,9 @@
             </p>
             <p>
                 Procedimentos definem os itens a coletar em campo (fotos, planilhas,
-                dados do qualificador) por tipo de qualificação + categoria de equipamento.
-                Carregado automaticamente ao criar a OS via SO confirm.
+                dados do qualificador) por categoria de equipamento, organizados por
+                fase (QI/QO/QD/QS/Calibração). Carregado automaticamente ao criar a OS
+                via confirmação do SO.
             </p>
         </field>
     </record>

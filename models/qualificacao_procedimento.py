@@ -115,9 +115,13 @@ class AfrQualificacaoProcedimento(models.Model):
         """Retorna o procedimento da categoria (ou fallback de categoria vazia).
 
         Preferência: 1) match por categoria → 2) fallback (equipment_category_id
-        vazio). Retorna recordset vazio se nenhum.
+        vazio). Retorna recordset vazio se nenhum. Sempre restrito à empresa
+        corrente (self.env.company).
         """
-        domain = [("active", "=", True)]
+        domain = [
+            ("active", "=", True),
+            ("company_id", "=", self.env.company.id),
+        ]
         cat_id = equipment_category.id if equipment_category else False
         if cat_id:
             rec = self.search(
