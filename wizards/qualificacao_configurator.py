@@ -322,6 +322,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                         "estimated_hours": line.estimated_hours,
                         "description": _base_name(line.name),
                         "unit_price": line.price_unit,
+                        "temperature": line.temperature,
+                        "duration": line.duration,
+                        "load_type": line.load_type,
                     })
                 elif line.part == "01":
                     # QO Parte 01 (Verificações)
@@ -340,6 +343,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "estimated_hours": line.estimated_hours,
                     "description": _base_name(line.name),
                     "unit_price": line.price_unit,
+                    "temperature": line.temperature,
+                    "duration": line.duration,
+                    "load_type": line.load_type,
                 })
             elif qt == "calibration":
                 bucket["calib"].append({
@@ -545,6 +551,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     qo_vals["price_unit"] = qo.unit_price
                 if hours:
                     qo_vals["estimated_hours"] = hours
+                qo_vals["temperature"] = qo.temperature or qo.cycle_type_id.temperature or False
+                qo_vals["duration"] = qo.duration or qo.cycle_type_id.duration or False
+                qo_vals["load_type"] = qo.load_type or qo.cycle_type_id.load_type or False
                 new_lines.append((0, 0, qo_vals))
 
             # QD — 1 linha por cycle_type
@@ -570,6 +579,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     qd_vals["price_unit"] = qd.unit_price
                 if hours:
                     qd_vals["estimated_hours"] = hours
+                qd_vals["temperature"] = qd.temperature or qd.cycle_type_id.temperature or False
+                qd_vals["duration"] = qd.duration or qd.cycle_type_id.duration or False
+                qd_vals["load_type"] = qd.load_type or qd.cycle_type_id.load_type or False
                 new_lines.append((0, 0, qd_vals))
 
             # Calib — 1 linha por malha_type
@@ -817,6 +829,9 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     or line.cycle_type_id.estimated_hours
                     or 0.0
                 ),
+                "temperature": line.temperature or line.cycle_type_id.temperature,
+                "duration": line.duration or line.cycle_type_id.duration,
+                "load_type": line.load_type or line.cycle_type_id.load_type,
             })
             for line in tpl.qo_line_ids
         ]
@@ -839,6 +854,9 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     or line.cycle_type_id.estimated_hours
                     or 0.0
                 ),
+                "temperature": line.temperature or line.cycle_type_id.temperature,
+                "duration": line.duration or line.cycle_type_id.duration,
+                "load_type": line.load_type or line.cycle_type_id.load_type,
             })
             for line in tpl.qd_line_ids
         ]
@@ -947,6 +965,8 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                     "description": l.description, "unit_price": l.unit_price,
                     "estimated_hours": l.estimated_hours,
+                    "temperature": l.temperature, "duration": l.duration,
+                    "load_type": l.load_type,
                 })
                 for l in self.qo_line_ids
             ],
@@ -955,6 +975,8 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                     "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                     "description": l.description, "unit_price": l.unit_price,
                     "estimated_hours": l.estimated_hours,
+                    "temperature": l.temperature, "duration": l.duration,
+                    "load_type": l.load_type,
                 })
                 for l in self.qd_line_ids
             ],
@@ -1261,6 +1283,8 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                         "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                         "description": l.description, "unit_price": l.unit_price,
                         "estimated_hours": l.estimated_hours,
+                        "temperature": l.temperature, "duration": l.duration,
+                        "load_type": l.load_type,
                     })
                     for l in self.qo_line_ids
                 ],
@@ -1269,6 +1293,8 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
                         "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
                         "description": l.description, "unit_price": l.unit_price,
                         "estimated_hours": l.estimated_hours,
+                        "temperature": l.temperature, "duration": l.duration,
+                        "load_type": l.load_type,
                     })
                     for l in self.qd_line_ids
                 ],

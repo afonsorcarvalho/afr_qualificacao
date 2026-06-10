@@ -181,3 +181,28 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         self.assertIn("Equipamento", html)
         self.assertIn("Dias úteis", html)
         self.assertIn("TOTAL", html)
+
+    def test_configurator_reopen_preserves_specs(self):
+        """Apply grava specs na linha SO; _load_from_existing_lines as relê."""
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
+        self.env["afr.qualificacao.configurator.equipment"].create({
+            "wizard_id": wiz.id, "equipment_id": self.equip1.id,
+            "qd_line_ids": [(0, 0, {
+                "cycle_type_id": self.cycle_cmax.id, "qty": 1, "estimated_hours": 1.0,
+                "temperature": "777°C", "duration": "77 min", "load_type": "vazio",
+            })],
+        })
+        wiz.action_apply()
+        so_line = so.order_line.filtered(
+            lambda l: l.cycle_type_id == self.cycle_cmax and not l.display_type)
+        self.assertEqual(so_line.temperature, "777°C")
+        self.assertEqual(so_line.duration, "77 min")
+        self.assertEqual(so_line.load_type, "vazio")
+        wiz2 = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
+        wiz2._load_from_existing_lines()
+        rt = wiz2.equipment_line_ids.qd_line_ids.filtered(
+            lambda l: l.cycle_type_id == self.cycle_cmax)
+        self.assertEqual(rt.temperature, "777°C")
+        self.assertEqual(rt.duration, "77 min")
+        self.assertEqual(rt.load_type, "vazio")
