@@ -70,12 +70,12 @@ class TestCoverage(AfrQualificacaoTestCommon):
         # Procedimento.item exigindo TEMP
         cls.proc = cls.env["afr.qualificacao.procedimento"].create({
             "name": "Test Proc",
-            "applicable_qualification_type": "calibration",
             "code": "TEST-PROC-001",
         })
         cls.proc_item_temp = cls.env["afr.qualificacao.procedimento.item"].create({
             "procedimento_id": cls.proc.id,
             "name": "Coleta Temperatura",
+            "phase": "calibration",
             "kind": "qualificador_data",
             "required": True,
             "target_level": "qualificacao",
@@ -85,6 +85,7 @@ class TestCoverage(AfrQualificacaoTestCommon):
         cls.proc_item_temp_press = cls.env["afr.qualificacao.procedimento.item"].create({
             "procedimento_id": cls.proc.id,
             "name": "Coleta T+P",
+            "phase": "calibration",
             "kind": "qualificador_data",
             "required": True,
             "target_level": "qualificacao",

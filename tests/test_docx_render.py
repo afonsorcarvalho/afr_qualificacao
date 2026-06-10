@@ -176,12 +176,12 @@ class TestDocxRender(AfrQualificacaoTestCommon):
         """Related stored: criar collect.item com procedimento_item_id propaga section."""
         proc = self.env["afr.qualificacao.procedimento"].create({
             "name": "Test Proc QI",
-            "applicable_qualification_type": "installation",
         })
         proc_item = self.env["afr.qualificacao.procedimento.item"].create({
             "procedimento_id": proc.id,
             "name": "Manual de instalação",
             "kind": "pdf",
+            "phase": "installation",
             "docx_section": "qi_documentos",
         })
         item = self.env["afr.qualificacao.collect.item"].create({
