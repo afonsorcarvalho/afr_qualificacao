@@ -12,65 +12,44 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
     def setUpClass(cls):
         super().setUpClass()
         Proc = cls.env["afr.qualificacao.procedimento"]
-        # Procedimento QD genérico (sem category) — fallback
-        cls.proc_qd_generic = Proc.create({
-            "name": "QD Genérico",
-            "applicable_qualification_type": "performance",
-            "item_ids": [
-                (0, 0, {
-                    "name": "Doc procedimento", "kind": "pdf",
-                    "target_level": "qualificacao", "sequence": 10,
-                }),
-                (0, 0, {
-                    "name": "Foto carga", "kind": "foto",
-                    "target_level": "cycle", "sequence": 20,
-                }),
-            ],
-        })
-        # Procedimento QD específico para categoria autoclave — match preferencial
-        cls.proc_qd_autoclave = Proc.create({
-            "name": "QD Autoclave",
-            "applicable_qualification_type": "performance",
+        # 1 procedimento por categoria — itens de TODAS as fases (QI + QD + Calib)
+        cls.proc_category = Proc.create({
+            "name": "Procedimento Autoclave",
             "equipment_category_id": cls.category.id,
             "item_ids": [
-                (0, 0, {
-                    "name": "Foto carga autoclave", "kind": "foto",
-                    "target_level": "cycle", "sequence": 10,
-                }),
-                (0, 0, {
-                    "name": "Dados qualificador térmico", "kind": "qualificador_data",
-                    "target_level": "qualificacao", "sequence": 20,
-                }),
-                (0, 0, {
-                    "name": "Indicador biológico", "kind": "foto",
-                    "target_level": "cycle", "sequence": 30,
-                }),
+                # QI
+                (0, 0, {"name": "Foto plaqueta", "kind": "foto",
+                        "phase": "installation", "target_level": "qualificacao",
+                        "sequence": 10}),
+                (0, 0, {"name": "NF cópia", "kind": "pdf",
+                        "phase": "installation", "target_level": "qualificacao",
+                        "sequence": 20}),
+                # QD
+                (0, 0, {"name": "Foto carga autoclave", "kind": "foto",
+                        "phase": "performance", "target_level": "cycle",
+                        "sequence": 30}),
+                (0, 0, {"name": "Dados qualificador térmico", "kind": "qualificador_data",
+                        "phase": "performance", "target_level": "qualificacao",
+                        "sequence": 40}),
+                (0, 0, {"name": "Indicador biológico", "kind": "foto",
+                        "phase": "performance", "target_level": "cycle",
+                        "sequence": 50}),
+                # Calibração
+                (0, 0, {"name": "Foto sensor in loco", "kind": "foto",
+                        "phase": "calibration", "target_level": "malha",
+                        "sequence": 60}),
             ],
         })
-        # Procedimento Calib
-        cls.proc_calib = Proc.create({
-            "name": "Calib Padrão",
-            "applicable_qualification_type": "calibration",
+        # Procedimento fallback (sem categoria) — itens QD
+        cls.proc_fallback = Proc.create({
+            "name": "Procedimento Genérico (fallback)",
             "item_ids": [
-                (0, 0, {
-                    "name": "Foto sensor in loco", "kind": "foto",
-                    "target_level": "malha", "sequence": 10,
-                }),
-            ],
-        })
-        # Procedimento QI
-        cls.proc_qi = Proc.create({
-            "name": "QI Padrão",
-            "applicable_qualification_type": "installation",
-            "item_ids": [
-                (0, 0, {
-                    "name": "Foto plaqueta", "kind": "foto",
-                    "target_level": "qualificacao", "sequence": 10,
-                }),
-                (0, 0, {
-                    "name": "NF cópia", "kind": "pdf",
-                    "target_level": "qualificacao", "sequence": 20,
-                }),
+                (0, 0, {"name": "Doc procedimento", "kind": "pdf",
+                        "phase": "performance", "target_level": "qualificacao",
+                        "sequence": 10}),
+                (0, 0, {"name": "Foto carga", "kind": "foto",
+                        "phase": "performance", "target_level": "cycle",
+                        "sequence": 20}),
             ],
         })
 
@@ -83,24 +62,26 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         return so
 
     # ─────────────────────────────────────────────────────────────
-    # resolve_for: match preferencial (type+category) > só type
+    # resolve_for: categoria > fallback (categoria vazia)
     # ─────────────────────────────────────────────────────────────
     def test_resolve_prefers_category_match(self):
         Proc = self.env["afr.qualificacao.procedimento"]
-        rec = Proc.resolve_for("performance", self.category)
-        self.assertEqual(rec, self.proc_qd_autoclave)
+        rec = Proc.resolve_for(self.category)
+        self.assertEqual(rec, self.proc_category)
 
-    def test_resolve_fallback_generic_when_no_category(self):
+    def test_resolve_fallback_when_category_has_no_proc(self):
         Proc = self.env["afr.qualificacao.procedimento"]
         other_cat = self.env["engc.equipment.category"].create({"name": "OutraCat"})
-        rec = Proc.resolve_for("performance", other_cat)
-        self.assertEqual(rec, self.proc_qd_generic)
+        rec = Proc.resolve_for(other_cat)
+        self.assertEqual(rec, self.proc_fallback)
 
-    def test_resolve_returns_empty_when_no_match(self):
+    def test_resolve_empty_when_no_category_and_no_fallback(self):
         Proc = self.env["afr.qualificacao.procedimento"]
-        # software type não tem procedimento
-        rec = Proc.resolve_for("software", self.category)
+        self.proc_fallback.active = False  # sem fallback disponível
+        other_cat = self.env["engc.equipment.category"].create({"name": "SemProc"})
+        rec = Proc.resolve_for(other_cat)
         self.assertFalse(rec)
+        self.proc_fallback.active = True
 
     # ─────────────────────────────────────────────────────────────
     # Explosão por target_level

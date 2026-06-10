@@ -20,7 +20,6 @@
                     </div>
                     <group>
                         <group string="Aplicabilidade">
-                            <field name="applicable_qualification_type"/>
                             <field name="equipment_category_id"
                                    options="{'no_create': True}"/>
                             <field name="code"/>
@@ -75,7 +74,6 @@
             <tree>
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
-                <field name="applicable_qualification_type"/>
                 <field name="equipment_category_id" optional="show"/>
                 <field name="item_count" string="Itens"/>
                 <field name="code" optional="hide"/>
@@ -94,13 +92,10 @@
             <search>
                 <field name="name"/>
                 <field name="code"/>
-                <field name="applicable_qualification_type"/>
                 <field name="equipment_category_id"/>
                 <filter string="Arquivados" name="filter_inactive"
                         domain="[('active', '=', False)]"/>
                 <group expand="0" string="Agrupar por">
-                    <filter string="Tipo" name="group_type"
-                            context="{'group_by': 'applicable_qualification_type'}"/>
                     <filter string="Categoria" name="group_category"
                             context="{'group_by': 'equipment_category_id'}"/>
                 </group>

@@ -5,9 +5,9 @@ Template pré-programado que define o que deve ser COLETADO em campo durante
 a execução de uma qualificação (fotos cargas, dados qualificador, planilhas,
 indicadores biológicos, fitas etc.).
 
-Resolve por (applicable_qualification_type + equipment_category_id) com
-fallback para apenas tipo. Explosão para collect.items acontece em
-sale_order._explode_collect_items() na confirmação do SO (F3 16.0.3.2.0).
+Resolve por equipment_category_id (vazio = fallback). Explosão para
+collect.items acontece em sale_order._explode_collect_items() na confirmação
+do SO (F3 16.0.3.2.0).
 """
 from odoo import _, api, fields, models
 
@@ -18,6 +18,14 @@ KIND_SELECTION = [
     ("pdf", "PDF"),
     ("qualificador_data", "Arquivo do Qualificador (raw)"),
     ("outro", "Outro"),
+]
+
+PHASE_SELECTION = [
+    ("installation", "QI"),
+    ("operational", "QO"),
+    ("performance", "QD"),
+    ("software", "QS"),
+    ("calibration", "Calibração"),
 ]
 
 # F4.3: default de requires_instrument conforme natureza do item.
@@ -75,18 +83,6 @@ class AfrQualificacaoProcedimento(models.Model):
         "res.company",
         default=lambda self: self.env.company,
     )
-    applicable_qualification_type = fields.Selection(
-        [
-            ("installation", "QI"),
-            ("operational", "QO"),
-            ("performance", "QD"),
-            ("software", "QS"),
-            ("calibration", "Calibração"),
-        ],
-        required=True,
-        string="Tipo aplicável",
-        tracking=True,
-    )
     equipment_category_id = fields.Many2one(
         "engc.equipment.category",
         string="Categoria do equipamento",
@@ -103,9 +99,9 @@ class AfrQualificacaoProcedimento(models.Model):
 
     _sql_constraints = [
         (
-            "uniq_type_category_company",
-            "unique(applicable_qualification_type, equipment_category_id, company_id)",
-            "Já existe procedimento ativo para esse tipo + categoria + empresa.",
+            "uniq_category_company",
+            "unique(equipment_category_id, company_id)",
+            "Já existe procedimento para essa categoria + empresa.",
         ),
     ]
 
@@ -115,17 +111,13 @@ class AfrQualificacaoProcedimento(models.Model):
             r.item_count = len(r.item_ids)
 
     @api.model
-    def resolve_for(self, qualification_type, equipment_category):
-        """Retorna melhor match para (type + category) ativo.
+    def resolve_for(self, equipment_category):
+        """Retorna o procedimento da categoria (ou fallback de categoria vazia).
 
-        Preferência: 1) match exato (type + category) → 2) só type
-        (equipment_category_id vazio = fallback genérico). Retorna recordset
-        vazio se nenhum.
+        Preferência: 1) match por categoria → 2) fallback (equipment_category_id
+        vazio). Retorna recordset vazio se nenhum.
         """
-        domain = [
-            ("active", "=", True),
-            ("applicable_qualification_type", "=", qualification_type),
-        ]
+        domain = [("active", "=", True)]
         cat_id = equipment_category.id if equipment_category else False
         if cat_id:
             rec = self.search(
@@ -148,6 +140,14 @@ class AfrQualificacaoProcedimentoItem(models.Model):
         required=True,
         ondelete="cascade",
         index=True,
+    )
+    phase = fields.Selection(
+        PHASE_SELECTION,
+        required=True,
+        default="installation",
+        string="Fase",
+        help="Fase de qualificação a que este item pertence. Setado "
+             "automaticamente pela aba do editor.",
     )
     sequence = fields.Integer(default=10)
     name = fields.Char(required=True, translate=True)
