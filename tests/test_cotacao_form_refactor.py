@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from odoo.tests.common import tagged
+from odoo.tests.common import Form, tagged
 from odoo.tools.misc import formatLang
 from .common import AfrQualificacaoTestCommon
 
@@ -162,3 +162,32 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         expected = formatLang(self.env, equip_total + opt_total,
                               currency_obj=so.currency_id)
         self.assertIn(expected, so.qualif_subtotals_html)
+
+    def test_optional_accept_persists_qty_and_updates_total_live(self):
+        """Aceitar opcional na aba Opcionais persiste product_uom_qty
+        (subtotal != 0) e recomputa o resumo financeiro AO VIVO no form.
+
+        Regressão de dois bugs: (1) product_uom_qty setado por onchange não
+        persistia por estar ausente da tree → opcional aceito salvava com
+        subtotal 0; (2) qualif_subtotals_html dependia só de order_line e não
+        recomputava ao togglar via optional_line_ids (datapoint OWL distinto).
+        """
+        so = self._so()
+        self._equip_line(so, price=700.0, qty=1.0)  # managed → has_qualif_lines
+        opt = self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self._svc(150.0).id,
+            "name": "Opc", "is_proposal_optional": True,
+            "optional_accepted": False, "optional_qty": 1.0,
+            "price_unit": 150.0, "product_uom_qty": 0.0,
+        })
+        view = "afr_qualificacao.view_sale_order_form_inherit_qualificacao"
+        f = Form(so, view=view)
+        self.assertNotIn("Subtotais de Opcionais", f.qualif_subtotals_html or "")
+        with f.optional_line_ids.edit(0) as line:
+            line.optional_accepted = True
+        # Reatividade live: a seção de opcionais aceitos aparece sem salvar.
+        self.assertIn("Subtotais de Opcionais", f.qualif_subtotals_html or "")
+        f.save()
+        # Persistência: qty e subtotal corretos (não 0).
+        self.assertEqual(opt.product_uom_qty, 1.0)
+        self.assertEqual(opt.price_subtotal, 150.0)

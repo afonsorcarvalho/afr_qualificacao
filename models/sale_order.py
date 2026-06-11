@@ -222,6 +222,12 @@ class SaleOrder(models.Model):
         "order_line.qualif_cycle_qty",
         "order_line.is_proposal_optional",
         "order_line.optional_accepted",
+        # Reatividade live no form: as abas Comercial/Opcionais editam via
+        # regular_line_ids/optional_line_ids (datapoints OWL distintos de
+        # order_line). Sem estes paths o painel não recomputa ao togglar.
+        "regular_line_ids.price_subtotal",
+        "optional_line_ids.price_subtotal",
+        "optional_line_ids.optional_accepted",
         "currency_id",
     )
     def _compute_qualif_subtotals_html(self):
