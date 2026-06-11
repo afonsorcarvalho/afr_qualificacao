@@ -39,3 +39,21 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         opt = self._line(so, optional=True)
         self.assertIn(opt, so.optional_line_ids)
         self.assertNotIn(reg, so.optional_line_ids)
+
+    def test_optional_context_default_flag(self):
+        # Simula o default_get usado pela aba Opcionais (context na view).
+        Line = self.env["sale.order.line"].with_context(
+            default_is_proposal_optional=True)
+        vals = Line.default_get(["is_proposal_optional"])
+        self.assertTrue(vals.get("is_proposal_optional"))
+
+    def test_amount_total_with_split_lines(self):
+        so = self._so()
+        self._line(so, optional=False, price=100.0, qty=2.0)   # 200
+        self._line(so, optional=True, price=50.0, qty=1.0)     # opcional
+        # order_line (padrão) enxerga ambos os registros.
+        self.assertEqual(len(so.order_line), 2)
+        self.assertEqual(
+            len(so.regular_line_ids) + len(so.optional_line_ids),
+            len(so.order_line),
+        )
