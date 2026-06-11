@@ -39,19 +39,9 @@
                 </button>
             </xpath>
 
-            <xpath expr="//field[@name='order_line']/tree/field[@name='product_id']" position="after">
-                <field name="is_qualificacao_managed" optional="hide"/>
-                <field name="qualification_type" optional="show"/>
-                <field name="equipment_id" optional="show"/>
-                <field name="cycle_type_id" optional="hide"/>
-                <field name="malha_type_id" optional="hide"/>
-                <field name="is_proposal_optional" string="Opcional" optional="show" widget="boolean_toggle"/>
-                <field name="optional_qty" string="Qtd Opc."
-                       attrs="{'invisible': [('is_proposal_optional', '=', False)]}"
-                       optional="show"/>
-                <field name="optional_accepted" string="Aceito"
-                       attrs="{'invisible': [('is_proposal_optional', '=', False)]}"
-                       widget="boolean_toggle" optional="show"/>
+            <!-- Esconde page "Order Lines" padrão — substituída pelas 3 abas custom abaixo -->
+            <xpath expr="//page[@name='order_lines']" position="attributes">
+                <attribute name="invisible">1</attribute>
             </xpath>
 
             <!-- has_qualif_lines: campo invisível necessário para o attrs do qualif_subtotals_html -->
@@ -68,7 +58,66 @@
                        attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
             </xpath>
 
-            <!-- F8.2 — Proposta LEGO: aba de montagem de blocos da cotação -->
+            <!-- 3 abas custom inseridas ANTES da page order_lines padrão -->
+            <xpath expr="//page[@name='order_lines']" position="before">
+                <page string="Linhas (Comercial)" name="qualif_comercial">
+                    <field name="regular_line_ids">
+                        <tree editable="bottom">
+                            <control>
+                                <create name="add_product" string="Adicionar produto"/>
+                                <create name="add_section" string="Adicionar seção"
+                                        context="{'default_display_type': 'line_section'}"/>
+                                <create name="add_note" string="Adicionar nota"
+                                        context="{'default_display_type': 'line_note'}"/>
+                            </control>
+                            <field name="sequence" widget="handle"/>
+                            <field name="display_type" invisible="1"/>
+                            <field name="company_id" invisible="1"/>
+                            <field name="product_uom_category_id" invisible="1"/>
+                            <field name="product_id"
+                                   attrs="{'required': [('display_type','=',False)]}"/>
+                            <field name="name" widget="section_and_note_text"/>
+                            <field name="product_uom_qty" optional="show"/>
+                            <field name="product_uom"
+                                   groups="uom.group_uom" optional="hide"
+                                   attrs="{'required': [('display_type','=',False)]}"/>
+                            <field name="price_unit"/>
+                            <field name="discount" string="Desc.%" optional="hide"/>
+                            <field name="tax_id" widget="many2many_tags" optional="hide"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="price_subtotal" widget="monetary"/>
+                        </tree>
+                    </field>
+                </page>
+
+                <page string="Opcionais" name="qualif_opcionais">
+                    <field name="optional_line_ids"
+                           context="{'default_is_proposal_optional': 1}">
+                        <tree editable="bottom">
+                            <field name="is_proposal_optional" invisible="1"/>
+                            <field name="sequence" widget="handle"/>
+                            <field name="display_type" invisible="1"/>
+                            <field name="company_id" invisible="1"/>
+                            <field name="product_uom_category_id" invisible="1"/>
+                            <field name="product_id" attrs="{'required': [('display_type','=',False)]}"/>
+                            <field name="name"/>
+                            <field name="optional_qty" string="Qtd Opc."/>
+                            <field name="price_unit"/>
+                            <field name="optional_accepted" string="Aceito"
+                                   widget="boolean_toggle"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="price_subtotal" widget="monetary"/>
+                        </tree>
+                    </field>
+                </page>
+
+                <page string="Detalhes Técnicos" name="qualif_tecnico"
+                      attrs="{'invisible': [('has_qualif_lines','=',False)]}">
+                    <field name="qualif_tecnico_html" nolabel="1" readonly="1"/>
+                </page>
+            </xpath>
+
+            <!-- F8.2 — Proposta LEGO: aba de montagem de blocos da cotação (ao final) -->
             <xpath expr="//notebook" position="inside">
                 <page string="Proposta (Blocos)" name="proposal_blocks">
                     <group>
