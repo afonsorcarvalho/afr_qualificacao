@@ -61,7 +61,7 @@
             <!-- 3 abas custom inseridas ANTES da page order_lines padrão -->
             <xpath expr="//page[@name='order_lines']" position="before">
                 <page string="Linhas (Comercial)" name="qualif_comercial">
-                    <field name="regular_line_ids">
+                    <field name="regular_line_ids" widget="section_and_note_one2many">
                         <tree editable="bottom">
                             <control>
                                 <create name="add_product" string="Adicionar produto"/>
