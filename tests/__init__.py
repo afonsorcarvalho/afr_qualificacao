@@ -70,3 +70,6 @@ from . import test_variant_description
 
 # 16.0.5.20.0 — remoção step/deviation + aba Coletas
 from . import test_remove_models_coletas
+
+# cotacao form refactor — one2many filtrados regular_line_ids/optional_line_ids
+from . import test_cotacao_form_refactor

@@ -134,6 +134,27 @@ class SaleOrder(models.Model):
             "das linhas (Odoo não suporta coluna por section nativo)."
         ),
     )
+    regular_line_ids = fields.One2many(
+        comodel_name="sale.order.line",
+        inverse_name="order_id",
+        domain=[("is_proposal_optional", "=", False)],
+        string="Linhas",
+        help=(
+            "Linhas NÃO-opcionais (comercial + seções/notas). Mesmo conjunto "
+            "de registros de order_line filtrado por domain — usado na aba "
+            "Comercial do form."
+        ),
+    )
+    optional_line_ids = fields.One2many(
+        comodel_name="sale.order.line",
+        inverse_name="order_id",
+        domain=[("is_proposal_optional", "=", True)],
+        string="Opcionais",
+        help=(
+            "Linhas opcionais (is_proposal_optional=True). Usado na aba "
+            "Opcionais. Novas linhas recebem o flag via context default da view."
+        ),
+    )
     # F8.2 — Proposta LEGO: template + blocos montáveis por cotação
     proposal_template_id = fields.Many2one(
         comodel_name="afr.proposal.template",
