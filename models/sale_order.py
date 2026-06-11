@@ -155,15 +155,6 @@ class SaleOrder(models.Model):
             "Opcionais. Novas linhas recebem o flag via context default da view."
         ),
     )
-    qualif_tecnico_html = fields.Html(
-        compute="_compute_qualif_tecnico_html",
-        string="Detalhes Técnicos",
-        sanitize=False,
-        help=(
-            "Cards read-only por equipamento (equipamento → tipo qualif → "
-            "itens), gerados do agregado das linhas managed. Aba de conferência."
-        ),
-    )
     # F8.2 — Proposta LEGO: template + blocos montáveis por cotação
     proposal_template_id = fields.Many2one(
         comodel_name="afr.proposal.template",
@@ -394,66 +385,6 @@ class SaleOrder(models.Model):
                    '<span style="font-weight:bold;font-size:18px;">')
             + escape(grand_str) + Markup('</span></div>') + note
         )
-
-    @api.depends(
-        "order_line.equipment_id",
-        "order_line.qualification_type",
-        "order_line.is_qualificacao_managed",
-        "order_line.cycle_type_id",
-        "order_line.malha_type_id",
-        "order_line.name",
-        "order_line.product_id",
-        "order_line.qualif_cycle_qty",
-        "order_line.product_uom_qty",
-        "order_line.display_type",
-    )
-    def _compute_qualif_tecnico_html(self):
-        for order in self:
-            if not order.has_qualif_lines:
-                order.qualif_tecnico_html = False
-                continue
-            summary = order._qualif_equipment_summary()
-            if not summary:
-                order.qualif_tecnico_html = False
-                continue
-            cards = Markup("")
-            for s in summary:
-                equip = s["equipment"]
-                equip_label = escape(equip.display_name or _("Equipamento"))
-                if equip.serial_number:
-                    equip_label = equip_label + Markup(" — S/N: ") + escape(equip.serial_number)
-                type_blocks = Markup("")
-                for t in s["types"]:
-                    items = Markup("").join(
-                        Markup('<li style="margin:1px 0;">') + escape(it["name"])
-                        + (Markup(" &times; %s") % int(it["qty"]) if it.get("qty") else Markup(""))
-                        + Markup("</li>")
-                        for it in t["items"]
-                    )
-                    type_blocks += (
-                        Markup('<div style="margin:4px 0 4px 8px;">'
-                               '<div style="font-weight:bold;color:#555;">')
-                        + escape(t["label"])
-                        + Markup('</div>'
-                                 '<ul style="margin:2px 0 2px 16px;padding:0;'
-                                 'font-size:12px;">')
-                        + items
-                        + Markup('</ul></div>')
-                    )
-                cards += (
-                    Markup('<div style="border:1px solid #ddd;border-radius:6px;'
-                           'margin:8px 0;padding:8px 12px;background:#fafafa;">'
-                           '<div style="font-weight:bold;font-size:13px;color:#222;'
-                           'border-bottom:1px solid #eee;padding-bottom:4px;'
-                           'margin-bottom:4px;">')
-                    + equip_label
-                    + Markup('</div>')
-                    + type_blocks
-                    + Markup('</div>')
-                )
-            order.qualif_tecnico_html = (
-                Markup('<div style="width:100%;">') + cards + Markup('</div>')
-            )
 
     @api.depends(
         "order_line.is_qualificacao_managed",

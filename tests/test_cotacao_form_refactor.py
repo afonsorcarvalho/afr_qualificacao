@@ -83,6 +83,43 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         self.assertIn("<div", html)
         self.assertIn("Ciclo CMax", html)
 
+    def _cycle_line(self, so, name, qtype, cycle, qty, hours,
+                    temp="80ºC", dur="10 min", load="com_carga"):
+        return self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": cycle.product_id.id,
+            "name": name,
+            "is_qualificacao_managed": True,
+            "qualification_type": qtype,
+            "equipment_id": self.equip1.id,
+            "cycle_type_id": cycle.id,
+            "qualif_cycle_qty": qty,
+            "estimated_hours": hours,
+            "temperature": temp,
+            "duration": dur,
+            "load_type": load,
+            "product_uom_qty": qty * hours,
+            "price_unit": 100.0,
+        })
+
+    def test_tecnico_html_has_scope_and_cycle_table(self):
+        so = self._so()
+        self._cycle_line(so, "Carga Mista 134", "performance",
+                         self.cycle_cmax, qty=3, hours=2.0)
+        html = so.qualif_tecnico_html
+        self.assertIn("ESCOPO", html)
+        self.assertIn("TABELA DE CICLOS", html)
+        self.assertIn("Temperatura", html)
+        self.assertIn("Carga", html)
+        self.assertIn("80ºC", html)
+        self.assertIn("TEMPO DE EXECUÇÃO", html)
+        self.assertIn("TEMPO TOTAL DE EXECUÇÃO DA PROPOSTA", html)
+
+    def test_tecnico_html_empty_without_qualif_v2(self):
+        so = self._so()
+        self._line(so, optional=False)
+        self.assertFalse(so.qualif_tecnico_html)
+
     def _equip_line(self, so, price=700.0, qty=1.0):
         return self.env["sale.order.line"].create({
             "order_id": so.id,
