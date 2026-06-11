@@ -367,6 +367,9 @@ class SaleOrder(models.Model):
         "order_line.malha_type_id",
         "order_line.name",
         "order_line.product_id",
+        "order_line.qualif_cycle_qty",
+        "order_line.product_uom_qty",
+        "order_line.display_type",
     )
     def _compute_qualif_tecnico_html(self):
         for order in self:
