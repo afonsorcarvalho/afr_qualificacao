@@ -57,3 +57,27 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
             len(so.regular_line_ids) + len(so.optional_line_ids),
             len(so.order_line),
         )
+
+    def test_qualif_tecnico_html_empty_without_qualif(self):
+        so = self._so()
+        self._line(so, optional=False)  # linha comum, sem equipment
+        self.assertFalse(so.qualif_tecnico_html)
+
+    def test_qualif_tecnico_html_has_cards_with_qualif(self):
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": self.cycle_cmax.product_id.id,
+            "name": "Ciclo CMax",
+            "is_qualificacao_managed": True,
+            "qualification_type": "performance",
+            "equipment_id": self.equip1.id,
+            "cycle_type_id": self.cycle_cmax.id,
+            "qualif_cycle_qty": 1,
+            "price_unit": 700.0,
+        })
+        html = so.qualif_tecnico_html
+        self.assertTrue(html)
+        self.assertIn(self.equip1.display_name, html)
+        self.assertIn("<div", html)
+        self.assertIn("Ciclo CMax", html)
