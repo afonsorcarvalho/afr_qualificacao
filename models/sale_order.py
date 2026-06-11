@@ -299,7 +299,10 @@ class SaleOrder(models.Model):
                 '</table></div>'
             ) % "".join(rows)
             html += order._qualif_optionals_subtotals_html()
-            html += order._qualif_grand_total_html()
+            # str() força concatenação str+str: `str += Markup` dispara
+            # Markup.__radd__ (regra de prioridade de subclasse) e ESCAPARIA
+            # todo o html acumulado. O Markup já traz os valores escapados.
+            html += str(order._qualif_grand_total_html())
             order.qualif_subtotals_html = html
 
     def _qualif_optionals_subtotals_html(self):

@@ -142,6 +142,10 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         html = so.qualif_subtotals_html
         self.assertIn("TOTAL GERAL DA PROPOSTA", html)
         self.assertIn(expected, html)
+        # Regressão: anexar o banner (Markup) NÃO pode escapar as tabelas
+        # de equipamento/opcionais que vêm antes (str+Markup → __radd__).
+        self.assertIn("<table", html)
+        self.assertNotIn("&lt;table", html)
 
     def test_grand_total_includes_accepted_optional(self):
         so = self._so()
