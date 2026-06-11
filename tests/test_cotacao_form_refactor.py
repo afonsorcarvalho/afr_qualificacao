@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo.tests.common import tagged
+from odoo.tools.misc import formatLang
 from .common import AfrQualificacaoTestCommon
 
 
@@ -81,3 +82,42 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         self.assertIn(self.equip1.display_name, html)
         self.assertIn("<div", html)
         self.assertIn("Ciclo CMax", html)
+
+    def _equip_line(self, so, price=700.0, qty=1.0):
+        return self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": self.cycle_cmax.product_id.id,
+            "name": "Ciclo CMax",
+            "is_qualificacao_managed": True,
+            "qualification_type": "performance",
+            "equipment_id": self.equip1.id,
+            "cycle_type_id": self.cycle_cmax.id,
+            "qualif_cycle_qty": int(qty),
+            "price_unit": price,
+            "product_uom_qty": qty,
+        })
+
+    def test_grand_total_present_equip_only(self):
+        so = self._so()
+        self._equip_line(so, price=700.0, qty=1.0)
+        equip_total = sum(s["subtotal"] for s in so._qualif_equipment_summary())
+        expected = formatLang(self.env, equip_total, currency_obj=so.currency_id)
+        html = so.qualif_subtotals_html
+        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertIn(expected, html)
+
+    def test_grand_total_includes_accepted_optional(self):
+        so = self._so()
+        self._equip_line(so, price=700.0, qty=1.0)
+        self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self._svc(50.0).id,
+            "name": "Opc Aceito", "is_proposal_optional": True,
+            "optional_accepted": True, "optional_qty": 1.0, "price_unit": 50.0,
+        })
+        equip_total = sum(s["subtotal"] for s in so._qualif_equipment_summary())
+        opt_total = sum(so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.optional_accepted
+        ).mapped("price_subtotal"))
+        expected = formatLang(self.env, equip_total + opt_total,
+                              currency_obj=so.currency_id)
+        self.assertIn(expected, so.qualif_subtotals_html)

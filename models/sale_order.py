@@ -308,6 +308,7 @@ class SaleOrder(models.Model):
                 '</table></div>'
             ) % "".join(rows)
             html += order._qualif_optionals_subtotals_html()
+            html += order._qualif_grand_total_html()
             order.qualif_subtotals_html = html
 
     def _qualif_optionals_subtotals_html(self):
@@ -358,6 +359,41 @@ class SaleOrder(models.Model):
             '<tbody>%s</tbody>'
             '</table></div>'
         ) % "".join(rows)
+
+    def _qualif_grand_total_html(self):
+        """Banner 'TOTAL GERAL DA PROPOSTA' = subtotais de equipamento +
+        opcionais aceitos. Anexado ao fim de qualif_subtotals_html."""
+        self.ensure_one()
+        equip_total = sum(
+            s["subtotal"] for s in self._qualif_equipment_summary())
+        accepted = self.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.optional_accepted)
+        opt_total = sum(accepted.mapped("price_subtotal"))
+        grand = equip_total + opt_total
+        grand_str = formatLang(
+            self.env, grand, currency_obj=self.currency_id)
+        note = Markup("")
+        if accepted:
+            equip_str = formatLang(
+                self.env, equip_total, currency_obj=self.currency_id)
+            opt_str = formatLang(
+                self.env, opt_total, currency_obj=self.currency_id)
+            note = (
+                Markup('<div style="font-size:11px;color:#888;'
+                       'margin-top:4px;">(equipamentos ')
+                + escape(equip_str) + Markup(' + opcionais aceitos ')
+                + escape(opt_str) + Markup(')</div>')
+            )
+        return (
+            Markup('<div style="margin-top:16px;padding:10px 14px;'
+                   'background:#1f7a3d;color:#fff;border-radius:6px;'
+                   'display:flex;justify-content:space-between;'
+                   'align-items:center;">'
+                   '<span style="font-weight:bold;font-size:14px;">'
+                   'TOTAL GERAL DA PROPOSTA</span>'
+                   '<span style="font-weight:bold;font-size:18px;">')
+            + escape(grand_str) + Markup('</span></div>') + note
+        )
 
     @api.depends(
         "order_line.equipment_id",
