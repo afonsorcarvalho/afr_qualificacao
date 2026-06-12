@@ -114,6 +114,9 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         self.assertIn("80ºC", html)
         self.assertIn("TEMPO DE EXECUÇÃO", html)
         self.assertIn("TEMPO TOTAL DE EXECUÇÃO DA PROPOSTA", html)
+        # Escopo não deve repetir a quantidade ("× N") — o nome já traz
+        # "— N ciclo(s)" e a qtd está na TABELA DE CICLOS (igual ao print).
+        self.assertNotIn("&times;", html)
 
     def test_tecnico_html_empty_without_qualif_v2(self):
         so = self._so()

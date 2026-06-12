@@ -119,13 +119,13 @@ class SaleOrder(models.Model):
                     i for i in tp["items"] if (i.get("part") or "") == pcode]
                 if not part_items:
                     continue
+                # Sem "× qty": o nome já traz "— N ciclo(s)/malha(s)" e as
+                # quantidades/horas estão na TABELA DE CICLOS (igual ao print).
                 names = Markup(" · ").join(
-                    ((Markup('<span style="text-decoration:line-through;'
-                             'color:#999;">') + escape(i["name"])
-                      + Markup('</span>'))
-                     if i.get("declined") else escape(i["name"]))
-                    + (Markup(" &times; %s") % int(i["qty"])
-                       if i.get("qty") else Markup(""))
+                    (Markup('<span style="text-decoration:line-through;'
+                            'color:#999;">') + escape(i["name"])
+                     + Markup('</span>'))
+                    if i.get("declined") else escape(i["name"])
                     for i in part_items
                 )
                 rows += (
