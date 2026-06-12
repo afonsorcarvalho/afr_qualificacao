@@ -547,8 +547,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "cycle_type_id": qo.cycle_type_id.id,
                     "part": "02",
                 }
-                if qo.unit_price:
-                    qo_vals["price_unit"] = qo.unit_price
+                # Sempre propaga o preço do wizard (autoritativo — pré-preenchido
+                # por onchange/reload). Guard `if unit_price` impedia zerar.
+                qo_vals["price_unit"] = qo.unit_price
                 if hours:
                     qo_vals["estimated_hours"] = hours
                 qo_vals["temperature"] = qo.temperature or qo.cycle_type_id.temperature or False
@@ -575,8 +576,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "equipment_id": equip.id,
                     "cycle_type_id": qd.cycle_type_id.id,
                 }
-                if qd.unit_price:
-                    qd_vals["price_unit"] = qd.unit_price
+                # Sempre propaga (ver QO acima).
+                qd_vals["price_unit"] = qd.unit_price
                 if hours:
                     qd_vals["estimated_hours"] = hours
                 qd_vals["temperature"] = qd.temperature or qd.cycle_type_id.temperature or False
@@ -604,8 +605,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "malha_type_id": c.malha_type_id.id,
                     "part": "02",
                 }
-                if c.unit_price:
-                    c_vals["price_unit"] = c.unit_price
+                # Sempre propaga (ver QO acima).
+                c_vals["price_unit"] = c.unit_price
                 if hours:
                     c_vals["estimated_hours"] = hours
                 new_lines.append((0, 0, c_vals))
@@ -1068,6 +1069,19 @@ class AfrQualificacaoConfiguratorQdLine(models.TransientModel):
                 if not line.load_type:
                     line.load_type = line.cycle_type_id.load_type
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        # Rede de segurança: linhas criadas via API (helpers/bulk) não disparam
+        # o onchange — popula unit_price do tipo quando a chave está AUSENTE.
+        # `unit_price=0` explícito é respeitado (chave presente) e propaga 0.
+        for vals in vals_list:
+            if "unit_price" not in vals and vals.get("cycle_type_id"):
+                ct = self.env["afr.qualificacao.cycle.type"].browse(
+                    vals["cycle_type_id"])
+                vals["unit_price"] = (
+                    ct.default_unit_price or ct.product_id.list_price)
+        return super().create(vals_list)
+
     @api.constrains("qty")
     def _check_qty_positive(self):
         for line in self:
@@ -1147,6 +1161,18 @@ class AfrQualificacaoConfiguratorQoLine(models.TransientModel):
                 if not line.load_type:
                     line.load_type = line.cycle_type_id.load_type
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        # Rede de segurança: ver Qd.create — popula unit_price do tipo quando
+        # a chave está AUSENTE (0 explícito é respeitado e propaga 0).
+        for vals in vals_list:
+            if "unit_price" not in vals and vals.get("cycle_type_id"):
+                ct = self.env["afr.qualificacao.cycle.type"].browse(
+                    vals["cycle_type_id"])
+                vals["unit_price"] = (
+                    ct.default_unit_price or ct.product_id.list_price)
+        return super().create(vals_list)
+
     @api.constrains("qty")
     def _check_qty_positive(self):
         for line in self:
@@ -1210,6 +1236,18 @@ class AfrQualificacaoConfiguratorCalibLine(models.TransientModel):
                     line.unit_price = line.malha_type_id.default_unit_price or prod.list_price
                 if not line.estimated_hours:
                     line.estimated_hours = line.malha_type_id.estimated_hours
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        # Rede de segurança: ver Qd.create — popula unit_price do tipo de malha
+        # quando a chave está AUSENTE (0 explícito é respeitado e propaga 0).
+        for vals in vals_list:
+            if "unit_price" not in vals and vals.get("malha_type_id"):
+                mt = self.env["afr.qualificacao.malha.type"].browse(
+                    vals["malha_type_id"])
+                vals["unit_price"] = (
+                    mt.default_unit_price or mt.product_id.list_price)
+        return super().create(vals_list)
 
     @api.constrains("qty")
     def _check_qty_positive(self):

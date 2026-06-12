@@ -53,6 +53,59 @@ class TestConfigurator(AfrQualificacaoTestCommon):
         self.assertEqual(temp.product_uom_qty, 5)
         self.assertEqual(temp.product_id, self.product_malha_temp)
 
+    def test_apply_propagates_zero_unit_price(self):
+        """Regressão: preço unitário editado para 0 no wizard DEVE propagar
+        para a linha do SO (não cair no preço do produto).
+
+        Bug F8.11: o guard `if unit_price:` pulava a atribuição quando o preço
+        era 0 → o Odoo recomputava o preço do produto (price_unit é computed
+        editable com precompute). Vale para QO, QD e Calibração.
+        """
+        so = self._build_so()
+        wiz = self._open_wizard(so)
+        wiz.equipment_line_ids = [(0, 0, {
+            "equipment_id": self.equip1.id,
+            "do_qi": True,
+            "qo_line_ids": [(0, 0, {
+                "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
+                "unit_price": 0.0})],
+            "qd_line_ids": [(0, 0, {
+                "cycle_type_id": self.cycle_cmax.id, "qty": 1,
+                "unit_price": 0.0})],
+            "calib_line_ids": [(0, 0, {
+                "malha_type_id": self.malha_temp.id, "qty": 1,
+                "unit_price": 0.0})],
+        })]
+        wiz.action_apply()
+        calib = so.order_line.filtered(
+            lambda l: l.malha_type_id == self.malha_temp)
+        qd = so.order_line.filtered(
+            lambda l: l.cycle_type_id == self.cycle_cmax)
+        qo = so.order_line.filtered(
+            lambda l: l.cycle_type_id == self.cycle_qo_test)
+        self.assertEqual(calib.price_unit, 0.0,
+                         "Preço 0 da malha de calibração deve propagar ao SO")
+        self.assertEqual(qd.price_unit, 0.0,
+                         "Preço 0 do ciclo QD deve propagar ao SO")
+        self.assertEqual(qo.price_unit, 0.0,
+                         "Preço 0 do ciclo QO deve propagar ao SO")
+
+    def test_apply_propagates_custom_unit_price(self):
+        """Preço unitário customizado (não-zero) também propaga ao SO."""
+        so = self._build_so()
+        wiz = self._open_wizard(so)
+        wiz.equipment_line_ids = [(0, 0, {
+            "equipment_id": self.equip1.id,
+            "calib_line_ids": [(0, 0, {
+                "malha_type_id": self.malha_temp.id, "qty": 1,
+                "unit_price": 123.0})],
+        })]
+        wiz.action_apply()
+        calib = so.order_line.filtered(
+            lambda l: l.malha_type_id == self.malha_temp)
+        self.assertEqual(calib.price_unit, 123.0,
+                         "Preço customizado deve propagar ao SO")
+
     def test_apply_recreates_managed_preserves_manual(self):
         so = self._build_so()
         # linha manual avulsa
