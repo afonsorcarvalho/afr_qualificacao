@@ -206,3 +206,30 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         self.assertEqual(rt.temperature, "777°C")
         self.assertEqual(rt.duration, "77 min")
         self.assertEqual(rt.load_type, "vazio")
+
+    def test_scope_bullet_process_word_follows_category(self):
+        """Bullet do Escopo usa o processo da categoria (não 'esterilização' fixo)."""
+        self.category.process_type = "desinfeccao"
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self.cycle_cmax.product_id.id,
+            "name": "Vazio 80°C", "is_qualificacao_managed": True,
+            "qualification_type": "performance", "equipment_id": self.equip1.id,
+            "cycle_type_id": self.cycle_cmax.id, "qualif_cycle_qty": 3,
+            "estimated_hours": 1.0, "duration": "10 min",
+        })
+        summary = so._qualif_equipment_summary()
+        items = [
+            it for eq in summary for tp in eq["types"] for it in tp["items"]
+            if it.get("subtype") == "cycle_type"
+        ]
+        self.assertTrue(items)
+        self.assertEqual(items[0]["process_word"], "desinfecção")
+        # troca categoria → esterilização reflete no bullet
+        self.category.process_type = "esterilizacao"
+        summary = so._qualif_equipment_summary()
+        items = [
+            it for eq in summary for tp in eq["types"] for it in tp["items"]
+            if it.get("subtype") == "cycle_type"
+        ]
+        self.assertEqual(items[0]["process_word"], "esterilização")

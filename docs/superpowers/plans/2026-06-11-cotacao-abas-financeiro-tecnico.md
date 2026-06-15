@@ -82,7 +82,7 @@ E os métodos:
 - [ ] **Step 2: Rodar e verificar que falham**
 
 ```
-docker exec odoo_engenapp-web-1 odoo -d odoo_ecm_test -u afr_qualificacao --test-enable --test-tags /afr_qualificacao:TestCotacaoFormRefactor --stop-after-init 2>&1 | tail -40
+docker exec odoo_engenapp-web-1 odoo -d odoo-labquali -u afr_qualificacao --test-enable --test-tags /afr_qualificacao:TestCotacaoFormRefactor --stop-after-init 2>&1 | tail -40
 ```
 Esperado: FAIL — o HTML não contém "TOTAL GERAL DA PROPOSTA" ainda.
 

@@ -63,7 +63,7 @@
                                                                     <t t-elif="first_item.get('subtype') == 'cycle_type'">
                                                                         <span t-esc="first_item['name']"/>
                                                                         <t t-if="first_item.get('temperature')"> — <t t-esc="first_item['temperature']"/></t>
-                                                                        <t t-if="first_item.get('duration')"> — <t t-esc="first_item['duration']"/> esterilização</t>
+                                                                        <t t-if="first_item.get('duration')"> — <t t-esc="first_item['duration']"/><t t-if="first_item.get('process_word')"> <t t-esc="first_item['process_word']"/></t></t>
                                                                     </t>
                                                                     <t t-else="">
                                                                         <span t-esc="first_item['name']"/>
@@ -81,7 +81,7 @@
                                                                         <t t-elif="it.get('subtype') == 'cycle_type'">
                                                                             <span t-esc="it['name']"/>
                                                                             <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
-                                                                            <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esterilização</t>
+                                                                            <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/><t t-if="it.get('process_word')"> <t t-esc="it['process_word']"/></t></t>
                                                                         </t>
                                                                         <t t-else="">
                                                                             <span t-esc="it['name']"/>

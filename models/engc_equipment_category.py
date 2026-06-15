@@ -30,3 +30,20 @@ class EngcEquipmentCategory(models.Model):
         }
         return labels.get(self.process_type or "esterilizacao",
                           _("Tempo de Esterilização"))
+
+    def _qualif_process_word(self):
+        """Substantivo do processo p/ os bullets do Escopo (ex: '10 min <word>').
+
+        Segue o mesmo `process_type` que dirige a coluna da tabela de ciclos,
+        mantendo Escopo e Tabela de Ciclos coerentes. Monitoramento → '' (o
+        bullet exibe só o tempo, sem sufixo de processo).
+        """
+        self.ensure_one()
+        words = {
+            "esterilizacao": _("esterilização"),
+            "lavagem": _("lavagem"),
+            "desinfeccao": _("desinfecção"),
+            "monitoramento": "",
+        }
+        return words.get(self.process_type or "esterilizacao",
+                         _("esterilização"))

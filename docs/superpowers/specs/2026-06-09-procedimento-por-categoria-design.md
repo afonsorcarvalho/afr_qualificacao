@@ -255,6 +255,27 @@ merge real tipo→fase; fora de escopo agora — labquali DEV.)
    `tests/test_docx_render.py:179`, `tests/test_coverage.py:73`. Trocar criação
    do proc para sem o campo e os itens com `phase`; `resolve_for(cat)`.
 
+## DECISÃO 2026-06-10 — F2 ARQUIVADA (não construir)
+
+F2 avaliada empiricamente via agent-browser (DB `qualif_fresh_811`, editor F1 do
+zero). Conclusão: **não construir F2** — nem biblioteca de passos, nem seed.
+
+- **Editor F1 não é gargalo.** Linha nova já nasce com defaults (Fase=QI,
+  Tipo=Foto, Target=Qualificação, Required✓). Item simples = só digitar Name.
+  Item metrológico = +3 campos, `requires_instrument` auto via onchange.
+- **Reuso já resolvido** pelo "Duplicate" nativo (menu Ação): clonar 1
+  procedimento canônico p/ categoria similar = 1 clique + trocar categoria.
+- **Biblioteca de passos (`step.catalog`): YAGNI.** Modelo+tela+onchange = muito
+  código + risco OWL multi-render/onchange em tree (já queimado no pivot F1) p/
+  ganho marginal sobre per-linha-barato + Duplicate.
+- **Seed embarcado: descartado também.** A dor real é "página em branco"
+  (conhecimento de domínio do que coletar), não fricção de UI. Categorias serão
+  configuradas à mão a partir do canônico existente + Duplicate. (labquali já tem
+  "Protocolo Autoclave Vapor" como referência viva, se precisar.)
+
+Reabrir só se o volume de categorias crescer a ponto de o Duplicate+ajuste manual
+virar gargalo medido — não por antecipação.
+
 ## Fora de escopo (F2 / YAGNI)
 
 - **Biblioteca de passos** (`afr.qualificacao.step.catalog`) — modelo novo +

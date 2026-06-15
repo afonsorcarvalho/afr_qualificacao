@@ -489,6 +489,12 @@ class SaleOrder(models.Model):
                         # esteril pra exibir junto do ciclo no Escopo.
                         extra["temperature"] = line.temperature or line.cycle_type_id.temperature or ""
                         extra["duration"] = line.duration or line.cycle_type_id.duration or ""
+                        # F8.16 — sufixo do processo no bullet segue a categoria
+                        # (esterilização/lavagem/desinfecção), igual à tabela de ciclos.
+                        extra["process_word"] = (
+                            equip.category_id._qualif_process_word()
+                            if equip.category_id else ""
+                        )
                     elif line.malha_type_id:
                         # F10.4 — calib na proposta usa a DESCRIÇÃO da linha
                         # (line.name sem o sufixo "— N malha(s)"), não o nome
