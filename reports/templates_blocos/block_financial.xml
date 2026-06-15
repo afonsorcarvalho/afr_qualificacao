@@ -23,20 +23,28 @@
                                     </t>
                                 </table>
                                 <table class="qq-total-table">
-                                    <t t-set="equip_total" t-value="sum(eq['subtotal'] for eq in summary)"/>
-                                    <t t-set="optional_total" t-value="sum(l.price_subtotal for l in doc.order_line if l.is_proposal_optional and l.optional_accepted)"/>
+                                    <t t-set="totals" t-value="doc._qualif_proposal_totals()"/>
                                     <tr>
                                         <td class="qq-tot-label">Subtotal:</td>
                                         <td class="qq-tot-value">
-                                            <span t-esc="equip_total"
+                                            <span t-esc="totals['equip_total']"
                                                   t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                         </td>
                                     </tr>
-                                    <t t-if="optional_total">
+                                    <t t-if="totals['outros_total']">
+                                        <tr>
+                                            <td class="qq-tot-label">Outros:</td>
+                                            <td class="qq-tot-value">
+                                                <span t-esc="totals['outros_total']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                    <t t-if="totals['optional_total']">
                                         <tr>
                                             <td class="qq-tot-label">Opcionais:</td>
                                             <td class="qq-tot-value">
-                                                <span t-esc="optional_total"
+                                                <span t-esc="totals['optional_total']"
                                                       t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                             </td>
                                         </tr>
@@ -44,7 +52,7 @@
                                     <tr class="qq-total-grand">
                                         <td class="qq-tot-label">TOTAL GERAL:</td>
                                         <td class="qq-tot-value">
-                                            <span t-esc="equip_total + optional_total"
+                                            <span t-esc="totals['grand_total']"
                                                   t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                         </td>
                                     </tr>

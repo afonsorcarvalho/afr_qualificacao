@@ -360,29 +360,67 @@ class SaleOrder(models.Model):
             '</table></div>'
         ) % "".join(rows)
 
-    def _qualif_grand_total_html(self):
-        """Banner 'TOTAL GERAL DA PROPOSTA' = subtotais de equipamento +
-        opcionais aceitos. Anexado ao fim de qualif_subtotals_html."""
+    def _qualif_proposal_totals(self):
+        """Totais reconciliados da proposta, fonte única para o banner do
+        form, o bloco financeiro do PDF e o portal.
+
+        `grand_total` é SEMPRE `amount_untaxed` (o total real da proposta).
+        Ele é decomposto em três baldes que somam exatamente a esse total:
+
+        - `equip_total`: soma dos subtotais agrupados por equipamento
+          (linhas managed com equipment_id), via `_qualif_equipment_summary`.
+        - `optional_total`: opcionais aceitos.
+        - `outros_total`: remanescente — linhas regulares fora do agrupamento
+          por equipamento (ex.: linhas avulsas adicionadas manualmente,
+          managed sem equipment_id). Antes ficavam invisíveis no banner,
+          causando total subestimado (bug C26-06-0005).
+        """
         self.ensure_one()
         equip_total = sum(
             s["subtotal"] for s in self._qualif_equipment_summary())
         accepted = self.order_line.filtered(
             lambda l: l.is_proposal_optional and l.optional_accepted)
-        opt_total = sum(accepted.mapped("price_subtotal"))
-        grand = equip_total + opt_total
+        optional_total = sum(accepted.mapped("price_subtotal"))
+        grand_total = self.amount_untaxed
+        outros_total = self.currency_id.round(
+            grand_total - equip_total - optional_total)
+        return {
+            "equip_total": equip_total,
+            "optional_total": optional_total,
+            "outros_total": outros_total,
+            "grand_total": grand_total,
+        }
+
+    def _qualif_grand_total_html(self):
+        """Banner 'TOTAL GERAL DA PROPOSTA' = total real da proposta
+        (amount_untaxed), decomposto em equipamentos + outros + opcionais
+        aceitos. Anexado ao fim de qualif_subtotals_html."""
+        self.ensure_one()
+        totals = self._qualif_proposal_totals()
+        equip_total = totals["equip_total"]
+        opt_total = totals["optional_total"]
+        outros_total = totals["outros_total"]
+        grand = totals["grand_total"]
         grand_str = formatLang(
             self.env, grand, currency_obj=self.currency_id)
         note = Markup("")
-        if accepted:
+        # Nota de decomposição quando há mais de um balde além do equip.
+        parts = []
+        if outros_total:
+            parts.append(Markup('outros ') + escape(formatLang(
+                self.env, outros_total, currency_obj=self.currency_id)))
+        if opt_total:
+            parts.append(Markup('opcionais aceitos ') + escape(formatLang(
+                self.env, opt_total, currency_obj=self.currency_id)))
+        if parts:
             equip_str = formatLang(
                 self.env, equip_total, currency_obj=self.currency_id)
-            opt_str = formatLang(
-                self.env, opt_total, currency_obj=self.currency_id)
             note = (
                 Markup('<div style="font-size:11px;color:#888;'
                        'margin-top:4px;">(equipamentos ')
-                + escape(equip_str) + Markup(' + opcionais aceitos ')
-                + escape(opt_str) + Markup(')</div>')
+                + escape(equip_str)
+                + Markup(' + ') + Markup(' + ').join(parts)
+                + Markup(')</div>')
             )
         return (
             Markup('<div style="margin-top:16px;padding:10px 14px;'

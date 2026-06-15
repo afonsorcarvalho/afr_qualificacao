@@ -166,6 +166,29 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
                               currency_obj=so.currency_id)
         self.assertIn(expected, so.qualif_subtotals_html)
 
+    def test_grand_total_reconciles_with_manual_line(self):
+        """Regressão (C26-06-0005): linha avulsa (não-managed, sem equipment)
+        conta em amount_untaxed mas era ignorada pelo banner TOTAL GERAL →
+        total subestimado. O banner deve reconciliar com amount_untaxed e
+        expor o remanescente como 'Outros'."""
+        so = self._so()
+        self._equip_line(so, price=700.0, qty=1.0)          # equip = 700
+        # linha avulsa: produto comum, não managed, sem equipment → +1350
+        self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self._svc(450.0).id,
+            "name": "Ciclo avulso", "product_uom_qty": 3.0, "price_unit": 450.0,
+        })
+        totals = so._qualif_proposal_totals()
+        self.assertAlmostEqual(totals["equip_total"], 700.0, places=2)
+        self.assertAlmostEqual(totals["outros_total"], 1350.0, places=2)
+        self.assertAlmostEqual(totals["grand_total"], so.amount_untaxed,
+                               places=2)
+        self.assertAlmostEqual(totals["grand_total"], 2050.0, places=2)
+        # Banner exibe o total reconciliado (amount_untaxed), não só equip.
+        expected = formatLang(self.env, so.amount_untaxed,
+                              currency_obj=so.currency_id)
+        self.assertIn(expected, so.qualif_subtotals_html)
+
     def test_optional_accept_persists_qty_and_updates_total_live(self):
         """Aceitar opcional na aba Opcionais persiste product_uom_qty
         (subtotal != 0) e recomputa o resumo financeiro AO VIVO no form.
