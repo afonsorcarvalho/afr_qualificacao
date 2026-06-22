@@ -12,15 +12,14 @@
                                     <table class="qq-table">
                                         <thead>
                                             <tr class="qq-scope-equip-header">
-                                                <th colspan="6" t-esc="cs['equipment'].name"/>
+                                                <th colspan="5" t-esc="cs['equipment'].name"/>
                                             </tr>
                                             <tr>
                                             <th>Ciclo</th>
                                             <th style="width: 8%;">Qtd</th>
-                                            <th style="width: 15%;">Temperatura</th>
-                                            <th style="width: 15%;"><t t-esc="cs['time_label']"/></th>
-                                            <th style="width: 15%;">Carga</th>
-                                            <th style="width: 18%; text-align: right;">Tempo Estimado</th>
+                                            <th style="width: 18%;">Temperatura</th>
+                                            <th style="width: 18%;"><t t-esc="cs['time_label']"/></th>
+                                            <th style="width: 18%;">Carga</th>
                                         </tr>
                                         </thead>
                                         <t t-foreach="cs['rows']" t-as="row">
@@ -30,16 +29,18 @@
                                                 <td t-esc="row['temperature']"/>
                                                 <td t-esc="row['duration']"/>
                                                 <td t-esc="row['load_type']"/>
-                                                <td style="text-align: right;" t-esc="'%.1f h' % (row['estimated_hours_total'] or 0.0)"/>
                                             </tr>
                                         </t>
                                         <t t-set="cs_total_qty" t-value="sum(r['qty'] or 0 for r in cs['rows'])"/>
                                         <t t-set="cs_total_hours" t-value="sum(r['estimated_hours_total'] or 0.0 for r in cs['rows'])"/>
+                                        <t t-set="cs_days_raw" t-value="cs_total_hours / 8.0"/>
+                                        <!-- Arredonda pra cima ao próximo 0,5: 3,2->3,5 | 3,6->4,0 -->
+                                        <t t-set="cs_days" t-value="(int(cs_days_raw * 2) + (0 if cs_days_raw * 2 == int(cs_days_raw * 2) else 1)) / 2.0"/>
                                         <tfoot>
                                             <tr>
-                                                <td colspan="5">Total: <t t-esc="cs_total_qty"/> ciclo(s)</td>
+                                                <td colspan="4">Total: <t t-esc="cs_total_qty"/> ciclo(s)</td>
                                                 <td style="text-align: right;">
-                                                    <t t-esc="'%.1f h · %.1f dias' % (cs_total_hours, cs_total_hours / 8.0)"/>
+                                                    <t t-esc="'%.1f dias' % cs_days"/>
                                                 </td>
                                             </tr>
                                         </tfoot>
