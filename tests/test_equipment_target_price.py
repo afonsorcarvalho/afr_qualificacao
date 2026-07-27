@@ -151,8 +151,13 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         section = self._section(so, self.equip1)
         self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
         declinada = self._cycle_line(so, self.equip1, 1, 1.0, 900.0)
+        # price_unit incluído no mesmo write: o compute nativo de price_unit
+        # (core, não a flag is_rateio_priced — esta linha nunca é rateada)
+        # depende de product_uom_qty e resetaria pro list_price do produto
+        # se o valor não viesse explícito nesta mesma chamada.
         declinada.write({"part": "01", "part01_declined": True,
-                         "product_uom_qty": 0.0})
+                         "product_uom_qty": 0.0,
+                         "price_unit": declinada.price_unit})
         opcional = self._cycle_line(so, self.equip1, 1, 1.0, 500.0)
         opcional.write({"is_proposal_optional": True,
                         "optional_accepted": True})
@@ -210,3 +215,60 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         self.assertTrue(any(
             "arredondamento" in (m.body or "")
             for m in so.message_ids))
+
+    def test_apply_raises_when_line_has_discount(self):
+        """Rateio não suporta desconto por linha: quebraria a proporção
+        entre linhas (price_subtotal = price_unit × qty × (1-discount/100))
+        e o helper de rateio não sabe disso."""
+        from odoo.exceptions import UserError
+        so = self._so()
+        section = self._section(so, self.equip1)
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        linha.discount = 10.0
+        section.equipment_target_price = 1000.0
+        with self.assertRaises(UserError):
+            section._apply_equipment_target()
+
+    def test_frozen_line_keeps_price_unit_on_qty_change(self):
+        """Linha com is_rateio_priced=True não sofre o recompute nativo de
+        price_unit (core) ao ter product_uom_qty editado."""
+        so = self._so()
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        linha.write({"is_rateio_priced": True})
+        linha.write({"product_uom_qty": 10.0})
+        self.assertEqual(linha.price_unit, 200.0)
+
+    def test_managed_line_without_flag_reprices_on_qty_change(self):
+        """Linha managed que NUNCA foi rateada (sem is_rateio_priced)
+        continua repreçando pela pricelist ao mudar qty — 'Atualizar
+        Preços' do pedido precisa continuar funcionando nela."""
+        so = self._so()
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        linha.write({"product_uom_qty": 10.0})
+        self.assertEqual(linha.price_unit, self.product_qd_cmax.list_price)
+
+    def test_non_managed_line_reprices_on_qty_change(self):
+        """Linha comum (sem is_qualificacao_managed) nunca ganha a flag —
+        segue repreçando pela pricelist normalmente."""
+        so = self._so()
+        linha = self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self.product_qd_cmax.id,
+            "name": "Linha avulsa", "product_uom_qty": 1.0,
+            "price_unit": 999.0,
+        })
+        linha.write({"product_uom_qty": 5.0})
+        self.assertEqual(linha.price_unit, self.product_qd_cmax.list_price)
+
+    def test_new_line_gets_pricelist_price_even_with_flag(self):
+        """Linha nova (sem id persistido) nunca é congelada: mesmo com
+        is_rateio_priced=True já no create e sem price_unit explícito, ela
+        recebe o preço da pricelist normalmente (_origin.id é falso)."""
+        so = self._so()
+        linha = self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self.cycle_cmax.product_id.id,
+            "name": "Nova linha", "product_uom_qty": 2.0,
+            "is_qualificacao_managed": True, "is_rateio_priced": True,
+            "qualification_type": "performance", "equipment_id": self.equip1.id,
+            "cycle_type_id": self.cycle_cmax.id,
+        })
+        self.assertEqual(linha.price_unit, self.product_qd_cmax.list_price)
