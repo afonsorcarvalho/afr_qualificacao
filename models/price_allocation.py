@@ -15,8 +15,11 @@ Todo arredondamento é HALF-UP (moeda), nunca o banker's rounding do `round()`.
 
 from odoo.tools import float_round
 
-# Quantas linhas a busca combinada pode ajustar, e em quantos centavos.
-_SEARCH_MAX_LINES = 3
+# Tamanho do pool de linhas candidatas (as de grade mais fina) que a busca
+# combinada considera, e em quantos centavos ela ajusta cada uma. Não é a
+# profundidade máxima de ajuste simultâneo — essa é sempre 1 ou 2 linhas
+# (ver `_search_residual`).
+_SEARCH_POOL_SIZE = 3
 _SEARCH_MAX_CENTS = 20
 
 
@@ -32,6 +35,15 @@ def subtotal_for(qty, price_unit, digits=2):
 def allocate_target(target, lines, digits=2):
     """Distribui `target` entre `lines` proporcionalmente ao subtotal atual.
 
+    Precondição do chamador: a soma dos subtotais atuais (`base`) deve ser
+    diferente de zero para o rateio proporcional fazer sentido — a camada ORM
+    (ver Task 3) levanta `UserError` antes de chegar aqui quando `base == 0`.
+    Este helper não recusa a chamada: se `lines` for não-vazio mas `base` for
+    zero, devolve `price_units` do mesmo tamanho de `lines` preenchida com
+    `0.0` (nunca uma lista vazia/dessincronizada — consumidores fazem
+    `zip(lines, price_units)` e dependem de tamanho igual), `achieved=0.0` e
+    `exact=False`.
+
     :param target: total desejado (sem impostos)
     :param lines: list[(qty, subtotal_atual)]
     :param digits: casas decimais da moeda
@@ -42,7 +54,11 @@ def allocate_target(target, lines, digits=2):
 
     base = sum(sub for _qty, sub in lines)
     if not base:
-        return {"price_units": [], "achieved": 0.0, "exact": False}
+        return {
+            "price_units": [0.0] * len(lines),
+            "achieved": 0.0,
+            "exact": False,
+        }
 
     # 1. Shares proporcionais, arredondados; resíduo na maior linha.
     shares = [_round(target * sub / base, digits) for _qty, sub in lines]
@@ -81,17 +97,19 @@ def allocate_target(target, lines, digits=2):
 
 
 def _search_residual(lines, price_units, diff, digits=2):
-    """Procura ajuste de n centavos no price_unit de até 3 linhas p/ zerar `diff`.
+    """Ajusta o price_unit de 1 ou 2 linhas, em centavos, p/ zerar `diff`.
 
     Puro e em memória: nenhuma escrita no ORM aqui. Devolve a nova lista de
-    price_units, ou None se nenhuma combinação fecha.
+    price_units, ou None se nenhuma combinação de 1 ou 2 linhas fecha (não
+    tenta 3+ linhas simultâneas).
 
-    As linhas são tentadas da grade mais fina para a mais grossa — a grade de uma
-    linha é `qty × 0,01`, o quanto seu subtotal anda por centavo de price_unit.
+    As linhas candidatas ao ajuste são as `_SEARCH_POOL_SIZE` de grade mais
+    fina — a grade de uma linha é `qty × 0,01`, o quanto seu subtotal anda por
+    centavo de price_unit.
     """
     step = 10 ** -digits
     order = sorted(range(len(lines)), key=lambda i: lines[i][0])
-    candidates = order[:_SEARCH_MAX_LINES]
+    candidates = order[:_SEARCH_POOL_SIZE]
 
     def delta_for(idx, cents):
         qty = lines[idx][0]

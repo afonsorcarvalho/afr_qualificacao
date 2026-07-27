@@ -67,3 +67,17 @@ class TestPriceAllocation(TransactionCase):
         res = allocate_target(1000.01, lines)
         self.assertFalse(res["exact"])
         self.assertLess(abs(res["achieved"] - 1000.01), 0.03)
+
+    def test_zero_base_returns_zeroed_price_units_same_length(self):
+        """base == 0 com lines não-vazio: price_units do mesmo tamanho, tudo 0.0.
+
+        A camada ORM (Task 3) levanta UserError antes de chamar o helper
+        quando a base está zerada — mas o helper não pode devolver uma lista
+        de tamanho diferente de `lines`: consumidores fazem
+        zip(lines, price_units) e dependem do tamanho casar.
+        """
+        lines = [(7.5, 0.0), (1.0, 0.0)]
+        res = allocate_target(1000.0, lines)
+        self.assertEqual(len(res["price_units"]), len(lines))
+        self.assertEqual(res["price_units"], [0.0, 0.0])
+        self.assertFalse(res["exact"])
