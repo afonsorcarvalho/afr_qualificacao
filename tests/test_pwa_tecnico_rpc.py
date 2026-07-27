@@ -212,3 +212,87 @@ class TestPwaTecnicoRpc(TransactionCase):
         rel.write({"signature_technician": False})
         self.assertFalse(rel.signature_technician)
         self.assertFalse(rel.signature_technician_date)
+
+    # ─────────────────────────────────────────────────────────────
+    # 4. action_start_daily_relatorio (idempotente)
+    # ─────────────────────────────────────────────────────────────
+    def test_start_daily_cria_relatorio_draft(self):
+        os_rec = self._make_os()
+        rel_id = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+        rel = self.env["afr.qualificacao.os.relatorio"].browse(rel_id)
+        self.assertTrue(rel.exists())
+        self.assertEqual(rel.state, "draft")
+        self.assertEqual(rel.os_id, os_rec)
+        self.assertIn(self.employee_tecnico, rel.tecnico_ids)
+        self.assertFalse(rel.descricao)
+
+    def test_start_daily_e_idempotente(self):
+        os_rec = self._make_os().with_user(self.user_tecnico)
+        first = os_rec.action_start_daily_relatorio()
+        second = os_rec.action_start_daily_relatorio()
+        self.assertEqual(first, second)
+
+    def test_start_daily_reusa_dentro_da_mesma_janela(self):
+        os_rec = self._make_os().with_user(self.user_tecnico)
+        janela = self._janela()
+        a = os_rec.action_start_daily_relatorio(**janela)
+        b = os_rec.action_start_daily_relatorio(**janela)
+        self.assertEqual(a, b)
+
+    def test_start_daily_ignora_relatorio_de_outro_dia(self):
+        """Draft de ontem não é reaproveitado pela janela de hoje."""
+        os_rec = self._make_os()
+        ontem = fields.Datetime.now() - timedelta(days=1)
+        antigo = self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os_rec.id,
+            "data_inicio": ontem,
+            "data_fim": ontem,
+            "tecnico_ids": [(6, 0, [self.employee_tecnico.id])],
+        })
+        novo = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio(
+            **self._janela()
+        )
+        self.assertNotEqual(novo, antigo.id)
+
+    def test_start_daily_nao_reusa_relatorio_de_outro_tecnico(self):
+        os_rec = self._make_os()
+        agora = fields.Datetime.now()
+        alheio = self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os_rec.id,
+            "data_inicio": agora,
+            "data_fim": agora,
+            "tecnico_ids": [(6, 0, [self.employee_outro.id])],
+        })
+        meu = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio(
+            **self._janela()
+        )
+        self.assertNotEqual(meu, alheio.id)
+
+    def test_start_daily_nao_reusa_relatorio_fechado(self):
+        os_rec = self._make_os()
+        agora = fields.Datetime.now()
+        fechado = self._make_relatorio(
+            os_rec=os_rec,
+            data_inicio=agora - timedelta(hours=4),
+            data_fim=agora,
+            descricao="Fechado antes",
+        )
+        fechado.action_done()
+        self.assertEqual(fechado.state, "done")
+        novo = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio(
+            **self._janela()
+        )
+        self.assertNotEqual(novo, fechado.id)
+
+    def test_start_daily_sem_employee_erro_claro(self):
+        user_sem_emp = self.env["res.users"].create({
+            "name": "Sem Employee",
+            "login": "sem.employee.pwa.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        os_rec = self._make_os().with_user(user_sem_emp)
+        with self.assertRaises(UserError):
+            os_rec.action_start_daily_relatorio()

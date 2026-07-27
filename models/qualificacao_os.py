@@ -7,6 +7,9 @@ qualif. Substitui engc.os no fluxo quote-first de qualificação.
 F1 (16.0.3.0.0): modelos OS + relatório + workflow.
 """
 from collections import OrderedDict, defaultdict
+from datetime import datetime, time, timedelta
+
+import pytz
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
@@ -358,6 +361,77 @@ class AfrQualificacaoOs(models.Model):
             self.write({"state": "in_progress"})
         # Abre wizard de novo relatório
         return self.action_open_new_relatorio_wizard()
+
+    def action_start_daily_relatorio(self, day_start=None, day_end=None):
+        """Devolve o id do relatório do dia (draft) do técnico logado nesta OS.
+
+        Idempotente: se já existe um relatório em rascunho desta OS, com o
+        técnico logado em `tecnico_ids` e `data_inicio` dentro da janela,
+        devolve o id existente. Senão cria um novo.
+
+        Entrypoint do PWA de campo — o cliente passa a janela do seu dia local
+        (`day_start`/`day_end` em UTC, formato Odoo) pra que a fronteira do dia
+        seja a mesma dos dois lados. Sem argumentos, usa o dia no fuso do
+        usuário.
+
+        :param day_start: início da janela (str/datetime, UTC). Opcional.
+        :param day_end: fim exclusivo da janela (str/datetime, UTC). Opcional.
+        :return: int — id de `afr.qualificacao.os.relatorio`
+        """
+        self.ensure_one()
+        employee = self.env["hr.employee"].sudo().search(
+            [("user_id", "=", self.env.uid)], limit=1
+        )
+        if not employee:
+            raise UserError(
+                _("Usuário %s não tem colaborador (hr.employee) vinculado. "
+                  "Vincule antes de iniciar o relatório do dia.")
+                % self.env.user.name
+            )
+
+        if day_start and day_end:
+            inicio = fields.Datetime.to_datetime(day_start)
+            fim = fields.Datetime.to_datetime(day_end)
+        else:
+            # Fallback backoffice: meia-noite local do usuário convertida pra
+            # UTC. Não dá pra usar `datetime.combine(context_today, time.min)`
+            # cru — seria lido como meia-noite UTC e, entre 21h e 00h local
+            # (UTC-3), a janela excluiria o próprio registro recém-criado.
+            tz = pytz.timezone(self.env.user.tz or "UTC")
+            agora_local = fields.Datetime.context_timestamp(
+                self, fields.Datetime.now()
+            )
+            inicio_local = tz.localize(
+                datetime.combine(agora_local.date(), time.min)
+            )
+            inicio = inicio_local.astimezone(pytz.UTC).replace(tzinfo=None)
+            fim = inicio + timedelta(days=1)
+
+        Relatorio = self.env["afr.qualificacao.os.relatorio"]
+        existente = Relatorio.search(
+            [
+                ("os_id", "=", self.id),
+                ("state", "=", "draft"),
+                ("tecnico_ids", "in", employee.ids),
+                ("data_inicio", ">=", inicio),
+                ("data_inicio", "<", fim),
+            ],
+            order="data_inicio desc, id desc",
+            limit=1,
+        )
+        if existente:
+            return existente.id
+
+        agora = fields.Datetime.now()
+        # data_fim é required e alimenta time_execution: nasce == data_inicio
+        # (mesmo padrão do wizard oficial) e o fechamento grava o valor real.
+        novo = Relatorio.create({
+            "os_id": self.id,
+            "data_inicio": agora,
+            "data_fim": agora,
+            "tecnico_ids": [(6, 0, employee.ids)],
+        })
+        return novo.id
 
     def action_open_new_relatorio_wizard(self):
         """Abre wizard transient para criar novo relatório parcial."""
