@@ -9,8 +9,11 @@ distinguir de linhas manuais (preservadas em re-apply do wizard).
 """
 
 from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
-from odoo.tools import float_compare
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_compare, float_round
+from odoo.tools.misc import formatLang
+
+from .price_allocation import allocate_target
 
 
 class SaleOrderLine(models.Model):
@@ -264,6 +267,27 @@ class SaleOrderLine(models.Model):
         string="Situação do Alvo",
     )
 
+    @api.depends("product_id", "product_uom", "product_uom_qty")
+    def _compute_price_unit(self):
+        """Congela price_unit em linhas de qualificação já salvas.
+
+        O compute nativo do core (sale/models/sale_order_line.py) recalcula
+        price_unit a partir do pricelist sempre que product_uom_qty muda —
+        mesmo em linha existente, mesmo com price_unit setado manualmente
+        (o core só protege esse valor quando qty_invoiced > 0). Sem esta
+        guarda, qualquer edição de nº de ciclos/horas (ou o próprio rateio
+        de preço-alvo, se reaplicado) reseta o price_unit rateado/negociado
+        de volta ao preço de tabela do produto.
+
+        `l._origin.id` (não `l.id`) porque durante onchange o registro é
+        embrulhado num NewId com origin — precisa do id real por trás para
+        distinguir "linha existente sendo editada" de "linha nova".
+        """
+        frozen = self.filtered(
+            lambda l: l._origin.id and l.is_qualificacao_managed
+        )
+        super(SaleOrderLine, self - frozen)._compute_price_unit()
+
     def _rateio_base_lines(self):
         """Linhas elegíveis ao rateio do equipamento desta section.
 
@@ -321,6 +345,79 @@ class SaleOrderLine(models.Model):
                 precision_digits=2,
             ) == 0
             line.equipment_target_state = "ok" if same else "drift"
+
+    def _apply_equipment_target(self):
+        """Ratea equipment_target_price entre as linhas do equipamento.
+
+        Um único write, seguido de uma releitura de price_subtotal — quem
+        arredonda de verdade é o compute_all do Odoo, não a aritmética local.
+        Devolve dict(exact=bool, achieved=float) para a camada de UI.
+        """
+        self.ensure_one()
+        target = self.equipment_target_price
+        if not target:
+            return {"exact": True, "achieved": 0.0}
+
+        base = self._rateio_base_lines()
+        if not base:
+            raise UserError(_(
+                "Nenhuma linha elegível ao rateio para %s. Gere as linhas de "
+                "qualificação antes de definir o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if not sum(base.mapped("price_subtotal")):
+            raise UserError(_(
+                "As linhas de %s estão com preço zerado — defina os preços "
+                "base antes de ratear."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+
+        pairs = [(l.product_uom_qty, l.price_subtotal) for l in base]
+        result = allocate_target(target, pairs)
+
+        for line, price_unit in zip(base, result["price_units"]):
+            line.price_unit = price_unit
+
+        # Verificação sobre o que o ORM realmente computou.
+        base.invalidate_recordset(["price_subtotal"])
+        achieved = sum(base.mapped("price_subtotal"))
+        diff = float_round(target - achieved, precision_digits=2,
+                           rounding_method="HALF-UP")
+        if diff:
+            self.order_id.message_post(body=_(
+                "Rateio de %(equip)s fechou em %(achieved)s — %(diff)s de "
+                "diferença para o alvo %(target)s (limite de arredondamento: "
+                "o preço unitário tem 2 casas e as horas são fracionárias)."
+            ) % {
+                "equip": self.equipment_id.display_name or "",
+                "achieved": formatLang(self.env, achieved,
+                                       currency_obj=self.currency_id),
+                "diff": formatLang(self.env, diff,
+                                   currency_obj=self.currency_id),
+                "target": formatLang(self.env, target,
+                                     currency_obj=self.currency_id),
+            })
+        return {"exact": not diff, "achieved": achieved}
+
+    def action_apply_equipment_target(self):
+        """Botão 'Ratear' da linha na aba Preços por Equipamento."""
+        self.ensure_one()
+        res = self._apply_equipment_target()
+        if res["exact"]:
+            return True
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Rateio aproximado"),
+                "message": _(
+                    "Fechou em %s — o alvo não é atingível com 2 casas no "
+                    "preço unitário. Veja o histórico do pedido."
+                ) % formatLang(self.env, res["achieved"],
+                               currency_obj=self.currency_id),
+                "sticky": False,
+            },
+        }
+
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",
         string="Pacote Aplicado",
