@@ -9,7 +9,11 @@ distinguir de linhas manuais (preservadas em re-apply do wizard).
 """
 
 from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_compare, float_is_zero, float_round
+from odoo.tools.misc import formatLang
+
+from .price_allocation import allocate_target
 
 
 class SaleOrderLine(models.Model):
@@ -228,33 +232,244 @@ class SaleOrderLine(models.Model):
     )
     equipment_subtotal = fields.Monetary(
         compute="_compute_equipment_subtotal",
-        string="Subtotal Equipamento",
+        string="Base do Rateio",
         currency_field="currency_id",
         help=(
-            "Em linhas de section (display_type='line_section'), retorna soma "
-            "de price_subtotal de TODAS linhas de produto do mesmo "
-            "equipment_id no mesmo SO. Em demais linhas, 0. Visível no tree "
-            "do SO p/ leitura rápida do escopo por equipamento."
+            "Em linhas de section (display_type='line_section'), soma dos "
+            "subtotais das linhas elegíveis ao rateio do mesmo equipment_id "
+            "(managed, qty>0, não opcionais, não declinadas). Em demais "
+            "linhas, 0."
+        ),
+    )
+    equipment_target_price = fields.Monetary(
+        string="Preço-Alvo",
+        currency_field="currency_id",
+        copy=True,
+        help=(
+            "Preço final fechado do equipamento (sem impostos). Ao ratear, "
+            "os price_unit das linhas do equipamento são recalculados para "
+            "que a soma dos subtotais bata neste valor."
+        ),
+    )
+    equipment_target_delta = fields.Monetary(
+        compute="_compute_equipment_target_delta",
+        string="Desvio",
+        currency_field="currency_id",
+        help="equipment_subtotal − equipment_target_price. 0 se não há alvo.",
+    )
+    equipment_target_state = fields.Selection(
+        selection=[
+            ("none", "Sem alvo"),
+            ("ok", "No alvo"),
+            ("drift", "Desviado"),
+        ],
+        compute="_compute_equipment_target_delta",
+        string="Situação do Alvo",
+    )
+    is_rateio_priced = fields.Boolean(
+        string="Preço Rateado",
+        default=False,
+        copy=True,
+        help=(
+            "True quando o price_unit desta linha foi calculado por "
+            "_apply_equipment_target (rateio de preço-alvo por "
+            "equipamento). Só linhas com esta flag têm o price_unit "
+            "congelado contra o recompute nativo do core disparado por "
+            "mudança de quantidade (ver _compute_price_unit); demais "
+            "linhas — mesmo managed — continuam repreçando normalmente "
+            "pela pricelist, inclusive via 'Atualizar Preços' do pedido. "
+            "Sem caminho de reset além do re-apply do wizard configurador "
+            "(que apaga e recria as linhas managed do zero) — por isso "
+            "trocar o produto de uma linha já rateada mantém o price_unit "
+            "antigo (calculado para o produto anterior) até um novo rateio "
+            "ou re-apply do wizard."
         ),
     )
 
+    @api.depends("product_id", "product_uom", "product_uom_qty")
+    def _compute_price_unit(self):
+        """Congela price_unit só nas linhas que o rateio precificou.
+
+        O compute nativo do core (sale/models/sale_order_line.py) recalcula
+        price_unit a partir do pricelist sempre que product_uom_qty muda —
+        mesmo em linha existente, mesmo com price_unit setado manualmente
+        (o core só protege esse valor quando qty_invoiced > 0). Sem esta
+        guarda, qualquer edição de nº de ciclos/horas depois de aplicar o
+        rateio de preço-alvo reseta o price_unit rateado de volta ao preço
+        de tabela do produto.
+
+        Escopo deliberadamente estreito: só `is_rateio_priced=True`, não
+        toda linha `is_qualificacao_managed`. Um congelamento mais amplo
+        quebraria "Atualizar Preços" (sale_order._recompute_prices, que
+        chama este compute diretamente) para qualquer linha managed que
+        nunca passou pelo rateio.
+
+        `l._origin.id` (não `l.id`) porque durante onchange o registro é
+        embrulhado num NewId com origin — precisa do id real por trás para
+        distinguir "linha existente sendo editada" de "linha nova" (linha
+        nova sempre reprecifica pela pricelist, mesmo com a flag setada).
+
+        Nota: este congelamento cobre só `price_unit`. `discount` NÃO é
+        protegido — "Atualizar Preços" (sale/models/sale_order.py,
+        _recompute_prices) zera `discount` e chama `_compute_discount`
+        incondicionalmente antes de chegar aqui. Hoje inerte na prática
+        (nenhuma pricelist do banco é `discount_policy='with_discount'` e
+        ninguém está no grupo `sale.group_discount_per_so_line`), mas é
+        frágil por sorte — uma pricelist with_discount reintroduziria
+        desconto numa linha rateada.
+        """
+        frozen = self.filtered(
+            lambda l: l._origin.id and l.is_rateio_priced
+        )
+        super(SaleOrderLine, self - frozen)._compute_price_unit()
+
+    def _rateio_base_lines(self):
+        """Linhas elegíveis ao rateio do equipamento desta section.
+
+        Fora: sections/notas, opcionais (aceitos ou não), Parte 01 declinada,
+        linhas não-managed e linhas com qty 0.
+        """
+        self.ensure_one()
+        if not self.equipment_id:
+            return self.env["sale.order.line"]
+        return self.order_id.order_line.filtered(
+            lambda l: l.equipment_id == self.equipment_id
+            and l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
+            and not l.part01_declined
+            and l.product_uom_qty > 0
+        )
+
+    # Os paths regular_line_ids.* são necessários porque as abas do form
+    # editam por datapoints OWL distintos de order_line (mesmo motivo
+    # documentado em _compute_qualif_subtotals_html).
     @api.depends(
         "display_type",
         "equipment_id",
         "order_id.order_line.equipment_id",
         "order_id.order_line.display_type",
         "order_id.order_line.price_subtotal",
+        "order_id.order_line.is_proposal_optional",
+        "order_id.order_line.part01_declined",
+        "order_id.order_line.product_uom_qty",
+        "order_id.regular_line_ids.price_subtotal",
     )
     def _compute_equipment_subtotal(self):
         for line in self:
             if line.display_type != "line_section" or not line.equipment_id:
                 line.equipment_subtotal = 0.0
                 continue
-            siblings = line.order_id.order_line.filtered(
-                lambda l: l.equipment_id == line.equipment_id
-                and not l.display_type
+            line.equipment_subtotal = sum(
+                line._rateio_base_lines().mapped("price_subtotal")
             )
-            line.equipment_subtotal = sum(siblings.mapped("price_subtotal"))
+
+    @api.depends("equipment_subtotal", "equipment_target_price",
+                 "display_type", "equipment_id")
+    def _compute_equipment_target_delta(self):
+        for line in self:
+            if line.display_type != "line_section" or not line.equipment_id \
+                    or not line.equipment_target_price:
+                line.equipment_target_delta = 0.0
+                line.equipment_target_state = "none"
+                continue
+            delta = line.equipment_subtotal - line.equipment_target_price
+            line.equipment_target_delta = delta
+            same = float_compare(
+                line.equipment_subtotal, line.equipment_target_price,
+                precision_digits=2,
+            ) == 0
+            line.equipment_target_state = "ok" if same else "drift"
+
+    def _apply_equipment_target(self):
+        """Ratea equipment_target_price entre as linhas do equipamento.
+
+        Um único write, seguido de uma releitura de price_subtotal — quem
+        arredonda de verdade é o compute_all do Odoo, não a aritmética local.
+        Devolve dict(exact=bool, achieved=float) para a camada de UI.
+        """
+        self.ensure_one()
+        target = self.equipment_target_price
+        if float_is_zero(target, precision_digits=2) or target < 0:
+            # target<=0 (ou sub-centavo, que a UI já arredonda pra 0.00 mas
+            # que pode chegar aqui sem passar por essa conversão): não é um
+            # alvo válido para o rateio proporcional. Limpa o campo só no
+            # caso negativo — 0.0 já é "sem alvo" por si (equipment_target_
+            # state computa "none"); nunca mexe em price_unit das linhas.
+            if target < 0:
+                self.equipment_target_price = 0.0
+            return {"exact": True, "achieved": 0.0}
+
+        base = self._rateio_base_lines()
+        if not base:
+            raise UserError(_(
+                "Nenhuma linha elegível ao rateio para %s. Gere as linhas de "
+                "qualificação antes de definir o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if float_is_zero(sum(base.mapped("price_subtotal")),
+                          precision_digits=2):
+            raise UserError(_(
+                "As linhas de %s estão com preço zerado — defina os preços "
+                "base antes de ratear."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if any(not float_is_zero(l.discount, precision_digits=2)
+               for l in base):
+            raise UserError(_(
+                "As linhas de %s têm desconto por linha — o rateio não "
+                "suporta desconto (o preço rateado já é o preço final). "
+                "Zere o desconto das linhas do equipamento antes de definir "
+                "o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+
+        pairs = [(l.product_uom_qty, l.price_subtotal) for l in base]
+        result = allocate_target(target, pairs)
+
+        for line, price_unit in zip(base, result["price_units"]):
+            line.write({"price_unit": price_unit, "is_rateio_priced": True})
+
+        # Verificação sobre o que o ORM realmente computou.
+        base.invalidate_recordset(["price_subtotal"])
+        achieved = sum(base.mapped("price_subtotal"))
+        diff = float_round(target - achieved, precision_digits=2,
+                           rounding_method="HALF-UP")
+        exact = float_is_zero(diff, precision_digits=2)
+        if not exact:
+            self.order_id.message_post(body=_(
+                "Rateio de %(equip)s fechou em %(achieved)s — %(diff)s de "
+                "diferença para o alvo %(target)s (limite de arredondamento: "
+                "o preço unitário tem 2 casas e as horas são fracionárias)."
+            ) % {
+                "equip": self.equipment_id.display_name or "",
+                "achieved": formatLang(self.env, achieved,
+                                       currency_obj=self.currency_id),
+                "diff": formatLang(self.env, diff,
+                                   currency_obj=self.currency_id),
+                "target": formatLang(self.env, target,
+                                     currency_obj=self.currency_id),
+            })
+        return {"exact": exact, "achieved": achieved}
+
+    def action_apply_equipment_target(self):
+        """Botão 'Ratear' da linha na aba Preços por Equipamento."""
+        self.ensure_one()
+        res = self._apply_equipment_target()
+        if res["exact"]:
+            return True
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Rateio aproximado"),
+                "message": _(
+                    "Fechou em %s — o alvo não é atingível com 2 casas no "
+                    "preço unitário. Veja o histórico do pedido."
+                ) % formatLang(self.env, res["achieved"],
+                               currency_obj=self.currency_id),
+                "sticky": False,
+            },
+        }
+
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",
         string="Pacote Aplicado",

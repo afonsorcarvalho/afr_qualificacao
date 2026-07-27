@@ -14,8 +14,18 @@
 - Odoo 16.0. Precisão decimal "Product Price" = 2 casas — **não alterar** (é global).
 - Nunca usar `round()` puro em dinheiro. Sempre `float_round(x, precision_digits=2, rounding_method='HALF-UP')` ou `currency.round(x)`.
 - Comparação de floats sempre via `float_compare(a, b, precision_digits=2)`, nunca `==`.
-- Rodar testes: delegar ao subagente `test-runner`. Comando de referência:
-  `docker exec -u root odoo-engenapp odoo -d odoo-labquali -u afr_qualificacao --test-enable --test-tags /afr_qualificacao:<Classe> --stop-after-init` — **nunca** `odoo-bin`.
+- Rodar testes (harness oficial do projeto — **nunca** `odoo-bin`):
+
+  ```bash
+  docker exec odoo_engenapp-web-1 odoo -d odoo_ecm_test -u afr_qualificacao \
+    --test-enable --test-tags <TAGS> --stop-after-init \
+    --no-http --workers=0 --max-cron-threads=0 \
+    --db_host=db --db_user=odoo --db_password=odoo 2>&1 \
+    | grep -iE 'FAIL:|ERROR|tests.stats|tests.result|AssertionError|Traceback'
+  ```
+
+  `<TAGS>`: classe → `/afr_qualificacao:TestPriceAllocation`; suíte do módulo → `afr_qualificacao`.
+- Falhas **pré-existentes conhecidas** (não são regressão): `TestResourcePlan.test_fleet_single_logger_two_temp_standards`, `TestProposalReport.test_render_equipment_scope_omits_cronograma_footer`, `TestProposalReport.test_render_schedule_block`.
 - Testes herdam `AfrQualificacaoTestCommon` (`tests/common.py`) e usam `@tagged("post_install", "-at_install")`, seguindo o padrão de `tests/test_optional_ref_subtotal.py`.
 - Todo arquivo `.py` novo precisa ser registrado no `__init__.py` correspondente.
 - Bump de versão no `__manifest__.py` só na última task (feat → MINOR: `16.0.6.3.5` → `16.0.6.4.0`).

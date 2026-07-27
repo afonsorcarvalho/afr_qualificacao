@@ -435,6 +435,18 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 ) % (eq_line.equipment_id.display_name or "?"))
 
         so = self.sale_order_id
+        # Alvos de rateio vivem nas sections managed, que o unlink abaixo
+        # apaga. Capturar antes e regravar nas sections novas — mecanismo
+        # diferente de config_template_id: aqui é leitura ao vivo das linhas
+        # existentes dentro do próprio action_apply; config_template_id é
+        # cacheado antes, em _load_from_existing_lines (equip_template_map).
+        alvos_por_equip = {
+            line.equipment_id.id: line.equipment_target_price
+            for line in so.order_line
+            if line.display_type == "line_section"
+            and line.equipment_id
+            and line.equipment_target_price
+        }
         so.order_line.filtered("is_qualificacao_managed").unlink()
 
         TypeConfig = self.env["afr.qualificacao.type.config"]
@@ -459,6 +471,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "product_uom_qty": 0,
                 "price_unit": 0,
                 "work_hours_per_day": eq_line.work_hours_per_day or 8.0,
+                "equipment_target_price": alvos_por_equip.get(equip.id, 0.0),
             }))
 
             # QI/QS via type.config (single line, sem ciclos)

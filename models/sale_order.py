@@ -155,6 +155,18 @@ class SaleOrder(models.Model):
             "Opcionais. Novas linhas recebem o flag via context default da view."
         ),
     )
+    equipment_target_ids = fields.One2many(
+        comodel_name="sale.order.line",
+        inverse_name="order_id",
+        domain=[("display_type", "=", "line_section"),
+                ("equipment_id", "!=", False)],
+        string="Preços por Equipamento",
+        help=(
+            "Linhas de section com equipamento — onde vive o preço-alvo do "
+            "rateio. Datapoint próprio porque o tree de linhas usa "
+            "section_and_note_one2many, que esconde colunas em sections."
+        ),
+    )
     # F8.2 — Proposta LEGO: template + blocos montáveis por cotação
     proposal_template_id = fields.Many2one(
         comodel_name="afr.proposal.template",
@@ -299,7 +311,7 @@ class SaleOrder(models.Model):
                 '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
                 '<th style="padding:6px 12px;text-align:right;">Horas</th>'
                 '<th style="padding:6px 12px;text-align:right;">Dias úteis</th>'
-                '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
+                '<th style="padding:6px 12px;text-align:right;">Subtotal (c/ opcionais)</th>'
                 '</tr></thead>'
                 '<tbody>%s</tbody>'
                 '</table></div>'
@@ -1046,6 +1058,58 @@ class SaleOrder(models.Model):
             "domain": [("id", "in", self.engc_os_ids.ids)],
         }
 
+    def action_apply_all_equipment_targets(self):
+        """Ratea todos os equipamentos com alvo definido e fora do alvo.
+
+        Cada section é rateada isoladamente: uma que não pode ser rateada
+        (base vazia/zerada) não pode derrubar a transação inteira e travar
+        o rateio dos equipamentos saudáveis — daí o try/except por section.
+        Seguro porque `_apply_equipment_target` só levanta `UserError`
+        (base vazia/zerada) em `return`/`raise`, nunca depois de um
+        `write()` — inclusive o guard de alvo inválido (target<=0) também
+        retorna antes de qualquer write. Nenhum dos dois caminhos de falha
+        deixa write parcial pra trás. As falhas são acumuladas e
+        reportadas junto com os inexatos na mesma notification.
+        """
+        self.ensure_one()
+        inexatos = []
+        falhas = []
+        for section in self.equipment_target_ids:
+            if section.equipment_target_state != "drift":
+                continue
+            try:
+                res = section._apply_equipment_target()
+            except UserError as exc:
+                falhas.append("%s: %s" % (
+                    section.equipment_id.display_name or "",
+                    exc.args[0] if exc.args else "",
+                ))
+                continue
+            if not res["exact"]:
+                inexatos.append(section.equipment_id.display_name or "")
+        if not inexatos and not falhas:
+            return True
+        messages = []
+        if inexatos:
+            messages.append(_(
+                "Não foi possível fechar exatamente: %s. Veja o histórico "
+                "do pedido."
+            ) % ", ".join(inexatos))
+        if falhas:
+            messages.append(_(
+                "Não foi possível ratear: %s."
+            ) % "; ".join(falhas))
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Rateio parcial") if falhas
+                else _("Rateio aproximado"),
+                "message": "\n".join(messages),
+                "sticky": False,
+            },
+        }
 
     @api.onchange("partner_id")
     def _onchange_partner_id_qualif_equipment_warning(self):

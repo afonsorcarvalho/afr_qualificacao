@@ -13,6 +13,10 @@
                         type="object"
                         class="oe_highlight"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('partner_id','=',False)]}"/>
+                <button name="action_apply_all_equipment_targets"
+                        string="Ratear Preços-Alvo"
+                        type="object"
+                        attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
             </xpath>
 
             <xpath expr="//div[@name='button_box']" position="inside">
@@ -114,6 +118,29 @@
                     </field>
                     <field name="qualif_subtotals_html" nolabel="1" readonly="1"
                            attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
+                </page>
+
+                <page string="Preços por Equipamento" name="qualif_precos"
+                      attrs="{'invisible': [('has_qualif_lines','=',False)]}">
+                    <field name="equipment_target_ids">
+                        <tree editable="bottom" create="false" delete="false"
+                              decoration-warning="equipment_target_state == 'drift'"
+                              decoration-success="equipment_target_state == 'ok'">
+                            <field name="equipment_target_state" invisible="1"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="name" string="Equipamento" readonly="1"/>
+                            <field name="equipment_subtotal" string="Base do Rateio"
+                                   widget="monetary" readonly="1"/>
+                            <field name="equipment_target_price" string="Preço-Alvo"
+                                   widget="monetary"/>
+                            <field name="equipment_target_delta" string="Desvio"
+                                   widget="monetary" readonly="1"/>
+                            <button name="action_apply_equipment_target"
+                                    type="object" string="Ratear"
+                                    icon="fa-balance-scale"
+                                    attrs="{'invisible': ['|', ('equipment_target_state','=','none'), ('parent.state','not in',['draft','sent'])]}"/>
+                        </tree>
+                    </field>
                 </page>
 
                 <page string="Detalhes Técnicos" name="qualif_tecnico"
