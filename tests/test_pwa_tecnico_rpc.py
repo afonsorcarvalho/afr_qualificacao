@@ -14,6 +14,8 @@ from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import TransactionCase, tagged
 
+from .common import AfrQualificacaoTestCommon
+
 
 @tagged("afr_qualificacao", "pwa_tecnico", "post_install", "-at_install")
 class TestPwaTecnicoRpc(TransactionCase):
@@ -581,3 +583,178 @@ class TestPwaTecnicoRpcSecurity(TransactionCase):
             os_rec.with_user(self.user_tecnico).write({
                 "signature_supervisor": self.PNG_1X1,
             })
+
+
+@tagged("afr_qualificacao", "pwa_tecnico", "post_install", "-at_install")
+class TestQualificacaoWriteRuleSecurity(AfrQualificacaoTestCommon):
+    """Task 10 — Finding 1 (CRITICAL): cobertura das `ir.rule` que fecharam
+    a cascata de certificado alcançável via `afr.qualificacao` (não via
+    `afr.qualificacao.os`, que já tinha guard desde a Task 9).
+
+    Classe própria (em vez de mais métodos em `TestPwaTecnicoRpcSecurity`,
+    que cobre a mesma família de bug mas no modelo OS) porque o fixture
+    aqui precisa de `equipment_id`/`company_id` (campos required em
+    `afr.qualificacao`) — herda de `AfrQualificacaoTestCommon` (equip1 +
+    company já prontos) em vez de duplicar esse setup ou inflar o
+    `setUpClass` enxuto das classes acima, que nunca tocam o model
+    `afr.qualificacao` diretamente.
+
+    As duas regras testadas:
+      - `rule_qualificacao_technician_write_own` (restritiva, no grupo
+        Técnico): escopa o write à qualificação cuja OS é do próprio
+        técnico (`os_id.tecnico_default_user_id == uid`).
+      - `rule_qualificacao_user_write_all` (permissiva `[(1,'=',1)]`, no
+        grupo Usuário): sem ela, Usuário/Gestor cairiam na regra restritiva
+        acima via `implied_ids` (Usuário/Gestor implicam Técnico) e
+        ficariam trancados fora de qualifs de outros técnicos.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.employee_tecnico = cls.env["hr.employee"].create({
+            "name": "Téc Qualif Rule",
+        })
+        cls.user_tecnico = cls.env["res.users"].create({
+            "name": "Téc Qualif Rule",
+            "login": "tecnico.qualif.rule.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        cls.employee_tecnico.user_id = cls.user_tecnico.id
+
+        cls.employee_outro = cls.env["hr.employee"].create({
+            "name": "Outro Téc Qualif Rule",
+        })
+        cls.user_outro_tecnico = cls.env["res.users"].create({
+            "name": "Outro Téc Qualif Rule",
+            "login": "outro.tecnico.qualif.rule.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        cls.employee_outro.user_id = cls.user_outro_tecnico.id
+
+        cls.user_manager = cls.env["res.users"].create({
+            "name": "Gestor Qualif Rule",
+            "login": "gestor.qualif.rule.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_manager").id,
+            ])],
+        })
+
+    def _make_os(self, tecnico_employee, **overrides):
+        vals = {
+            "tecnico_default_id": tecnico_employee.id if tecnico_employee else False,
+            "date_planned_start": datetime(2026, 7, 1, 8, 0, 0),
+            "date_planned_end": datetime(2026, 7, 1, 17, 0, 0),
+        }
+        vals.update(overrides)
+        return self.env["afr.qualificacao.os"].create(vals)
+
+    def _make_qualif(self, os_rec, **overrides):
+        vals = {
+            "name": "Qualif rule test",
+            "equipment_id": self.equip1.id,
+            "qualification_type": "installation",
+            "company_id": self.company.id,
+            "os_id": os_rec.id if os_rec else False,
+        }
+        vals.update(overrides)
+        return self.env["afr.qualificacao"].create(vals)
+
+    # ─────────────────────────────────────────────────────────────
+    # rule_qualificacao_technician_write_own
+    # ─────────────────────────────────────────────────────────────
+    def test_tecnico_nao_pode_escrever_qualif_de_outra_os(self):
+        """Este é o teste que quebra se `rule_qualificacao_technician_write_own`
+        for apagada: um Técnico puro tenta escrever a qualificação de uma OS
+        cujo `tecnico_default_user_id` é outra pessoa. Precisa ser `AccessError`
+        especificamente (violação de ir.rule) — não o `UserError` genérico que
+        `_check_manager_only` levanta em outro cenário."""
+        os_de_outro = self._make_os(self.employee_outro)
+        # Confirma que a OS é genuinamente de OUTRA pessoa (não só "sem dono"
+        # — senão o AccessError abaixo provaria uma alegação mais fraca).
+        self.assertEqual(os_de_outro.tecnico_default_user_id, self.user_outro_tecnico)
+        qualif = self._make_qualif(os_de_outro)
+        with self.assertRaises(AccessError):
+            qualif.with_user(self.user_tecnico).write({"name": "Hackeado"})
+
+    def test_tecnico_pode_escrever_qualif_da_propria_os(self):
+        """Guarda contra over-tightening: o caminho legítimo continua
+        funcionando — técnico escreve a qualificação da OS onde ele é
+        `tecnico_default_user_id`."""
+        os_propria = self._make_os(self.employee_tecnico)
+        qualif = self._make_qualif(os_propria)
+        qualif.with_user(self.user_tecnico).write({"name": "Editado pelo técnico"})
+        self.assertEqual(qualif.name, "Editado pelo técnico")
+
+    # ─────────────────────────────────────────────────────────────
+    # guard de método (_check_manager_only) + _issue_certificate
+    # ─────────────────────────────────────────────────────────────
+    def test_tecnico_nao_pode_aprovar_e_certificado_nao_e_emitido(self):
+        """O bypass original (Finding 1): técnico com write em
+        `afr.qualificacao` conseguia chamar `action_mark_approved()`
+        diretamente e minerar um certificado (token + hash congelado +
+        issued_at) sem passar pelo `action_approve` da OS. Prova negativa:
+        além da exceção, nenhum campo do certificado foi tocado — a
+        cascata não rodou."""
+        os_propria = self._make_os(self.employee_tecnico)
+        qualif = self._make_qualif(os_propria)
+        self.assertFalse(qualif.certificate_token)
+        self.assertFalse(qualif.certificate_hash)
+        self.assertFalse(qualif.certificate_issued_at)
+
+        with self.assertRaisesRegex(UserError, "[Gg]estor"):
+            qualif.with_user(self.user_tecnico).action_mark_approved()
+
+        self.assertEqual(qualif.state, "draft")
+        self.assertFalse(qualif.certificate_token)
+        self.assertFalse(qualif.certificate_hash)
+        self.assertFalse(qualif.certificate_issued_at)
+
+    # ─────────────────────────────────────────────────────────────
+    # rule_qualificacao_user_write_all (o par permissivo)
+    # ─────────────────────────────────────────────────────────────
+    def test_gestor_pode_escrever_qualif_de_outra_os_e_aprovar(self):
+        """Este é o teste que quebra se `rule_qualificacao_user_write_all`
+        for apagada: sem ela, o Gestor (que implica o grupo Técnico via
+        `implied_ids`) cairia na regra restritiva acima e ficaria trancado
+        fora de uma qualificação cuja OS não é dele. Cobre write + o fluxo
+        real de aprovação (`action_mark_approved`), que é Gestor-only via
+        `_check_manager_only`."""
+        os_de_outro = self._make_os(self.employee_outro)
+        qualif = self._make_qualif(os_de_outro)
+
+        qualif.with_user(self.user_manager).write({"name": "Editado pelo gestor"})
+        self.assertEqual(qualif.name, "Editado pelo gestor")
+
+        qualif.with_user(self.user_manager).action_mark_approved()
+        self.assertEqual(qualif.state, "approved")
+        self.assertTrue(qualif.certificate_token)
+        self.assertTrue(qualif.certificate_hash)
+        self.assertTrue(qualif.certificate_issued_at)
+
+    # ─────────────────────────────────────────────────────────────
+    # Edge case reportado (não corrigido aqui — decisão do dono do produto)
+    # ─────────────────────────────────────────────────────────────
+    def test_tecnico_nao_escreve_qualif_legada_sem_os_id(self):
+        """Observação, não regressão: `rule_qualificacao_technician_write_own`
+        traversa `os_id.tecnico_default_user_id`. Uma qualificação legada/
+        standalone com `os_id` vazio nunca bate nesse domínio — nem para o
+        próprio técnico "dono" dela por qualquer outro critério. Resultado:
+        NENHUM Técnico puro consegue escrever uma qualif sem OS vinculada,
+        mesmo sendo dele. Em produção (odoo-labquali, ambiente de dev) há 7
+        de 27 qualifs (26%) com `os_id` vazio (todas `draft`, sem SO/engc_os,
+        aparentam ser resíduo de dev anterior à Task 3.1 amarrar os_id) — se
+        alguma dessas vier a ser usada de verdade por um usuário só-Técnico,
+        ela fica soft-locked (só Usuário/Gestor conseguem escrevê-la). Reportado
+        para o dono do produto decidir; não é corrigido neste teste."""
+        qualif = self._make_qualif(os_rec=None)
+        self.assertFalse(qualif.os_id)
+        with self.assertRaises(AccessError):
+            qualif.with_user(self.user_tecnico).write({"name": "Tentativa"})
