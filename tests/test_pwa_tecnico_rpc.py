@@ -273,8 +273,8 @@ class TestPwaTecnicoRpc(TransactionCase):
         agora = fields.Datetime.now()
         fechado = self._make_relatorio(
             os_rec=os_rec,
-            data_inicio=agora - timedelta(hours=4),
-            data_fim=agora,
+            data_inicio=agora,
+            data_fim=agora + timedelta(hours=4),
             descricao="Fechado antes",
         )
         fechado.action_done()

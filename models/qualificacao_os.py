@@ -380,7 +380,11 @@ class AfrQualificacaoOs(models.Model):
         """
         self.ensure_one()
         employee = self.env["hr.employee"].sudo().search(
-            [("user_id", "=", self.env.uid)], limit=1
+            [
+                ("user_id", "=", self.env.uid),
+                ("company_id", "in", [self.company_id.id, False]),
+            ],
+            limit=1,
         )
         if not employee:
             raise UserError(
