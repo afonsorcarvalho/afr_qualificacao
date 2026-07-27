@@ -76,3 +76,6 @@ from . import test_cotacao_form_refactor
 
 # Rateio de preço final por equipamento — helper puro de rateio
 from . import test_price_allocation
+
+# Rateio de preço final por equipamento — campos de alvo/desvio na section
+from . import test_equipment_target_price

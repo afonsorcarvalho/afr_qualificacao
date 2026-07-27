@@ -10,6 +10,7 @@ distinguir de linhas manuais (preservadas em re-apply do wizard).
 
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
+from odoo.tools import float_compare
 
 
 class SaleOrderLine(models.Model):
@@ -228,33 +229,98 @@ class SaleOrderLine(models.Model):
     )
     equipment_subtotal = fields.Monetary(
         compute="_compute_equipment_subtotal",
-        string="Subtotal Equipamento",
+        string="Base do Rateio",
         currency_field="currency_id",
         help=(
-            "Em linhas de section (display_type='line_section'), retorna soma "
-            "de price_subtotal de TODAS linhas de produto do mesmo "
-            "equipment_id no mesmo SO. Em demais linhas, 0. Visível no tree "
-            "do SO p/ leitura rápida do escopo por equipamento."
+            "Em linhas de section (display_type='line_section'), soma dos "
+            "subtotais das linhas elegíveis ao rateio do mesmo equipment_id "
+            "(managed, qty>0, não opcionais, não declinadas). Em demais "
+            "linhas, 0."
         ),
     )
+    equipment_target_price = fields.Monetary(
+        string="Preço-Alvo",
+        currency_field="currency_id",
+        copy=True,
+        help=(
+            "Preço final fechado do equipamento (sem impostos). Ao ratear, "
+            "os price_unit das linhas do equipamento são recalculados para "
+            "que a soma dos subtotais bata neste valor."
+        ),
+    )
+    equipment_target_delta = fields.Monetary(
+        compute="_compute_equipment_target_delta",
+        string="Desvio",
+        currency_field="currency_id",
+        help="equipment_subtotal − equipment_target_price. 0 se não há alvo.",
+    )
+    equipment_target_state = fields.Selection(
+        selection=[
+            ("none", "Sem alvo"),
+            ("ok", "No alvo"),
+            ("drift", "Desviado"),
+        ],
+        compute="_compute_equipment_target_delta",
+        string="Situação do Alvo",
+    )
 
+    def _rateio_base_lines(self):
+        """Linhas elegíveis ao rateio do equipamento desta section.
+
+        Fora: sections/notas, opcionais (aceitos ou não), Parte 01 declinada,
+        linhas não-managed e linhas com qty 0.
+        """
+        self.ensure_one()
+        if not self.equipment_id:
+            return self.env["sale.order.line"]
+        return self.order_id.order_line.filtered(
+            lambda l: l.equipment_id == self.equipment_id
+            and l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
+            and not l.part01_declined
+            and l.product_uom_qty > 0
+        )
+
+    # Os paths regular_line_ids.* são necessários porque as abas do form
+    # editam por datapoints OWL distintos de order_line (mesmo motivo
+    # documentado em _compute_qualif_subtotals_html).
     @api.depends(
         "display_type",
         "equipment_id",
         "order_id.order_line.equipment_id",
         "order_id.order_line.display_type",
         "order_id.order_line.price_subtotal",
+        "order_id.order_line.is_proposal_optional",
+        "order_id.order_line.part01_declined",
+        "order_id.order_line.product_uom_qty",
+        "order_id.regular_line_ids.price_subtotal",
     )
     def _compute_equipment_subtotal(self):
         for line in self:
             if line.display_type != "line_section" or not line.equipment_id:
                 line.equipment_subtotal = 0.0
                 continue
-            siblings = line.order_id.order_line.filtered(
-                lambda l: l.equipment_id == line.equipment_id
-                and not l.display_type
+            line.equipment_subtotal = sum(
+                line._rateio_base_lines().mapped("price_subtotal")
             )
-            line.equipment_subtotal = sum(siblings.mapped("price_subtotal"))
+
+    @api.depends("equipment_subtotal", "equipment_target_price",
+                 "display_type", "equipment_id")
+    def _compute_equipment_target_delta(self):
+        for line in self:
+            if line.display_type != "line_section" or not line.equipment_id \
+                    or not line.equipment_target_price:
+                line.equipment_target_delta = 0.0
+                line.equipment_target_state = "none"
+                continue
+            delta = line.equipment_subtotal - line.equipment_target_price
+            line.equipment_target_delta = delta
+            same = float_compare(
+                line.equipment_subtotal, line.equipment_target_price,
+                precision_digits=2,
+            ) == 0
+            line.equipment_target_state = "ok" if same else "drift"
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",
         string="Pacote Aplicado",
