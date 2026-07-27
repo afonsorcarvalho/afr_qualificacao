@@ -86,3 +86,8 @@ from . import test_equipment_target_price
 # Task 12 — fecho da revisão de segurança adversarial (forja de certificado,
 # reversão de estado, action_reopen sem guard, cobertura zero)
 from . import test_certificate_forgery_task12
+
+# Task 13 — guard "meio instalado": create() sem override em nenhum dos dois
+# modelos (forja de certificado + estado manager-only na criação), e lock set
+# incompleto (rejected/cancelled) + action_start() sem precondição de estado
+from . import test_create_guard_task13

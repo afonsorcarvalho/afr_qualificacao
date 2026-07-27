@@ -50,7 +50,13 @@ class AfrQualificacao(models.Model):
     # desfazendo uma aprovação. Estes são os estados "trava": uma vez
     # alcançados, QUALQUER mudança de `state` (mesmo pra um alvo "livre")
     # exige Gestor.
-    _STATE_LOCKED_ONCE_REACHED = frozenset({"approved"})
+    # Task 13 — Finding 3: faltavam `rejected`/`cancelled` aqui — um Técnico
+    # revertia `rejected → in_progress` (nenhum é target manager-only)
+    # desfazendo uma reprovação do Gestor sem ele. `action_start()` também
+    # ganhou precondição `state == 'draft'` própria (abaixo) — não depende
+    # só deste lock, que só é consultado quando `state` está no `vals` do
+    # `write()`.
+    _STATE_LOCKED_ONCE_REACHED = frozenset({"approved", "rejected", "cancelled"})
     # Task 12 — Finding 1 (CRÍTICO): campos do certificado não podem ser
     # gravados via write() direto — só internamente (`_issue_certificate`,
     # via `self.sudo()`). Sem isto, a ir.rule (que só escopa QUAIS registros)
@@ -521,10 +527,19 @@ class AfrQualificacao(models.Model):
             raise UserError(_(
                 "Certificado ainda não emitido. Aprove a qualificação primeiro."
             ))
-        # Task 12 — Finding 1 (endurecimento secundário): o token/hash podem
-        # continuar no registro mesmo após uma reversão de estado (Finding
-        # 2) — sem este check, a impressão exibiria um certificado
-        # "oficial" de um registro que não está mais aprovado.
+        # Task 12 — Finding 1 (endurecimento secundário): garante que o
+        # botão/ação "Imprimir Certificado" só gera o PDF com a
+        # qualificação aprovada. Isto NÃO é a proteção real contra a
+        # impressão de um certificado "oficial" inválido: o report
+        # (`reports/qualificacao_certificate_report.xml`) é uma
+        # `ir.actions.report` sem `groups_id`, então `/report/pdf/...` e o
+        # menu padrão de impressão do Odoo geram o MESMO PDF sem passar
+        # por este método nem por este check — quem já tem o token/hash no
+        # registro (ex.: pós-reversão do Finding 2) imprime por essa via
+        # de qualquer forma. A defesa real é a marca d'água "SEM VALIDADE"
+        # no próprio template QWeb quando `state != 'approved'`
+        # (`qualificacao_certificate_template.xml`). Fechar o report
+        # (`groups_id`) fica fora do escopo desta task.
         if self.state != "approved":
             raise UserError(_(
                 "Certificado só pode ser impresso com a qualificação "
@@ -703,8 +718,28 @@ class AfrQualificacao(models.Model):
             record.invoice_count = len(moves)
 
     def action_start(self):
-        """Altera o status para 'Em andamento' seguindo o fluxo padrão do Odoo."""
+        """Altera o status para 'Em andamento' seguindo o fluxo padrão do Odoo.
+
+        Task 13 — Finding 3: sem precondição de estado nenhuma, um Técnico
+        chamava isto em qualquer `state` (inclusive `rejected`/`cancelled`),
+        desfazendo uma decisão do Gestor sem passar pelo guard de Gestor —
+        `action_start()` não é guardado por `_check_manager_only` de
+        propósito (a cascata de `action_approve` da OS, que roda como
+        Gestor, chama `q.action_start()` em qualifs `draft` antes de
+        `action_mark_approved()`; um guard de Gestor aqui quebraria isso
+        para o próprio Gestor rodando a cascata — não faz sentido também).
+        A correção certa é uma precondição de estado pura: só `draft` pode
+        iniciar. Isto não afeta a cascata (que já filtra por `state ==
+        'draft'` antes de chamar `action_start()`).
+        """
         for record in self:
+            if record.state != "draft":
+                raise UserError(_(
+                    "Só é possível iniciar uma qualificação em rascunho. "
+                    "Estado atual: '%s'."
+                ) % dict(record._fields["state"].selection).get(
+                    record.state, record.state
+                ))
             record.state = "in_progress"
         return True
 
@@ -865,6 +900,44 @@ class AfrQualificacao(models.Model):
         for record in self:
             record.state = "cancelled"
         return True
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Task 13 — Finding 1 (CRÍTICO) e Finding 2 (CRÍTICO): o `write()`
+        abaixo bloqueia os campos do certificado e os estados manager-only,
+        mas `create()` não tinha override nenhum — o grupo Usuário
+        (`group_afr_qualificacao_user`, `create=1` em `ir.model.access.csv`,
+        diferente do Técnico puro que tem `create=0`) conseguia nascer um
+        registro já `create({'state': 'approved', 'certificate_token': ...,
+        'certificate_hash': ..., 'certificate_issued_at': ...})`, sem passar
+        por `_issue_certificate`/`action_mark_approved` — o hash é
+        computável offline (`_snapshot_for_hash` é determinístico e o `id`
+        do próximo `create()` é previsível) e `/qualificacao/verify/<token>`
+        validava esse certificado como genuíno.
+
+        Mesmas constantes e mesmo guard (`_CERTIFICATE_FIELDS`,
+        `_MANAGER_ONLY_STATES`, `_check_manager_only`) do `write()` abaixo —
+        mantidos lado a lado de propósito para não divergirem no futuro.
+        `self.env.su` cobre os caminhos internos confiáveis (wizards
+        rodando como admin nos testes, etc.).
+        """
+        if not self.env.su:
+            for vals in vals_list:
+                if self._CERTIFICATE_FIELDS.intersection(vals):
+                    raise UserError(_(
+                        "Os campos do certificado (token, hash, data de emissão) só "
+                        "podem ser gravados internamente durante a emissão oficial "
+                        "(aprovação da qualificação), nunca na criação do registro."
+                    ))
+                target = vals.get("state")
+                if target in self._MANAGER_ONLY_STATES:
+                    label = dict(self._fields["state"].selection).get(target, target)
+                    self._check_manager_only(
+                        _("criar a qualificação já com status '%s' "
+                          "(crie em rascunho e use as ações Aprovar/Reprovar/"
+                          "Cancelar depois)") % label
+                    )
+        return super().create(vals_list)
 
     def write(self, vals):
         # Task 10 — Finding 2: mesmo problema encontrado em afr.qualificacao.os

@@ -36,7 +36,19 @@ class AfrQualificacaoOs(models.Model):
     # um Técnico revertia `approved → in_progress` (não é target
     # manager-only) sem envolver o Gestor. Uma vez alcançados, QUALQUER
     # mudança de `state` a partir destes exige Gestor.
-    _STATE_LOCKED_ONCE_REACHED = frozenset({"approved", "done"})
+    # Task 13 — Finding 3: faltava `cancelled` aqui — um Técnico revertia
+    # `cancelled → scheduled`/`in_progress` (nenhum dos dois é target
+    # manager-only) sem envolver o Gestor, contornando o guard de
+    # `action_reset_to_draft`. A OS não tem estado `rejected` (só a qualif
+    # tem), por isso não entra aqui.
+    _STATE_LOCKED_ONCE_REACHED = frozenset({"approved", "done", "cancelled"})
+    # Task 13 — Finding 2: estados manager-only especificamente NA CRIAÇÃO —
+    # exclui `draft` de `_MANAGER_ONLY_STATES`. `draft` só é manager-only no
+    # `write()` (proteger `action_reset_to_draft`); no `create()`, nascer em
+    # rascunho é o comportamento normal/default (nada a "resetar"). Bloquear
+    # `create({'state': 'draft'})` pra um Usuário comum seria over-tightening
+    # sem ganho de segurança real.
+    _MANAGER_ONLY_STATES_ON_CREATE = _MANAGER_ONLY_STATES - {"draft"}
     _sql_constraints = [
         (
             "name_company_uniq",
@@ -245,6 +257,26 @@ class AfrQualificacaoOs(models.Model):
     # ═════════════════════════════════════════════════════════════
     @api.model_create_multi
     def create(self, vals_list):
+        """Task 13 — Finding 2 (CRÍTICO): mesmo guard de `write()` abaixo,
+        aplicado em `create()` — sem isto, `create({'state': 'approved'})`
+        (ou `'done'`/`'cancelled'`) nascia a OS direto num estado
+        manager-only, pulando `action_approve`/`action_done`/`action_cancel`
+        (e as validações que eles fazem: assinatura obrigatória, qualifs
+        aprovadas, cascata de aprovação etc.). `self.env.su` cobre os
+        caminhos internos confiáveis. `_MANAGER_ONLY_STATES_ON_CREATE`
+        (não `_MANAGER_ONLY_STATES`) — ver comentário na constante: `draft`
+        continua permitido na criação.
+        """
+        if not self.env.su:
+            for vals in vals_list:
+                target = vals.get("state")
+                if target in self._MANAGER_ONLY_STATES_ON_CREATE:
+                    label = dict(self.STATE_SELECTION).get(target, target)
+                    self._check_manager_only(
+                        _("criar a OS já com status '%s' "
+                          "(crie em rascunho e use as ações Aprovar/Concluir/"
+                          "Cancelar depois)") % label
+                    )
         for vals in vals_list:
             if not vals.get("name") or vals["name"] == _("Novo"):
                 seq = self.env["ir.sequence"].with_company(
