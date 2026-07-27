@@ -94,11 +94,13 @@ class AfrQualificacaoOsRelatorio(models.Model):
         string="Assinatura técnico",
         max_width=512,
         max_height=512,
+        copy=False,
         help="Assinatura coletada em campo no fechamento do relatório do dia.",
     )
     signature_technician_date = fields.Datetime(
         string="Data da assinatura",
         readonly=True,
+        copy=False,
     )
 
     # ───────── Cobertura técnica ─────────
@@ -348,6 +350,11 @@ class AfrQualificacaoOsRelatorio(models.Model):
         # assinatura nenhuma não faz sentido semântico. Por isso o guard
         # checa truthiness do valor, não só a ausência da chave de data.
         if "signature_technician" in vals and "signature_technician_date" not in vals:
+            # Cópia defensiva: `vals` pode ser um dict compartilhado pelo
+            # chamador (ex.: `for rec in recs: rec.write(shared_vals)`).
+            # Mutar in-place vazaria o `now()` do primeiro record pros
+            # seguintes no mesmo loop.
+            vals = dict(vals)
             vals["signature_technician_date"] = (
                 fields.Datetime.now() if vals["signature_technician"] else False
             )

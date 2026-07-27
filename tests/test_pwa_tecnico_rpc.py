@@ -198,6 +198,21 @@ class TestPwaTecnicoRpc(TransactionCase):
         })
         self.assertEqual(rel.signature_technician_date, assinado_em)
 
+    def test_duplicar_relatorio_assinado_nao_copia_assinatura(self):
+        """`copy=False` nos campos de assinatura: duplicar um relatório
+        assinado (Duplicate no form, disponível pro gestor) não pode gerar
+        um draft carregando a assinatura/timestamp de outra pessoa — isso
+        permitiria `action_done` aceitar um "assinado" que ninguém assinou.
+        """
+        rel = self._make_relatorio()
+        rel.write({
+            "signature_technician": self.PNG_1X1,
+            "signature_technician_date": datetime(2026, 7, 1, 12, 30, 0),
+        })
+        copia = rel.copy()
+        self.assertFalse(copia.signature_technician)
+        self.assertFalse(copia.signature_technician_date)
+
     def test_write_limpar_assinatura_limpa_data_junto(self):
         """Regressão do guard por chave: `write({"signature_technician": False})`
         (reassinatura/clear) não pode carimbar `now()` — a data acompanha o
@@ -283,6 +298,30 @@ class TestPwaTecnicoRpc(TransactionCase):
             **self._janela()
         )
         self.assertNotEqual(novo, fechado.id)
+
+    def test_start_daily_reusa_relatorio_de_ontem_quando_janela_pedida_explicitamente(self):
+        """Kwargs `day_start`/`day_end` precisam ser honrados, não ignorados.
+
+        `user_tecnico` não tem `tz` (fallback silencioso vira UTC), então uma
+        janela do fallback do dia atual JAMAIS bateria com um relatório
+        datado ontem. Este teste só passa se `action_start_daily_relatorio`
+        realmente usar a janela explícita recebida — se o `if day_start and
+        day_end:` for invertido/removido, o fallback busca "hoje", não acha
+        o draft de ontem, cria um novo, e o `assertEqual` abaixo falha.
+        """
+        os_rec = self._make_os()
+        janela_ontem = self._janela(dias_atras=1)
+        ontem_na_janela = janela_ontem["day_start"] + timedelta(hours=10)
+        antigo = self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os_rec.id,
+            "data_inicio": ontem_na_janela,
+            "data_fim": ontem_na_janela,
+            "tecnico_ids": [(6, 0, [self.employee_tecnico.id])],
+        })
+        reused = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio(
+            **janela_ontem
+        )
+        self.assertEqual(reused, antigo.id)
 
     def test_start_daily_sem_employee_erro_claro(self):
         user_sem_emp = self.env["res.users"].create({
