@@ -89,6 +89,18 @@ class AfrQualificacaoOsRelatorio(models.Model):
     )
     observacoes = fields.Text(string="Observações")
 
+    # ───────── Assinatura em campo (PWA técnico) ─────────
+    signature_technician = fields.Image(
+        string="Assinatura técnico",
+        max_width=512,
+        max_height=512,
+        help="Assinatura coletada em campo no fechamento do relatório do dia.",
+    )
+    signature_technician_date = fields.Datetime(
+        string="Data da assinatura",
+        readonly=True,
+    )
+
     # ───────── Cobertura técnica ─────────
     # F1: M2M sem filtro dinâmico por OS (qualif.os_id chega em F2).
     # F2: adicionar domain=[('qualificacao_id.os_id', '=', os_id)]

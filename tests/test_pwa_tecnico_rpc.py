@@ -123,3 +123,52 @@ class TestPwaTecnicoRpc(TransactionCase):
         rel.write({"descricao": "Ciclo vazio da QD AC-01 concluído."})
         rel.action_done()
         self.assertEqual(rel.state, "done")
+
+    # ─────────────────────────────────────────────────────────────
+    # 3. assinatura do técnico no relatório
+    # ─────────────────────────────────────────────────────────────
+    # PNG 1x1 válido — fields.Image valida o binário, não aceita lixo.
+    PNG_1X1 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGMAAQAABQAB"
+        "h6FO1AAAAABJRU5ErkJggg=="
+    )
+
+    def test_relatorio_aceita_assinatura_do_tecnico(self):
+        rel = self._make_relatorio()
+        assinado_em = datetime(2026, 7, 1, 12, 30, 0)
+        rel.write({
+            "signature_technician": self.PNG_1X1,
+            "signature_technician_date": assinado_em,
+        })
+        self.assertTrue(rel.signature_technician)
+        self.assertEqual(rel.signature_technician_date, assinado_em)
+        # round-trip: o binário volta decodificável
+        base64.b64decode(rel.signature_technician)
+
+    def test_assinatura_vazia_por_default(self):
+        rel = self._make_relatorio()
+        self.assertFalse(rel.signature_technician)
+        self.assertFalse(rel.signature_technician_date)
+
+    def test_fluxo_pwa_finalizar_write_depois_action_done(self):
+        """Espelha exatamente a sequência de 2 RPCs do front (Task 6).
+
+        `data_fim` é required=True e continua assim (a Task 2 só relaxou
+        `descricao`), então o relatório nasce com data_fim == data_inicio —
+        mesmo padrão do wizard oficial (`wizards/relatorio_wizard.py:70`) e do
+        `action_start_daily_relatorio` (Task 4) — e o fechamento grava o real.
+        """
+        rel = self._make_relatorio(
+            descricao=False,
+            data_inicio=datetime(2026, 7, 1, 8, 0, 0),
+            data_fim=datetime(2026, 7, 1, 8, 0, 0),
+        )
+        rel.write({
+            "data_fim": datetime(2026, 7, 1, 12, 0, 0),
+            "descricao": "Coletas do turno concluídas.",
+            "signature_technician": self.PNG_1X1,
+            "signature_technician_date": datetime(2026, 7, 1, 12, 0, 0),
+        })
+        rel.action_done()
+        self.assertEqual(rel.state, "done")
+        self.assertGreater(rel.time_execution, 0)
