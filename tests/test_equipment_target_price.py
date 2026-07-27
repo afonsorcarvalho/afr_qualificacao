@@ -310,3 +310,39 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
             "cycle_type_id": self.cycle_cmax.id,
         })
         self.assertEqual(linha.price_unit, self.product_qd_cmax.list_price)
+
+    def _open_wizard(self, so):
+        wiz = self.env["afr.qualificacao.configurator"].create({
+            "sale_order_id": so.id,
+        })
+        wiz._load_from_existing_lines()
+        return wiz
+
+    def test_target_survives_wizard_reapply(self):
+        """Re-apply do configurador recria as sections — o alvo tem que voltar."""
+        so = self._so()
+        wiz = self._open_wizard(so)
+        wiz.equipment_line_ids = [(0, 0, {
+            "equipment_id": self.equip1.id,
+            "qd_line_ids": [
+                (0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 3}),
+            ],
+        })]
+        wiz.action_apply()
+
+        section = so.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.equipment_id == self.equip1
+        )
+        self.assertTrue(section, "wizard deveria ter criado a section")
+        section.equipment_target_price = 5000.0
+
+        # Re-apply: wizard novo, recarregado das linhas existentes.
+        wiz2 = self._open_wizard(so)
+        wiz2.action_apply()
+
+        nova = so.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.equipment_id == self.equip1
+        )
+        self.assertEqual(nova.equipment_target_price, 5000.0)
