@@ -14,7 +14,7 @@ from odoo.exceptions import UserError, ValidationError
 class AfrQualificacaoOsRelatorio(models.Model):
     _name = "afr.qualificacao.os.relatorio"
     _description = "Relatório parcial de OS de qualificação"
-    _inherit = ["mail.thread"]
+    _inherit = ["mail.thread", "afr.qualificacao.manager.guard.mixin"]
     _order = "data_inicio desc, id desc"
 
     # ───────── Identificação ─────────
@@ -329,7 +329,16 @@ class AfrQualificacaoOsRelatorio(models.Model):
         return True
 
     def action_reopen(self):
-        """done|cancel → draft (manager-only via view groups=)."""
+        """done|cancel → draft (manager-only via servidor, `_check_manager_only`).
+
+        Task 12 — Finding 3: o docstring anterior afirmava um guard
+        "manager-only via view groups=" que nunca existiu no servidor — só
+        o botão da view tinha `groups=`, que é apenas UI e não impede RPC
+        direto. Este modelo também não tem `ir.rule` nenhuma, então
+        qualquer Técnico conseguia reabrir qualquer relatório fechado de
+        qualquer OS do banco. Guard adicionado aqui.
+        """
+        self._check_manager_only(_("reabrir o relatório"))
         for r in self:
             if r.state not in ("done", "cancel"):
                 raise UserError(_("Só relatórios concluídos/cancelados podem reabrir."))

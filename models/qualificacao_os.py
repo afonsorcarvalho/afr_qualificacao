@@ -32,6 +32,11 @@ class AfrQualificacaoOs(models.Model):
     # PWA (`action_start_daily_relatorio`) e o fluxo normal de Usuário/Técnico
     # precisam continuar fazendo sem ser Gestor.
     _MANAGER_ONLY_STATES = frozenset({"approved", "done", "cancelled", "draft"})
+    # Task 12 — Finding 2: `_MANAGER_ONLY_STATES` acima só olha o valor-ALVO;
+    # um Técnico revertia `approved → in_progress` (não é target
+    # manager-only) sem envolver o Gestor. Uma vez alcançados, QUALQUER
+    # mudança de `state` a partir destes exige Gestor.
+    _STATE_LOCKED_ONCE_REACHED = frozenset({"approved", "done"})
     _sql_constraints = [
         (
             "name_company_uniq",
@@ -604,12 +609,22 @@ class AfrQualificacaoOs(models.Model):
         # etc.). `in_progress`/`scheduled`/`in_approved` ficam de fora — são
         # as transições que o PWA (action_start_daily_relatorio) e o fluxo
         # normal de Usuário/Técnico precisam continuar fazendo direto.
-        if "state" in vals and vals["state"] in self._MANAGER_ONLY_STATES:
-            label = dict(self.STATE_SELECTION).get(vals["state"], vals["state"])
-            self._check_manager_only(
-                _("gravar o status da OS diretamente como '%s' (use as ações "
-                  "Aprovar/Concluir/Cancelar/Restaurar)") % label
+        if "state" in vals:
+            target = vals["state"]
+            # Task 12 — Finding 2: mesma lógica de "trava" aplicada em
+            # afr.qualificacao — reverter de um estado já alcançado (approved
+            # /done) pra QUALQUER outro valor exige Gestor, mesmo que o alvo
+            # em si não esteja na blacklist acima (ex.: approved → in_progress).
+            reverts_locked = any(
+                r.state in self._STATE_LOCKED_ONCE_REACHED and r.state != target
+                for r in self
             )
+            if target in self._MANAGER_ONLY_STATES or reverts_locked:
+                label = dict(self.STATE_SELECTION).get(target, target)
+                self._check_manager_only(
+                    _("gravar o status da OS diretamente como '%s' (use as ações "
+                      "Aprovar/Concluir/Cancelar/Restaurar)") % label
+                )
         if "signature_technician" in vals and vals["signature_technician"]:
             vals["signature_technician_date"] = fields.Datetime.now()
         if "signature_supervisor" in vals and vals["signature_supervisor"]:

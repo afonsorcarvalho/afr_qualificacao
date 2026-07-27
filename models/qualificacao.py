@@ -44,6 +44,22 @@ class AfrQualificacao(models.Model):
     # action_start() (chamado pela cascata de action_approve da OS) precisa
     # continuar funcionando sem ser Gestor.
     _MANAGER_ONLY_STATES = frozenset({"approved", "rejected", "cancelled"})
+    # Task 12 — Finding 2: `_MANAGER_ONLY_STATES` acima só olha o valor-ALVO,
+    # não o estado ATUAL — um Técnico revertia `approved → in_progress`/
+    # `draft` (nenhum dos dois é target manager-only) sem envolver o Gestor,
+    # desfazendo uma aprovação. Estes são os estados "trava": uma vez
+    # alcançados, QUALQUER mudança de `state` (mesmo pra um alvo "livre")
+    # exige Gestor.
+    _STATE_LOCKED_ONCE_REACHED = frozenset({"approved"})
+    # Task 12 — Finding 1 (CRÍTICO): campos do certificado não podem ser
+    # gravados via write() direto — só internamente (`_issue_certificate`,
+    # via `self.sudo()`). Sem isto, a ir.rule (que só escopa QUAIS registros)
+    # deixava um Técnico escrever token/hash/issued_at à mão, e
+    # `verify_certificate()` (RPC público, sem guard — deliberadamente fora
+    # do escopo desta correção) funcionava como oráculo do hash esperado.
+    _CERTIFICATE_FIELDS = frozenset({
+        "certificate_token", "certificate_hash", "certificate_issued_at",
+    })
 
     name = fields.Char(
         string="Referência",
@@ -448,11 +464,27 @@ class AfrQualificacao(models.Model):
         return hashlib.sha256(payload).hexdigest()
 
     def _issue_certificate(self):
-        """Gera token + congela hash + marca issued_at. Idempotente: skip se já emitido."""
+        """Gera token + congela hash + marca issued_at. Idempotente: skip se já emitido.
+
+        Task 12 — Finding 1: `write()` agora rejeita os campos do certificado
+        salvo `self.env.su`. Grava via `self.sudo()` para continuar
+        funcionando — hoje o único chamador é `action_mark_approved`, que já
+        é `_check_manager_only`-guardado logo no início. Mas em vez de
+        confiar só na disciplina do chamador (frágil a um refactor futuro
+        que adicione uma segunda via — ex.: botão "reemitir certificado",
+        cron), o guard é repetido aqui também: `_check_manager_only` retorna
+        cedo em `self.env.su` (não quebra o caminho atual nem os testes que
+        chamam este método direto em env admin), e vira uma trava real pra
+        qualquer chamador futuro alcançável por RPC. NÃO usar `groups=` de
+        campo aqui: `_compute_certificate_verify_url` lê `certificate_token`
+        no env do próprio usuário (inclusive Técnico) para montar a URL
+        pública, e estouraria um AccessError nesse compute.
+        """
         self.ensure_one()
         if self.certificate_token and self.certificate_hash:
             return
-        self.write({
+        self._check_manager_only(_("emitir o certificado"))
+        self.sudo().write({
             "certificate_token": uuid.uuid4().hex,
             "certificate_hash": self._compute_certificate_hash(),
             "certificate_issued_at": fields.Datetime.now(),
@@ -489,6 +521,15 @@ class AfrQualificacao(models.Model):
             raise UserError(_(
                 "Certificado ainda não emitido. Aprove a qualificação primeiro."
             ))
+        # Task 12 — Finding 1 (endurecimento secundário): o token/hash podem
+        # continuar no registro mesmo após uma reversão de estado (Finding
+        # 2) — sem este check, a impressão exibiria um certificado
+        # "oficial" de um registro que não está mais aprovado.
+        if self.state != "approved":
+            raise UserError(_(
+                "Certificado só pode ser impresso com a qualificação "
+                "aprovada. Estado atual: '%s'."
+            ) % dict(self._fields["state"].selection).get(self.state, self.state))
         if self.qualification_type == "calibration" and self.engc_calibration_id:
             return self.env.ref(
                 "engc_os.report_engc_os_calibration_certificate"
@@ -830,14 +871,40 @@ class AfrQualificacao(models.Model):
         # (Task 9) — a ir.rule escopa QUAIS registros, não QUAIS valores. Sem
         # este guard, `qualif.write({'state': 'approved'})` direto (RPC)
         # pulava o guard + emitia certificado sem o Gestor.
-        if "state" in vals and vals["state"] in self._MANAGER_ONLY_STATES:
-            label = dict(self._fields["state"].selection).get(
-                vals["state"], vals["state"]
+        #
+        # Task 12 — Finding 1 (CRÍTICO): os campos do certificado precisam do
+        # MESMO tipo de guard — sem `state` no vals, o bloco de baixo fica
+        # mudo, e a ir.rule (que só escopa registro, não campo) deixava
+        # passar `write({'certificate_token': ...})` direto. `self.env.su`
+        # cobre a única gravação legítima, `_issue_certificate` via
+        # `self.sudo()`.
+        if not self.env.su and self._CERTIFICATE_FIELDS.intersection(vals):
+            raise UserError(_(
+                "Os campos do certificado (token, hash, data de emissão) só "
+                "podem ser gravados internamente durante a emissão oficial "
+                "(aprovação da qualificação), nunca por escrita direta."
+            ))
+        if "state" in vals:
+            target = vals["state"]
+            # Task 12 — Finding 2: além do alvo estar na blacklist, uma
+            # gravação de `state` que MEXE num registro já numa das
+            # `_STATE_LOCKED_ONCE_REACHED` (ex.: já `approved`) também exige
+            # Gestor, mesmo que o alvo em si (ex.: `in_progress`, `draft`)
+            # não esteja na blacklist — sem isto, um Técnico revertia uma
+            # aprovação sem o Gestor participar.
+            reverts_locked = any(
+                record.state in self._STATE_LOCKED_ONCE_REACHED
+                and record.state != target
+                for record in self
             )
-            self._check_manager_only(
-                _("gravar o status da qualificação diretamente como '%s' "
-                  "(use as ações Aprovar/Reprovar/Cancelar)") % label
-            )
+            if target in self._MANAGER_ONLY_STATES or reverts_locked:
+                label = dict(self._fields["state"].selection).get(
+                    target, target
+                )
+                self._check_manager_only(
+                    _("gravar o status da qualificação diretamente como '%s' "
+                      "(use as ações Aprovar/Reprovar/Cancelar)") % label
+                )
         return super().write(vals)
 
     # ------------------------------------------------------------------
