@@ -21,7 +21,7 @@ subtotais do equipamento dê exatamente o valor negociado.
 | Decisão | Escolha |
 |---|---|
 | Base do alvo | **Sem impostos** — alvo = Σ `price_subtotal` das linhas do equipamento |
-| Onde o vendedor digita | **Linha de section do equipamento no SO** (não no wizard) |
+| Onde o vendedor digita | **No SO**, aba "Preços por Equipamento" (o2m das sections; não no wizard) |
 | Após editar ciclos/horas | **One-shot + aviso de desvio** — nada recalcula sozinho |
 | Critério de rateio | **Proporcional ao subtotal atual** (preserva o mix de preços) |
 | Base do rateio | Só qualificações firmes (managed, qty>0, não opcional, não declinada) |
@@ -52,20 +52,54 @@ Campos novos em `sale.order.line`, relevantes apenas em linhas com
 `copy=True` no alvo: duplicar o SO carrega o preço negociado, coerente com o
 `copy=True` já usado nos metadados de qualificação da linha.
 
+## Onde a UI vive
+
+O tree da aba "Linhas (Comercial)" usa `section_and_note_one2many`: linhas de
+section renderizam o nome em colspan e **escondem as demais colunas** — campo
+editável direto na section não funciona (é a razão do painel HTML existente e do
+comentário "Odoo não permite injetar coluna por section line").
+
+Solução: um one2many dedicado em `sale.order`, mesmo padrão já usado por
+`regular_line_ids` / `optional_line_ids` (`sale_order.py:137-158`):
+
+```python
+equipment_target_ids = fields.One2many(
+    comodel_name="sale.order.line",
+    inverse_name="order_id",
+    domain=[("display_type", "=", "line_section"),
+            ("equipment_id", "!=", False)],
+    string="Preços por Equipamento",
+)
+```
+
+Renderizado como tree editável (`create="false" delete="false"`, sem `<control>`
+— sections são propriedade do wizard) numa aba "Preços por Equipamento", com as
+colunas: Equipamento (readonly), Base do Rateio, Preço-Alvo (editável), Desvio,
+botão **Ratear**.
+
+O armazenamento continua na linha de section, então a preservação no re-apply do
+wizard fica igual ao descrito abaixo.
+
 ## Fluxo de uso
 
 1. Vendedor monta o escopo pelo wizard configurador (inalterado).
-2. No tree do SO, digita `equipment_target_price` na linha de section do
-   equipamento e salva.
-3. Clica o botão **Ratear** na própria linha de section
-   (`<button type="object">` no tree).
-   Alternativa em massa: botão **Ratear todos** no header do SO, que processa
-   todo equipamento em estado `drift`.
+2. Na aba "Preços por Equipamento", digita `equipment_target_price` na linha do
+   equipamento.
+3. Clica **Ratear** na mesma linha (`<button type="object">` no tree — o Odoo
+   salva o registro antes de executar). Alternativa em massa: botão **Ratear
+   todos** no header do SO, que processa todo equipamento em `drift`.
 4. O rateio é um `write` real (não `onchange`) — exige o SO salvo. `onchange` de
    linha não altera linhas irmãs de forma confiável.
 5. Se depois o vendedor mexer em ciclos/horas/linhas, `equipment_subtotal` muda,
    o estado vira `drift`, a linha ganha `decoration-warning` e o delta fica
    visível. Nada recalcula sozinho — reaplicar é ação manual.
+
+**Reatividade:** as abas editam por datapoints OWL distintos. Os computes de
+`equipment_target_delta` / `equipment_target_state` precisam declarar em
+`@api.depends` os paths `order_id.regular_line_ids.price_subtotal` além de
+`order_id.order_line.price_subtotal`, senão o desvio não se move quando o
+vendedor edita um preço na aba Comercial. Mesmo motivo documentado em
+`_compute_qualif_subtotals_html`.
 
 ### Sobrevivência ao re-apply do wizard
 
@@ -113,7 +147,18 @@ Resíduo `target − Σ share` é somado à linha de maior subtotal (menos visí
 de subtotal por centavo de `price_unit` é `qty × 0,01` (qty=1 → R$ 0,01;
 qty=7,5 → ≈ R$ 0,08). Ordenar as linhas da grade mais fina para a mais grossa e
 buscar um ajuste combinado de `n × 0,01` no `price_unit` de até 3 linhas, com
-`|n| ≤ 20`, que zere `diff`. Reverificar lendo `price_subtotal` de novo.
+`|n| ≤ 20`, que zere `diff`.
+
+**A busca é pura, em memória.** Ela roda sobre tuplas `(qty, price_unit)` usando
+a mesma função de arredondamento, produz **uma** solução candidata, e só então há
+**um** `write` e **uma** releitura de `price_subtotal`. Escrever no ORM dentro do
+laço de busca são ~69 mil round-trips e trava a suíte.
+
+**Arredondamento.** `round()` do Python é banker's rounding: `round(0.075, 2)`
+dá `0.07`; a moeda do Odoo é HALF-UP e dá `0.08`. A grade inteira do algoritmo
+cai exatamente em meio-centavo (7,5h → 0,075), então isso não é hipotético.
+Usar `currency.round()` / `float_round(..., rounding_method='HALF-UP')` em todo
+o cálculo — nunca `round()` puro.
 
 **7. Falha honesta.** Se ainda sobrar diferença, gravar assim mesmo (melhor
 aproximação), postar mensagem no chatter e devolver notification:
@@ -126,10 +171,17 @@ Estado permanece `drift`, nunca `ok`.
 
 `equipment_subtotal` (compute existente em `sale_order_line.py:229`) soma todas
 as linhas de produto com aquele `equipment_id`, incluindo opcionais aceitos — que
-o rateio exclui. Sem alinhamento, o delta mente.
+o rateio exclui. Sem alinhamento, o delta mente. Verificado: o campo não é usado
+em nenhuma view nem relatório, então realinhá-lo é livre de regressão.
 
-`equipment_subtotal` passa a usar exatamente a mesma base do rateio. Opcionais
-aceitos deixam de entrar nesse número.
+`equipment_subtotal` passa a usar exatamente a mesma base do rateio e vira a
+coluna "Base do Rateio" da nova aba.
+
+**Dois subtotais na tela.** O painel HTML existente (`_qualif_equipment_summary`,
+`sale_order.py:490+`) mostra outro número para o mesmo equipamento — ele inclui
+opcionais aceitos. Decisão: manter os dois, rotulados distintamente. O cabeçalho
+"Subtotal" do painel HTML passa a ser **"Subtotal (c/ opcionais)"**; a coluna da
+nova aba é **"Base do Rateio"**.
 
 ## Testes
 
@@ -150,6 +202,9 @@ Arquivo novo `tests/test_equipment_target_price.py`, seguindo o padrão do módu
    na nova section.
 8. **Guardas** — base com preços zerados → `UserError`; base vazia → `UserError`;
    alvo 0 → limpa sem tocar preço.
+9. **Alvo degenerado** — alvo muito menor que a base, com uma linha longa
+   (qty=100h) cujo share arredonda `price_unit` para `0,00`: assertar que o
+   algoritmo não perde o resíduo nem grava preço negativo.
 
 ## Fora de escopo
 
@@ -165,9 +220,11 @@ Arquivo novo `tests/test_equipment_target_price.py`, seguindo o padrão do módu
 
 | Arquivo | Mudança |
 |---|---|
-| `models/sale_order_line.py` | Campos novos, computes, `_apply_equipment_target`, helper de shares, alinhamento de `equipment_subtotal` |
-| `models/sale_order.py` | Botão "Ratear todos" no header |
-| `views/sale_order_views.xml` | Colunas alvo/delta, botão na section, `decoration-warning` |
-| `wizards/qualificacao_configurator.py` | Preservar `{equipment_id: target}` no re-apply |
-| `tests/test_equipment_target_price.py` | Novo |
+| `models/price_allocation.py` | **Novo** — helper puro (sem ORM) do rateio + busca de resíduo |
+| `models/sale_order_line.py` | Campos novos, computes, `_apply_equipment_target`, alinhamento de `equipment_subtotal` |
+| `models/sale_order.py` | `equipment_target_ids`, botão "Ratear todos", rótulo "Subtotal (c/ opcionais)" no painel |
+| `views/sale_order_views.xml` | Aba "Preços por Equipamento" (tree editável), botão por linha e no header, `decoration-warning` |
+| `wizards/qualificacao_configurator.py` | Preservar `{equipment_id: target}` antes do `unlink` (linha 438) |
+| `tests/test_price_allocation.py` | **Novo** — testes puros do helper |
+| `tests/test_equipment_target_price.py` | **Novo** — testes ORM/integração |
 | `__manifest__.py` | Bump de versão (feat → MINOR) |
