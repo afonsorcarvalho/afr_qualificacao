@@ -65,6 +65,19 @@ class AfrQualificacaoOs(models.Model):
         tracking=True,
         help="Técnico padrão da OS. Pode ser sobrescrito em cada qualificação.",
     )
+    tecnico_default_user_id = fields.Many2one(
+        "res.users",
+        string="Usuário do técnico padrão",
+        related="tecnico_default_id.user_id",
+        store=True,
+        readonly=True,
+        index=True,
+        help=(
+            "Espelho stored do usuário do técnico padrão. Permite filtrar OS "
+            "pelo usuário logado (PWA de campo) sem exigir leitura de "
+            "hr.employee, que o grupo Técnico não possui no Odoo 16."
+        ),
+    )
     approver_id = fields.Many2one(
         "res.users",
         string="Aprovador",
