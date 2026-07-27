@@ -73,3 +73,9 @@ from . import test_remove_models_coletas
 
 # cotacao form refactor — one2many filtrados regular_line_ids/optional_line_ids
 from . import test_cotacao_form_refactor
+
+# Rateio de preço final por equipamento — helper puro de rateio
+from . import test_price_allocation
+
+# 16.0.6.4.0 — superfície RPC do PWA Técnico de Campo
+from . import test_pwa_tecnico_rpc
