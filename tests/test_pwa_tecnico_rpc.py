@@ -104,3 +104,22 @@ class TestPwaTecnicoRpc(TransactionCase):
             ["name", "tecnico_default_user_id"],
         )
         self.assertEqual([r["id"] for r in rows], [os_mine.id])
+
+    # ─────────────────────────────────────────────────────────────
+    # 2. descricao opcional no draft
+    # ─────────────────────────────────────────────────────────────
+    def test_cria_relatorio_draft_sem_descricao(self):
+        rel = self._make_relatorio(descricao=False)
+        self.assertEqual(rel.state, "draft")
+        self.assertFalse(rel.descricao)
+
+    def test_action_done_ainda_exige_descricao(self):
+        rel = self._make_relatorio(descricao=False)
+        with self.assertRaises(UserError):
+            rel.action_done()
+
+    def test_action_done_passa_com_descricao_preenchida_depois(self):
+        rel = self._make_relatorio(descricao=False)
+        rel.write({"descricao": "Ciclo vazio da QD AC-01 concluído."})
+        rel.action_done()
+        self.assertEqual(rel.state, "done")

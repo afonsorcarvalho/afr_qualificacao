@@ -81,8 +81,11 @@ class AfrQualificacaoOsRelatorio(models.Model):
     # ───────── Conteúdo ─────────
     descricao = fields.Text(
         string="Descrição do serviço",
-        required=True,
         tracking=True,
+        help=(
+            "Opcional no rascunho — o PWA de campo abre o relatório do dia "
+            "vazio e preenche no fechamento. `action_done` exige preenchida."
+        ),
     )
     observacoes = fields.Text(string="Observações")
 
