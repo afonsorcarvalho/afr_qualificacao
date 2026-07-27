@@ -138,7 +138,7 @@
                             <button name="action_apply_equipment_target"
                                     type="object" string="Ratear"
                                     icon="fa-balance-scale"
-                                    attrs="{'invisible': [('equipment_target_state','=','none')]}"/>
+                                    attrs="{'invisible': ['|', ('equipment_target_state','=','none'), ('parent.state','not in',['draft','sent'])]}"/>
                         </tree>
                     </field>
                 </page>

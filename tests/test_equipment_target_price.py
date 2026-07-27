@@ -193,6 +193,40 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         self.assertEqual(linha.price_unit, 200.0)
         self.assertEqual(section.equipment_target_state, "none")
 
+    def test_negative_target_clears_without_touching_prices(self):
+        """target < 0: limpa o alvo (volta a 0.0) e não mexe em price_unit."""
+        so = self._so()
+        section = self._section(so, self.equip1)
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        section.equipment_target_price = -500.0
+        res = section._apply_equipment_target()
+        self.assertEqual(linha.price_unit, 200.0)
+        self.assertEqual(section.equipment_target_price, 0.0)
+        self.assertEqual(section.equipment_target_state, "none")
+        self.assertTrue(res["exact"])
+
+    def test_subcent_target_does_not_zero_prices(self):
+        """target > 0 mas sub-centavo (arredonda pra 0.00 na precisão de 2
+        casas): não pode zerar a base nem reportar sucesso silencioso.
+
+        O campo Monetary já arredonda qualquer valor digitado na UI para 2
+        casas (a granularidade da moeda coincide com a precisão do guard),
+        então este cenário só é alcançável se o valor chegar em
+        `equipment_target_price` sem passar pela conversão normal do campo
+        (ex.: resíduo de ponto flutuante de algum cálculo upstream). Usamos
+        `env.cache.set` para injetar o valor bruto no cache do registro,
+        simulando exatamente esse caso e exercitando a guarda do método
+        diretamente — é o mesmo cenário descrito no finding, testado no
+        nível certo (o método, não o roundtrip de UI)."""
+        so = self._so()
+        section = self._section(so, self.equip1)
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        field = section._fields["equipment_target_price"]
+        self.env.cache.set(section, field, 0.001)
+        res = section._apply_equipment_target()
+        self.assertEqual(linha.price_unit, 200.0)
+        self.assertTrue(res["exact"])
+
     def test_drift_after_editing_cycles(self):
         so = self._so()
         section = self._section(so, self.equip1)
@@ -289,6 +323,23 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         so.action_apply_all_equipment_targets()
         self.assertEqual(s1.equipment_target_state, "ok")
         self.assertEqual(s2.equipment_target_state, "ok")
+
+    def test_apply_all_reports_broken_section_but_rateios_others(self):
+        """1 equipamento sem base elegível não pode travar o rateio dos
+        demais — cada section falha isoladamente e a falha vira notification,
+        não exceção que aborta a transação inteira."""
+        so = self._so()
+        s1 = self._section(so, self.equip1)
+        self._cycle_line(so, self.equip1, 3, 2.5, 200.0)  # 7,5h × 200 = 1500
+        s2 = self._section(so, self.equip2)  # sem nenhuma linha na base
+        s1.equipment_target_price = 3000.0  # fecha exato (ver teste acima)
+        s2.equipment_target_price = 900.0
+        res = so.action_apply_all_equipment_targets()
+        self.assertEqual(s1.equipment_target_state, "ok")
+        self.assertEqual(s2.equipment_target_state, "drift")
+        self.assertIsInstance(res, dict)
+        message = res["params"]["message"]
+        self.assertIn(self.equip2.display_name, message)
 
     def test_apply_all_skips_sections_without_target(self):
         so = self._so()

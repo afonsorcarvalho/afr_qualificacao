@@ -277,7 +277,12 @@ class SaleOrderLine(models.Model):
             "congelado contra o recompute nativo do core disparado por "
             "mudança de quantidade (ver _compute_price_unit); demais "
             "linhas — mesmo managed — continuam repreçando normalmente "
-            "pela pricelist, inclusive via 'Atualizar Preços' do pedido."
+            "pela pricelist, inclusive via 'Atualizar Preços' do pedido. "
+            "Sem caminho de reset além do re-apply do wizard configurador "
+            "(que apaga e recria as linhas managed do zero) — por isso "
+            "trocar o produto de uma linha já rateada mantém o price_unit "
+            "antigo (calculado para o produto anterior) até um novo rateio "
+            "ou re-apply do wizard."
         ),
     )
 
@@ -303,6 +308,15 @@ class SaleOrderLine(models.Model):
         embrulhado num NewId com origin — precisa do id real por trás para
         distinguir "linha existente sendo editada" de "linha nova" (linha
         nova sempre reprecifica pela pricelist, mesmo com a flag setada).
+
+        Nota: este congelamento cobre só `price_unit`. `discount` NÃO é
+        protegido — "Atualizar Preços" (sale/models/sale_order.py,
+        _recompute_prices) zera `discount` e chama `_compute_discount`
+        incondicionalmente antes de chegar aqui. Hoje inerte na prática
+        (nenhuma pricelist do banco é `discount_policy='with_discount'` e
+        ninguém está no grupo `sale.group_discount_per_so_line`), mas é
+        frágil por sorte — uma pricelist with_discount reintroduziria
+        desconto numa linha rateada.
         """
         frozen = self.filtered(
             lambda l: l._origin.id and l.is_rateio_priced
@@ -376,7 +390,14 @@ class SaleOrderLine(models.Model):
         """
         self.ensure_one()
         target = self.equipment_target_price
-        if not target:
+        if float_is_zero(target, precision_digits=2) or target < 0:
+            # target<=0 (ou sub-centavo, que a UI já arredonda pra 0.00 mas
+            # que pode chegar aqui sem passar por essa conversão): não é um
+            # alvo válido para o rateio proporcional. Limpa o campo só no
+            # caso negativo — 0.0 já é "sem alvo" por si (equipment_target_
+            # state computa "none"); nunca mexe em price_unit das linhas.
+            if target < 0:
+                self.equipment_target_price = 0.0
             return {"exact": True, "achieved": 0.0}
 
         base = self._rateio_base_lines()

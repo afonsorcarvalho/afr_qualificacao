@@ -436,8 +436,10 @@ class AfrQualificacaoConfigurator(models.TransientModel):
 
         so = self.sale_order_id
         # Alvos de rateio vivem nas sections managed, que o unlink abaixo
-        # apaga. Capturar antes e regravar nas sections novas (mesmo padrão
-        # de config_template_id, que também é lido de volta das linhas).
+        # apaga. Capturar antes e regravar nas sections novas — mecanismo
+        # diferente de config_template_id: aqui é leitura ao vivo das linhas
+        # existentes dentro do próprio action_apply; config_template_id é
+        # cacheado antes, em _load_from_existing_lines (equip_template_map).
         alvos_por_equip = {
             line.equipment_id.id: line.equipment_target_price
             for line in so.order_line

@@ -1059,27 +1059,54 @@ class SaleOrder(models.Model):
         }
 
     def action_apply_all_equipment_targets(self):
-        """Ratea todos os equipamentos com alvo definido e fora do alvo."""
+        """Ratea todos os equipamentos com alvo definido e fora do alvo.
+
+        Cada section é rateada isoladamente: uma que não pode ser rateada
+        (base vazia/zerada) não pode derrubar a transação inteira e travar
+        o rateio dos equipamentos saudáveis — daí o try/except por section.
+        Seguro porque `_apply_equipment_target` só levanta `UserError`
+        (base vazia/zerada) em `return`/`raise`, nunca depois de um
+        `write()` — inclusive o guard de alvo inválido (target<=0) também
+        retorna antes de qualquer write. Nenhum dos dois caminhos de falha
+        deixa write parcial pra trás. As falhas são acumuladas e
+        reportadas junto com os inexatos na mesma notification.
+        """
         self.ensure_one()
         inexatos = []
+        falhas = []
         for section in self.equipment_target_ids:
             if section.equipment_target_state != "drift":
                 continue
-            res = section._apply_equipment_target()
+            try:
+                res = section._apply_equipment_target()
+            except UserError as exc:
+                falhas.append("%s: %s" % (
+                    section.equipment_id.display_name or "",
+                    exc.args[0] if exc.args else "",
+                ))
+                continue
             if not res["exact"]:
                 inexatos.append(section.equipment_id.display_name or "")
-        if not inexatos:
+        if not inexatos and not falhas:
             return True
+        messages = []
+        if inexatos:
+            messages.append(_(
+                "Não foi possível fechar exatamente: %s. Veja o histórico "
+                "do pedido."
+            ) % ", ".join(inexatos))
+        if falhas:
+            messages.append(_(
+                "Não foi possível ratear: %s."
+            ) % "; ".join(falhas))
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
                 "type": "warning",
-                "title": _("Rateio aproximado"),
-                "message": _(
-                    "Não foi possível fechar exatamente: %s. Veja o "
-                    "histórico do pedido."
-                ) % ", ".join(inexatos),
+                "title": _("Rateio parcial") if falhas
+                else _("Rateio aproximado"),
+                "message": "\n".join(messages),
                 "sticky": False,
             },
         }
