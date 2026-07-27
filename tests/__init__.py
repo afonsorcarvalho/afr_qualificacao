@@ -91,3 +91,8 @@ from . import test_certificate_forgery_task12
 # modelos (forja de certificado + estado manager-only na criação), e lock set
 # incompleto (rejected/cancelled) + action_start() sem precondição de estado
 from . import test_create_guard_task13
+
+# Task 14 — o guard da Task 13 olha o vals_list RECEBIDO, mas o Odoo aplica
+# defaults (context default_<field> / ir.default) DEPOIS do override, dentro
+# do próprio super().create() — vetor de contexto e vetor ir.default sobrevivem
+from . import test_create_default_vector_task14

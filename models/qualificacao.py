@@ -122,6 +122,7 @@ class AfrQualificacao(models.Model):
         string="Status",
         default="draft",
         required=True,
+        copy=False,
         tracking=True,
         help="Situação atual da qualificação conforme documentação de fluxos do Odoo.",
     )
@@ -920,6 +921,22 @@ class AfrQualificacao(models.Model):
         mantidos lado a lado de propósito para não divergirem no futuro.
         `self.env.su` cobre os caminhos internos confiáveis (wizards
         rodando como admin nos testes, etc.).
+
+        Task 14 — Finding 1 (CRÍTICO): o pré-check acima só enxerga o
+        `vals_list` RECEBIDO. O Odoo aplica defaults DEPOIS deste override,
+        dentro do próprio `super().create()`
+        (`_prepare_create_values`→`_add_missing_default_values`→
+        `default_get`), e `default_get` honra `context['default_<field>']` e
+        linhas de `ir.default` para qualquer campo, inclusive os
+        readonly/manager-only daqui. Dois vetores RPC-alcançáveis
+        sobreviviam ao pré-check: `Q.with_context(default_state='approved',
+        default_certificate_token=...).create({...})` (sem esses campos no
+        vals) e `ir.default.set('afr.qualificacao', 'state', 'approved')`
+        gravado pelo próprio Usuário (Internal User tem create/write
+        completo em `ir.default`). O pós-check abaixo inspeciona os valores
+        EFETIVOS do registro já criado — agnóstico ao vetor (contexto,
+        ir.default, ou qualquer default futuro); o pré-check acima fica só
+        pelo erro mais cedo/claro no caso comum de vals explícito.
         """
         if not self.env.su:
             for vals in vals_list:
@@ -937,7 +954,29 @@ class AfrQualificacao(models.Model):
                           "(crie em rascunho e use as ações Aprovar/Reprovar/"
                           "Cancelar depois)") % label
                     )
-        return super().create(vals_list)
+        records = super().create(vals_list)
+        if not self.env.su:
+            for record in records:
+                if (
+                    record.certificate_token
+                    or record.certificate_hash
+                    or record.certificate_issued_at
+                ):
+                    raise UserError(_(
+                        "Os campos do certificado (token, hash, data de emissão) só "
+                        "podem ser gravados internamente durante a emissão oficial "
+                        "(aprovação da qualificação), nunca na criação do registro."
+                    ))
+                if record.state in self._MANAGER_ONLY_STATES:
+                    label = dict(self._fields["state"].selection).get(
+                        record.state, record.state
+                    )
+                    self._check_manager_only(
+                        _("criar a qualificação já com status '%s' "
+                          "(crie em rascunho e use as ações Aprovar/Reprovar/"
+                          "Cancelar depois)") % label
+                    )
+        return records
 
     def write(self, vals):
         # Task 10 — Finding 2: mesmo problema encontrado em afr.qualificacao.os

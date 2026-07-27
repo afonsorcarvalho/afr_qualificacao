@@ -167,6 +167,7 @@ class AfrQualificacaoOs(models.Model):
         STATE_SELECTION,
         default="draft",
         required=True,
+        copy=False,
         tracking=True,
         group_expand="_group_expand_states",
     )
@@ -266,6 +267,17 @@ class AfrQualificacaoOs(models.Model):
         caminhos internos confiáveis. `_MANAGER_ONLY_STATES_ON_CREATE`
         (não `_MANAGER_ONLY_STATES`) — ver comentário na constante: `draft`
         continua permitido na criação.
+
+        Task 14 — Finding 1 (CRÍTICO): o pré-check acima só enxerga o
+        `vals_list` RECEBIDO. O Odoo aplica defaults (`default_get`, que
+        honra `context['default_state']` e linhas `ir.default`) DEPOIS
+        deste override, dentro do próprio `super().create()` — um Usuário
+        conseguia `Os.with_context(default_state='approved').create({...})`
+        (sem `state` no vals) e nascer aprovada, ou gravar
+        `ir.default.set('afr.qualificacao.os', 'state', 'approved')` uma
+        vez e todo `create()` seguinte já nascer aprovado. O pós-check
+        abaixo olha o `state` EFETIVO do registro já criado — agnóstico ao
+        vetor.
         """
         if not self.env.su:
             for vals in vals_list:
@@ -283,7 +295,19 @@ class AfrQualificacaoOs(models.Model):
                     vals.get("company_id") or self.env.company.id
                 ).next_by_code("afr.qualificacao.os.sequence")
                 vals["name"] = seq or _("Novo")
-        return super().create(vals_list)
+        records = super().create(vals_list)
+        if not self.env.su:
+            for record in records:
+                if record.state in self._MANAGER_ONLY_STATES_ON_CREATE:
+                    label = dict(self.STATE_SELECTION).get(
+                        record.state, record.state
+                    )
+                    self._check_manager_only(
+                        _("criar a OS já com status '%s' "
+                          "(crie em rascunho e use as ações Aprovar/Concluir/"
+                          "Cancelar depois)") % label
+                    )
+        return records
 
     # ═════════════════════════════════════════════════════════════
     # COMPUTED FIELDS
