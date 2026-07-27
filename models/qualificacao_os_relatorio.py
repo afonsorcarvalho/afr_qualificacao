@@ -342,6 +342,13 @@ class AfrQualificacaoOsRelatorio(models.Model):
         # automático, quem assinar pela UI padrão do Odoo (fora do PWA) nunca
         # teria como preencher a data. O guard preserva o timestamp quando o
         # PWA já manda os dois campos juntos no mesmo RPC (fluxo real).
+        #
+        # Ao limpar a assinatura (`signature_technician=False`, ex.: técnico
+        # reassina), a data acompanha o clear — uma data de assinatura sem
+        # assinatura nenhuma não faz sentido semântico. Por isso o guard
+        # checa truthiness do valor, não só a ausência da chave de data.
         if "signature_technician" in vals and "signature_technician_date" not in vals:
-            vals["signature_technician_date"] = fields.Datetime.now()
+            vals["signature_technician_date"] = (
+                fields.Datetime.now() if vals["signature_technician"] else False
+            )
         return super().write(vals)

@@ -197,3 +197,18 @@ class TestPwaTecnicoRpc(TransactionCase):
             "signature_technician_date": assinado_em,
         })
         self.assertEqual(rel.signature_technician_date, assinado_em)
+
+    def test_write_limpar_assinatura_limpa_data_junto(self):
+        """Regressão do guard por chave: `write({"signature_technician": False})`
+        (reassinatura/clear) não pode carimbar `now()` — a data acompanha o
+        clear, porque data de assinatura sem assinatura não faz sentido."""
+        rel = self._make_relatorio()
+        rel.write({
+            "signature_technician": self.PNG_1X1,
+            "signature_technician_date": datetime(2026, 7, 1, 12, 30, 0),
+        })
+        self.assertTrue(rel.signature_technician)
+
+        rel.write({"signature_technician": False})
+        self.assertFalse(rel.signature_technician)
+        self.assertFalse(rel.signature_technician_date)
