@@ -70,6 +70,19 @@ class TestPwaTecnicoRpc(TransactionCase):
         inicio = inicio_hoje - timedelta(days=dias_atras)
         return {"day_start": inicio, "day_end": inicio + timedelta(days=1)}
 
+    @staticmethod
+    def _to_scheduled(os_rec):
+        """Leva a OS direto para `scheduled`, pulando `action_schedule()`.
+
+        `action_schedule()` exige qualificacao_ids + técnico/responsável por
+        qualif — montar essa árvore de sub-records só pra testar o guard de
+        `action_start_daily_relatorio` seria desproporcional (Task 8). Write
+        direto do estado é aceitável aqui: o que estes testes exercitam é o
+        guard de estado do entrypoint do PWA, não o fluxo de agendamento.
+        """
+        os_rec.write({"state": "scheduled"})
+        return os_rec
+
     # ─────────────────────────────────────────────────────────────
     # 1. tecnico_default_user_id (espelho p/ filtro "só minhas")
     # ─────────────────────────────────────────────────────────────
@@ -232,7 +245,7 @@ class TestPwaTecnicoRpc(TransactionCase):
     # 4. action_start_daily_relatorio (idempotente)
     # ─────────────────────────────────────────────────────────────
     def test_start_daily_cria_relatorio_draft(self):
-        os_rec = self._make_os()
+        os_rec = self._to_scheduled(self._make_os())
         rel_id = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
         rel = self.env["afr.qualificacao.os.relatorio"].browse(rel_id)
         self.assertTrue(rel.exists())
@@ -242,13 +255,13 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertFalse(rel.descricao)
 
     def test_start_daily_e_idempotente(self):
-        os_rec = self._make_os().with_user(self.user_tecnico)
+        os_rec = self._to_scheduled(self._make_os()).with_user(self.user_tecnico)
         first = os_rec.action_start_daily_relatorio()
         second = os_rec.action_start_daily_relatorio()
         self.assertEqual(first, second)
 
     def test_start_daily_reusa_dentro_da_mesma_janela(self):
-        os_rec = self._make_os().with_user(self.user_tecnico)
+        os_rec = self._to_scheduled(self._make_os()).with_user(self.user_tecnico)
         janela = self._janela()
         a = os_rec.action_start_daily_relatorio(**janela)
         b = os_rec.action_start_daily_relatorio(**janela)
@@ -256,7 +269,7 @@ class TestPwaTecnicoRpc(TransactionCase):
 
     def test_start_daily_ignora_relatorio_de_outro_dia(self):
         """Draft de ontem não é reaproveitado pela janela de hoje."""
-        os_rec = self._make_os()
+        os_rec = self._to_scheduled(self._make_os())
         ontem = fields.Datetime.now() - timedelta(days=1)
         antigo = self.env["afr.qualificacao.os.relatorio"].create({
             "os_id": os_rec.id,
@@ -270,7 +283,7 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertNotEqual(novo, antigo.id)
 
     def test_start_daily_nao_reusa_relatorio_de_outro_tecnico(self):
-        os_rec = self._make_os()
+        os_rec = self._to_scheduled(self._make_os())
         agora = fields.Datetime.now()
         alheio = self.env["afr.qualificacao.os.relatorio"].create({
             "os_id": os_rec.id,
@@ -284,7 +297,7 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertNotEqual(meu, alheio.id)
 
     def test_start_daily_nao_reusa_relatorio_fechado(self):
-        os_rec = self._make_os()
+        os_rec = self._to_scheduled(self._make_os())
         agora = fields.Datetime.now()
         fechado = self._make_relatorio(
             os_rec=os_rec,
@@ -318,6 +331,7 @@ class TestPwaTecnicoRpc(TransactionCase):
             "data_fim": ontem_na_janela,
             "tecnico_ids": [(6, 0, [self.employee_tecnico.id])],
         })
+        self._to_scheduled(os_rec)
         reused = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio(
             **janela_ontem
         )
@@ -332,6 +346,54 @@ class TestPwaTecnicoRpc(TransactionCase):
                 self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
             ])],
         })
-        os_rec = self._make_os().with_user(user_sem_emp)
+        os_rec = self._to_scheduled(self._make_os()).with_user(user_sem_emp)
         with self.assertRaises(UserError):
             os_rec.action_start_daily_relatorio()
+
+    # ─────────────────────────────────────────────────────────────
+    # 5. guard de estado + transição (Task 8) — scheduled/in_progress
+    #    aceitos, resto rejeita SEM efeito colateral (nenhum relatório
+    #    é criado). A transição em si prova o ACL de write do técnico:
+    #    o `write` roda como `self.user_tecnico`, não sudo.
+    # ─────────────────────────────────────────────────────────────
+    def test_start_daily_scheduled_transiciona_para_in_progress(self):
+        os_rec = self._to_scheduled(self._make_os())
+        rel_id = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+        self.assertEqual(os_rec.state, "in_progress")
+        rel = self.env["afr.qualificacao.os.relatorio"].browse(rel_id)
+        self.assertTrue(rel.exists())
+        self.assertEqual(rel.state, "draft")
+
+    def test_start_daily_in_progress_permanece_in_progress(self):
+        os_rec = self._to_scheduled(self._make_os())
+        os_rec.write({"state": "in_progress"})
+        rel_id = os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+        self.assertEqual(os_rec.state, "in_progress")
+        self.assertTrue(rel_id)
+
+    def test_start_daily_bloqueia_os_done(self):
+        os_rec = self._make_os()
+        os_rec.write({"state": "done"})
+        Relatorio = self.env["afr.qualificacao.os.relatorio"]
+        antes = Relatorio.search_count([("os_id", "=", os_rec.id)])
+        with self.assertRaises(UserError):
+            os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+        depois = Relatorio.search_count([("os_id", "=", os_rec.id)])
+        self.assertEqual(antes, depois)
+        self.assertEqual(depois, 0)
+
+    def test_start_daily_bloqueia_os_cancelled(self):
+        os_rec = self._make_os()
+        os_rec.write({"state": "cancelled"})
+        with self.assertRaises(UserError):
+            os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+
+    def test_start_daily_bloqueia_os_draft(self):
+        """Consequência intencional do guard: a home do PWA também lista OS
+        em `draft` (domínio do front), mas tocar "Iniciar relatório do dia"
+        numa OS que nunca foi agendada agora levanta erro claro, em vez de
+        criar relatório silenciosamente contra uma OS sem cronograma."""
+        os_rec = self._make_os()
+        self.assertEqual(os_rec.state, "draft")
+        with self.assertRaises(UserError):
+            os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()

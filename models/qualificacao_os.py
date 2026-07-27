@@ -374,11 +374,25 @@ class AfrQualificacaoOs(models.Model):
         seja a mesma dos dois lados. Sem argumentos, usa o dia no fuso do
         usuário.
 
+        Exige OS em `scheduled` ou `in_progress` (mesmo guard de
+        `action_start_execution`); `scheduled` transiciona para `in_progress`
+        — write do próprio técnico, sem sudo, já que o grupo Técnico tem
+        write ACL na OS (Task 8). Qualquer outro estado levanta `UserError`
+        antes de tocar em employee/relatório (sem efeito colateral).
+
         :param day_start: início da janela (str/datetime, UTC). Opcional.
         :param day_end: fim exclusivo da janela (str/datetime, UTC). Opcional.
         :return: int — id de `afr.qualificacao.os.relatorio`
         """
         self.ensure_one()
+        if self.state not in ("scheduled", "in_progress"):
+            raise UserError(
+                _("OS deve estar agendada ou em execução para iniciar "
+                  "relatório do dia.")
+            )
+        if self.state == "scheduled":
+            self.write({"state": "in_progress"})
+
         employee = self.env["hr.employee"].sudo().search(
             [
                 ("user_id", "=", self.env.uid),
