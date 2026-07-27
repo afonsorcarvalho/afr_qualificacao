@@ -347,7 +347,7 @@ class TestPwaTecnicoRpc(TransactionCase):
             ])],
         })
         os_rec = self._to_scheduled(self._make_os()).with_user(user_sem_emp)
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "colaborador"):
             os_rec.action_start_daily_relatorio()
 
     # ─────────────────────────────────────────────────────────────
@@ -376,7 +376,7 @@ class TestPwaTecnicoRpc(TransactionCase):
         os_rec.write({"state": "done"})
         Relatorio = self.env["afr.qualificacao.os.relatorio"]
         antes = Relatorio.search_count([("os_id", "=", os_rec.id)])
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "agendada ou em execução"):
             os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
         depois = Relatorio.search_count([("os_id", "=", os_rec.id)])
         self.assertEqual(antes, depois)
@@ -385,7 +385,7 @@ class TestPwaTecnicoRpc(TransactionCase):
     def test_start_daily_bloqueia_os_cancelled(self):
         os_rec = self._make_os()
         os_rec.write({"state": "cancelled"})
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "agendada ou em execução"):
             os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
 
     def test_start_daily_bloqueia_os_draft(self):
@@ -395,5 +395,5 @@ class TestPwaTecnicoRpc(TransactionCase):
         criar relatório silenciosamente contra uma OS sem cronograma."""
         os_rec = self._make_os()
         self.assertEqual(os_rec.state, "draft")
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "agendada ou em execução"):
             os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()

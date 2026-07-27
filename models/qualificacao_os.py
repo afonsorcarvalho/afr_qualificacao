@@ -388,7 +388,7 @@ class AfrQualificacaoOs(models.Model):
         if self.state not in ("scheduled", "in_progress"):
             raise UserError(
                 _("OS deve estar agendada ou em execução para iniciar "
-                  "relatório do dia.")
+                  "relatório do dia. Peça o agendamento da OS.")
             )
         if self.state == "scheduled":
             self.write({"state": "in_progress"})
