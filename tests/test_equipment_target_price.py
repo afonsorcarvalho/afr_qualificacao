@@ -259,6 +259,44 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         linha.write({"product_uom_qty": 5.0})
         self.assertEqual(linha.price_unit, self.product_qd_cmax.list_price)
 
+    def test_equipment_target_ids_lists_only_sections(self):
+        so = self._so()
+        section = self._section(so, self.equip1)
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        self.assertIn(section, so.equipment_target_ids)
+        self.assertNotIn(linha, so.equipment_target_ids)
+
+    def test_apply_all_processes_every_drifted_equipment(self):
+        so = self._so()
+        s1 = self._section(so, self.equip1)
+        self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        s2 = self._section(so, self.equip2)
+        self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self.cycle_cmax.product_id.id,
+            "name": "Ciclo eq2", "is_qualificacao_managed": True,
+            "qualification_type": "performance", "equipment_id": self.equip2.id,
+            "cycle_type_id": self.cycle_cmax.id, "qualif_cycle_qty": 2,
+            "estimated_hours": 1.0, "product_uom_qty": 2.0,
+            "price_unit": 300.0,
+        })
+        # 3000.0 (não 2000.0 como no brief): com uma única linha de 7,5h na
+        # base, o subtotal só alcança múltiplos exatos de R$0,075 (qty × 0,01
+        # de grão do price_unit) — 2000.0 não é múltiplo de 0,075 e portanto
+        # NUNCA fecha exato (ver price_allocation.py, docstring do módulo).
+        # 3000.0 = 400.00 × 7.5, exato.
+        s1.equipment_target_price = 3000.0
+        s2.equipment_target_price = 900.0
+        so.action_apply_all_equipment_targets()
+        self.assertEqual(s1.equipment_target_state, "ok")
+        self.assertEqual(s2.equipment_target_state, "ok")
+
+    def test_apply_all_skips_sections_without_target(self):
+        so = self._so()
+        section = self._section(so, self.equip1)
+        linha = self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        so.action_apply_all_equipment_targets()   # sem alvo: não faz nada
+        self.assertEqual(linha.price_unit, 200.0)
+
     def test_new_line_gets_pricelist_price_even_with_flag(self):
         """Linha nova (sem id persistido) nunca é congelada: mesmo com
         is_rateio_priced=True já no create e sem price_unit explícito, ela

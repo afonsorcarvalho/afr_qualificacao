@@ -155,6 +155,18 @@ class SaleOrder(models.Model):
             "Opcionais. Novas linhas recebem o flag via context default da view."
         ),
     )
+    equipment_target_ids = fields.One2many(
+        comodel_name="sale.order.line",
+        inverse_name="order_id",
+        domain=[("display_type", "=", "line_section"),
+                ("equipment_id", "!=", False)],
+        string="Preços por Equipamento",
+        help=(
+            "Linhas de section com equipamento — onde vive o preço-alvo do "
+            "rateio. Datapoint próprio porque o tree de linhas usa "
+            "section_and_note_one2many, que esconde colunas em sections."
+        ),
+    )
     # F8.2 — Proposta LEGO: template + blocos montáveis por cotação
     proposal_template_id = fields.Many2one(
         comodel_name="afr.proposal.template",
@@ -299,7 +311,7 @@ class SaleOrder(models.Model):
                 '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
                 '<th style="padding:6px 12px;text-align:right;">Horas</th>'
                 '<th style="padding:6px 12px;text-align:right;">Dias úteis</th>'
-                '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
+                '<th style="padding:6px 12px;text-align:right;">Subtotal (c/ opcionais)</th>'
                 '</tr></thead>'
                 '<tbody>%s</tbody>'
                 '</table></div>'
@@ -1046,6 +1058,31 @@ class SaleOrder(models.Model):
             "domain": [("id", "in", self.engc_os_ids.ids)],
         }
 
+    def action_apply_all_equipment_targets(self):
+        """Ratea todos os equipamentos com alvo definido e fora do alvo."""
+        self.ensure_one()
+        inexatos = []
+        for section in self.equipment_target_ids:
+            if section.equipment_target_state != "drift":
+                continue
+            res = section._apply_equipment_target()
+            if not res["exact"]:
+                inexatos.append(section.equipment_id.display_name or "")
+        if not inexatos:
+            return True
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Rateio aproximado"),
+                "message": _(
+                    "Não foi possível fechar exatamente: %s. Veja o "
+                    "histórico do pedido."
+                ) % ", ".join(inexatos),
+                "sticky": False,
+            },
+        }
 
     @api.onchange("partner_id")
     def _onchange_partner_id_qualif_equipment_warning(self):
