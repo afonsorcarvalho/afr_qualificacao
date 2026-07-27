@@ -218,6 +218,7 @@ class AfrQualificacaoOs(models.Model):
         string="Assinatura supervisor",
         max_width=512,
         max_height=512,
+        groups="afr_qualificacao.group_afr_qualificacao_manager",
     )
     signature_technician_date = fields.Datetime(readonly=True)
     signature_supervisor_date = fields.Datetime(readonly=True)
@@ -497,8 +498,26 @@ class AfrQualificacaoOs(models.Model):
             r.write({"state": "in_approved"})
         return True
 
+    def _check_manager_only(self, acao):
+        """Guard servidor: só Gestor pode executar `acao` (Task 9).
+
+        O `groups=` nos botões da view é só UI — qualquer chamada RPC direta
+        (ex.: técnico com write na OS, Task 8) contornaria isso sem este
+        check. `self.env.su` cobre chamadas internas/sudo (ex.: crons,
+        migrações), que são código confiável, não RPC externo.
+        """
+        if self.env.su:
+            return
+        if not self.env.user.has_group(
+            "afr_qualificacao.group_afr_qualificacao_manager"
+        ):
+            raise UserError(
+                _("Apenas o Gestor pode %s a OS.") % acao
+            )
+
     def action_approve(self):
         """in_approved → approved (manager-only via groups XML)."""
+        self._check_manager_only(_("aprovar"))
         for r in self:
             if r.state != "in_approved":
                 raise UserError(
@@ -516,6 +535,7 @@ class AfrQualificacaoOs(models.Model):
 
     def action_done(self):
         """approved → done"""
+        self._check_manager_only(_("concluir"))
         for r in self:
             if r.state != "approved":
                 raise UserError(
@@ -539,6 +559,7 @@ class AfrQualificacaoOs(models.Model):
 
     def action_cancel(self):
         """qualquer → cancelled"""
+        self._check_manager_only(_("cancelar"))
         for r in self:
             if r.state == "done":
                 raise UserError(

@@ -35,4 +35,44 @@
         <field name="implied_ids" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
     </record>
 
+    <!--
+        Task 9 — o grupo Técnico ganhou perm_write em afr.qualificacao.os
+        (ir.model.access.csv) só pra permitir a transição scheduled → in_progress
+        feita pelo próprio PWA de campo. Sem uma ir.rule, isso deixaria o
+        técnico escrever (e, via write direto, até "aprovar") QUALQUER OS, não
+        só a sua.
+
+        Restringe o write do grupo Técnico a `tecnico_default_user_id == uid`.
+
+        Pegadinha: group_afr_qualificacao_user IMPLIES group_afr_qualificacao_technician
+        (e manager implies user), então todo Usuário/Gestor também está no
+        grupo Técnico e cairia nesta regra restritiva. Regras de registro são
+        ORed entre os grupos do usuário — por isso a segunda regra abaixo,
+        permissiva, anexada a group_afr_qualificacao_user (que Usuário e
+        Gestor herdam), garante que eles continuam com write global.
+    -->
+    <record id="rule_qualificacao_os_technician_write_own" model="ir.rule">
+        <field name="name">Técnico só escreve a própria OS</field>
+        <field name="model_id" ref="model_afr_qualificacao_os"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
+        <field name="domain_force">[('tecnico_default_user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_qualificacao_os_user_write_all" model="ir.rule">
+        <field name="name">Usuário/Gestor escreve qualquer OS</field>
+        <field name="model_id" ref="model_afr_qualificacao_os"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
 </odoo>

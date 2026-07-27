@@ -11,7 +11,7 @@ import base64
 from datetime import datetime, timedelta
 
 from odoo import fields
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import TransactionCase, tagged
 
 
@@ -338,12 +338,18 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertEqual(reused, antigo.id)
 
     def test_start_daily_sem_employee_erro_claro(self):
+        # Grupo Usuário (não só Técnico): a OS de teste é atribuída a
+        # `employee_tecnico` (user_tecnico), não a este usuário — a regra de
+        # registro (Task 9) restringiria o write de um Técnico puro a OS
+        # onde `tecnico_default_user_id == user.id`. O grupo Usuário herda a
+        # regra permissiva (qualquer OS), preservando o alvo deste teste: o
+        # guard de colaborador ausente, não o ACL de dono da OS.
         user_sem_emp = self.env["res.users"].create({
             "name": "Sem Employee",
             "login": "sem.employee.pwa.test",
             "groups_id": [(6, 0, [
                 self.env.ref("base.group_user").id,
-                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
             ])],
         })
         os_rec = self._to_scheduled(self._make_os()).with_user(user_sem_emp)
@@ -397,3 +403,132 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertEqual(os_rec.state, "draft")
         with self.assertRaisesRegex(UserError, "agendada ou em execução"):
             os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+
+
+@tagged("afr_qualificacao", "pwa_tecnico", "post_install", "-at_install")
+class TestPwaTecnicoRpcSecurity(TransactionCase):
+    """Fechamento do gap de segurança aberto pelo write ACL do técnico (Task 8).
+
+    O grupo Técnico ganhou `perm_write` em `afr.qualificacao.os` só para
+    permitir a transição `scheduled → in_progress` feita pelo próprio PWA em
+    `action_start_daily_relatorio`. Isso, sozinho, também deixaria um técnico
+    aprovar/concluir/cancelar qualquer OS e reescrever qualquer campo (inclusive
+    a assinatura do supervisor) via RPC direto. Esta classe prova que:
+      - a `ir.rule` restringe o write do Técnico puro à própria OS
+        (`tecnico_default_user_id == uid`);
+      - o grupo Usuário/Gestor (que implica Técnico) continua com write global,
+        graças à regra permissiva anexada a `group_afr_qualificacao_user`;
+      - os guards de método em `action_approve`/`action_done`/`action_cancel`
+        bloqueiam quem não é Gestor, mesmo já tendo write na OS;
+      - `signature_supervisor` não é gravável por quem não é Gestor.
+
+    Classe separada (em vez de mais testes em `TestPwaTecnicoRpc`) porque o
+    fixture aqui precisa de um usuário Gestor que aquela classe não usa —
+    manter os dois focos (RPC do PWA vs. segurança do write ACL) em classes
+    distintas evita inflar o `setUpClass` de uma classe com fixtures que só a
+    outra metade dos testes usa.
+    """
+
+    PNG_1X1 = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGMAAQAABQAB"
+        "h6FO1AAAAABJRU5ErkJggg=="
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.employee_tecnico = cls.env["hr.employee"].create({"name": "Téc Segurança"})
+        cls.user_tecnico = cls.env["res.users"].create({
+            "name": "Téc Segurança",
+            "login": "tecnico.security.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        cls.employee_tecnico.user_id = cls.user_tecnico.id
+        cls.user_manager = cls.env["res.users"].create({
+            "name": "Gestor Segurança",
+            "login": "gestor.security.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_manager").id,
+            ])],
+        })
+
+    def _make_os(self, **overrides):
+        vals = {
+            "tecnico_default_id": self.employee_tecnico.id,
+            "date_planned_start": datetime(2026, 7, 1, 8, 0, 0),
+            "date_planned_end": datetime(2026, 7, 1, 17, 0, 0),
+        }
+        vals.update(overrides)
+        return self.env["afr.qualificacao.os"].create(vals)
+
+    def test_tecnico_nao_pode_aprovar_os(self):
+        """action_approve é Gestor-only: técnico com write na própria OS
+        ainda assim não pode aprová-la, e o estado não se move."""
+        os_rec = self._make_os()
+        os_rec.write({"state": "in_approved"})
+        with self.assertRaisesRegex(UserError, "[Gg]estor"):
+            os_rec.with_user(self.user_tecnico).action_approve()
+        self.assertEqual(os_rec.state, "in_approved")
+
+    def test_tecnico_nao_pode_escrever_os_de_outro_tecnico(self):
+        """Regra de registro: write do Técnico só na própria OS
+        (`tecnico_default_user_id == uid`). OS sem técnico atribuído (ou de
+        outro técnico) não bate — write levanta AccessError."""
+        os_de_outro = self._make_os(tecnico_default_id=False)
+        self.assertFalse(os_de_outro.tecnico_default_user_id)
+        with self.assertRaises(AccessError):
+            os_de_outro.with_user(self.user_tecnico).write({
+                "date_planned_start": datetime(2026, 7, 2, 8, 0, 0),
+                "date_planned_end": datetime(2026, 7, 2, 17, 0, 0),
+            })
+
+    def test_tecnico_pode_escrever_a_propria_os(self):
+        """Regressão do gap original: o técnico continua conseguindo
+        escrever a OS onde é `tecnico_default_user_id` — é isso que
+        `action_start_daily_relatorio` precisa pra transicionar o estado."""
+        os_rec = self._make_os()
+        self.assertEqual(os_rec.tecnico_default_user_id, self.user_tecnico)
+        os_rec.with_user(self.user_tecnico).write({
+            "date_planned_start": datetime(2026, 7, 2, 8, 0, 0),
+            "date_planned_end": datetime(2026, 7, 2, 17, 0, 0),
+        })
+        self.assertEqual(
+            os_rec.date_planned_start, datetime(2026, 7, 2, 8, 0, 0)
+        )
+
+    def test_gestor_pode_escrever_qualquer_os_e_aprovar(self):
+        """Regra permissiva anexada a `group_afr_qualificacao_user` (que o
+        Gestor herda): sem ela, o Gestor cairia na mesma regra restritiva do
+        Técnico (grupos implícitos) e ficaria trancado fora de OS alheias."""
+        os_rec = self._make_os()  # tecnico_default_id = employee_tecnico, não gestor
+        os_rec.with_user(self.user_manager).write({
+            "date_planned_start": datetime(2026, 7, 2, 9, 0, 0),
+            "date_planned_end": datetime(2026, 7, 2, 18, 0, 0),
+        })
+        self.assertEqual(
+            os_rec.date_planned_start, datetime(2026, 7, 2, 9, 0, 0)
+        )
+        os_rec.write({"state": "in_approved"})
+        os_rec.with_user(self.user_manager).action_approve()
+        self.assertEqual(os_rec.state, "approved")
+
+    def test_tecnico_nao_pode_escrever_assinatura_supervisor(self):
+        """`signature_supervisor` é Gestor-only a nível de campo (ORM),
+        mesmo numa OS que o técnico pode escrever normalmente.
+
+        Escreve outro campo antes, com sucesso, na mesma OS/mesmo usuário —
+        prova que o `AccessError` abaixo vem do campo, não da ir.rule (que
+        deixaria passar, já que é a própria OS do técnico)."""
+        os_rec = self._make_os()
+        os_rec.with_user(self.user_tecnico).write({
+            "date_planned_start": datetime(2026, 7, 3, 8, 0, 0),
+            "date_planned_end": datetime(2026, 7, 3, 17, 0, 0),
+        })
+        with self.assertRaises(AccessError):
+            os_rec.with_user(self.user_tecnico).write({
+                "signature_supervisor": self.PNG_1X1,
+            })
