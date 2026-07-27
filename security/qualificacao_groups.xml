@@ -75,4 +75,39 @@
         <field name="active" eval="True"/>
     </record>
 
+    <!--
+        Task 10 — Finding 1 (CRITICAL): `afr.qualificacao` já tinha
+        perm_write=1 pro grupo Técnico (ACL pré-existente, ANTES da Task 9),
+        sem nenhuma ir.rule. Isso deixava a cascata de certificado (emissão
+        de token + hash) alcançável por qualquer técnico, em QUALQUER
+        qualificação do banco — bypass total do action_approve da OS.
+
+        Mesmo par de regras que a Task 9 fez pra afr.qualificacao.os, e pela
+        mesma razão dos implied_ids (ver comentário acima): domínio via OS,
+        não via hr.employee (grupo Técnico não lê hr.employee no Odoo 16).
+    -->
+    <record id="rule_qualificacao_technician_write_own" model="ir.rule">
+        <field name="name">Técnico só escreve qualificação da própria OS</field>
+        <field name="model_id" ref="model_afr_qualificacao"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
+        <field name="domain_force">[('os_id.tecnico_default_user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_qualificacao_user_write_all" model="ir.rule">
+        <field name="name">Usuário/Gestor escreve qualquer qualificação</field>
+        <field name="model_id" ref="model_afr_qualificacao"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
 </odoo>

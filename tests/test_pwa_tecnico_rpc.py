@@ -83,6 +83,20 @@ class TestPwaTecnicoRpc(TransactionCase):
         os_rec.write({"state": "scheduled"})
         return os_rec
 
+    @staticmethod
+    def _to_in_progress(os_rec):
+        """Leva a OS direto para `in_progress` (sem passar por `scheduled`).
+
+        Usado por testes que precisam que `action_start_daily_relatorio` NÃO
+        toque `write()` (a OS já está em `in_progress`, então o `if self.state
+        == "scheduled":` do método nunca dispara) — relevante pra Finding 3
+        (Task 10): read é global, então qualquer usuário com o grupo Técnico
+        pode chamar o entrypoint numa OS alheia já iniciada, sem esbarrar na
+        ir.rule de escopo de write (Task 9).
+        """
+        os_rec.write({"state": "in_progress"})
+        return os_rec
+
     # ─────────────────────────────────────────────────────────────
     # 1. tecnico_default_user_id (espelho p/ filtro "só minhas")
     # ─────────────────────────────────────────────────────────────
@@ -338,23 +352,58 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertEqual(reused, antigo.id)
 
     def test_start_daily_sem_employee_erro_claro(self):
-        # Grupo Usuário (não só Técnico): a OS de teste é atribuída a
-        # `employee_tecnico` (user_tecnico), não a este usuário — a regra de
-        # registro (Task 9) restringiria o write de um Técnico puro a OS
-        # onde `tecnico_default_user_id == user.id`. O grupo Usuário herda a
-        # regra permissiva (qualquer OS), preservando o alvo deste teste: o
-        # guard de colaborador ausente, não o ACL de dono da OS.
+        # Task 10 — Finding 3: revertido para grupo Técnico PURO (não mais
+        # `group_afr_qualificacao_user`, que era um workaround pra fugir da
+        # ir.rule — ver `test_start_daily_puro_tecnico_nao_dono_os_scheduled`
+        # logo abaixo, que cobre esse gap diretamente). Pra manter o alvo
+        # original deste teste (guard de colaborador ausente, não ACL de dono
+        # da OS) sem essa muleta, a OS já nasce `in_progress` — o entrypoint
+        # não toca `write()` (o `if self.state == "scheduled":` não dispara),
+        # então a ir.rule de escopo de write (Task 9) nunca entra em jogo:
+        # read é global, qualquer Técnico pode chamar o método numa OS já
+        # iniciada, o que expõe só o guard de `hr.employee` ausente.
         user_sem_emp = self.env["res.users"].create({
             "name": "Sem Employee",
             "login": "sem.employee.pwa.test",
             "groups_id": [(6, 0, [
                 self.env.ref("base.group_user").id,
-                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
             ])],
         })
-        os_rec = self._to_scheduled(self._make_os()).with_user(user_sem_emp)
+        os_rec = self._to_in_progress(self._make_os()).with_user(user_sem_emp)
         with self.assertRaisesRegex(UserError, "colaborador"):
             os_rec.action_start_daily_relatorio()
+
+    def test_start_daily_puro_tecnico_nao_dono_os_scheduled_access_error(self):
+        """Contrato explícito da Task 10 — Finding 3.
+
+        Um Técnico puro (não `group_afr_qualificacao_user`) que está listado
+        em `tecnico_ids` de uma OS mas NÃO é o `tecnico_default_id` dela não
+        consegue chamar `action_start_daily_relatorio` enquanto a OS ainda
+        está `scheduled` — a transição `scheduled → in_progress` passa por
+        `write()`, sujeito à ir.rule `tecnico_default_user_id == uid` (Task
+        9). Resultado: `AccessError`, não o `UserError` amigável de
+        "colaborador ausente". Isto é reachable de verdade: o front do PWA
+        lista OS de outros técnicos por padrão ("só minhas" é opt-in), então
+        um técnico pode abrir e tocar numa OS que não é sua.
+
+        Ampliar esse contrato (aceitar qualquer `tecnico_ids`) exigiria trocar
+        o domínio da ir.rule pra `tecnico_ids.user_id` — decisão do dono do
+        produto, deliberadamente NÃO feita aqui (grupo Técnico não lê
+        `hr.employee` no Odoo 16; é por isso que existe o espelho stored
+        `tecnico_default_user_id`).
+        """
+        user_outro_tecnico = self.env["res.users"].create({
+            "name": "Outro Técnico Puro",
+            "login": "outro.tecnico.puro.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        os_rec = self._to_scheduled(self._make_os())  # dona: employee_tecnico/user_tecnico
+        with self.assertRaises(AccessError):
+            os_rec.with_user(user_outro_tecnico).action_start_daily_relatorio()
 
     # ─────────────────────────────────────────────────────────────
     # 5. guard de estado + transição (Task 8) — scheduled/in_progress

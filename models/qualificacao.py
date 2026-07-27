@@ -30,8 +30,20 @@ class AfrQualificacao(models.Model):
 
     _name = "afr.qualificacao"
     _description = "Qualificação de Equipamento"
-    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _inherit = [
+        "mail.thread",
+        "mail.activity.mixin",
+        "afr.qualificacao.manager.guard.mixin",
+    ]
     _order = "planned_date desc, name"
+
+    # Task 10 — Finding 2 (o mesmo buraco encontrado em afr.qualificacao.os
+    # na Task 9): valores de `state` que só o Gestor pode gravar via write()
+    # direto, bypassando os guards de action_mark_approved/
+    # action_mark_rejected/action_cancel. `in_progress` fica de fora —
+    # action_start() (chamado pela cascata de action_approve da OS) precisa
+    # continuar funcionando sem ser Gestor.
+    _MANAGER_ONLY_STATES = frozenset({"approved", "rejected", "cancelled"})
 
     name = fields.Char(
         string="Referência",
@@ -668,7 +680,13 @@ class AfrQualificacao(models.Model):
         item required tem coverage_complete=False:
         - flag `qualif_block_approval_incomplete_coverage` True → ValidationError
         - flag False (default) → message_post warning
+
+        Task 10 — Finding 1 (CRITICAL): a cascata de certificado (emissão de
+        token + hash + issued_at) era alcançável por um Técnico com write em
+        `afr.qualificacao` (ACL pré-existente) sem passar por nenhum guard de
+        Gestor — bypass total do fluxo action_approve da OS. Guard aqui.
         """
+        self._check_manager_only(_("aprovar a qualificação"))
         ICP = self.env["ir.config_parameter"].sudo()
         block_expired = str(
             ICP.get_param(
@@ -792,6 +810,7 @@ class AfrQualificacao(models.Model):
 
     def action_mark_rejected(self):
         """Altera o status para 'Reprovada' quando os critérios não forem atendidos."""
+        self._check_manager_only(_("reprovar a qualificação"))
         for record in self:
             record.state = "rejected"
             record.execution_date = record.execution_date or fields.Date.context_today(
@@ -801,9 +820,25 @@ class AfrQualificacao(models.Model):
 
     def action_cancel(self):
         """Cancela a qualificação sem excluir os registros já coletados."""
+        self._check_manager_only(_("cancelar a qualificação"))
         for record in self:
             record.state = "cancelled"
         return True
+
+    def write(self, vals):
+        # Task 10 — Finding 2: mesmo problema encontrado em afr.qualificacao.os
+        # (Task 9) — a ir.rule escopa QUAIS registros, não QUAIS valores. Sem
+        # este guard, `qualif.write({'state': 'approved'})` direto (RPC)
+        # pulava o guard + emitia certificado sem o Gestor.
+        if "state" in vals and vals["state"] in self._MANAGER_ONLY_STATES:
+            label = dict(self._fields["state"].selection).get(
+                vals["state"], vals["state"]
+            )
+            self._check_manager_only(
+                _("gravar o status da qualificação diretamente como '%s' "
+                  "(use as ações Aprovar/Reprovar/Cancelar)") % label
+            )
+        return super().write(vals)
 
     # ------------------------------------------------------------------
     # Navegação para registros relacionados (stat buttons)

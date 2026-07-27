@@ -18,8 +18,20 @@ from odoo.exceptions import UserError, ValidationError
 class AfrQualificacaoOs(models.Model):
     _name = "afr.qualificacao.os"
     _description = "Ordem de Serviço de Qualificação"
-    _inherit = ["mail.thread", "mail.activity.mixin"]
+    _inherit = [
+        "mail.thread",
+        "mail.activity.mixin",
+        "afr.qualificacao.manager.guard.mixin",
+    ]
     _order = "name desc, id desc"
+
+    # Task 10 — Finding 2: valores de `state` que só o Gestor pode gravar via
+    # write() direto (bypass dos guards de action_approve/action_done/
+    # action_cancel/action_reset_to_draft). `in_progress`/`scheduled`/
+    # `in_approved` ficam de fora de propósito — são as transições que o
+    # PWA (`action_start_daily_relatorio`) e o fluxo normal de Usuário/Técnico
+    # precisam continuar fazendo sem ser Gestor.
+    _MANAGER_ONLY_STATES = frozenset({"approved", "done", "cancelled", "draft"})
     _sql_constraints = [
         (
             "name_company_uniq",
@@ -381,6 +393,22 @@ class AfrQualificacaoOs(models.Model):
         write ACL na OS (Task 8). Qualquer outro estado levanta `UserError`
         antes de tocar em employee/relatório (sem efeito colateral).
 
+        Task 10 — Finding 3 (contrato explícito): a transição
+        `scheduled → in_progress` acima passa por `write()`, que está sujeito
+        à `ir.rule` de escopo do Técnico (Task 9):
+        `tecnico_default_user_id == uid`. Ou seja, **só o técnico padrão da
+        OS** (`tecnico_default_id`) pode chamar este método enquanto a OS
+        ainda está `scheduled` — um Técnico puro que está em `tecnico_ids`
+        mas NÃO é o `tecnico_default_id` recebe `AccessError` (não o erro
+        amigável de "colaborador ausente"). Uma vez que a OS já está
+        `in_progress` (alguém já a iniciou), qualquer usuário com read na OS
+        pode continuar chamando este método sem novo write de estado — só a
+        primeira chamada do dia é sensível ao dono da OS. Ampliar o contrato
+        (ex.: aceitar qualquer `tecnico_ids`) exigiria trocar o domínio da
+        ir.rule para `tecnico_ids.user_id`, o que a Task 9 evitou de propósito
+        (grupo Técnico não lê `hr.employee` no Odoo 16) — decisão do dono do
+        produto, não implementada aqui.
+
         :param day_start: início da janela (str/datetime, UTC). Opcional.
         :param day_end: fim exclusivo da janela (str/datetime, UTC). Opcional.
         :return: int — id de `afr.qualificacao.os.relatorio`
@@ -498,26 +526,9 @@ class AfrQualificacaoOs(models.Model):
             r.write({"state": "in_approved"})
         return True
 
-    def _check_manager_only(self, acao):
-        """Guard servidor: só Gestor pode executar `acao` (Task 9).
-
-        O `groups=` nos botões da view é só UI — qualquer chamada RPC direta
-        (ex.: técnico com write na OS, Task 8) contornaria isso sem este
-        check. `self.env.su` cobre chamadas internas/sudo (ex.: crons,
-        migrações), que são código confiável, não RPC externo.
-        """
-        if self.env.su:
-            return
-        if not self.env.user.has_group(
-            "afr_qualificacao.group_afr_qualificacao_manager"
-        ):
-            raise UserError(
-                _("Apenas o Gestor pode %s a OS.") % acao
-            )
-
     def action_approve(self):
         """in_approved → approved (manager-only via groups XML)."""
-        self._check_manager_only(_("aprovar"))
+        self._check_manager_only(_("aprovar a OS"))
         for r in self:
             if r.state != "in_approved":
                 raise UserError(
@@ -535,7 +546,7 @@ class AfrQualificacaoOs(models.Model):
 
     def action_done(self):
         """approved → done"""
-        self._check_manager_only(_("concluir"))
+        self._check_manager_only(_("concluir a OS"))
         for r in self:
             if r.state != "approved":
                 raise UserError(
@@ -559,7 +570,7 @@ class AfrQualificacaoOs(models.Model):
 
     def action_cancel(self):
         """qualquer → cancelled"""
-        self._check_manager_only(_("cancelar"))
+        self._check_manager_only(_("cancelar a OS"))
         for r in self:
             if r.state == "done":
                 raise UserError(
@@ -569,7 +580,12 @@ class AfrQualificacaoOs(models.Model):
         return True
 
     def action_reset_to_draft(self):
-        """cancelled → draft (rare, manager-only via view groups=)"""
+        """cancelled → draft (rare, manager-only).
+
+        Task 10 — Finding 4: não tinha guard nenhum (nem view nem servidor);
+        um técnico com write na própria OS cancelada podia chamar isto direto.
+        """
+        self._check_manager_only(_("restaurar a OS para rascunho"))
         for r in self:
             if r.state != "cancelled":
                 raise UserError(_("Só OS cancelada pode voltar para rascunho."))
@@ -580,6 +596,20 @@ class AfrQualificacaoOs(models.Model):
     # SIGNATURE TRACKING
     # ═════════════════════════════════════════════════════════════
     def write(self, vals):
+        # Task 10 — Finding 2: a ir.rule (Task 9) só escopa QUAIS registros um
+        # Técnico/Usuário não-Gestor pode escrever, não QUAIS valores. Sem
+        # este guard, `os.write({'state': 'approved'})` direto (RPC) pulava
+        # os guards + validações de action_approve/action_done/action_cancel/
+        # action_reset_to_draft (assinatura obrigatória, qualifs aprovadas
+        # etc.). `in_progress`/`scheduled`/`in_approved` ficam de fora — são
+        # as transições que o PWA (action_start_daily_relatorio) e o fluxo
+        # normal de Usuário/Técnico precisam continuar fazendo direto.
+        if "state" in vals and vals["state"] in self._MANAGER_ONLY_STATES:
+            label = dict(self.STATE_SELECTION).get(vals["state"], vals["state"])
+            self._check_manager_only(
+                _("gravar o status da OS diretamente como '%s' (use as ações "
+                  "Aprovar/Concluir/Cancelar/Restaurar)") % label
+            )
         if "signature_technician" in vals and vals["signature_technician"]:
             vals["signature_technician_date"] = fields.Datetime.now()
         if "signature_supervisor" in vals and vals["signature_supervisor"]:
