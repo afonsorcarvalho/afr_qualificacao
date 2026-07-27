@@ -158,7 +158,6 @@
                         <page string="Assinatura" name="assinatura">
                             <group>
                                 <field name="signature_technician" widget="signature"
-                                       options="{'full_name': 'name'}"
                                        attrs="{'readonly': [('state', '!=', 'draft')]}"/>
                                 <field name="signature_technician_date"/>
                             </group>

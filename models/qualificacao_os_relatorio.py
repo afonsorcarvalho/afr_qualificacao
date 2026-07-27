@@ -333,3 +333,15 @@ class AfrQualificacaoOsRelatorio(models.Model):
                 raise UserError(_("Só relatórios concluídos/cancelados podem reabrir."))
             r.write({"state": "draft"})
         return True
+
+    # ═════════════════════════════════════════════════════════════
+    # SIGNATURE TRACKING
+    # ═════════════════════════════════════════════════════════════
+    def write(self, vals):
+        # `signature_technician_date` é readonly na view — sem este carimbo
+        # automático, quem assinar pela UI padrão do Odoo (fora do PWA) nunca
+        # teria como preencher a data. O guard preserva o timestamp quando o
+        # PWA já manda os dois campos juntos no mesmo RPC (fluxo real).
+        if "signature_technician" in vals and "signature_technician_date" not in vals:
+            vals["signature_technician_date"] = fields.Datetime.now()
+        return super().write(vals)

@@ -172,3 +172,28 @@ class TestPwaTecnicoRpc(TransactionCase):
         rel.action_done()
         self.assertEqual(rel.state, "done")
         self.assertGreater(rel.time_execution, 0)
+
+    def test_write_so_assinatura_carimba_data_automaticamente(self):
+        """Sem override, a data ficaria inatingível pela UI padrão do Odoo
+        (backoffice desenha a assinatura em `draft`, mas não tem como
+        preencher a data — o campo é readonly=True). O `write()` carimba
+        `fields.Datetime.now()` quando a assinatura vem sozinha."""
+        rel = self._make_relatorio()
+        antes = fields.Datetime.now()
+        rel.write({"signature_technician": self.PNG_1X1})
+        depois = fields.Datetime.now()
+        self.assertTrue(rel.signature_technician_date)
+        self.assertGreaterEqual(rel.signature_technician_date, antes)
+        self.assertLessEqual(rel.signature_technician_date, depois)
+
+    def test_write_assinatura_com_data_preserva_timestamp_do_cliente(self):
+        """Guard do write(): quando o PWA manda os dois campos juntos (fluxo
+        real), o timestamp do dispositivo no momento da assinatura não pode
+        ser sobrescrito pelo `now()` do servidor."""
+        rel = self._make_relatorio()
+        assinado_em = datetime(2026, 7, 1, 12, 30, 0)
+        rel.write({
+            "signature_technician": self.PNG_1X1,
+            "signature_technician_date": assinado_em,
+        })
+        self.assertEqual(rel.signature_technician_date, assinado_em)
