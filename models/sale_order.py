@@ -1347,12 +1347,25 @@ class SaleOrder(models.Model):
                     vals["name"] = malha.display_name
                     CollectItem.create(vals)
 
-    def _prepare_qualificacao_os_values(self):
+    def _prepare_qualificacao_os_values(self, equipments=None, pending_equipments=None):
         """Hook: valores para criar afr.qualificacao.os a partir do SO.
 
         Nome derivado: substitui 'C' inicial pelo prefixo 'OS'.
         Ex: C26-06-0001 → OS26-06-0001
-        Fallback: se SO não tem formato esperado, nome gerado por sequência no create().
+
+        Com N OS por cotação o nome precisa de sufixo — `unique(name,
+        company_id)` no modelo. A decisão é tomada na criação, sem rename
+        retroativo:
+
+        - 1ª OS cobrindo TODOS os equipamentos pendentes → sem sufixo
+          (a cotação nunca terá uma segunda OS).
+        - Qualquer outro caso → `-1`, `-2`, `-3`… Um primeiro clique parcial
+          já nasce `-1` porque virá pelo menos a `-2`.
+
+        `equipments`/`pending_equipments` a None = caminho legado (sem sufixo).
+
+        Fallback: se a SO não tem formato esperado, o nome é gerado por
+        sequência no create() do modelo.
         """
         self.ensure_one()
         vals = {
@@ -1361,7 +1374,17 @@ class SaleOrder(models.Model):
         }
         so_name = self.name or ""
         if so_name.startswith("C") and len(so_name) > 1:
-            vals["name"] = "OS" + so_name[1:]
+            base = "OS" + so_name[1:]
+            existentes = len(self.qualificacao_os_ids)
+            cobre_tudo = (
+                equipments is not None
+                and pending_equipments is not None
+                and set(equipments.ids) == set(pending_equipments.ids)
+            )
+            if existentes == 0 and (equipments is None or cobre_tudo):
+                vals["name"] = base
+            else:
+                vals["name"] = "%s-%d" % (base, existentes + 1)
         return vals
 
     def _prepare_qualificacao_values(self, equipment, qualification_type, os):
