@@ -1384,8 +1384,39 @@ class SaleOrder(models.Model):
             if existentes == 0 and (equipments is None or cobre_tudo):
                 vals["name"] = base
             else:
-                vals["name"] = "%s-%d" % (base, existentes + 1)
+                vals["name"] = self._next_free_qualificacao_os_name(
+                    base, existentes + 1
+                )
         return vals
+
+    def _next_free_qualificacao_os_name(self, base, start):
+        """Próximo nome `base-N` livre, a partir de `start`, pulando ocupados.
+
+        `existentes` (nº de OS vinculadas à cotação) não é o mesmo que
+        "sufixos já emitidos": se uma OS sufixada for apagada ou
+        desvinculada da cotação, `existentes` cai e recalcular `-N` direto
+        poderia colidir com `unique(name, company_id)` de
+        `afr.qualificacao.os`. Por isso consulta os nomes já usados com o
+        mesmo prefixo/empresa (sudo — record rule não pode esconder um nome
+        ocupado) e incrementa até achar um livre. Em uso normal (nenhuma OS
+        apagada), devolve `start` mesmo — produz -1, -2, -3 em sequência.
+        """
+        self.ensure_one()
+        ocupados = set(
+            self.env["afr.qualificacao.os"]
+            .sudo()
+            .search([
+                ("name", "=like", base + "%"),
+                ("company_id", "=", self.company_id.id),
+            ])
+            .mapped("name")
+        )
+        n = start
+        candidate = "%s-%d" % (base, n)
+        while candidate in ocupados:
+            n += 1
+            candidate = "%s-%d" % (base, n)
+        return candidate
 
     def _prepare_qualificacao_values(self, equipment, qualification_type, os):
         """Hook: valores para criar afr.qualificacao vinculada à OS qualif.

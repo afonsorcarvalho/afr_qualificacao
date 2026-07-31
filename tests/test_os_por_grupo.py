@@ -43,3 +43,36 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         so.write({"name": "C26-06-0003"})
         vals = so._prepare_qualificacao_os_values()
         self.assertEqual(vals["name"], "OS26-06-0003")
+
+    def test_sufixo_ocupado_e_pulado(self):
+        """OS -1 já existe com o nome (não vinculada à cotação) → pula p/ -2."""
+        so = self._so_dois_equipamentos()
+        so.write({"name": "C26-06-0004"})
+        self.env["afr.qualificacao.os"].create({
+            "name": "OS26-06-0004-1",
+            "company_id": so.company_id.id,
+        })
+        pending = so._pending_qualif_lines().mapped("equipment_id")
+        vals = so._prepare_qualificacao_os_values(pending[:1], pending)
+        self.assertEqual(vals["name"], "OS26-06-0004-2")
+
+    def test_sequencia_normal_com_os_ja_vinculadas(self):
+        """N OS já vinculadas à cotação → próximo nome é -{N+1}."""
+        so = self._so_dois_equipamentos()
+        so.write({"name": "C26-06-0005"})
+        self.env["afr.qualificacao.os"].create({
+            "name": "OS26-06-0005-1",
+            "company_id": so.company_id.id,
+            "sale_order_id": so.id,
+        })
+        pending = so._pending_qualif_lines().mapped("equipment_id")
+        vals = so._prepare_qualificacao_os_values(pending[:1], pending)
+        self.assertEqual(vals["name"], "OS26-06-0005-2")
+
+    def test_fallback_nome_sem_prefixo_c(self):
+        """Cotação sem nome C... não recebe chave 'name' (ir.sequence resolve)."""
+        so = self._so_dois_equipamentos()
+        so.write({"name": "Novo"})
+        pending = so._pending_qualif_lines().mapped("equipment_id")
+        vals = so._prepare_qualificacao_os_values(pending, pending)
+        self.assertNotIn("name", vals)
