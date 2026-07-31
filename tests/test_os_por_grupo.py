@@ -76,3 +76,42 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         pending = so._pending_qualif_lines().mapped("equipment_id")
         vals = so._prepare_qualificacao_os_values(pending, pending)
         self.assertNotIn("name", vals)
+
+    def test_constraint_equipamento_em_duas_os_da_mesma_so(self):
+        so = self._so_dois_equipamentos()
+        os_a = self.env["afr.qualificacao.os"].create({
+            "company_id": so.company_id.id, "sale_order_id": so.id,
+        })
+        os_b = self.env["afr.qualificacao.os"].create({
+            "company_id": so.company_id.id, "sale_order_id": so.id,
+        })
+        Qualif = self.env["afr.qualificacao"]
+        Qualif.create({
+            "name": "Q-A", "equipment_id": self.equip1.id,
+            "partner_id": self.partner.id, "qualification_type": "installation",
+            "company_id": so.company_id.id, "sale_order_id": so.id,
+            "os_id": os_a.id,
+        })
+        with self.assertRaises(ValidationError):
+            Qualif.create({
+                "name": "Q-B", "equipment_id": self.equip1.id,
+                "partner_id": self.partner.id, "qualification_type": "operational",
+                "company_id": so.company_id.id, "sale_order_id": so.id,
+                "os_id": os_b.id,
+            })
+
+    def test_constraint_permite_tipos_diferentes_na_mesma_os(self):
+        """QI e QO do mesmo equipamento na MESMA OS é o caso normal."""
+        so = self._so_dois_equipamentos()
+        os_a = self.env["afr.qualificacao.os"].create({
+            "company_id": so.company_id.id, "sale_order_id": so.id,
+        })
+        Qualif = self.env["afr.qualificacao"]
+        for qtype in ("installation", "operational"):
+            Qualif.create({
+                "name": "Q-%s" % qtype, "equipment_id": self.equip1.id,
+                "partner_id": self.partner.id, "qualification_type": qtype,
+                "company_id": so.company_id.id, "sale_order_id": so.id,
+                "os_id": os_a.id,
+            })
+        self.assertEqual(len(os_a.qualificacao_ids), 2)
