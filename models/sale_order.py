@@ -1177,6 +1177,22 @@ class SaleOrder(models.Model):
             order._create_qualificacoes_from_lines()
         return result
 
+    def _pending_qualif_lines(self):
+        """Linhas managed elegíveis que ainda não têm afr.qualificacao.
+
+        Elegível = gerada pelo configurador, não é seção/nota, não teve a
+        Parte 01 recusada, e — se for opcional — foi aceita e tem tipo.
+        """
+        self.ensure_one()
+        managed = self.order_line.filtered(
+            lambda l: l.is_qualificacao_managed
+            and not l.display_type
+            and not l.part01_declined
+            and not (l.is_proposal_optional and not l.optional_accepted)
+            and not (l.is_proposal_optional and not l.qualification_type)
+        )
+        return managed.filtered(lambda l: not l.afr_qualificacao_id)
+
     def _create_qualificacoes_from_lines(self):
         """Materializa afr.qualificacao.os + afr.qualificacao + sub-records.
 
@@ -1194,26 +1210,11 @@ class SaleOrder(models.Model):
         re-gerar em re-confirm).
         """
         self.ensure_one()
-        managed = self.order_line.filtered(
-            lambda l: l.is_qualificacao_managed
-            and not l.display_type
-            and not l.part01_declined
-            and not (l.is_proposal_optional and not l.optional_accepted)
-            and not (l.is_proposal_optional and not l.qualification_type)
-        )
-        if not managed:
-            return
-        # Skip linhas já processadas
-        managed = managed.filtered(lambda l: not l.afr_qualificacao_id)
+        managed = self._pending_qualif_lines()
         if not managed:
             return
 
         QualifOs = self.env["afr.qualificacao.os"]
-        Qualif = self.env["afr.qualificacao"]
-        Cycle = self.env["afr.qualificacao.cycle"]
-        Malha = self.env["afr.qualificacao.malha"]
-        Procedimento = self.env["afr.qualificacao.procedimento"]
-        CollectItem = self.env["afr.qualificacao.collect.item"]
 
         # 1 OS por SO (reusa se já existe — re-confirmação parcial)
         # Fallback: busca por nome derivado caso OS tenha sido desvinculada
@@ -1231,13 +1232,32 @@ class SaleOrder(models.Model):
             if not os:
                 os = QualifOs.create(self._prepare_qualificacao_os_values())
 
-        # Agrupa linhas por equipamento
+        self._materialize_qualificacoes(managed, os)
+
+    def _materialize_qualificacoes(self, lines, os):
+        """Cria afr.qualificacao + sub-records de `lines`, dentro de `os`.
+
+        - 1 afr.qualificacao por (equipamento, qualification_type)
+        - QD/QO com cycle_type: N afr.qualificacao.cycle por linha (qty=N)
+        - Calibração: N afr.qualificacao.malha por linha
+        - QI/QS e QO booleano: sem sub-records
+        - Snapshot dos pontos QD + explosão de collect.items do procedimento
+
+        Não resolve OS — o chamador escolhe o destino. É o que permite
+        1 cotação → N OS.
+        """
+        self.ensure_one()
+        Qualif = self.env["afr.qualificacao"]
+        Cycle = self.env["afr.qualificacao.cycle"]
+        Malha = self.env["afr.qualificacao.malha"]
+        Procedimento = self.env["afr.qualificacao.procedimento"]
+        CollectItem = self.env["afr.qualificacao.collect.item"]
+
         by_equipment = defaultdict(lambda: self.env["sale.order.line"])
-        for line in managed:
+        for line in lines:
             by_equipment[line.equipment_id] |= line
 
         for equipment, equip_lines in by_equipment.items():
-            # Por (equipment, qualification_type): 1 afr.qualificacao
             by_type = defaultdict(lambda: self.env["sale.order.line"])
             for line in equip_lines:
                 by_type[line.qualification_type] |= line
@@ -1263,13 +1283,10 @@ class SaleOrder(models.Model):
                             ]
                         })
 
-                # Sub-records explodidos por qty.
-                # F8.8 — QO cycle-based explode igual ao QD: linhas
-                # operational com cycle_type_id geram afr.qualificacao.cycle.
+                # F8.8 — QO cycle-based explode igual ao QD.
                 if qtype in ("performance", "operational"):
                     for line in type_lines:
                         if not line.cycle_type_id:
-                            # operational sem cycle (do_qo boolean): sem sub-records
                             continue
                         qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
                         for seq in range(1, qty + 1):
@@ -1289,11 +1306,9 @@ class SaleOrder(models.Model):
                                 "sale_order_line_id": line.id,
                                 "sequence": seq * 10,
                             })
-                # QI/QS: sem sub-records. QO boolean: sem sub-records (pulado acima).
 
-                # F3 (16.0.3.2.0): explode procedimento default em collect.items
-                # sudo: vendedor pode confirmar SO sem precisar de grupos qualif
-                # F1 16.0.6.0.0: 1 proc por categoria; filtra itens pela fase (qtype)
+                # F3/F1: explode procedimento default em collect.items.
+                # sudo: quem confirma a SO pode não ter grupos de qualificação.
                 proc = Procedimento.sudo().resolve_for(equipment.category_id)
                 if proc:
                     self._explode_collect_items(CollectItem.sudo(), qualif, proc, qtype)
