@@ -1,4 +1,9 @@
-"""Testa geração ao SO confirm: engc.os + afr.qualificacao + sub-records."""
+"""Confirm da SO NÃO materializa mais nada — geração é manual via wizard.
+
+Cutover 16.0.6.13.0: a OS de qualificação passou a ser gerada por grupo de
+equipamentos, depois da confirmação, pelo wizard
+`afr.qualificacao.os.generate.wizard`.
+"""
 
 from odoo.tests import tagged
 
@@ -15,91 +20,34 @@ class TestSoConfirmGeneration(AfrQualificacaoTestCommon):
         wiz.action_apply()
         return so
 
-    def test_confirm_creates_one_qualificacao_os_aggregating_equipments(self):
-        """Cutover 16.0.3.1.0: 1 afr.qualificacao.os agrega TODOS os equipamentos.
-
-        engc.os NÃO é mais criado para SOs de qualificação.
-        """
+    def test_confirm_nao_cria_os_nem_qualificacao(self):
         so = self._build_so_with_lines([
             {"equipment_id": self.equip1.id, "do_qi": True},
-            {
-                "equipment_id": self.equip2.id,
-                "qo_line_ids": [(0, 0, {
-                    "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
-                })],
-            },
+            {"equipment_id": self.equip2.id, "do_qi": True},
         ])
         so.action_confirm()
-        # 1 OS qualif agregando tudo
-        self.assertEqual(so.qualificacao_os_count, 1)
-        os = so.qualificacao_os_ids
-        # OS contém ambos equipamentos via qualifs
-        equips = os.equipment_ids
-        self.assertEqual(set(equips.ids), {self.equip1.id, self.equip2.id})
-        # engc.os NÃO criado para essa SO (cutover)
+        self.assertEqual(so.qualificacao_os_count, 0)
+        self.assertEqual(so.qualificacao_count, 0)
         self.assertEqual(so.engc_os_count, 0)
 
-    def test_confirm_creates_qualif_per_equipment_type_pair(self):
+    def test_confirm_deixa_equipamentos_pendentes(self):
         so = self._build_so_with_lines([
-            {
-                "equipment_id": self.equip1.id,
-                "do_qi": True,
-                "qd_line_ids": [(0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 3})],
-                "calib_line_ids": [(0, 0, {"malha_type_id": self.malha_temp.id, "qty": 5})],
-            },
-            {
-                "equipment_id": self.equip2.id,
-                "qo_line_ids": [(0, 0, {
-                    "cycle_type_id": self.cycle_qo_test.id, "qty": 1,
-                })],
-            },
+            {"equipment_id": self.equip1.id, "do_qi": True},
+            {"equipment_id": self.equip2.id, "do_qi": True},
         ])
         so.action_confirm()
-        self.assertEqual(so.qualificacao_count, 4)
-        types_equip1 = so.qualificacao_ids.filtered(
-            lambda q: q.equipment_id == self.equip1
-        ).mapped("qualification_type")
-        self.assertEqual(set(types_equip1), {"installation", "performance", "calibration"})
+        self.assertEqual(
+            set(so._pending_qualif_lines().mapped("equipment_id").ids),
+            {self.equip1.id, self.equip2.id},
+        )
 
-    def test_confirm_explodes_cycles_by_qty(self):
-        so = self._build_so_with_lines([{
-            "equipment_id": self.equip1.id,
-            "qd_line_ids": [
-                (0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 3}),
-                (0, 0, {"cycle_type_id": self.cycle_cmin.id, "qty": 2}),
-            ],
-        }])
-        so.action_confirm()
-        qd = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "performance")
-        self.assertEqual(qd.cycle_count, 5)
-        cmax_cycles = qd.cycle_ids.filtered(lambda c: c.cycle_type_id == self.cycle_cmax)
-        cmin_cycles = qd.cycle_ids.filtered(lambda c: c.cycle_type_id == self.cycle_cmin)
-        self.assertEqual(len(cmax_cycles), 3)
-        self.assertEqual(len(cmin_cycles), 2)
-        # back-refs nas linhas SO
-        self.assertTrue(all(c.sale_order_line_id for c in qd.cycle_ids))
-
-    def test_confirm_explodes_malhas_by_qty(self):
-        so = self._build_so_with_lines([{
-            "equipment_id": self.equip1.id,
-            "calib_line_ids": [
-                (0, 0, {"malha_type_id": self.malha_temp.id, "qty": 5}),
-                (0, 0, {"malha_type_id": self.malha_press.id, "qty": 2}),
-            ],
-        }])
-        so.action_confirm()
-        calib = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "calibration")
-        self.assertEqual(calib.malha_count, 7)
-        temps = calib.malha_ids.filtered(lambda m: m.malha_type_id == self.malha_temp)
-        self.assertEqual(len(temps), 5)
-        self.assertEqual(temps[0].sensor_kind_id, self.sensor_temp)
-
-    def test_confirm_back_refs_so_lines(self):
-        so = self._build_so_with_lines([{
-            "equipment_id": self.equip1.id,
-            "do_qi": True,
-        }])
-        so.action_confirm()
-        qi_line = so.order_line.filtered(lambda l: l.qualification_type == "installation")
-        self.assertTrue(qi_line.afr_qualificacao_id)
-        self.assertEqual(qi_line.afr_qualificacao_id.qualification_type, "installation")
+    def test_geracao_explicita_produz_estrutura_completa(self):
+        """O que o confirm fazia antes, agora o helper faz."""
+        so = self._build_so_with_lines([
+            {"equipment_id": self.equip1.id, "do_qi": True},
+            {"equipment_id": self.equip2.id, "do_qi": True},
+        ])
+        os = self._confirm_and_generate_os(so)
+        self.assertEqual(so.qualificacao_os_count, 1)
+        self.assertEqual(set(os.equipment_ids.ids), {self.equip1.id, self.equip2.id})
+        self.assertEqual(so.engc_os_count, 0)

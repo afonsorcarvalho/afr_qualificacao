@@ -85,7 +85,7 @@ class TestOptionalWizard(AfrQualificacaoTestCommon):
         line = so.order_line.filtered(
             lambda l: l.is_proposal_optional and l.qualification_type)
         self.assertEqual(line.product_uom_qty, 4.0)  # 2 ciclos × 2h
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         self.assertTrue(so.qualificacao_ids)
 
     def test_load_roundtrip_optionals(self):

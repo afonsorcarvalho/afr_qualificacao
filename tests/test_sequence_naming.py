@@ -38,9 +38,8 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
     def test_os_name_derived_from_so(self):
         """OS criada na confirmação tem nome derivado do SO (C→OS)."""
         so = self._apply(do_qi=True)
-        so.action_confirm()
+        os = self._confirm_and_generate_os(so)
         self.assertTrue(so.qualificacao_os_ids, "OS deve existir após confirm")
-        os = so.qualificacao_os_ids[0]
         self.assertRegex(os.name, OS_PATTERN,
                          f"OS name '{os.name}' não bate padrão OS[YY]-[MM]-NNNN")
         # Sufixo deve ser idêntico: C26-06-0001 → OS26-06-0001
@@ -50,8 +49,7 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
     def test_os_name_prefix_is_os(self):
         """OS começa com 'OS', não 'C' nem 'QOS'."""
         so = self._apply(do_qi=True)
-        so.action_confirm()
-        os = so.qualificacao_os_ids[0]
+        os = self._confirm_and_generate_os(so)
         self.assertTrue(os.name.startswith("OS"),
                         f"OS name deve começar com 'OS', got '{os.name}'")
 
@@ -67,9 +65,13 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
     # RE-CONFIRM IDEMPOTÊNCIA
     # ─────────────────────────────────────────────────────────────
     def test_reconfirm_reuses_os(self):
-        """Reconfirmar SO (cancel+draft+addline+confirm) não cria nova OS."""
+        """Reconfirmar SO (cancel+draft+addline+confirm) não cria nova OS.
+
+        A reutilização por `qualificacao_os_ids[:1]` vive em
+        `_create_qualificacoes_from_lines()` (mantido para testes legados;
+        o confirm em produção não a chama mais)."""
         so = self._apply(do_qi=True)
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         self.assertEqual(len(so.qualificacao_os_ids), 1)
         os_name_original = so.qualificacao_os_ids[0].name
         # Cancel e reset para rascunho
@@ -85,6 +87,7 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
             "is_qualificacao_managed": True,
         })]})
         so.action_confirm()
+        so._create_qualificacoes_from_lines()
         self.assertEqual(len(so.qualificacao_os_ids), 1,
                          "Deve existir exactamente 1 OS após re-confirm")
         self.assertEqual(so.qualificacao_os_ids[0].name, os_name_original,
@@ -94,10 +97,13 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
     # COLLISION GUARD
     # ─────────────────────────────────────────────────────────────
     def test_collision_guard_reuses_orphan_os(self):
-        """OS desvinculada com mesmo nome é recuperada, não duplicada."""
+        """OS desvinculada com mesmo nome é recuperada, não duplicada.
+
+        A recuperação por nome derivado vive em
+        `_create_qualificacoes_from_lines()` (mantido para testes legados;
+        o confirm em produção não a chama mais)."""
         so = self._apply(do_qi=True)
-        so.action_confirm()
-        os = so.qualificacao_os_ids[0]
+        os = self._confirm_and_generate_os(so)
         os_name = os.name
         os_id = os.id
         # Desvincular a OS (sem apagar o record)
@@ -113,6 +119,7 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
             "is_qualificacao_managed": True,
         })]})
         so.action_confirm()
+        so._create_qualificacoes_from_lines()
         self.assertEqual(len(so.qualificacao_os_ids), 1)
         self.assertEqual(so.qualificacao_os_ids[0].name, os_name,
                          "OS orfã deve ser reutilizada pelo nome")
@@ -125,8 +132,7 @@ class TestSoOsSequenceNaming(AfrQualificacaoTestCommon):
     def test_os_name_unique_per_company(self):
         """Criar segunda OS com mesmo nome+empresa levanta exceção."""
         so = self._apply(do_qi=True)
-        so.action_confirm()
-        os = so.qualificacao_os_ids[0]
+        os = self._confirm_and_generate_os(so)
         with self.assertRaises(Exception):
             self.env["afr.qualificacao.os"].create({
                 "name": os.name,

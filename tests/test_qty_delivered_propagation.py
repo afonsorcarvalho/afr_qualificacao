@@ -18,7 +18,7 @@ class TestQtyDeliveredPropagation(AfrQualificacaoTestCommon):
             "calib_line_ids": [(0, 0, {"malha_type_id": self.malha_temp.id, "qty": 5})],
         })]
         wiz.action_apply()
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         return so
 
     def test_approve_qi_propagates_qty_delivered_1(self):

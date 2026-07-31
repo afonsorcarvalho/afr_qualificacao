@@ -117,8 +117,7 @@ class TestResourcePlan(AfrQualificacaoTestCommon):
             })
         wiz.equipment_line_ids = [(0, 0, s) for s in specs]
         wiz.action_apply()
-        so.action_confirm()
-        os = so.qualificacao_os_ids
+        os = self._confirm_and_generate_os(so)
         if parallel_group:
             os.qualificacao_ids.write({"parallel_group": parallel_group})
         return os

@@ -180,6 +180,25 @@ class AfrQualificacaoTestCommon(TransactionCase):
         wiz.action_apply()
         return so
 
+    def _confirm_and_generate_os(self, so):
+        """Confirma a SO e gera UMA OS com todos os equipamentos pendentes.
+
+        Reproduz o comportamento que o `action_confirm()` tinha até
+        16.0.6.12.0, para os testes que dependem da estrutura materializada.
+        O fluxo real de produção é o wizard
+        `afr.qualificacao.os.generate.wizard`, coberto em test_os_por_grupo.py.
+        """
+        so.action_confirm()
+        lines = so._pending_qualif_lines()
+        if not lines:
+            return self.env["afr.qualificacao.os"]
+        pending = lines.mapped("equipment_id")
+        os = self.env["afr.qualificacao.os"].create(
+            so._prepare_qualificacao_os_values(pending, pending)
+        )
+        so._materialize_qualificacoes(lines, os)
+        return os
+
     def _get_relatorio(self, os):
         """F4.8: cria/cacheia um relatorio dummy para a OS, usado em tests
         que precisam materializar cycles/malhas como passed/failed (gate

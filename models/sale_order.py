@@ -2,9 +2,10 @@
 
 - Botão `Configurar Qualificações` no header abre wizard que gera linhas SO
 - Stat buttons mostram qualificações + OSs geradas
-- `action_confirm()` override dispara `_create_qualificacoes_from_lines()`
-  que materializa engc.os (1/equipamento) + afr.qualificacao (1/equip×tipo)
-  + sub-records (cycles/malhas explodidos por qty).
+- Botão `Gerar OS de Qualificação` (SO confirmada) abre wizard que cria 1
+  OS por grupo de equipamentos selecionados, materializando
+  afr.qualificacao (1/equip×tipo) + sub-records (cycles/malhas por qty).
+  1 cotação → N OS, sem equipamento repetido entre elas.
 - Helpers `has_qualif_lines`, `qualif_standard_ids` e
   `_qualif_equipment_summary()` alimentam o template QWeb dedicado de
   cotação (inherit condicional em `sale.report_saleorder_document`).
@@ -1169,13 +1170,15 @@ class SaleOrder(models.Model):
     # Confirm → gera engc.os + afr.qualificacao + sub-records
     # ------------------------------------------------------------------
     def action_confirm(self):
-        """Override: após confirmar SO, gera estrutura de qualificações."""
+        """Override: sincroniza qty de opcionais antes de confirmar.
+
+        16.0.6.13.0 — o confirm NÃO materializa mais qualificações/OS. A
+        geração passou a ser manual e incremental, por grupo de equipamentos,
+        via `action_open_generate_os_wizard()` na SO confirmada.
+        """
         for order in self:
             order.order_line._sync_optional_qty()
-        result = super().action_confirm()
-        for order in self:
-            order._create_qualificacoes_from_lines()
-        return result
+        return super().action_confirm()
 
     def _pending_qualif_lines(self):
         """Linhas managed elegíveis que ainda não têm afr.qualificacao.

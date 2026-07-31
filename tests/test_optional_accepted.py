@@ -61,7 +61,7 @@ class TestOptionalAccepted(AfrQualificacaoTestCommon):
     def test_confirm_optional_qualif_generates(self):
         so = self.env["sale.order"].create({"partner_id": self.partner.id})
         self._opt_qualif_line(so, accepted=True)
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         self.assertTrue(so.qualificacao_ids)
 
     def test_confirm_optional_not_accepted_skipped(self):

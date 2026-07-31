@@ -16,7 +16,7 @@ class TestQuoteFirstOs(AfrQualificacaoTestCommon):
         wiz = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
         wiz.equipment_line_ids = [(0, 0, spec) for spec in equipment_lines_spec]
         wiz.action_apply()
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         return so
 
     # ─────────────────────────────────────────────────────────────

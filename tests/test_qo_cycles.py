@@ -101,7 +101,7 @@ class TestQoCycles(AfrQualificacaoTestCommon):
             (self.cycle_qo_bowie, 3),
         ])
         wiz.action_apply()
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         qo_qualif = so.qualificacao_ids.filtered(
             lambda q: q.qualification_type == "operational"
         )

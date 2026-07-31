@@ -300,7 +300,7 @@ class TestApplyPartes(AfrQualificacaoTestCommon):
         """Linha QI Parte 01 declinada (qty=0) NÃO gera qualificação; a
         malha (Parte 02) gera normalmente."""
         so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         qi_line = so.order_line.filtered(
             lambda l: l.part == "01" and l.part01_declined
         )
