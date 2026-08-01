@@ -114,21 +114,35 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
         # (aprovada/concluída/cancelada) — o mesmo conjunto que o próprio
         # modelo trata como travado para reversão de status
         # (`_STATE_LOCKED_ONCE_REACHED`, ver models/qualificacao_os.py).
-        # `draft`/`scheduled`/`in_progress`/`in_approved` continuam
-        # aceitando qualificação nova — são os estados de trabalho ainda em
-        # andamento (o próprio cabeçalho do modelo trata `in_approved` como
-        # transição normal de fluxo, não manager-only). Materializar numa OS
-        # já `approved`/`done` quebraria a invariante de `action_done`
-        # (exige TODAS as qualificações aprovadas para fechar); numa OS
-        # `cancelled` empurraria o serviço recém-vendido para dentro de uma
-        # OS morta. Checado ANTES de qualquer `_materialize_qualificacoes` —
-        # nenhum efeito parcial se alguma OS de destino estiver fechada.
+        # `draft`/`scheduled`/`in_progress` continuam aceitando qualificação
+        # nova — passam por `action_request_approval()` antes de chegar a
+        # `in_approved`, que checa relatórios em rascunho, qualifs
+        # rejeitadas e coleta pendente.
+        #
+        # O WIZARD bloqueia mais um estado que `_STATE_LOCKED_ONCE_REACHED`:
+        # `in_approved`. Nele o portão de `action_request_approval()` já foi
+        # ultrapassado, e a única ação que resta —`action_approve()` —
+        # cascade-aprova qualquer qualificação em `draft`/`in_progress` SEM
+        # revalidar trabalho executado, emitindo certificado e propagando
+        # qty_delivered. Se a qualificação nova entrasse aqui, o equipamento
+        # seria aprovado e faturado sem inspeção nenhuma. Por isso o
+        # conjunto do wizard é `_STATE_LOCKED_ONCE_REACHED` (que serve outro
+        # propósito no modelo: travar reversão de status) + `in_approved`,
+        # não o mesmo conjunto reaproveitado sem alteração.
+        #
+        # Materializar numa OS já `approved`/`done` quebraria a invariante de
+        # `action_done` (exige TODAS as qualificações aprovadas para
+        # fechar); numa OS `cancelled` empurraria o serviço recém-vendido
+        # para dentro de uma OS morta. Checado ANTES de qualquer
+        # `_materialize_qualificacoes` — nenhum efeito parcial se alguma OS
+        # de destino estiver fechada.
         Os = self.env["afr.qualificacao.os"]
         equipamentos_por_id = {e.id: e for e in self.equipment_ids}
+        estados_fechados_wizard = Os._STATE_LOCKED_ONCE_REACHED | {"in_approved"}
         os_fechadas = {
             equip_id: os_rec
             for equip_id, os_rec in os_por_equipamento.items()
-            if os_rec.state in os_rec._STATE_LOCKED_ONCE_REACHED
+            if os_rec.state in estados_fechados_wizard
         }
         if os_fechadas:
             state_labels = dict(Os.STATE_SELECTION)

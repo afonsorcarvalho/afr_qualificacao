@@ -1,7 +1,5 @@
 """Fluxo 1 cotação : N OS de qualificação por grupo de equipamentos."""
 
-import re
-
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import tagged
 
@@ -402,8 +400,52 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         opt_line.optional_accepted = True
         self.assertEqual(so.equipamentos_sem_os_ids, self.equip1)
 
-        with self.assertRaisesRegex(UserError, re.escape(os1.name)):
+        # A mensagem tem de nomear a OS E o status por extenso — só o nome
+        # não pega um refactor que trocasse o label do selection ("Aprovada")
+        # pelo valor técnico ("approved").
+        with self.assertRaises(UserError) as cm:
             self._gerar(so, so.equipamentos_sem_os_ids)
+        self.assertIn(os1.name, str(cm.exception))
+        self.assertIn("Aprovada", str(cm.exception))
+
+        # Sem efeito parcial: continua a mesma 1 OS, sem qualificação nova.
+        self.assertEqual(so.qualificacao_os_count, 1)
+        qd = so.qualificacao_ids.filtered(
+            lambda q: q.equipment_id == self.equip1
+            and q.qualification_type == "performance"
+        )
+        self.assertFalse(qd)
+
+    def test_opcional_aceito_apos_os_aguardando_aprovacao_bloqueia(self):
+        """`in_approved` também bloqueia o roteamento p/ OS existente.
+
+        Nos estados abertos anteriores (`draft`/`scheduled`/`in_progress`)
+        uma qualificação materializada tarde ainda passaria por
+        `action_request_approval()`, que checa relatórios em rascunho,
+        qualifs rejeitadas e coleta pendente. Em `in_approved` esse portão
+        já foi ultrapassado — a única ação que resta, `action_approve()`,
+        cascade-aprova qualquer qualificação em draft/in_progress SEM
+        validar trabalho executado, emitindo certificado e propagando
+        qty_delivered. Sem este bloqueio, o equipamento seria aprovado e
+        faturado sem inspeção.
+        """
+        so = self._so_equip1_com_qi_e_opcional_qd()
+        so.action_confirm()
+
+        os1 = self._gerar(so, so.equipamentos_sem_os_ids)
+        self.assertEqual(so.qualificacao_os_count, 1)
+        os1.write({"state": "in_approved"})
+
+        opt_line = so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.equipment_id == self.equip1
+        )
+        opt_line.optional_accepted = True
+        self.assertEqual(so.equipamentos_sem_os_ids, self.equip1)
+
+        with self.assertRaises(UserError) as cm:
+            self._gerar(so, so.equipamentos_sem_os_ids)
+        self.assertIn(os1.name, str(cm.exception))
+        self.assertIn("Aguardando aprovação", str(cm.exception))
 
         # Sem efeito parcial: continua a mesma 1 OS, sem qualificação nova.
         self.assertEqual(so.qualificacao_os_count, 1)
