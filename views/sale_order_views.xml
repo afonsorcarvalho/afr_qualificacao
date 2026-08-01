@@ -21,6 +21,7 @@
                         string="Gerar OS de Qualificação"
                         type="object"
                         class="oe_highlight"
+                        groups="afr_qualificacao.group_afr_qualificacao_user"
                         attrs="{'invisible': [('pode_gerar_os','=',False)]}"/>
             </xpath>
 

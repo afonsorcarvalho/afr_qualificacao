@@ -1223,7 +1223,9 @@ class SaleOrder(models.Model):
         return any_line.config_template_id if any_line else False
 
     # ------------------------------------------------------------------
-    # Confirm → gera engc.os + afr.qualificacao + sub-records
+    # Confirm → NÃO gera mais engc.os/afr.qualificacao. Geração de OS de
+    # qualificação é manual e incremental, por grupo de equipamentos, via
+    # action_open_generate_os_wizard() na SO já confirmada (16.0.6.13.0).
     # ------------------------------------------------------------------
     def action_confirm(self):
         """Override: sincroniza qty de opcionais antes de confirmar.
