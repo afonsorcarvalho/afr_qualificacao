@@ -2,13 +2,21 @@
 """Wizard: gerar OS de Qualificação por grupo de equipamentos.
 
 Uma cotação confirmada pode render N OS — tipicamente uma por visita de campo
-(setor, andar, disponibilidade do cliente). Cada execução cria UMA OS com o
-subconjunto de equipamentos escolhido; repete-se até não sobrar pendente.
+(setor, andar, disponibilidade do cliente). Cada execução cria uma OS nova com
+o subconjunto de equipamentos escolhido que ainda não tem OS; repete-se até
+não sobrar pendente.
+
+Exceção: se um equipamento selecionado JÁ TEM OS nesta cotação (ex.: um
+opcional dele foi aceito depois que outra OS já o cobriu), a linha nova cai
+DENTRO da OS existente do equipamento em vez de abrir uma OS nova — é o único
+jeito de manter a invariante abaixo sem deixar o serviço vendido sem OS.
 
 Invariante: um equipamento nunca entra em duas OS da mesma cotação. Garantida
-aqui (domínio + revalidação) e no modelo (`afr.qualificacao`
-`_check_equipamento_unico_por_os_da_so`).
+aqui (domínio + revalidação + roteamento p/ OS existente) e no modelo
+(`afr.qualificacao._check_equipamento_unico_por_os_da_so`).
 """
+from collections import defaultdict
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 
@@ -83,15 +91,67 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
                 "selecionados."
             ))
 
-        os = self.env["afr.qualificacao.os"].create(
-            so._prepare_qualificacao_os_values(self.equipment_ids, pendentes)
+        # Um equipamento selecionado pode já ter OS nesta cotação (ex.: um
+        # opcional dele foi aceito depois que outra OS já o cobriu — ver
+        # `_compute_equipamentos_sem_os`, que o recoloca no pool de
+        # pendentes de propósito). Nesse caso a linha nova precisa cair
+        # DENTRO da OS existente do equipamento, nunca numa OS nova —
+        # senão a constraint de equipamento único por OS da cotação
+        # (`afr.qualificacao._check_equipamento_unico_por_os_da_so`)
+        # rejeita a criação e o clique vira um dead-end sem saída pela UI.
+        # sudo(): record rule não pode esconder uma qualificação irmã e
+        # reabrir o dead-end (mesmo argumento de `_next_free_qualificacao_os_name`).
+        qualifs_existentes = self.env["afr.qualificacao"].sudo().search([
+            ("sale_order_id", "=", so.id),
+            ("equipment_id", "in", self.equipment_ids.ids),
+            ("os_id", "!=", False),
+        ])
+        os_por_equipamento = {
+            q.equipment_id.id: q.os_id for q in qualifs_existentes
+        }
+
+        lines_os_existente = lines.filtered(
+            lambda l: l.equipment_id.id in os_por_equipamento
         )
-        so._materialize_qualificacoes(lines, os)
+        lines_os_nova = lines - lines_os_existente
+
+        os_afetadas = self.env["afr.qualificacao.os"]
+        por_os_existente = defaultdict(lambda: self.env["sale.order.line"])
+        for line in lines_os_existente:
+            por_os_existente[os_por_equipamento[line.equipment_id.id]] |= line
+        for os_existente, grupo in por_os_existente.items():
+            so._materialize_qualificacoes(grupo, os_existente)
+            os_afetadas |= os_existente
+
+        os_nova = self.env["afr.qualificacao.os"]
+        if lines_os_nova:
+            os_nova = self.env["afr.qualificacao.os"].create(
+                so._prepare_qualificacao_os_values(self.equipment_ids, pendentes)
+            )
+            so._materialize_qualificacoes(lines_os_nova, os_nova)
+
+        if os_nova:
+            return {
+                "type": "ir.actions.act_window",
+                "name": os_nova.display_name,
+                "res_model": "afr.qualificacao.os",
+                "res_id": os_nova.id,
+                "view_mode": "form",
+                "target": "current",
+            }
+        if len(os_afetadas) == 1:
+            return {
+                "type": "ir.actions.act_window",
+                "name": os_afetadas.display_name,
+                "res_model": "afr.qualificacao.os",
+                "res_id": os_afetadas.id,
+                "view_mode": "form",
+                "target": "current",
+            }
         return {
             "type": "ir.actions.act_window",
-            "name": os.display_name,
+            "name": _("OS de Qualificação Afetadas"),
             "res_model": "afr.qualificacao.os",
-            "res_id": os.id,
-            "view_mode": "form",
-            "target": "current",
+            "view_mode": "tree,form",
+            "domain": [("id", "in", os_afetadas.ids)],
         }

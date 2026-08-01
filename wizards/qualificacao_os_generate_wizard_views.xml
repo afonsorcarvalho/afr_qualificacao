@@ -17,6 +17,11 @@
                         Os que ficarem de fora continuam disponíveis para uma
                         próxima OS desta mesma cotação.
                     </p>
+                    <p class="text-muted">
+                        Equipamento que já tem OS nesta cotação (ex.: um
+                        opcional dele foi aceito depois) entra na OS
+                        existente — não gera uma OS nova.
+                    </p>
                     <field name="equipment_ids" nolabel="1"
                            domain="[('id', 'in', equipamento_disponivel_ids)]"
                            widget="many2many">

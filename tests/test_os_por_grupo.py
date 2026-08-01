@@ -103,7 +103,7 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         so.action_confirm()
         ja = so.equipamentos_sem_os_ids[:1]
         self._gerar(so, ja)
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "já têm OS"):
             self._gerar(so, ja)
 
     def test_wizard_rejeita_equipamento_fora_do_pool(self):
@@ -114,7 +114,7 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         so = self._so_tres_equipamentos()
         so.action_confirm()
         fora_do_pool = so.equipamentos_sem_os_ids[:1] | self.equip4
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "já têm OS"):
             self._gerar(so, fora_do_pool)
 
     def test_wizard_rejeita_selecao_vazia(self):
@@ -123,7 +123,7 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         wiz = self.env["afr.qualificacao.os.generate.wizard"].create({
             "sale_order_id": so.id,
         })
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "Selecione ao menos um equipamento"):
             wiz.action_generate()
 
     def test_wizard_rejeita_so_nao_confirmada(self):
@@ -132,7 +132,7 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
             "sale_order_id": so.id,
             "equipment_ids": [(6, 0, so.equipamentos_sem_os_ids.ids)],
         })
-        with self.assertRaises(UserError):
+        with self.assertRaisesRegex(UserError, "Confirme a cotação"):
             wiz.action_generate()
 
     def test_subrecords_ficam_no_grupo_certo(self):
@@ -321,3 +321,93 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
 
         self.assertEqual(so.equipamentos_sem_os_ids, self.equip2)
         self.assertTrue(so.pode_gerar_os)
+
+    def _so_equip1_com_qi_e_opcional_qd(self):
+        """equip1 com linha padrão (QI) e uma linha opcional (QD) do MESMO
+        equipamento, opcional ainda não aceita. Cenário perigoso do Achado 1:
+        equip1 é materializado numa OS via a linha QI; se o opcional for
+        aceito depois, equip1 volta ao pool de pendentes mesmo já tendo OS.
+        """
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
+        wiz.equipment_line_ids = [(0, 0, {
+            "equipment_id": self.equip1.id, "do_qi": True,
+        })]
+        self.env["afr.qualificacao.configurator.optional.qualif"].create({
+            "wizard_id": wiz.id, "equipment_id": self.equip1.id,
+            "qualification_type": "performance",
+            "cycle_type_id": self.cycle_cmax.id, "qty": 1,
+            "estimated_hours": 1.0, "accepted": False,
+        })
+        wiz.action_apply()
+        return so
+
+    def test_opcional_aceito_apos_os_gerada_entra_na_os_existente(self):
+        """Variante perigosa do Achado 1: opcional aceito TARDE, do MESMO
+        equipamento já materializado noutra OS. Antes da correção, o
+        segundo clique tentava abrir uma OS nova para o equipamento e a
+        constraint de equipamento único por OS da cotação estourava
+        ValidationError — dead-end sem saída pela UI. Depois da correção,
+        a linha nova entra na OS já existente do equipamento.
+        """
+        so = self._so_equip1_com_qi_e_opcional_qd()
+        so.action_confirm()
+
+        os1 = self._gerar(so, so.equipamentos_sem_os_ids)
+        self.assertEqual(so.qualificacao_os_count, 1)
+
+        opt_line = so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.equipment_id == self.equip1
+        )
+        self.assertTrue(opt_line)
+        opt_line.optional_accepted = True
+        self.assertEqual(so.equipamentos_sem_os_ids, self.equip1)
+
+        os2 = self._gerar(so, so.equipamentos_sem_os_ids)
+
+        self.assertEqual(os2.id, os1.id)
+        self.assertEqual(so.qualificacao_os_count, 1)
+
+    def test_selecao_mista_existente_e_novo_vao_para_destinos_certos(self):
+        """Seleção com um equipamento que já tem OS (via opcional aceito
+        tarde) e um equipamento novo: as linhas do primeiro devem cair na
+        OS já existente, e as do segundo numa OS nova.
+        """
+        # equip1 (QI + opcional QD) e equip2 (QI) na MESMA aplicação do
+        # configurador — um segundo `action_apply()` no mesmo SO substitui
+        # as linhas geradas pelo primeiro, então precisam vir juntas.
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
+        wiz.equipment_line_ids = [
+            (0, 0, {"equipment_id": self.equip1.id, "do_qi": True}),
+            (0, 0, {"equipment_id": self.equip2.id, "do_qi": True}),
+        ]
+        self.env["afr.qualificacao.configurator.optional.qualif"].create({
+            "wizard_id": wiz.id, "equipment_id": self.equip1.id,
+            "qualification_type": "performance",
+            "cycle_type_id": self.cycle_cmax.id, "qty": 1,
+            "estimated_hours": 1.0, "accepted": False,
+        })
+        wiz.action_apply()
+        so.action_confirm()
+
+        # 1ª OS cobre só equip1 (equip2 fica pendente de propósito).
+        os1 = self._gerar(so, self.equip1)
+        self.assertEqual(so.qualificacao_os_count, 1)
+
+        opt_line = so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.equipment_id == self.equip1
+        )
+        opt_line.optional_accepted = True
+        self.assertEqual(
+            set(so.equipamentos_sem_os_ids.ids),
+            {self.equip1.id, self.equip2.id},
+        )
+
+        os_nova = self._gerar(so, so.equipamentos_sem_os_ids)
+
+        self.assertEqual(so.qualificacao_os_count, 2)
+        self.assertNotEqual(os_nova.id, os1.id)
+        self.assertEqual(os_nova.equipment_ids, self.equip2)
+        self.assertIn(self.equip1, os1.equipment_ids)
+        self.assertNotIn(self.equip1, os_nova.equipment_ids)
