@@ -1,5 +1,7 @@
 """Fluxo 1 cotação : N OS de qualificação por grupo de equipamentos."""
 
+import re
+
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import tagged
 
@@ -373,6 +375,43 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         )
         self.assertTrue(qd)
         self.assertEqual(qd.os_id, os1)
+
+    def test_opcional_aceito_apos_os_fechada_bloqueia_com_usererror(self):
+        """Re-review do Achado 1: a OS existente do equipamento pode já
+        estar fechada (aprovada/concluída/cancelada) quando o opcional é
+        aceito tarde. Materializar ali quebraria a invariante de
+        `action_done` (exige TODAS as qualificações aprovadas) ou
+        empurraria o serviço vendido para dentro de uma OS cancelada — o
+        wizard deve bloquear com `UserError` nomeando a OS, SEM criar
+        nada (nem OS nova, nem qualificação).
+        """
+        so = self._so_equip1_com_qi_e_opcional_qd()
+        so.action_confirm()
+
+        os1 = self._gerar(so, so.equipamentos_sem_os_ids)
+        self.assertEqual(so.qualificacao_os_count, 1)
+        # write() direto: env de teste é superuser (self.env.su), então
+        # passa pelo guard de `_check_manager_only` sem precisar das
+        # ações/pré-condições reais (assinatura etc.) — só precisamos que
+        # a OS esteja num estado fechado, não repetir o fluxo de aprovação.
+        os1.write({"state": "approved"})
+
+        opt_line = so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.equipment_id == self.equip1
+        )
+        opt_line.optional_accepted = True
+        self.assertEqual(so.equipamentos_sem_os_ids, self.equip1)
+
+        with self.assertRaisesRegex(UserError, re.escape(os1.name)):
+            self._gerar(so, so.equipamentos_sem_os_ids)
+
+        # Sem efeito parcial: continua a mesma 1 OS, sem qualificação nova.
+        self.assertEqual(so.qualificacao_os_count, 1)
+        qd = so.qualificacao_ids.filtered(
+            lambda q: q.equipment_id == self.equip1
+            and q.qualification_type == "performance"
+        )
+        self.assertFalse(qd)
 
     def test_selecao_mista_existente_e_novo_vao_para_destinos_certos(self):
         """Seleção com um equipamento que já tem OS (via opcional aceito

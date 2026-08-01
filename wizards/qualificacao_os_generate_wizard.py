@@ -110,6 +110,42 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
             q.equipment_id.id: q.os_id for q in qualifs_existentes
         }
 
+        # Bloqueio: a OS existente pode já estar num estado fechado
+        # (aprovada/concluída/cancelada) — o mesmo conjunto que o próprio
+        # modelo trata como travado para reversão de status
+        # (`_STATE_LOCKED_ONCE_REACHED`, ver models/qualificacao_os.py).
+        # `draft`/`scheduled`/`in_progress`/`in_approved` continuam
+        # aceitando qualificação nova — são os estados de trabalho ainda em
+        # andamento (o próprio cabeçalho do modelo trata `in_approved` como
+        # transição normal de fluxo, não manager-only). Materializar numa OS
+        # já `approved`/`done` quebraria a invariante de `action_done`
+        # (exige TODAS as qualificações aprovadas para fechar); numa OS
+        # `cancelled` empurraria o serviço recém-vendido para dentro de uma
+        # OS morta. Checado ANTES de qualquer `_materialize_qualificacoes` —
+        # nenhum efeito parcial se alguma OS de destino estiver fechada.
+        Os = self.env["afr.qualificacao.os"]
+        equipamentos_por_id = {e.id: e for e in self.equipment_ids}
+        os_fechadas = {
+            equip_id: os_rec
+            for equip_id, os_rec in os_por_equipamento.items()
+            if os_rec.state in os_rec._STATE_LOCKED_ONCE_REACHED
+        }
+        if os_fechadas:
+            state_labels = dict(Os.STATE_SELECTION)
+            detalhes = ", ".join(
+                "%s (OS %s, status '%s')" % (
+                    equipamentos_por_id[equip_id].display_name,
+                    os_rec.display_name,
+                    state_labels.get(os_rec.state, os_rec.state),
+                )
+                for equip_id, os_rec in os_fechadas.items()
+            )
+            raise UserError(_(
+                "Não é possível adicionar qualificação a uma OS já fechada: "
+                "%s. Reabra a OS (quando o fluxo permitir) ou trate este "
+                "caso manualmente."
+            ) % detalhes)
+
         lines_os_existente = lines.filtered(
             lambda l: l.equipment_id.id in os_por_equipamento
         )
