@@ -45,7 +45,7 @@ class TestHoursVsCycles(AfrQualificacaoTestCommon):
 
     def test_explosion_uses_cycle_qty_not_hours(self):
         so = self._apply(qd_qty=3, calib_qty=2)
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         qd = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "performance")
         calib = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "calibration")
         # explode por nº de ciclos (3), NÃO por horas (6)

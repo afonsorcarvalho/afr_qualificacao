@@ -16,7 +16,7 @@ class TestQuoteFirstOs(AfrQualificacaoTestCommon):
         wiz = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
         wiz.equipment_line_ids = [(0, 0, spec) for spec in equipment_lines_spec]
         wiz.action_apply()
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         return so
 
     # ─────────────────────────────────────────────────────────────
@@ -102,18 +102,6 @@ class TestQuoteFirstOs(AfrQualificacaoTestCommon):
         self.assertEqual(qd.cycle_count, 4)
         # Cycles têm os_id via qualif
         self.assertEqual(qd.cycle_ids.mapped("qualificacao_id.os_id"), so.qualificacao_os_ids)
-
-    # ─────────────────────────────────────────────────────────────
-    # Idempotência re-confirm
-    # ─────────────────────────────────────────────────────────────
-    def test_re_confirm_does_not_duplicate_os(self):
-        so = self._confirm_so_with([
-            {"equipment_id": self.equip1.id, "do_qi": True},
-        ])
-        # Re-chama explosão direta — não deve duplicar
-        so._create_qualificacoes_from_lines()
-        self.assertEqual(so.qualificacao_os_count, 1)
-        self.assertEqual(so.qualificacao_count, 1)
 
     # ─────────────────────────────────────────────────────────────
     # SO sem linhas managed: nenhuma OS

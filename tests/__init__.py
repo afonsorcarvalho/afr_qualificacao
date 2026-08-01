@@ -96,3 +96,6 @@ from . import test_create_guard_task13
 # defaults (context default_<field> / ir.default) DEPOIS do override, dentro
 # do próprio super().create() — vetor de contexto e vetor ir.default sobrevivem
 from . import test_create_default_vector_task14
+
+# OS por grupo de equipamento — Task 2: regra de nome das OS (sufixo -1, -2, -3)
+from . import test_os_por_grupo

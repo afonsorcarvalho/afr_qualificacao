@@ -21,7 +21,7 @@ class TestCertificate(AfrQualificacaoTestCommon):
             "do_qi": True,
         })]
         wiz.action_apply()
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         qi = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "installation")
         qi.action_mark_approved()
         return qi
@@ -77,7 +77,7 @@ class TestCertificate(AfrQualificacaoTestCommon):
             "qd_line_ids": [(0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 3})],
         })]
         wiz.action_apply()
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         qd = so.qualificacao_ids.filtered(lambda q: q.qualification_type == "performance")
         rel = self._get_relatorio(qd.os_id)
         qd.cycle_ids.with_context(default_relatorio_id=rel.id).write({"state": "passed"})

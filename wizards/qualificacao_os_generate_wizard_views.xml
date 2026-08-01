@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_afr_qualificacao_os_generate_wizard_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.generate.wizard.form</field>
+        <field name="model">afr.qualificacao.os.generate.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Gerar OS de Qualificação">
+                <sheet>
+                    <group>
+                        <field name="sale_order_id" readonly="1"/>
+                        <field name="equipamento_disponivel_ids" invisible="1"/>
+                    </group>
+                    <separator string="Equipamentos desta OS"/>
+                    <p class="text-muted">
+                        Marque os equipamentos que serão atendidos nesta OS.
+                        Os que ficarem de fora continuam disponíveis para uma
+                        próxima OS desta mesma cotação.
+                    </p>
+                    <p class="text-muted">
+                        Equipamento que já tem OS nesta cotação (ex.: um
+                        opcional dele foi aceito depois) entra na OS
+                        existente — não gera uma OS nova.
+                    </p>
+                    <field name="equipment_ids" nolabel="1"
+                           domain="[('id', 'in', equipamento_disponivel_ids)]"
+                           widget="many2many">
+                        <tree>
+                            <field name="name"/>
+                            <field name="category_id"/>
+                        </tree>
+                    </field>
+                </sheet>
+                <footer>
+                    <button name="action_generate" type="object"
+                            string="Gerar OS" class="btn-primary"/>
+                    <button special="cancel" string="Cancelar"
+                            class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

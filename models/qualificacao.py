@@ -570,6 +570,36 @@ class AfrQualificacao(models.Model):
                     % (record.execution_date, record.planned_date)
                 )
 
+    @api.constrains("os_id", "equipment_id", "sale_order_id")
+    def _check_equipamento_unico_por_os_da_so(self):
+        """Um equipamento não pode estar em duas OS da mesma cotação.
+
+        Invariante: para cada (sale_order_id, equipment_id) o conjunto de
+        `os_id` tem no máximo um elemento. Vale para qualquer caminho de
+        criação — wizard, import ou script.
+
+        sudo() na busca: sem ele, uma record rule que esconda a qualificação
+        irmã faria a validação passar em falso.
+        """
+        for qualif in self:
+            if not qualif.sale_order_id or not qualif.equipment_id:
+                continue
+            irmas = self.sudo().search([
+                ("sale_order_id", "=", qualif.sale_order_id.id),
+                ("equipment_id", "=", qualif.equipment_id.id),
+                ("os_id", "!=", False),
+            ])
+            outras_os = irmas.mapped("os_id") - qualif.os_id
+            if qualif.os_id and outras_os:
+                raise ValidationError(_(
+                    "O equipamento '%s' já está na OS '%s' desta cotação. "
+                    "Um equipamento não pode estar em duas OS da mesma "
+                    "cotação."
+                ) % (
+                    qualif.equipment_id.display_name,
+                    outras_os[0].display_name,
+                ))
+
     @api.depends("equipment_id", "sale_order_id.partner_id")
     def _compute_partner_id(self):
         """Cliente: SO.partner_id quando linkado, senão equipment.client_id (sticky).

@@ -103,7 +103,7 @@ class TestProposalBuilder(AfrQualificacaoTestCommon):
             "product_uom_qty": 1.0,
             "is_proposal_optional": True,
         })
-        so.action_confirm()
+        self._confirm_and_generate_os(so)
         # Só QI gerou qualificação; a linha opcional foi ignorada.
         self.assertEqual(len(so.qualificacao_ids), 1)
         self.assertEqual(

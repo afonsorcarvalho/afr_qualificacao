@@ -2,9 +2,10 @@
 
 - Botão `Configurar Qualificações` no header abre wizard que gera linhas SO
 - Stat buttons mostram qualificações + OSs geradas
-- `action_confirm()` override dispara `_create_qualificacoes_from_lines()`
-  que materializa engc.os (1/equipamento) + afr.qualificacao (1/equip×tipo)
-  + sub-records (cycles/malhas explodidos por qty).
+- Botão `Gerar OS de Qualificação` (SO confirmada) abre wizard que cria 1
+  OS por grupo de equipamentos selecionados, materializando
+  afr.qualificacao (1/equip×tipo) + sub-records (cycles/malhas por qty).
+  1 cotação → N OS, sem equipamento repetido entre elas.
 - Helpers `has_qualif_lines`, `qualif_standard_ids` e
   `_qualif_equipment_summary()` alimentam o template QWeb dedicado de
   cotação (inherit condicional em `sale.report_saleorder_document`).
@@ -94,6 +95,20 @@ class SaleOrder(models.Model):
     qualificacao_os_count = fields.Integer(
         compute="_compute_qualificacao_os_count",
         string="Total OS Qualif",
+    )
+    equipamentos_sem_os_ids = fields.Many2many(
+        comodel_name="engc.equipment",
+        string="Equipamentos sem OS",
+        compute="_compute_equipamentos_sem_os",
+        help=(
+            "Equipamentos das linhas de qualificação que ainda não foram "
+            "materializados em nenhuma OS desta cotação."
+        ),
+    )
+    pode_gerar_os = fields.Boolean(
+        string="Pode Gerar OS",
+        compute="_compute_equipamentos_sem_os",
+        help="True se a cotação está confirmada e ainda há equipamento sem OS.",
     )
     # DEPRECATED 16.0.3.1.0 — preservado para SOs antigas (cutover sem migração).
     engc_os_ids = fields.One2many(
@@ -210,6 +225,28 @@ class SaleOrder(models.Model):
     def _compute_engc_os_count(self):
         for order in self:
             order.engc_os_count = len(order.engc_os_ids)
+
+    @api.depends(
+        "state",
+        "order_line.equipment_id",
+        "order_line.afr_qualificacao_id",
+        "order_line.is_qualificacao_managed",
+        "order_line.display_type",
+        "order_line.part01_declined",
+        "order_line.is_proposal_optional",
+        "order_line.optional_accepted",
+        "order_line.qualification_type",
+        # Reatividade live no form: a aba Opcionais edita optional_accepted
+        # via optional_line_ids (datapoint OWL distinto de order_line, ver
+        # _compute_qualif_subtotals_html). Sem este path o compute não
+        # recomputa ao aceitar um opcional após a SO confirmada.
+        "optional_line_ids.optional_accepted",
+    )
+    def _compute_equipamentos_sem_os(self):
+        for order in self:
+            pendentes = order._pending_qualif_lines().mapped("equipment_id")
+            order.equipamentos_sem_os_ids = pendentes
+            order.pode_gerar_os = bool(pendentes) and order.state == "sale"
 
     @api.depends(
         "order_line.is_qualificacao_managed",
@@ -1048,6 +1085,26 @@ class SaleOrder(models.Model):
             "domain": [("id", "in", self.qualificacao_os_ids.ids)],
         }
 
+    def action_open_generate_os_wizard(self):
+        """Abre o wizard de geração de OS por grupo de equipamentos."""
+        self.ensure_one()
+        if self.state != "sale":
+            raise UserError(_(
+                "Confirme a cotação antes de gerar OS de Qualificação."
+            ))
+        if not self.equipamentos_sem_os_ids:
+            raise UserError(_(
+                "Todos os equipamentos desta cotação já têm OS gerada."
+            ))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Gerar OS de Qualificação"),
+            "res_model": "afr.qualificacao.os.generate.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_sale_order_id": self.id},
+        }
+
     def action_view_engc_os(self):
         self.ensure_one()
         return {
@@ -1166,32 +1223,26 @@ class SaleOrder(models.Model):
         return any_line.config_template_id if any_line else False
 
     # ------------------------------------------------------------------
-    # Confirm → gera engc.os + afr.qualificacao + sub-records
+    # Confirm → NÃO gera mais engc.os/afr.qualificacao. Geração de OS de
+    # qualificação é manual e incremental, por grupo de equipamentos, via
+    # action_open_generate_os_wizard() na SO já confirmada (16.0.6.13.0).
     # ------------------------------------------------------------------
     def action_confirm(self):
-        """Override: após confirmar SO, gera estrutura de qualificações."""
+        """Override: sincroniza qty de opcionais antes de confirmar.
+
+        16.0.6.13.0 — o confirm NÃO materializa mais qualificações/OS. A
+        geração passou a ser manual e incremental, por grupo de equipamentos,
+        via `action_open_generate_os_wizard()` na SO confirmada.
+        """
         for order in self:
             order.order_line._sync_optional_qty()
-        result = super().action_confirm()
-        for order in self:
-            order._create_qualificacoes_from_lines()
-        return result
+        return super().action_confirm()
 
-    def _create_qualificacoes_from_lines(self):
-        """Materializa afr.qualificacao.os + afr.qualificacao + sub-records.
+    def _pending_qualif_lines(self):
+        """Linhas managed elegíveis que ainda não têm afr.qualificacao.
 
-        Cutover 16.0.3.1.0:
-        - 1 afr.qualificacao.os por SO (agregando N equipamentos × N tipos)
-        - 1 afr.qualificacao por (equipamento, qualification_type)
-        - Para QD: N afr.qualificacao.cycle por linha SO (qty=N)
-        - Para Calib: N afr.qualificacao.malha por linha SO
-        - Para QI/QO/QS: sem sub-records (1 linha = 1 qualificação)
-
-        engc.os NÃO é mais criado para SOs de qualificação. SOs antigas
-        (pré-3.1.0) ficam com engc.os existente; cutover sem migração.
-
-        Idempotência: skip se afr_qualificacao_id já populado (evita
-        re-gerar em re-confirm).
+        Elegível = gerada pelo configurador, não é seção/nota, não teve a
+        Parte 01 recusada, e — se for opcional — foi aceita e tem tipo.
         """
         self.ensure_one()
         managed = self.order_line.filtered(
@@ -1201,43 +1252,32 @@ class SaleOrder(models.Model):
             and not (l.is_proposal_optional and not l.optional_accepted)
             and not (l.is_proposal_optional and not l.qualification_type)
         )
-        if not managed:
-            return
-        # Skip linhas já processadas
-        managed = managed.filtered(lambda l: not l.afr_qualificacao_id)
-        if not managed:
-            return
+        return managed.filtered(lambda l: not l.afr_qualificacao_id)
 
-        QualifOs = self.env["afr.qualificacao.os"]
+    def _materialize_qualificacoes(self, lines, os):
+        """Cria afr.qualificacao + sub-records de `lines`, dentro de `os`.
+
+        - 1 afr.qualificacao por (equipamento, qualification_type)
+        - QD/QO com cycle_type: N afr.qualificacao.cycle por linha (qty=N)
+        - Calibração: N afr.qualificacao.malha por linha
+        - QI/QS e QO booleano: sem sub-records
+        - Snapshot dos pontos QD + explosão de collect.items do procedimento
+
+        Não resolve OS — o chamador escolhe o destino. É o que permite
+        1 cotação → N OS.
+        """
+        self.ensure_one()
         Qualif = self.env["afr.qualificacao"]
         Cycle = self.env["afr.qualificacao.cycle"]
         Malha = self.env["afr.qualificacao.malha"]
         Procedimento = self.env["afr.qualificacao.procedimento"]
         CollectItem = self.env["afr.qualificacao.collect.item"]
 
-        # 1 OS por SO (reusa se já existe — re-confirmação parcial)
-        # Fallback: busca por nome derivado caso OS tenha sido desvinculada
-        os = self.qualificacao_os_ids[:1]
-        if not os:
-            so_name = self.name or ""
-            os_name = ("OS" + so_name[1:]) if so_name.startswith("C") else None
-            if os_name:
-                os = QualifOs.search([
-                    ("name", "=", os_name),
-                    ("company_id", "=", self.company_id.id),
-                ], limit=1)
-                if os and os not in self.qualificacao_os_ids:
-                    self.write({"qualificacao_os_ids": [(4, os.id)]})
-            if not os:
-                os = QualifOs.create(self._prepare_qualificacao_os_values())
-
-        # Agrupa linhas por equipamento
         by_equipment = defaultdict(lambda: self.env["sale.order.line"])
-        for line in managed:
+        for line in lines:
             by_equipment[line.equipment_id] |= line
 
         for equipment, equip_lines in by_equipment.items():
-            # Por (equipment, qualification_type): 1 afr.qualificacao
             by_type = defaultdict(lambda: self.env["sale.order.line"])
             for line in equip_lines:
                 by_type[line.qualification_type] |= line
@@ -1263,13 +1303,10 @@ class SaleOrder(models.Model):
                             ]
                         })
 
-                # Sub-records explodidos por qty.
-                # F8.8 — QO cycle-based explode igual ao QD: linhas
-                # operational com cycle_type_id geram afr.qualificacao.cycle.
+                # F8.8 — QO cycle-based explode igual ao QD.
                 if qtype in ("performance", "operational"):
                     for line in type_lines:
                         if not line.cycle_type_id:
-                            # operational sem cycle (do_qo boolean): sem sub-records
                             continue
                         qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
                         for seq in range(1, qty + 1):
@@ -1289,11 +1326,9 @@ class SaleOrder(models.Model):
                                 "sale_order_line_id": line.id,
                                 "sequence": seq * 10,
                             })
-                # QI/QS: sem sub-records. QO boolean: sem sub-records (pulado acima).
 
-                # F3 (16.0.3.2.0): explode procedimento default em collect.items
-                # sudo: vendedor pode confirmar SO sem precisar de grupos qualif
-                # F1 16.0.6.0.0: 1 proc por categoria; filtra itens pela fase (qtype)
+                # F3/F1: explode procedimento default em collect.items.
+                # sudo: quem confirma a SO pode não ter grupos de qualificação.
                 proc = Procedimento.sudo().resolve_for(equipment.category_id)
                 if proc:
                     self._explode_collect_items(CollectItem.sudo(), qualif, proc, qtype)
@@ -1332,12 +1367,25 @@ class SaleOrder(models.Model):
                     vals["name"] = malha.display_name
                     CollectItem.create(vals)
 
-    def _prepare_qualificacao_os_values(self):
+    def _prepare_qualificacao_os_values(self, equipments=None, pending_equipments=None):
         """Hook: valores para criar afr.qualificacao.os a partir do SO.
 
         Nome derivado: substitui 'C' inicial pelo prefixo 'OS'.
         Ex: C26-06-0001 → OS26-06-0001
-        Fallback: se SO não tem formato esperado, nome gerado por sequência no create().
+
+        Com N OS por cotação o nome precisa de sufixo — `unique(name,
+        company_id)` no modelo. A decisão é tomada na criação, sem rename
+        retroativo:
+
+        - 1ª OS cobrindo TODOS os equipamentos pendentes → sem sufixo
+          (a cotação nunca terá uma segunda OS).
+        - Qualquer outro caso → `-1`, `-2`, `-3`… Um primeiro clique parcial
+          já nasce `-1` porque virá pelo menos a `-2`.
+
+        `equipments`/`pending_equipments` a None = caminho legado (sem sufixo).
+
+        Fallback: se a SO não tem formato esperado, o nome é gerado por
+        sequência no create() do modelo.
         """
         self.ensure_one()
         vals = {
@@ -1346,8 +1394,49 @@ class SaleOrder(models.Model):
         }
         so_name = self.name or ""
         if so_name.startswith("C") and len(so_name) > 1:
-            vals["name"] = "OS" + so_name[1:]
+            base = "OS" + so_name[1:]
+            existentes = len(self.qualificacao_os_ids)
+            cobre_tudo = (
+                equipments is not None
+                and pending_equipments is not None
+                and set(equipments.ids) == set(pending_equipments.ids)
+            )
+            if existentes == 0 and (equipments is None or cobre_tudo):
+                vals["name"] = base
+            else:
+                vals["name"] = self._next_free_qualificacao_os_name(
+                    base, existentes + 1
+                )
         return vals
+
+    def _next_free_qualificacao_os_name(self, base, start):
+        """Próximo nome `base-N` livre, a partir de `start`, pulando ocupados.
+
+        `existentes` (nº de OS vinculadas à cotação) não é o mesmo que
+        "sufixos já emitidos": se uma OS sufixada for apagada ou
+        desvinculada da cotação, `existentes` cai e recalcular `-N` direto
+        poderia colidir com `unique(name, company_id)` de
+        `afr.qualificacao.os`. Por isso consulta os nomes já usados com o
+        mesmo prefixo/empresa (sudo — record rule não pode esconder um nome
+        ocupado) e incrementa até achar um livre. Em uso normal (nenhuma OS
+        apagada), devolve `start` mesmo — produz -1, -2, -3 em sequência.
+        """
+        self.ensure_one()
+        ocupados = set(
+            self.env["afr.qualificacao.os"]
+            .sudo()
+            .search([
+                ("name", "=like", base + "%"),
+                ("company_id", "=", self.company_id.id),
+            ])
+            .mapped("name")
+        )
+        n = start
+        candidate = "%s-%d" % (base, n)
+        while candidate in ocupados:
+            n += 1
+            candidate = "%s-%d" % (base, n)
+        return candidate
 
     def _prepare_qualificacao_values(self, equipment, qualification_type, os):
         """Hook: valores para criar afr.qualificacao vinculada à OS qualif.

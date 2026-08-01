@@ -145,7 +145,9 @@ class SaleOrderLine(models.Model):
         default=False,
         copy=True,
         help="Opcional autorizado pelo cliente. Quando aceito, soma ao total, "
-             "vai à fatura e — se for qualificação — gera afr.qualificacao + OS.",
+             "vai à fatura e — se for qualificação — volta ao pool de linhas "
+             "pendentes da cotação (equipamentos_sem_os_ids); a geração da "
+             "afr.qualificacao/OS continua manual, pelo wizard de geração de OS.",
     )
     optional_qty = fields.Float(
         string="Qtd. do Opcional",
