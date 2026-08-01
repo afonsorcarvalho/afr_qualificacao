@@ -367,6 +367,12 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
 
         self.assertEqual(os2.id, os1.id)
         self.assertEqual(so.qualificacao_os_count, 1)
+        qd = so.qualificacao_ids.filtered(
+            lambda q: q.equipment_id == self.equip1
+            and q.qualification_type == "performance"
+        )
+        self.assertTrue(qd)
+        self.assertEqual(qd.os_id, os1)
 
     def test_selecao_mista_existente_e_novo_vao_para_destinos_certos(self):
         """Seleção com um equipamento que já tem OS (via opcional aceito
@@ -411,3 +417,11 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         self.assertEqual(os_nova.equipment_ids, self.equip2)
         self.assertIn(self.equip1, os1.equipment_ids)
         self.assertNotIn(self.equip1, os_nova.equipment_ids)
+        # A linha nova do opcional aceito (equip1) foi de fato para a OS
+        # existente, não para a OS nova de equip2.
+        qd = so.qualificacao_ids.filtered(
+            lambda q: q.equipment_id == self.equip1
+            and q.qualification_type == "performance"
+        )
+        self.assertTrue(qd)
+        self.assertEqual(qd.os_id, os1)
