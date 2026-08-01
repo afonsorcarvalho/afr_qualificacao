@@ -231,6 +231,16 @@ class SaleOrder(models.Model):
         "order_line.equipment_id",
         "order_line.afr_qualificacao_id",
         "order_line.is_qualificacao_managed",
+        "order_line.display_type",
+        "order_line.part01_declined",
+        "order_line.is_proposal_optional",
+        "order_line.optional_accepted",
+        "order_line.qualification_type",
+        # Reatividade live no form: a aba Opcionais edita optional_accepted
+        # via optional_line_ids (datapoint OWL distinto de order_line, ver
+        # _compute_qualif_subtotals_html). Sem este path o compute não
+        # recomputa ao aceitar um opcional após a SO confirmada.
+        "optional_line_ids.optional_accepted",
     )
     def _compute_equipamentos_sem_os(self):
         for order in self:

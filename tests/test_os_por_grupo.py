@@ -142,3 +142,33 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
         self._confirm_and_generate_os(so)
         with self.assertRaises(UserError):
             so.action_open_generate_os_wizard()
+
+    def test_recompute_apos_aceitar_opcional_pos_confirmacao(self):
+        """Aceitar um opcional após a SO confirmada deve recomputar os
+        campos de pendência — regressão do depends incompleto.
+        """
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
+        wiz.equipment_line_ids = [(0, 0, {
+            "equipment_id": self.equip1.id, "do_qi": True,
+        })]
+        self.env["afr.qualificacao.configurator.optional.qualif"].create({
+            "wizard_id": wiz.id, "equipment_id": self.equip2.id,
+            "qualification_type": "performance",
+            "cycle_type_id": self.cycle_cmax.id, "qty": 1,
+            "estimated_hours": 1.0, "accepted": False,
+        })
+        wiz.action_apply()
+
+        self._confirm_and_generate_os(so)
+        self.assertFalse(so.equipamentos_sem_os_ids)
+        self.assertFalse(so.pode_gerar_os)
+
+        opt_line = so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.equipment_id == self.equip2
+        )
+        self.assertTrue(opt_line)
+        opt_line.optional_accepted = True
+
+        self.assertEqual(so.equipamentos_sem_os_ids, self.equip2)
+        self.assertTrue(so.pode_gerar_os)
