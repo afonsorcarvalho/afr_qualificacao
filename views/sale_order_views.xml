@@ -17,6 +17,11 @@
                         string="Ratear Preços-Alvo"
                         type="object"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
+                <button name="action_open_generate_os_wizard"
+                        string="Gerar OS de Qualificação"
+                        type="object"
+                        class="oe_highlight"
+                        attrs="{'invisible': [('pode_gerar_os','=',False)]}"/>
             </xpath>
 
             <xpath expr="//div[@name='button_box']" position="inside">
@@ -51,6 +56,7 @@
             <!-- has_qualif_lines: campo invisível necessário para o attrs do qualif_subtotals_html -->
             <xpath expr="//field[@name='order_line']" position="after">
                 <field name="has_qualif_lines" invisible="1"/>
+                <field name="pode_gerar_os" invisible="1"/>
             </xpath>
 
             <!-- Subtotais por equipamento: lado direito (sale_total group), acima do tax_totals -->

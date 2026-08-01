@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.6.12.0",
+    "version": "16.0.6.13.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -196,6 +196,7 @@
         "wizards/qualificacao_configurator_views.xml",
         "wizards/relatorio_wizard_views.xml",
         "wizards/apply_procedimento_wizard_views.xml",
+        "wizards/qualificacao_os_generate_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
         "views/calibration_instruments_views.xml",

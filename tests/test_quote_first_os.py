@@ -104,18 +104,6 @@ class TestQuoteFirstOs(AfrQualificacaoTestCommon):
         self.assertEqual(qd.cycle_ids.mapped("qualificacao_id.os_id"), so.qualificacao_os_ids)
 
     # ─────────────────────────────────────────────────────────────
-    # Idempotência re-confirm
-    # ─────────────────────────────────────────────────────────────
-    def test_re_confirm_does_not_duplicate_os(self):
-        so = self._confirm_so_with([
-            {"equipment_id": self.equip1.id, "do_qi": True},
-        ])
-        # Re-chama explosão direta — não deve duplicar
-        so._create_qualificacoes_from_lines()
-        self.assertEqual(so.qualificacao_os_count, 1)
-        self.assertEqual(so.qualificacao_count, 1)
-
-    # ─────────────────────────────────────────────────────────────
     # SO sem linhas managed: nenhuma OS
     # ─────────────────────────────────────────────────────────────
     def test_so_without_qualif_lines_creates_no_os(self):

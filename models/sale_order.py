@@ -1252,47 +1252,6 @@ class SaleOrder(models.Model):
         )
         return managed.filtered(lambda l: not l.afr_qualificacao_id)
 
-    def _create_qualificacoes_from_lines(self):
-        """Materializa afr.qualificacao.os + afr.qualificacao + sub-records.
-
-        Cutover 16.0.3.1.0:
-        - 1 afr.qualificacao.os por SO (agregando N equipamentos × N tipos)
-        - 1 afr.qualificacao por (equipamento, qualification_type)
-        - Para QD: N afr.qualificacao.cycle por linha SO (qty=N)
-        - Para Calib: N afr.qualificacao.malha por linha SO
-        - Para QI/QO/QS: sem sub-records (1 linha = 1 qualificação)
-
-        engc.os NÃO é mais criado para SOs de qualificação. SOs antigas
-        (pré-3.1.0) ficam com engc.os existente; cutover sem migração.
-
-        Idempotência: skip se afr_qualificacao_id já populado (evita
-        re-gerar em re-confirm).
-        """
-        self.ensure_one()
-        managed = self._pending_qualif_lines()
-        if not managed:
-            return
-
-        QualifOs = self.env["afr.qualificacao.os"]
-
-        # 1 OS por SO (reusa se já existe — re-confirmação parcial)
-        # Fallback: busca por nome derivado caso OS tenha sido desvinculada
-        os = self.qualificacao_os_ids[:1]
-        if not os:
-            so_name = self.name or ""
-            os_name = ("OS" + so_name[1:]) if so_name.startswith("C") else None
-            if os_name:
-                os = QualifOs.search([
-                    ("name", "=", os_name),
-                    ("company_id", "=", self.company_id.id),
-                ], limit=1)
-                if os and os not in self.qualificacao_os_ids:
-                    self.write({"qualificacao_os_ids": [(4, os.id)]})
-            if not os:
-                os = QualifOs.create(self._prepare_qualificacao_os_values())
-
-        self._materialize_qualificacoes(managed, os)
-
     def _materialize_qualificacoes(self, lines, os):
         """Cria afr.qualificacao + sub-records de `lines`, dentro de `os`.
 
