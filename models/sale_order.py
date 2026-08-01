@@ -96,6 +96,20 @@ class SaleOrder(models.Model):
         compute="_compute_qualificacao_os_count",
         string="Total OS Qualif",
     )
+    equipamentos_sem_os_ids = fields.Many2many(
+        comodel_name="engc.equipment",
+        string="Equipamentos sem OS",
+        compute="_compute_equipamentos_sem_os",
+        help=(
+            "Equipamentos das linhas de qualificação que ainda não foram "
+            "materializados em nenhuma OS desta cotação."
+        ),
+    )
+    pode_gerar_os = fields.Boolean(
+        string="Pode Gerar OS",
+        compute="_compute_equipamentos_sem_os",
+        help="True se a cotação está confirmada e ainda há equipamento sem OS.",
+    )
     # DEPRECATED 16.0.3.1.0 — preservado para SOs antigas (cutover sem migração).
     engc_os_ids = fields.One2many(
         comodel_name="engc.os",
@@ -211,6 +225,18 @@ class SaleOrder(models.Model):
     def _compute_engc_os_count(self):
         for order in self:
             order.engc_os_count = len(order.engc_os_ids)
+
+    @api.depends(
+        "state",
+        "order_line.equipment_id",
+        "order_line.afr_qualificacao_id",
+        "order_line.is_qualificacao_managed",
+    )
+    def _compute_equipamentos_sem_os(self):
+        for order in self:
+            pendentes = order._pending_qualif_lines().mapped("equipment_id")
+            order.equipamentos_sem_os_ids = pendentes
+            order.pode_gerar_os = bool(pendentes) and order.state == "sale"
 
     @api.depends(
         "order_line.is_qualificacao_managed",
@@ -1047,6 +1073,26 @@ class SaleOrder(models.Model):
             "res_model": "afr.qualificacao.os",
             "view_mode": "tree,form",
             "domain": [("id", "in", self.qualificacao_os_ids.ids)],
+        }
+
+    def action_open_generate_os_wizard(self):
+        """Abre o wizard de geração de OS por grupo de equipamentos."""
+        self.ensure_one()
+        if self.state != "sale":
+            raise UserError(_(
+                "Confirme a cotação antes de gerar OS de Qualificação."
+            ))
+        if not self.equipamentos_sem_os_ids:
+            raise UserError(_(
+                "Todos os equipamentos desta cotação já têm OS gerada."
+            ))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Gerar OS de Qualificação"),
+            "res_model": "afr.qualificacao.os.generate.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_sale_order_id": self.id},
         }
 
     def action_view_engc_os(self):

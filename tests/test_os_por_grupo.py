@@ -115,3 +115,30 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
                 "os_id": os_a.id,
             })
         self.assertEqual(len(os_a.qualificacao_ids), 2)
+
+    def test_pendentes_e_pode_gerar_os(self):
+        so = self._so_dois_equipamentos()
+        # Em rascunho: há pendentes, mas não pode gerar
+        self.assertEqual(
+            set(so.equipamentos_sem_os_ids.ids), {self.equip1.id, self.equip2.id}
+        )
+        self.assertFalse(so.pode_gerar_os)
+        so.action_confirm()
+        self.assertTrue(so.pode_gerar_os)
+
+    def test_pendentes_esvaziam_apos_gerar_tudo(self):
+        so = self._so_dois_equipamentos()
+        self._confirm_and_generate_os(so)
+        self.assertFalse(so.equipamentos_sem_os_ids)
+        self.assertFalse(so.pode_gerar_os)
+
+    def test_action_wizard_exige_so_confirmada(self):
+        so = self._so_dois_equipamentos()
+        with self.assertRaises(UserError):
+            so.action_open_generate_os_wizard()
+
+    def test_action_wizard_erra_se_nada_pendente(self):
+        so = self._so_dois_equipamentos()
+        self._confirm_and_generate_os(so)
+        with self.assertRaises(UserError):
+            so.action_open_generate_os_wizard()
