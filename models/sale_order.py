@@ -141,12 +141,12 @@ class SaleOrder(models.Model):
     )
     qualif_subtotals_html = fields.Html(
         compute="_compute_qualif_subtotals_html",
-        string="Subtotais por Equipamento",
+        string="Totais da Proposta",
         sanitize=False,
         help=(
-            "Tabela HTML resumo de subtotais por equipamento, gerada do "
-            "agregado das linhas managed. Exibida no form do SO abaixo "
-            "das linhas (Odoo não suporta coluna por section nativo)."
+            "Painel HTML exibido no form do SO abaixo das linhas: banner do "
+            "TOTAL GERAL DA PROPOSTA e, quando houver, a tabela de opcionais "
+            "aceitos."
         ),
     )
     regular_line_ids = fields.One2many(
@@ -280,10 +280,15 @@ class SaleOrder(models.Model):
         "currency_id",
     )
     def _compute_qualif_subtotals_html(self):
-        """Render tabela HTML com subtotal por equipamento.
+        """Render o painel de totais abaixo das linhas no form do SO.
 
-        Vazio se SO não tem qualif_lines. Usado em painel form do SO
-        (Odoo não permite injetar coluna por section line — colspan=99).
+        Só o TOTAL GERAL (mais a tabela de opcionais aceitos, quando
+        houver). A tabela de subtotais por equipamento foi retirada em
+        16.0.6.13.5: o preço por equipamento passou a ser editável na
+        própria aba Comercial (`equipment_target_ids`), que já mostra a
+        base do rateio — a tabela repetia essa informação.
+
+        Vazio se a SO não tem qualif_lines.
         """
         for order in self:
             if not order.has_qualif_lines:
@@ -293,67 +298,7 @@ class SaleOrder(models.Model):
             if not summary:
                 order.qualif_subtotals_html = False
                 continue
-            rows = []
-            total = 0.0
-            total_hours = 0.0
-            total_days = 0.0
-            for s in summary:
-                equip = s["equipment"]
-                equip_label = equip.display_name or _("Equipamento")
-                if equip.serial_number:
-                    equip_label += " — S/N: %s" % equip.serial_number
-                value = formatLang(
-                    self.env, s["subtotal"],
-                    currency_obj=order.currency_id,
-                )
-                hours = order._qualif_estimated_hours(equip)
-                days = order._qualif_estimated_days(equip)
-                total_hours += hours
-                total_days += days
-                hours_str = formatLang(self.env, hours, digits=1)
-                days_str = formatLang(self.env, days, digits=1)
-                rows.append(
-                    '<tr><td style="padding:4px 12px;">%s</td>'
-                    '<td style="padding:4px 12px;text-align:right;">%s h</td>'
-                    '<td style="padding:4px 12px;text-align:right;">%s d</td>'
-                    '<td style="padding:4px 12px;text-align:right;'
-                    'font-weight:bold;">%s</td></tr>'
-                    % (equip_label, hours_str, days_str, value)
-                )
-                total += s["subtotal"]
-            total_str = formatLang(
-                self.env, total, currency_obj=order.currency_id,
-            )
-            total_hours_str = formatLang(self.env, total_hours, digits=1)
-            total_days_str = formatLang(self.env, total_days, digits=1)
-            rows.append(
-                '<tr style="border-top:2px solid #333;">'
-                '<td style="padding:6px 12px;font-weight:bold;">TOTAL</td>'
-                '<td style="padding:6px 12px;text-align:right;'
-                'font-weight:bold;">%s h</td>'
-                '<td style="padding:6px 12px;text-align:right;'
-                'font-weight:bold;">%s d</td>'
-                '<td style="padding:6px 12px;text-align:right;'
-                'font-weight:bold;font-size:14px;">%s</td></tr>'
-                % (total_hours_str, total_days_str, total_str)
-            )
-            html = (
-                '<div style="margin-top:12px;width:100%%;">'
-                '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
-                'Subtotais por Equipamento'
-                '</div>'
-                '<table style="border-collapse:collapse;width:100%%;'
-                'border:1px solid #ddd;font-size:12px;">'
-                '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
-                '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
-                '<th style="padding:6px 12px;text-align:right;">Horas</th>'
-                '<th style="padding:6px 12px;text-align:right;">Dias úteis</th>'
-                '<th style="padding:6px 12px;text-align:right;">Subtotal (c/ opcionais)</th>'
-                '</tr></thead>'
-                '<tbody>%s</tbody>'
-                '</table></div>'
-            ) % "".join(rows)
-            html += order._qualif_optionals_subtotals_html()
+            html = order._qualif_optionals_subtotals_html()
             # str() força concatenação str+str: `str += Markup` dispara
             # Markup.__radd__ (regra de prioridade de subclasse) e ESCAPARIA
             # todo o html acumulado. O Markup já traz os valores escapados.
@@ -473,7 +418,8 @@ class SaleOrder(models.Model):
             )
         return (
             Markup('<div style="margin-top:16px;padding:10px 14px;'
-                   'background:#1f7a3d;color:#fff;border-radius:6px;'
+                   'background:#f4f4f4;color:#333;border:1px solid #ccc;'
+                   'border-radius:6px;'
                    'display:flex;justify-content:space-between;'
                    'align-items:center;">'
                    '<span style="font-weight:bold;font-size:14px;">'

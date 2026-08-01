@@ -145,10 +145,10 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         html = so.qualif_subtotals_html
         self.assertIn("TOTAL GERAL DA PROPOSTA", html)
         self.assertIn(expected, html)
-        # Regressão: anexar o banner (Markup) NÃO pode escapar as tabelas
-        # de equipamento/opcionais que vêm antes (str+Markup → __radd__).
-        self.assertIn("<table", html)
-        self.assertNotIn("&lt;table", html)
+        # 16.0.6.13.5: sem opcionais aceitos o painel é SÓ o banner — a
+        # tabela de subtotais por equipamento foi retirada.
+        self.assertNotIn("<table", html)
+        self.assertNotIn("&lt;", html)
 
     def test_grand_total_includes_accepted_optional(self):
         so = self._so()
@@ -164,7 +164,12 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         ).mapped("price_subtotal"))
         expected = formatLang(self.env, equip_total + opt_total,
                               currency_obj=so.currency_id)
-        self.assertIn(expected, so.qualif_subtotals_html)
+        html = so.qualif_subtotals_html
+        self.assertIn(expected, html)
+        # Regressão: anexar o banner (Markup) NÃO pode escapar a tabela de
+        # opcionais que vem antes (str+Markup → __radd__).
+        self.assertIn("<table", html)
+        self.assertNotIn("&lt;table", html)
 
     def test_grand_total_reconciles_with_manual_line(self):
         """Regressão (C26-06-0005): linha avulsa (não-managed, sem equipment)
