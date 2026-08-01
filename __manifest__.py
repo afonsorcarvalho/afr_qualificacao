@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.6.13.3",
+    "version": "16.0.6.13.4",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
