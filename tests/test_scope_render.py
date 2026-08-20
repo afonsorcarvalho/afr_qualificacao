@@ -75,3 +75,59 @@ class TestScopePdfRender(TestScopeTable):
         })
         html = self._render_pdf(so)
         self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+
+@tagged("post_install", "-at_install")
+class TestScopePortalRender(TestScopeTable):
+
+    def _render_portal(self, so):
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "equipment_scope",
+            "included": True,
+        })
+        html = self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": so},
+        )
+        return str(html)
+
+    def test_portal_has_stage_column_and_forecast(self):
+        html = self._render_portal(self._full_so())
+        self.assertIn("lq-scope-stage", html)
+        self.assertIn("Previsão de", html)
+        self.assertIn("Subtotal QD", html)
+
+    def test_portal_has_cycle_table(self):
+        html = self._render_portal(self._full_so())
+        self.assertIn("Execução dos ciclos com carga", html)
+        self.assertIn(self.cycle_cmax.name, html)
+
+    def test_portal_has_unit_price_and_grand_total(self):
+        html = self._render_portal(self._full_so())
+        self.assertIn("Valor Unitário", html)
+        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+
+    def test_portal_lists_additionals(self):
+        so = self._full_so()
+        self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": self.product_qi.id,
+            "name": "Pasta impressa e envio correio",
+            "product_uom_qty": 1.0,
+            "price_unit": 400.0,
+        })
+        html = self._render_portal(so)
+        self.assertIn("Pasta impressa e envio correio", html)
+        self.assertIn("Total dos Serviços de Qualificação", html)
+
+    def test_portal_totals_not_duplicated_when_financial_block_present(self):
+        """Cotação antiga com `financial` materializado não imprime 2 totais no portal."""
+        so = self._full_so()
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "financial",
+            "included": True,
+        })
+        html = self._render_portal(so)
+        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)

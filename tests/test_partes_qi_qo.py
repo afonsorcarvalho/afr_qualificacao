@@ -423,9 +423,14 @@ class TestPortalPartes(AfrQualificacaoTestCommon):
         so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
         html = self._render_portal(so)
         self.assertIn("Qualificação de Instalação", html)
-        self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
-        # F8.16 — estrutura hierárquica nova (espelha o PDF qq-scope-type-row).
-        self.assertIn("lq-scope-type-row", html)
+        # F8.17 — tabela única (espelha o PDF qq-scope-stage). O selo inline
+        # "NÃO SOLICITADO EXECUÇÃO" saiu da tabela por equipamento:
+        # _qualif_scope_tables() (Tasks 3/4) filtra as linhas declinadas antes
+        # de montar os grupos — elas só sobrevivem no box de auditoria abaixo
+        # (mesmo ajuste já feito em TestPdfReportPartes.
+        # test_pdf_report_groups_partes_seal_and_box).
+        self.assertIn("lq-scope-stage", html)
+        self.assertIn("Itens Não Solicitados", html)
 
     def test_portal_declined_box(self):
         so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
