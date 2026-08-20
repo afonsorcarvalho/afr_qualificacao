@@ -468,9 +468,11 @@ class TestPdfReportPartes(AfrQualificacaoTestCommon):
         # Sanidade: caminho LEGO (bloco) ativo, não o fallback fixo.
         self.assertIn("Escopo por Equipamento", html)
         # Tabela condensada: seção por qualificação + linha de cabeçalho de tipo.
-        self.assertIn("qq-scope-type-row", html)
+        self.assertIn("qq-scope-stage", html)
         self.assertIn("Qualificação de Instalação", html)
-        # Selo do item declinado.
-        self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
+        # O selo inline "NÃO SOLICITADO EXECUÇÃO" saiu da tabela por
+        # equipamento: _qualif_scope_tables() (Tasks 3/4) filtra as linhas
+        # declinadas antes de montar os grupos — elas só sobrevivem no box
+        # de auditoria abaixo (sale_order.py:892-898).
         # Box de auditoria.
         self.assertIn("Itens Não Solicitados", html)

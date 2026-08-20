@@ -102,3 +102,4 @@ from . import test_os_por_grupo
 
 # Escopo por equipamento como tabela única — camada de agregação
 from . import test_scope_table
+from . import test_scope_render

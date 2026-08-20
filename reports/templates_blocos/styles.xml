@@ -230,6 +230,39 @@
                     .qq-scope-declined td { color:#999; }
                     .qq-scope-declined .qq-scope-description,
                     .qq-scope-declined .qq-scope-item-name { color: #999; }
+                    .qq-scope-group-row td { vertical-align: top; page-break-inside: avoid; }
+                    .qq-scope-stage {
+                        width: 32%;
+                        font-weight: bold;
+                        text-align: center;
+                        vertical-align: middle;
+                        background: var(--lq-gray-lighter, #f7f7f7);
+                    }
+                    .qq-scope-subtitle { font-weight: bold; margin-bottom: 4px; }
+                    .qq-scope-list { margin: 0; padding-left: 18px; }
+                    .qq-cycle-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 4px;
+                        page-break-inside: avoid;
+                    }
+                    .qq-cycle-table th, .qq-cycle-table td {
+                        border: 1px solid var(--lq-gray-light);
+                        padding: 3px 6px;
+                        text-align: center;
+                        font-size: 11px;
+                    }
+                    .qq-scope-subtotal-row td {
+                        font-weight: bold;
+                        background: var(--lq-gray-lighter, #f2f2f2);
+                        text-align: center;
+                    }
+                    .qq-scope-footer-row td {
+                        font-weight: bold;
+                        background: var(--lq-brand-light, #e8eef5);
+                        text-align: center;
+                        font-size: 13px;
+                    }
                     .qq-strike { text-decoration: line-through; color: #888; }
                     .qq-declined { color: #c0392b; font-weight: bold; text-transform: uppercase; font-size: 0.8em; }
                     .qq-ref-price { color: #888; font-size: 0.85em; }

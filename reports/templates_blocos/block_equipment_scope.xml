@@ -7,98 +7,87 @@
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
                                     <span t-esc="block.title or 'Escopo por Equipamento'"/>
                                 </div>
-                                <t t-foreach="summary" t-as="eq">
-                                    <t t-set="equip_letter" t-value="chr(ord('a') + eq_index)"/>
+                                <t t-set="scope_tables" t-value="doc._qualif_scope_tables()"/>
+                                <t t-foreach="scope_tables" t-as="st">
+                                    <t t-set="equip_letter" t-value="chr(ord('a') + st_index)"/>
                                     <div class="qq-equip-card">
-                                        <!-- F8.16 — Hierarchical table layout: Type → Parte → Items -->
                                         <table class="qq-scope-table">
                                             <thead>
                                                 <tr class="qq-scope-equip-header">
                                                     <td colspan="2">
                                                         <span class="qq-scope-equip-num"><t t-esc="equip_letter"/>.</span>
-                                                        <span t-esc="eq['equipment'].name"/>
+                                                        <span t-esc="st['equipment'].name"/>
                                                         <span class="qq-equip-meta">
-                                                            <t t-if="eq['equipment'].serial_number">
-                                                                · S/N: <span t-esc="eq['equipment'].serial_number"/>
-                                                            </t>
-                                                            <t t-if="eq['equipment'].category_id">
-                                                                · Categoria: <span t-esc="eq['equipment'].category_id.name"/>
+                                                            <t t-if="st['equipment'].serial_number">
+                                                                · S/N: <span t-esc="st['equipment'].serial_number"/>
                                                             </t>
                                                         </span>
                                                     </td>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                <t t-set="main_type_counter" t-value="0"/>
-                                                <t t-set="last_main_num" t-value="0"/>
-                                                <t t-foreach="eq['types']" t-as="tp">
-                                                    <t t-if="tp['code'] != 'calibration'">
-                                                        <t t-set="main_type_counter" t-value="main_type_counter + 1"/>
-                                                        <t t-set="last_main_num" t-value="main_type_counter"/>
-                                                        <t t-set="type_num" t-value="equip_letter + '.' + str(main_type_counter)"/>
+                                                <t t-foreach="st['groups']" t-as="grp">
+                                                    <t t-foreach="grp['rows']" t-as="row">
+                                                        <tr class="qq-scope-group-row">
+                                                            <td class="qq-scope-stage" t-esc="row['label']"/>
+                                                            <td class="qq-scope-description">
+                                                                <t t-if="row['kind'] == 'ref'">
+                                                                    <span t-esc="row['ref']"/>
+                                                                </t>
+                                                                <t t-elif="row['kind'] == 'cycles'">
+                                                                    <div class="qq-scope-subtitle" t-esc="row['title']"/>
+                                                                    <table class="qq-cycle-table">
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th style="width: 22%;">Quantidade</th>
+                                                                                <th>Ciclo</th>
+                                                                                <th style="width: 22%;">Temperatura</th>
+                                                                                <th style="width: 22%;"><t t-esc="row['time_label']"/></th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            <t t-foreach="row['cycles']" t-as="cyc">
+                                                                                <tr>
+                                                                                    <td t-esc="'%02d' % cyc['qty']"/>
+                                                                                    <td t-esc="cyc['name']"/>
+                                                                                    <td t-esc="cyc['temperature']"/>
+                                                                                    <td t-esc="cyc['duration']"/>
+                                                                                </tr>
+                                                                            </t>
+                                                                        </tbody>
+                                                                    </table>
+                                                                </t>
+                                                                <t t-else="">
+                                                                    <div class="qq-scope-subtitle" t-if="row['title']" t-esc="row['title']"/>
+                                                                    <ul class="qq-scope-list">
+                                                                        <li t-foreach="row['items']" t-as="it" t-esc="it"/>
+                                                                    </ul>
+                                                                </t>
+                                                            </td>
+                                                        </tr>
                                                     </t>
-                                                    <t t-else="">
-                                                        <t t-set="type_num" t-value="equip_letter + '.' + str(last_main_num) + '.1'"/>
-                                                    </t>
-                                                    <tr t-if="tp['code'] != 'calibration'" t-att-class="'qq-scope-type-row'">
-                                                        <td colspan="2">
-                                                            <span class="qq-scope-type-num"><t t-esc="type_num"/></span>
-                                                            <span t-esc="tp['label']"/>
+                                                    <tr class="qq-scope-subtotal-row">
+                                                        <td t-esc="'Previsão de %.1f dia(s) de serviço' % grp['days']"/>
+                                                        <td>
+                                                            <t t-esc="grp['subtotal_label']"/>:
+                                                            <span t-esc="grp['subtotal']"
+                                                                  t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
                                                         </td>
                                                     </tr>
-                                                    <t t-foreach="['01', '02', '']" t-as="pcode">
-                                                        <t t-set="part_items" t-value="[i for i in tp['items'] if (i.get('part') or '') == pcode]"/>
-                                                        <t t-if="part_items">
-                                                            <t t-set="part_label" t-value="'Parte ' + pcode if pcode else ''"/>
-                                                            <t t-set="first_item" t-value="part_items[0]"/>
-                                                            <t t-set="rowspan" t-value="len(part_items)"/>
-                                                            <tr t-att-class="'qq-scope-declined' if first_item.get('declined') else ''">
-                                                                <td t-att-rowspan="rowspan" class="qq-scope-parte" t-esc="part_label"/>
-                                                                <td class="qq-scope-description">
-                                                                    <t t-if="first_item.get('declined')">
-                                                                        <span class="qq-strike" t-esc="first_item['name']"/>
-                                                                        <span class="qq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
-                                                                        <span class="qq-ref-price"> (ref.: <t t-esc="first_item['ref_price']" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>)</span>
-                                                                    </t>
-                                                                    <t t-elif="first_item.get('subtype') == 'cycle_type'">
-                                                                        <span t-esc="first_item['name']"/>
-                                                                        <t t-if="first_item.get('temperature')"> — <t t-esc="first_item['temperature']"/></t>
-                                                                        <t t-if="first_item.get('duration')"> — <t t-esc="first_item['duration']"/><t t-if="first_item.get('process_word')"> <t t-esc="first_item['process_word']"/></t></t>
-                                                                    </t>
-                                                                    <t t-else="">
-                                                                        <span t-esc="first_item['name']"/>
-                                                                    </t>
-                                                                </td>
-                                                            </tr>
-                                                            <t t-foreach="part_items[1:]" t-as="it">
-                                                                <tr t-att-class="'qq-scope-declined' if it.get('declined') else ''">
-                                                                    <td class="qq-scope-description">
-                                                                        <t t-if="it.get('declined')">
-                                                                            <span class="qq-strike" t-esc="it['name']"/>
-                                                                            <span class="qq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
-                                                                            <span class="qq-ref-price"> (ref.: <t t-esc="it['ref_price']" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>)</span>
-                                                                        </t>
-                                                                        <t t-elif="it.get('subtype') == 'cycle_type'">
-                                                                            <span t-esc="it['name']"/>
-                                                                            <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
-                                                                            <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/><t t-if="it.get('process_word')"> <t t-esc="it['process_word']"/></t></t>
-                                                                        </t>
-                                                                        <t t-else="">
-                                                                            <span t-esc="it['name']"/>
-                                                                        </t>
-                                                                    </td>
-                                                                </tr>
-                                                            </t>
-                                                        </t>
-                                                    </t>
                                                 </t>
+                                                <tr class="qq-scope-footer-row">
+                                                    <td t-esc="'Previsão de %.1f dia(s) de serviço' % st['footer']['days']"/>
+                                                    <td>
+                                                        Valor Unitário:
+                                                        <span t-esc="st['footer']['unit_price']"
+                                                              t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
+                                                    </td>
+                                                </tr>
                                             </tbody>
                                         </table>
-                                        <!-- F8.10 — subtotal por equipamento removido do escopo
-                                             (preço aparece no bloco Resumo Financeiro). -->
-
                                     </div>
                                 </t>
+                                <t t-call="afr_qualificacao.qq_totals_table"/>
                                 <!-- Box de auditoria: itens não solicitados para execução. -->
                                 <t t-set="declined_items" t-value="doc._qualif_declined_items()"/>
                                 <t t-set="declined_section" t-value="doc.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>

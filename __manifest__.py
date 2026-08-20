@@ -209,6 +209,7 @@
         # Blocos extraídos do quotation_template (t-call) — carregar antes
         "reports/templates_blocos/styles.xml",
         "reports/templates_blocos/block_static.xml",
+        "reports/templates_blocos/block_totals.xml",
         "reports/templates_blocos/block_equipment_scope.xml",
         "reports/templates_blocos/block_cycle_specs.xml",
         "reports/templates_blocos/block_schedule.xml",
