@@ -269,11 +269,29 @@ class TestScopeTable(AfrQualificacaoTestCommon):
         self.assertAlmostEqual(table["footer"]["days"], 2.0, places=2)
 
     def test_unit_price_uses_target_when_state_ok(self):
+        """Alvo sub-centavo acima da soma: estado segue 'ok' e o impresso é o ALVO.
+
+        A moeda padrão do ambiente de teste arredonda Monetary a 2 casas —
+        um desvio de 0,004 escrito em `equipment_target_price` seria
+        colapsado de volta para o valor do subtotal (mesmo float), tornando
+        alvo e fallback indistinguíveis por construção (visto empiricamente:
+        `write({"equipment_target_price": subtotal + 0.004})` guarda
+        exatamente `subtotal`). Para tornar os dois caminhos numericamente
+        diferentes preservando o estado 'ok' — que compara a 2 casas via
+        `float_compare(..., precision_digits=2)`, hardcoded na produção —
+        a moeda do teste é elevada para 4 casas só aqui, liberando o
+        sub-centavo para sobreviver ao write sem afetar o estado.
+        """
         so = self._full_so()
-        self.section.equipment_target_price = self.section.equipment_subtotal
+        self.company.currency_id.rounding = 0.0001
+        subtotal = self.section.equipment_subtotal
+        self.section.equipment_target_price = subtotal + 0.004
+        self.assertEqual(self.section.equipment_target_state, "ok")
         table = so._qualif_scope_table(self.equip1)
         self.assertAlmostEqual(table["footer"]["unit_price"],
-                               self.section.equipment_target_price, places=2)
+                               self.section.equipment_target_price, places=4)
+        self.assertNotAlmostEqual(table["footer"]["unit_price"], subtotal,
+                                  places=4)
 
     def test_unit_price_falls_back_when_target_drifts(self):
         so = self._full_so()
@@ -282,6 +300,27 @@ class TestScopeTable(AfrQualificacaoTestCommon):
         table = so._qualif_scope_table(self.equip1)
         self.assertAlmostEqual(table["footer"]["unit_price"],
                                self.section.equipment_subtotal, places=2)
+
+    def test_group_subtotals_reconcile_with_leftovers_present(self):
+        """Com tipo fora da matriz, a soma dos grupos ainda fecha com o rateio."""
+        so = self._full_so()
+        self._line(so, self.equip1, "software", False, 800.0, hours=2.0,
+                   name="Validação de software")
+        table = so._qualif_scope_table(self.equip1)
+        soma = sum(g["subtotal"] for g in table["groups"])
+        self.assertAlmostEqual(soma, self.section.equipment_subtotal, places=2)
+
+    def test_no_line_is_counted_in_two_groups(self):
+        """Partição exaustiva e sem sobreposição: cada linha aparece 1x."""
+        so = self._full_so()
+        self._line(so, self.equip1, "software", False, 800.0, hours=2.0,
+                   name="Validação de software")
+        table = so._qualif_scope_table(self.equip1)
+        total_rows = sum(
+            len(r.get("items") or r.get("cycles") or [1])
+            for g in table["groups"] for r in g["rows"]
+        )
+        self.assertEqual(total_rows, len(so._qualif_scope_lines(self.equip1)))
 
     def test_unknown_type_becomes_its_own_group(self):
         so = self._full_so()
@@ -299,10 +338,18 @@ class TestScopeTable(AfrQualificacaoTestCommon):
         opt = self._line(so, self.equip1, "performance", False, 999.0,
                          cycle=self.cycle_cmin, name="Ciclo opcional")
         opt.write({"is_proposal_optional": True, "optional_accepted": True})
+        declined = self._line(so, self.equip1, "installation", "01", 1500.0,
+                              hours=4.0, name="Verificação QI declinada")
+        declined.write({"part01_declined": True, "product_uom_qty": 0.0})
         table = so._qualif_scope_table(self.equip1)
         nomes = [c["name"] for r in table["groups"][2]["rows"]
                  if r["kind"] == "cycles" for c in r["cycles"]]
         self.assertNotIn(self.cycle_cmin.name, nomes)
+        # qi1 é kind "ref" (não lista items) — a checagem real é que a linha
+        # declinada não entra no conjunto que alimenta o grupo/subtotal.
+        self.assertEqual(
+            len(so._qualif_scope_lines(self.equip1, "installation", "01")), 1)
+        self.assertAlmostEqual(table["groups"][0]["subtotal"], 1500.0, places=2)
 
     def test_scope_tables_lists_every_equipment_with_scope(self):
         so = self._full_so()
