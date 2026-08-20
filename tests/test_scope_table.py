@@ -142,3 +142,173 @@ class TestScopeRef(AfrQualificacaoTestCommon):
         sem_bloco = so._qualif_scope_ref("installation")
         self.assertEqual(sem_numero, sem_bloco)
         self.assertIn(self.sec_qi.name, sem_bloco)
+
+
+@tagged("post_install", "-at_install")
+class TestScopeTable(AfrQualificacaoTestCommon):
+
+    def _so(self):
+        return self.env["sale.order"].create({"partner_id": self.partner.id})
+
+    def _section(self, so, equip, target=0.0):
+        return self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "display_type": "line_section",
+            "name": equip.display_name,
+            "is_qualificacao_managed": True,
+            "equipment_id": equip.id,
+            "work_hours_per_day": 8.0,
+            "equipment_target_price": target,
+        })
+
+    def _line(self, so, equip, qtype, part, price, hours=1.0, qty=1,
+              cycle=None, malha=None, name="Item"):
+        vals = {
+            "order_id": so.id,
+            "product_id": self.product_qi.id,
+            "name": name,
+            "is_qualificacao_managed": True,
+            "qualification_type": qtype,
+            "part": part,
+            "equipment_id": equip.id,
+            "qualif_cycle_qty": qty,
+            "estimated_hours": hours,
+            "product_uom_qty": qty * hours,
+            "price_unit": price / (qty * hours) if qty * hours else price,
+        }
+        if cycle:
+            vals.update({
+                "cycle_type_id": cycle.id,
+                "product_id": cycle.product_id.id,
+                "temperature": "134°C",
+                "duration": "7 minutos",
+            })
+        if malha:
+            vals.update({
+                "malha_type_id": malha.id,
+                "product_id": malha.product_id.id,
+            })
+        return self.env["sale.order.line"].create(vals)
+
+    def _full_so(self):
+        """SO no formato da proposta alvo: QI-1, QO-1, calib, QO-2, QD."""
+        so = self._so()
+        self.section = self._section(so, self.equip1)
+        self._line(so, self.equip1, "installation", "01", 1500.0, hours=4.0,
+                   name="Verificações QI")
+        self._line(so, self.equip1, "operational", "01", 1700.0, hours=4.0,
+                   name="Verificações QO")
+        self._line(so, self.equip1, "calibration", "02", 400.0, hours=1.0,
+                   malha=self.malha_temp, name="Calibração de Malha de Temperatura")
+        self._line(so, self.equip1, "operational", "02", 500.0, hours=1.0, qty=3,
+                   cycle=self.cycle_qo_test, name="Bowie Dick")
+        self._line(so, self.equip1, "performance", False, 948.0, hours=1.0, qty=3,
+                   cycle=self.cycle_cmax, name="Carga Mista")
+        return so
+
+    def test_three_groups_in_order(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        self.assertEqual([g["key"] for g in table["groups"]],
+                         ["qi1", "qo1", "parte2"])
+
+    def test_group_subtotal_labels(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        self.assertEqual(
+            [g["subtotal_label"] for g in table["groups"]],
+            ["Subtotal QI", "Subtotal QO", "Subtotal QD"],
+        )
+
+    def test_parte2_rows_order_and_kinds(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        parte2 = table["groups"][2]
+        self.assertEqual([r["kind"] for r in parte2["rows"]],
+                         ["list", "cycles", "cycles"])
+        self.assertEqual(parte2["rows"][0]["title"],
+                         "Calibração dos equipamentos de controle:")
+        self.assertEqual(parte2["rows"][1]["title"],
+                         "Execução dos ciclos sem carga")
+        self.assertEqual(parte2["rows"][2]["title"],
+                         "Execução dos ciclos com carga")
+
+    def test_qi1_and_qo1_are_refs(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        self.assertEqual(table["groups"][0]["rows"][0]["kind"], "ref")
+        self.assertTrue(table["groups"][0]["rows"][0]["ref"])
+        self.assertEqual(table["groups"][1]["rows"][0]["kind"], "ref")
+
+    def test_cycle_row_fields(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        cycles = table["groups"][2]["rows"][2]["cycles"]
+        self.assertEqual(len(cycles), 1)
+        self.assertEqual(cycles[0]["qty"], 3)
+        self.assertEqual(cycles[0]["name"], self.cycle_cmax.name)
+        self.assertEqual(cycles[0]["temperature"], "134°C")
+        self.assertEqual(cycles[0]["duration"], "7 minutos")
+        self.assertTrue(table["groups"][2]["rows"][2]["time_label"])
+
+    def test_group_subtotals_sum_to_equipment_subtotal(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        soma = sum(g["subtotal"] for g in table["groups"])
+        self.assertAlmostEqual(soma, self.section.equipment_subtotal, places=2)
+
+    def test_footer_days_is_sum_of_rounded_group_days(self):
+        so = self._full_so()
+        table = so._qualif_scope_table(self.equip1)
+        self.assertAlmostEqual(
+            table["footer"]["days"],
+            sum(g["days"] for g in table["groups"]),
+            places=2,
+        )
+        # QI 4h → 0,5 | QO 4h → 0,5 | parte2 (1+3+3=7h) → 1,0
+        self.assertAlmostEqual(table["footer"]["days"], 2.0, places=2)
+
+    def test_unit_price_uses_target_when_state_ok(self):
+        so = self._full_so()
+        self.section.equipment_target_price = self.section.equipment_subtotal
+        table = so._qualif_scope_table(self.equip1)
+        self.assertAlmostEqual(table["footer"]["unit_price"],
+                               self.section.equipment_target_price, places=2)
+
+    def test_unit_price_falls_back_when_target_drifts(self):
+        so = self._full_so()
+        self.section.equipment_target_price = 1.0  # desviado de propósito
+        self.assertEqual(self.section.equipment_target_state, "drift")
+        table = so._qualif_scope_table(self.equip1)
+        self.assertAlmostEqual(table["footer"]["unit_price"],
+                               self.section.equipment_subtotal, places=2)
+
+    def test_unknown_type_becomes_its_own_group(self):
+        so = self._full_so()
+        self._line(so, self.equip1, "software", False, 800.0, hours=2.0,
+                   name="Validação de software")
+        table = so._qualif_scope_table(self.equip1)
+        keys = [g["key"] for g in table["groups"]]
+        self.assertIn("extra-software", keys)
+        extra = table["groups"][keys.index("extra-software")]
+        self.assertEqual(extra["rows"][0]["kind"], "list")
+        self.assertIn("Validação de software", extra["rows"][0]["items"])
+
+    def test_optional_and_declined_never_reach_the_table(self):
+        so = self._full_so()
+        opt = self._line(so, self.equip1, "performance", False, 999.0,
+                         cycle=self.cycle_cmin, name="Ciclo opcional")
+        opt.write({"is_proposal_optional": True, "optional_accepted": True})
+        table = so._qualif_scope_table(self.equip1)
+        nomes = [c["name"] for r in table["groups"][2]["rows"]
+                 if r["kind"] == "cycles" for c in r["cycles"]]
+        self.assertNotIn(self.cycle_cmin.name, nomes)
+
+    def test_scope_tables_lists_every_equipment_with_scope(self):
+        so = self._full_so()
+        self._section(so, self.equip2)
+        self._line(so, self.equip2, "performance", False, 300.0,
+                   cycle=self.cycle_cmax, name="Ciclo eq2")
+        tables = so._qualif_scope_tables()
+        self.assertEqual([t["equipment"] for t in tables],
+                         [self.equip1, self.equip2])

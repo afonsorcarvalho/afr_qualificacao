@@ -47,6 +47,61 @@ SCOPE_REF_SECTION_CODES = {
     "calibration": "SEC-CALIB",
 }
 
+# Agrupamento das linhas "Previsão de dias / Subtotal" no escopo impresso.
+# Fiel à proposta antiga do cliente: QI parte 01 e QO parte 01 fecham
+# sozinhos; parte 02 (calibrações + ciclos sem carga) e QD fecham juntos
+# sob o rótulo "Subtotal QD". `part=None` = qualquer parte.
+SCOPE_GROUPS = (
+    {
+        "key": "qi1",
+        "subtotal_label": "Subtotal QI",
+        "members": (("installation", "01"),),
+    },
+    {
+        "key": "qo1",
+        "subtotal_label": "Subtotal QO",
+        "members": (("operational", "01"),),
+    },
+    {
+        "key": "parte2",
+        "subtotal_label": "Subtotal QD",
+        "members": (
+            ("installation", "02"),
+            ("calibration", None),
+            ("operational", "02"),
+            ("performance", None),
+        ),
+    },
+)
+
+# Como cada (tipo, parte) se apresenta na coluna direita da tabela.
+SCOPE_ROW_SPECS = {
+    ("installation", "01"): {
+        "label": "Qualificação da Instalação — QI (primeira parte)",
+        "kind": "ref", "title": "",
+    },
+    ("operational", "01"): {
+        "label": "Qualificação de Operação — QO (primeira parte)",
+        "kind": "ref", "title": "",
+    },
+    ("installation", "02"): {
+        "label": "Qualificação da Instalação — QI (segunda parte)",
+        "kind": "list", "title": "Itens a serem avaliados:",
+    },
+    ("calibration", None): {
+        "label": "Qualificação da Instalação — QI (segunda parte)",
+        "kind": "list", "title": "Calibração dos equipamentos de controle:",
+    },
+    ("operational", "02"): {
+        "label": "Qualificação de Operação — QO (segunda parte)",
+        "kind": "cycles", "title": "Execução dos ciclos sem carga",
+    },
+    ("performance", None): {
+        "label": "Qualificação de Desempenho — QD",
+        "kind": "cycles", "title": "Execução dos ciclos com carga",
+    },
+}
+
 # Descrições padrão por tipo — usadas no Descritivo Técnico do relatório
 # de cotação. Texto voltado ao cliente leigo (sem jargão excessivo).
 # Sobrescrita possível via campo `description` do `cycle_type`/`malha_type`
@@ -750,6 +805,132 @@ class SaleOrder(models.Model):
         if not num:
             return _("Conforme descrito no tópico %s") % name
         return _("Conforme item %s — %s") % (num, name)
+
+    def _qualif_scope_row(self, equipment, qtype, row_spec, lines):
+        """Monta uma linha da coluna direita da tabela de escopo."""
+        self.ensure_one()
+        row = {
+            "kind": row_spec["kind"],
+            "label": row_spec["label"],
+            "title": row_spec["title"],
+        }
+        if row_spec["kind"] == "ref":
+            row["ref"] = self._qualif_scope_ref(qtype)
+        elif row_spec["kind"] == "cycles":
+            row["time_label"] = (
+                equipment.category_id._qualif_time_label()
+                if equipment.category_id else _("Tempo de Esterilização")
+            )
+            row["cycles"] = [{
+                "qty": line.qualif_cycle_qty or int(line.product_uom_qty or 0),
+                "name": line.cycle_type_id.name or line.name or "",
+                "temperature": (
+                    line.temperature
+                    or line.cycle_type_id.temperature or ""
+                ),
+                "duration": (
+                    line.duration or line.cycle_type_id.duration or ""
+                ),
+            } for line in lines]
+        else:
+            row["items"] = [
+                line.name or line.product_id.display_name or ""
+                for line in lines
+            ]
+        return row
+
+    def _qualif_scope_table(self, equipment):
+        """Tabela de escopo completa de um equipamento.
+
+        Fonte ÚNICA dos três renders (PDF, portal, HTML do bloco). Nenhum
+        deles refaz agregação nem aritmética. Ver spec
+        docs/superpowers/specs/2026-08-20-escopo-tabela-ciclos-design.md.
+        """
+        self.ensure_one()
+        all_lines = self._qualif_scope_lines(equipment)
+        used = self.env["sale.order.line"]
+        groups = []
+        for spec in SCOPE_GROUPS:
+            rows = []
+            group_lines = self.env["sale.order.line"]
+            for qtype, part in spec["members"]:
+                lines = self._qualif_scope_lines(equipment, qtype, part)
+                if not lines:
+                    continue
+                group_lines |= lines
+                rows.append(self._qualif_scope_row(
+                    equipment, qtype, SCOPE_ROW_SPECS[(qtype, part)], lines,
+                ))
+            if not group_lines:
+                continue
+            used |= group_lines
+            groups.append({
+                "key": spec["key"],
+                "rows": rows,
+                "days": self._qualif_days_from_hours(
+                    self._qualif_group_hours(group_lines), equipment),
+                "subtotal": sum(group_lines.mapped("price_subtotal")),
+                "subtotal_label": spec["subtotal_label"],
+            })
+
+        # Sobras: tipo/parte fora da matriz (ex.: QS). Cada tipo vira um
+        # grupo próprio — nada some silenciosamente do escopo impresso.
+        leftovers = all_lines - used
+        for qtype in OrderedDict.fromkeys(
+                leftovers.mapped("qualification_type")):
+            lines = leftovers.filtered(
+                lambda l: l.qualification_type == qtype)
+            label = QUALIF_TYPE_LABELS.get(qtype) or _("Outros serviços")
+            groups.append({
+                "key": "extra-%s" % (qtype or "other"),
+                "rows": [{
+                    "kind": "list", "label": label, "title": "",
+                    "items": [
+                        line.name or line.product_id.display_name or ""
+                        for line in lines
+                    ],
+                }],
+                "days": self._qualif_days_from_hours(
+                    self._qualif_group_hours(lines), equipment),
+                "subtotal": sum(lines.mapped("price_subtotal")),
+                "subtotal_label": _("Subtotal %s") % label,
+            })
+
+        # Valor Unitário: o preço-alvo quando ele bate com a soma real;
+        # senão a soma real, para o impresso sempre fechar com o
+        # amount_untaxed do SO. Drift continua sinalizado no form.
+        section = self.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.equipment_id == equipment
+        )[:1]
+        if section and section.equipment_target_state == "ok":
+            unit_price = section.equipment_target_price
+        else:
+            unit_price = sum(all_lines.mapped("price_subtotal"))
+
+        return {
+            "equipment": equipment,
+            "groups": groups,
+            "footer": {
+                "days": sum(g["days"] for g in groups),
+                "unit_price": unit_price,
+            },
+        }
+
+    def _qualif_scope_tables(self):
+        """Tabelas de escopo de todos os equipamentos, na ordem do resumo.
+
+        Equipamento cujas linhas foram todas declinadas/optadas fora não
+        gera tabela (grupos vazios) e é omitido — os itens declinados
+        continuam aparecendo no box de auditoria.
+        """
+        self.ensure_one()
+        out = []
+        for summary in self._qualif_equipment_summary():
+            table = self._qualif_scope_table(summary["equipment"])
+            if table["groups"]:
+                out.append(table)
+        return out
 
     def _qualif_estimated_days(self, equipment=None):
         """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
