@@ -72,9 +72,10 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
         block.action_edit_block()
         self.assertEqual(block.block_kind, "static")
         self.assertTrue(block.body)
-        # F8.10 — subtotal por equip removido do escopo; snapshot tem
-        # cabeçalho de equipamento e lista de tipos.
-        self.assertIn("<h4>", str(block.body))
+        # Task 7 — snapshot passou a espelhar a tabela de escopo (uma
+        # <table> por equipamento, mesma estrutura do PDF/portal) em vez
+        # do antigo <h4> + <ul> por tipo.
+        self.assertIn("<table", str(block.body))
         # título vem do template (pode ter sido editado pelo cliente);
         # snapshot apenas garante que existe um título não-vazio.
         self.assertTrue(block.title)

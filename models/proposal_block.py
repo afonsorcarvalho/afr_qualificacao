@@ -237,61 +237,81 @@ class AfrProposalBlock(models.Model):
         return formatLang(self.env, value, currency_obj=order.currency_id)
 
     def _html_equipment_scope(self, order):
-        # F8.10 — sem subtotal por equipamento; calib formatado como
-        # "0N Calibração de <malha>" (item.name já traz o prefixo
-        # "Calibração de " via _qualif_equipment_summary).
+        """Snapshot HTML da tabela de escopo (DOCX + bloco editável).
+
+        Espelha o QWeb `qq_block_equipment_scope`: uma tabela por
+        equipamento, com etapa à esquerda e conteúdo à direita, linhas de
+        previsão/subtotal por grupo e rodapé com Valor Unitário.
+        """
         parts = []
-        for eq in order._qualif_equipment_summary():
-            equip = eq["equipment"]
-            head = escape(equip.name or "")
+        for index, table in enumerate(order._qualif_scope_tables()):
+            equip = table["equipment"]
+            letter = chr(ord("a") + index)
+            head = escape("%s. %s" % (letter, equip.name or ""))
             if equip.serial_number:
                 head += Markup(" — S/N: ") + escape(equip.serial_number)
-            parts.append(Markup("<h4>%s</h4>") % head)
-            for tipo in eq["types"]:
-                parts.append(
-                    Markup("<p><strong>%s</strong></p>") % escape(tipo["label"])
-                )
-                is_calib = tipo["code"] == "calibration"
-                # Subagrupa por Parte (01 → 02 → sem tag), estável.
-                for part in ("01", "02", ""):
-                    group = [
-                        it for it in tipo["items"]
-                        if (it.get("part") or "") == part
-                    ]
-                    if not group:
-                        continue
-                    header = self._part_header(part, tipo["code"])
-                    if header:
-                        parts.append(
-                            Markup("<p class='qq-part-title'><strong>%s</strong></p>")
-                            % escape(header)
-                        )
-                    items = []
-                    for it in group:
-                        if it.get("declined"):
-                            items.append(Markup(
-                                "<li><span class='qq-strike'>%s</span> "
-                                "<span class='qq-declined'>NÃO SOLICITADO EXECUÇÃO</span> "
-                                "<span class='qq-ref-price'>(ref.: %s)</span></li>"
-                            ) % (
-                                escape(it["name"]),
-                                escape(self._money(order, it["ref_price"])),
-                            ))
-                        elif is_calib:
-                            items.append(Markup("<li>%02d %s</li>") % (
-                                int(it["qty"] or 0), escape(it["name"]),
-                            ))
-                        else:
-                            suffix = (
-                                Markup(" — qtd: %s") % it["qty"]
-                                if it["qty"] and it["qty"] != 1 else Markup("")
-                            )
-                            items.append(Markup("<li>%s%s</li>") % (
-                                escape(it["name"]), suffix,
-                            ))
-                    parts.append(Markup("<ul>%s</ul>") % Markup("").join(items))
+            rows = [Markup(
+                "<tr><td colspan='2'><strong>%s</strong></td></tr>") % head]
+            for group in table["groups"]:
+                for row in group["rows"]:
+                    rows.append(Markup(
+                        "<tr><td class='qq-scope-stage'>%s</td><td>%s</td></tr>"
+                    ) % (escape(row["label"]), self._html_scope_cell(row)))
+                rows.append(Markup(
+                    "<tr class='qq-scope-subtotal-row'><td>%s</td>"
+                    "<td>%s: %s</td></tr>"
+                ) % (
+                    escape("Previsão de %.1f dia(s) de serviço" % group["days"]),
+                    escape(group["subtotal_label"]),
+                    escape(self._money(order, group["subtotal"])),
+                ))
+            rows.append(Markup(
+                "<tr class='qq-scope-footer-row'><td>%s</td>"
+                "<td>Valor Unitário: %s</td></tr>"
+            ) % (
+                escape("Previsão de %.1f dia(s) de serviço"
+                       % table["footer"]["days"]),
+                escape(self._money(order, table["footer"]["unit_price"])),
+            ))
+            parts.append(Markup("<table class='qq-scope-table'>%s</table>")
+                         % Markup("").join(rows))
+        # Totais no fim do escopo, salvo quando a cotação ainda traz o
+        # bloco `financial` materializado (cotações anteriores a esta
+        # versão trazem) — senão o total geral sairia impresso duas
+        # vezes (uma vez aqui, outra em `_html_financial`).
+        has_financial = order.proposal_block_ids.filtered(
+            lambda b: b.included and b.block_kind == "financial")
+        if not has_financial:
+            parts.append(order._qualif_grand_total_html())
         parts.append(self._html_declined_items(order))
         return Markup("").join(parts) or Markup("<p></p>")
+
+    def _html_scope_cell(self, row):
+        """Conteúdo da coluna direita de uma linha do escopo."""
+        if row["kind"] == "ref":
+            return escape(row["ref"])
+        if row["kind"] == "cycles":
+            body = Markup("").join(
+                Markup("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>")
+                % (
+                    escape("%02d" % cyc["qty"]), escape(cyc["name"]),
+                    escape(cyc["temperature"]), escape(cyc["duration"]),
+                )
+                for cyc in row["cycles"]
+            )
+            return Markup(
+                "<div class='qq-scope-subtitle'><strong>%s</strong></div>"
+                "<table class='qq-cycle-table'><thead><tr>"
+                "<th>Quantidade</th><th>Ciclo</th><th>Temperatura</th>"
+                "<th>%s</th></tr></thead><tbody>%s</tbody></table>"
+            ) % (escape(row["title"]), escape(row["time_label"]), body)
+        items = Markup("").join(
+            Markup("<li>%s</li>") % escape(it) for it in row["items"])
+        title = (
+            Markup("<div class='qq-scope-subtitle'><strong>%s</strong></div>")
+            % escape(row["title"]) if row["title"] else Markup("")
+        )
+        return title + Markup("<ul>%s</ul>") % items
 
     def _part_header(self, part, code):
         """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho.
@@ -426,25 +446,8 @@ class AfrProposalBlock(models.Model):
         ) % rows
 
     def _html_financial(self, order):
-        rows = Markup("").join(
-            Markup("<tr><td>%s</td><td>%s</td></tr>") % (
-                escape(eq["equipment"].name or ""),
-                escape(self._money(order, eq["subtotal"])),
-            )
-            for eq in order._qualif_equipment_summary()
-        )
-        return Markup(
-            "<table><thead><tr><th>Equipamento</th><th>Subtotal</th></tr>"
-            "</thead><tbody>%s</tbody></table>"
-            "<p><strong>Subtotal: %s</strong></p>"
-            "<p><strong>Impostos: %s</strong></p>"
-            "<p><strong>TOTAL GERAL: %s</strong></p>"
-        ) % (
-            rows,
-            escape(self._money(order, order.amount_untaxed)),
-            escape(self._money(order, order.amount_tax)),
-            escape(self._money(order, order.amount_total)),
-        )
+        """Bloco financeiro = bloco de totais (mesmo conteúdo do escopo)."""
+        return order._qualif_grand_total_html()
 
     def _html_optionals(self, order):
         opt_lines = order.order_line.filtered("is_proposal_optional")

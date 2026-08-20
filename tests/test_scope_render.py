@@ -78,6 +78,73 @@ class TestScopePdfRender(TestScopeTable):
 
 
 @tagged("post_install", "-at_install")
+class TestScopeHtmlBlock(TestScopeTable):
+
+    def _block(self, so, kind="equipment_scope"):
+        return self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id, "block_kind": kind,
+        })
+
+    def test_html_scope_has_table_and_forecast(self):
+        so = self._full_so()
+        html = str(self._block(so)._html_equipment_scope(so))
+        self.assertIn("<table", html)
+        self.assertIn("Previsão de", html)
+        self.assertIn("Subtotal QI", html)
+        self.assertIn("Valor Unitário", html)
+
+    def test_html_scope_has_cycle_rows(self):
+        so = self._full_so()
+        html = str(self._block(so)._html_equipment_scope(so))
+        self.assertIn("Execução dos ciclos com carga", html)
+        self.assertIn(self.cycle_cmax.name, html)
+
+    def test_html_scope_keeps_declined_box(self):
+        so = self._full_so()
+        decl = self._line(so, self.equip1, "installation", "01", 900.0,
+                          name="Verificação recusada")
+        decl.write({"part01_declined": True, "product_uom_qty": 0.0})
+        html = str(self._block(so)._html_equipment_scope(so))
+        self.assertIn("Itens Não Solicitados", html)
+
+    def test_html_financial_uses_new_totals(self):
+        so = self._full_so()
+        html = str(self._block(so, "financial")._html_financial(so))
+        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+
+    def test_snapshot_to_static_preserves_table(self):
+        so = self._full_so()
+        block = self._block(so)
+        block.action_edit_block()
+        self.assertEqual(block.block_kind, "static")
+        self.assertIn("Previsão de", str(block.body))
+
+    def test_html_totals_not_duplicated_when_financial_block_present(self):
+        """Cotação com `financial` materializado não duplica o total no HTML.
+
+        Simula a concatenação feita pelo consumidor da proposta (DOCX):
+        cada bloco incluído contribui com seu snapshot HTML, na ordem —
+        aqui, `equipment_scope` seguido de `financial`.
+        """
+        so = self._full_so()
+        financial_block = self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "financial",
+            "included": True,
+        })
+        scope_html = str(self._block(so)._html_equipment_scope(so))
+        financial_html = str(financial_block._html_financial(so))
+        html = scope_html + financial_html
+        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+    def test_html_scope_emits_totals_when_no_financial_block(self):
+        """Sem bloco `financial` materializado, o escopo imprime o total."""
+        so = self._full_so()
+        html = str(self._block(so)._html_equipment_scope(so))
+        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+
+@tagged("post_install", "-at_install")
 class TestScopePortalRender(TestScopeTable):
 
     def _render_portal(self, so):

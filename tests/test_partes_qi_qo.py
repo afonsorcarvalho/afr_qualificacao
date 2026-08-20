@@ -390,9 +390,15 @@ class TestRenderPartes(AfrQualificacaoTestCommon):
         so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
         block = self._scope_block(so)
         html = str(block._html_equipment_scope(so))
-        self.assertIn("PARTE 01", html)
-        self.assertIn("PARTE 02", html)
-        self.assertIn("NÃO SOLICITADO EXECUÇÃO", html)
+        self.assertIn("QI (segunda parte)", html)
+        self.assertIn("Calibração dos equipamentos de controle:", html)
+        # O selo inline "NÃO SOLICITADO EXECUÇÃO" saiu da tabela por
+        # equipamento (Tasks 3/4 filtram as linhas declinadas antes de
+        # montar os grupos, ver sale_order.py:892-898); ele só sobrevive
+        # no box de auditoria — mesmo ajuste já feito no PDF e no portal
+        # (ver test_pdf_report_groups_partes_seal_and_box e
+        # test_portal_groups_partes_and_seal).
+        self.assertIn("Itens Não Solicitados", html)
 
     def test_declined_box_present_only_when_declined(self):
         so_decl = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
