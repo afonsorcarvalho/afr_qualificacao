@@ -83,3 +83,52 @@ class TestScopeLinesAndHours(AfrQualificacaoTestCommon):
         so = self._so()
         self._section(so, self.equip1, work_hours=4.0)
         self.assertEqual(so._qualif_days_from_hours(4.0, self.equip1), 1.0)
+
+
+@tagged("post_install", "-at_install")
+class TestScopeRef(AfrQualificacaoTestCommon):
+
+    def _so_with_blocks(self):
+        """SO com 2 blocos numerados: SEC-QI (nº 1) e SEC-QO (nº 2)."""
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        Block = self.env["afr.proposal.block"]
+        self.sec_qi = self.env.ref("afr_qualificacao.proposal_section_qi")
+        self.sec_qo = self.env.ref("afr_qualificacao.proposal_section_qo")
+        self.blk_qi = Block.create({
+            "sale_order_id": so.id, "block_kind": "static",
+            "section_id": self.sec_qi.id, "sequence": 10, "included": True,
+        })
+        self.blk_qo = Block.create({
+            "sale_order_id": so.id, "block_kind": "static",
+            "section_id": self.sec_qo.id, "sequence": 20, "included": True,
+        })
+        return so
+
+    def test_ref_cites_block_number(self):
+        so = self._so_with_blocks()
+        ref = so._qualif_scope_ref("installation")
+        self.assertIn("Conforme item 1", ref)
+        self.assertIn(self.sec_qi.name, ref)
+
+    def test_ref_second_block_gets_number_two(self):
+        so = self._so_with_blocks()
+        self.assertIn("Conforme item 2", so._qualif_scope_ref("operational"))
+
+    def test_ref_without_block_degrades_to_topic_name(self):
+        so = self._so_with_blocks()
+        ref = so._qualif_scope_ref("performance")
+        self.assertNotIn("Conforme item", ref)
+        self.assertIn("Qualificação de Desempenho", ref)
+
+    def test_ref_without_number_degrades(self):
+        """show_number=False → numbering devolve '' → sem 'Conforme item'."""
+        so = self._so_with_blocks()
+        self.blk_qi.show_number = False
+        ref = so._qualif_scope_ref("installation")
+        self.assertNotIn("Conforme item", ref)
+        self.assertIn(self.sec_qi.name, ref)
+
+    def test_ref_unknown_type_never_returns_falsy(self):
+        so = self._so_with_blocks()
+        self.assertTrue(so._qualif_scope_ref(False))
+        self.assertTrue(so._qualif_scope_ref("inexistente"))

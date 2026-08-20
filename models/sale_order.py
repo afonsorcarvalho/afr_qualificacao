@@ -37,6 +37,16 @@ QUALIF_TYPE_LABELS = OrderedDict([
     ("software", "Qualificação de Software"),
 ])
 
+# Tipo de qualificação → code da seção da biblioteca que o descreve.
+# Usado pela remissiva do escopo ("Conforme item 5.1 — ...").
+SCOPE_REF_SECTION_CODES = {
+    "installation": "SEC-QI",
+    "operational": "SEC-QO",
+    "performance": "SEC-QD",
+    "software": "SEC-QS",
+    "calibration": "SEC-CALIB",
+}
+
 # Descrições padrão por tipo — usadas no Descritivo Técnico do relatório
 # de cotação. Texto voltado ao cliente leigo (sem jargão excessivo).
 # Sobrescrita possível via campo `description` do `cycle_type`/`malha_type`
@@ -706,6 +716,33 @@ class SaleOrder(models.Model):
         self.ensure_one()
         wh = self._qualif_work_hours_per_day(equipment) or 8.0
         return math.ceil(round((hours / wh) * 2, 6)) / 2.0
+
+    def _qualif_scope_ref(self, qtype):
+        """Remissiva ao tópico da proposta que descreve o tipo.
+
+        Com bloco incluído e numerado:
+            "Conforme item 5.1 — Qualificação de Instalação (QI)"
+        Sem bloco (cliente removeu) ou sem número (show_number=False):
+            "Conforme descrito no tópico Qualificação de Instalação (QI)"
+
+        NUNCA devolve vazio/None — o QWeb interpola direto.
+        """
+        self.ensure_one()
+        label = QUALIF_TYPE_LABELS.get(qtype) or _("este escopo")
+        code = SCOPE_REF_SECTION_CODES.get(qtype)
+        block = self.env["afr.proposal.block"]
+        if code:
+            block = self.proposal_block_ids.filtered(
+                lambda b: b.included and b.section_id
+                and b.section_id.code == code
+            )[:1]
+        if not block:
+            return _("Conforme descrito no tópico %s") % label
+        name = block.section_id.name or block.title or label
+        num = self._proposal_block_numbering().get(block.id) or ""
+        if not num:
+            return _("Conforme descrito no tópico %s") % name
+        return _("Conforme item %s — %s") % (num, name)
 
     def _qualif_estimated_days(self, equipment=None):
         """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
