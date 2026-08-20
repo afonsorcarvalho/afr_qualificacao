@@ -722,14 +722,21 @@ class SaleOrder(models.Model):
 
         Com bloco incluído e numerado:
             "Conforme item 5.1 — Qualificação de Instalação (QI)"
-        Sem bloco (cliente removeu) ou sem número (show_number=False):
+        Sem bloco (cliente removeu) ou com bloco presente mas sem número
+        (show_number=False) — mesmo texto nos dois casos, sempre citando
+        o nome da seção da biblioteca:
             "Conforme descrito no tópico Qualificação de Instalação (QI)"
 
         NUNCA devolve vazio/None — o QWeb interpola direto.
         """
         self.ensure_one()
-        label = QUALIF_TYPE_LABELS.get(qtype) or _("este escopo")
         code = SCOPE_REF_SECTION_CODES.get(qtype)
+        label = QUALIF_TYPE_LABELS.get(qtype) or _("este escopo")
+        if code:
+            section = self.env["afr.proposal.section"].search(
+                [("code", "=", code)], limit=1)
+            if section.name:
+                label = section.name
         block = self.env["afr.proposal.block"]
         if code:
             block = self.proposal_block_ids.filtered(
@@ -738,7 +745,7 @@ class SaleOrder(models.Model):
             )[:1]
         if not block:
             return _("Conforme descrito no tópico %s") % label
-        name = block.section_id.name or block.title or label
+        name = block.section_id.name or label
         num = self._proposal_block_numbering().get(block.id) or ""
         if not num:
             return _("Conforme descrito no tópico %s") % name

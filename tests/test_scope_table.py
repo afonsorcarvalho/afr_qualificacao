@@ -132,3 +132,13 @@ class TestScopeRef(AfrQualificacaoTestCommon):
         so = self._so_with_blocks()
         self.assertTrue(so._qualif_scope_ref(False))
         self.assertTrue(so._qualif_scope_ref("inexistente"))
+
+    def test_both_degradations_use_the_same_topic_name(self):
+        """Bloco ausente e bloco sem número citam o mesmo nome de tópico."""
+        so = self._so_with_blocks()
+        self.blk_qi.show_number = False
+        sem_numero = so._qualif_scope_ref("installation")
+        self.blk_qi.included = False
+        sem_bloco = so._qualif_scope_ref("installation")
+        self.assertEqual(sem_numero, sem_bloco)
+        self.assertIn(self.sec_qi.name, sem_bloco)
