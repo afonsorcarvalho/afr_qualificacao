@@ -404,6 +404,18 @@ class TestProposalTotals(TestScopeTable):
         nomes = [a["name"] for a in so._qualif_additional_lines()]
         self.assertNotIn("Ciclo recusado", nomes)
 
+    def test_pending_optional_with_qty_is_not_an_additional(self):
+        """Opcional pendente com qty forçada (write direto) não vira adicional."""
+        so = self._full_so()
+        opt = self._line(so, self.equip1, "performance", False, 700.0,
+                         cycle=self.cycle_cmin, name="Ciclo pendente")
+        opt.write({"is_proposal_optional": True, "optional_accepted": False})
+        # burla o invariante procedural: qty > 0 sem aceite
+        opt.write({"product_uom_qty": 1.0})
+        self.assertTrue(opt.price_subtotal)
+        nomes = [a["name"] for a in so._qualif_additional_lines()]
+        self.assertNotIn("Ciclo pendente", nomes)
+
     def test_sections_are_not_additionals(self):
         so = self._full_so()
         nomes = [a["name"] for a in so._qualif_additional_lines()]

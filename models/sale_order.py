@@ -373,8 +373,9 @@ class SaleOrder(models.Model):
         Ex.: despesas de viagem, pasta impressa, e também opcionais
         ACEITOS (o rateio os exclui do escopo; sem esta regra o valor
         sumiria do impresso sem sumir do amount_untaxed).
-        Opcional recusado tem product_uom_qty=0 → subtotal 0 → fora,
-        sem precisar de regra especial.
+        Opcional recusado normalmente tem product_uom_qty=0 → subtotal 0
+        → fora pelo filtro de is_zero(); o guard explícito abaixo cobre o
+        caso em que esse invariante procedural é violado (write direto).
         """
         self.ensure_one()
         in_scope = self.env["sale.order.line"]
@@ -383,6 +384,13 @@ class SaleOrder(models.Model):
         out = []
         for line in self.order_line.sorted(key=lambda l: (l.sequence, l.id or 0)):
             if line.display_type or line in in_scope:
+                continue
+            # Opcional pendente não pode virar adicional: o filtro de
+            # is_zero() abaixo só o exclui via qty=0, um invariante
+            # procedural (wizard/onchange/_sync_optional_qty), não uma
+            # constraint de banco. Um write() direto poderia deixar um
+            # opcional pendente com qty>0 escapar para o impresso.
+            if line.is_proposal_optional and not line.optional_accepted:
                 continue
             if self.currency_id.is_zero(line.price_subtotal):
                 continue
