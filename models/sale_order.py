@@ -11,6 +11,7 @@
   cotação (inherit condicional em `sale.report_saleorder_document`).
 """
 
+import math
 import re
 from collections import OrderedDict, defaultdict
 
@@ -641,6 +642,70 @@ class SaleOrder(models.Model):
             and l.equipment_id == equipment
         )[:1]
         return section.work_hours_per_day or 8.0
+
+    def _qualif_scope_lines(self, equipment, qtype=None, part=None):
+        """Linhas que compõem o escopo impresso de um equipamento.
+
+        Conjunto IDÊNTICO ao de `sale.order.line._rateio_base_lines()` —
+        managed, sem display_type, não opcional, não declinada, qty > 0.
+        Manter os dois em sincronia é o que garante que a soma dos
+        subtotais dos grupos bata com `equipment_subtotal` (e portanto
+        com o Valor Unitário impresso).
+
+        `qtype` filtra por qualification_type; `part` filtra por parte
+        ('01'/'02'). `part=None` = qualquer parte.
+        """
+        self.ensure_one()
+        lines = self.order_line.filtered(
+            lambda l: l.equipment_id == equipment
+            and l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
+            and not l.part01_declined
+            and l.product_uom_qty > 0
+        )
+        if qtype:
+            lines = lines.filtered(lambda l: l.qualification_type == qtype)
+        if part is not None:
+            lines = lines.filtered(lambda l: (l.part or "") == part)
+        return lines
+
+    def _qualif_group_hours(self, lines):
+        """Horas estimadas de um conjunto de linhas do escopo.
+
+        Hierarquia da hora unitária: override na linha → cycle_type →
+        malha_type → afr.qualificacao.type.config (QI/QS). Multiplicada
+        por `qualif_cycle_qty` (fallback `product_uom_qty`).
+        """
+        self.ensure_one()
+        TypeConfig = self.env["afr.qualificacao.type.config"]
+        total = 0.0
+        for line in lines:
+            hours = line.estimated_hours
+            if not hours:
+                if line.cycle_type_id:
+                    hours = line.cycle_type_id.estimated_hours
+                elif line.malha_type_id:
+                    hours = line.malha_type_id.estimated_hours
+                elif line.qualification_type in ("installation", "software"):
+                    cfg = TypeConfig.get_config_for(
+                        line.qualification_type, self.company_id,
+                    )
+                    if cfg:
+                        hours = cfg.estimated_hours
+            qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
+            total += (hours or 0.0) * qty
+        return total
+
+    def _qualif_days_from_hours(self, hours, equipment):
+        """Horas → dias de serviço, arredondado PARA CIMA ao próximo 0,5.
+
+        3,2 dias → 3,5; 3,6 → 4,0. `round(..., 6)` antes do ceil evita
+        que 3.0000000001 (ruído de float) vire 3,5.
+        """
+        self.ensure_one()
+        wh = self._qualif_work_hours_per_day(equipment) or 8.0
+        return math.ceil(round((hours / wh) * 2, 6)) / 2.0
 
     def _qualif_estimated_days(self, equipment=None):
         """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
