@@ -359,3 +359,94 @@ class TestScopeTable(AfrQualificacaoTestCommon):
         tables = so._qualif_scope_tables()
         self.assertEqual([t["equipment"] for t in tables],
                          [self.equip1, self.equip2])
+
+
+@tagged("post_install", "-at_install")
+class TestProposalTotals(TestScopeTable):
+    """Herda os fixtures de TestScopeTable (_full_so, _line, _section)."""
+
+    def _extra(self, so, name, price):
+        return self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": self.product_qi.id,
+            "name": name,
+            "product_uom_qty": 1.0,
+            "price_unit": price,
+        })
+
+    def test_additional_lines_are_enumerated_by_name(self):
+        so = self._full_so()
+        self._extra(so, "Despesas de viagem, hospedagem e alimentação", 1000.0)
+        self._extra(so, "Pasta impressa e envio correio", 400.0)
+        adicionais = so._qualif_additional_lines()
+        self.assertEqual(
+            [a["name"] for a in adicionais],
+            ["Despesas de viagem, hospedagem e alimentação",
+             "Pasta impressa e envio correio"],
+        )
+        self.assertAlmostEqual(adicionais[0]["amount"], 1000.0, places=2)
+
+    def test_accepted_optional_with_equipment_is_an_additional(self):
+        """Rateio exclui opcional; se ele não virasse adicional, sumia."""
+        so = self._full_so()
+        opt = self._line(so, self.equip1, "performance", False, 700.0,
+                         cycle=self.cycle_cmin, name="Ciclo extra opcional")
+        opt.write({"is_proposal_optional": True, "optional_accepted": True})
+        nomes = [a["name"] for a in so._qualif_additional_lines()]
+        self.assertIn("Ciclo extra opcional", nomes)
+
+    def test_declined_optional_is_not_listed(self):
+        so = self._full_so()
+        opt = self._line(so, self.equip1, "performance", False, 700.0,
+                         cycle=self.cycle_cmin, name="Ciclo recusado")
+        opt.write({"is_proposal_optional": True, "optional_accepted": False,
+                   "product_uom_qty": 0.0})
+        nomes = [a["name"] for a in so._qualif_additional_lines()]
+        self.assertNotIn("Ciclo recusado", nomes)
+
+    def test_sections_are_not_additionals(self):
+        so = self._full_so()
+        nomes = [a["name"] for a in so._qualif_additional_lines()]
+        self.assertNotIn(self.equip1.display_name, nomes)
+
+    def test_totals_reconcile_with_amount_untaxed(self):
+        so = self._full_so()
+        self._extra(so, "Despesas de viagem", 1000.0)
+        totals = so._qualif_proposal_totals()
+        self.assertAlmostEqual(totals["residual"], 0.0, places=2)
+        self.assertAlmostEqual(
+            totals["equip_total"] + sum(a["amount"] for a in totals["adicionais"]),
+            totals["grand_total"], places=2,
+        )
+
+    def test_residual_absorbs_unaccounted_money(self):
+        """Alvo desviado não pode fazer dinheiro sumir do total impresso."""
+        so = self._full_so()
+        self.section.equipment_target_price = self.section.equipment_subtotal
+        # força drift artificial mexendo no alvo depois de 'ok'
+        self.section.equipment_target_price = self.section.equipment_subtotal + 50.0
+        totals = so._qualif_proposal_totals()
+        self.assertAlmostEqual(
+            totals["equip_total"]
+            + sum(a["amount"] for a in totals["adicionais"])
+            + totals["residual"],
+            totals["grand_total"], places=2,
+        )
+
+    def test_no_additionals_yields_empty_list(self):
+        so = self._full_so()
+        self.assertEqual(so._qualif_proposal_totals()["adicionais"], [])
+
+    def test_grand_total_html_lists_additionals(self):
+        so = self._full_so()
+        self._extra(so, "Pasta impressa e envio correio", 400.0)
+        html = str(so._qualif_grand_total_html())
+        self.assertIn("Total dos Serviços de Qualificação", html)
+        self.assertIn("Pasta impressa e envio correio", html)
+        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+
+    def test_grand_total_html_omits_breakdown_without_additionals(self):
+        so = self._full_so()
+        html = str(so._qualif_grand_total_html())
+        self.assertNotIn("Total dos Serviços de Qualificação", html)
+        self.assertIn("TOTAL GERAL DA PROPOSTA", html)

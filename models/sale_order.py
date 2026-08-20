@@ -348,11 +348,12 @@ class SaleOrder(models.Model):
     def _compute_qualif_subtotals_html(self):
         """Render o painel de totais abaixo das linhas no form do SO.
 
-        Só o TOTAL GERAL (mais a tabela de opcionais aceitos, quando
-        houver). A tabela de subtotais por equipamento foi retirada em
-        16.0.6.13.5: o preço por equipamento passou a ser editável na
-        própria aba Comercial (`equipment_target_ids`), que já mostra a
-        base do rateio — a tabela repetia essa informação.
+        Só o TOTAL GERAL, com adicionais enumerados quando houver (ver
+        `_qualif_grand_total_html`). A tabela de subtotais por equipamento
+        foi retirada em 16.0.6.13.5 (preço por equipamento editável na aba
+        Comercial via `equipment_target_ids`) e a de opcionais aceitos
+        nesta task — o opcional aceito agora aparece como adicional no
+        próprio banner de total, evitando duplicidade.
 
         Vazio se a SO não tem qualif_lines.
         """
@@ -364,135 +365,98 @@ class SaleOrder(models.Model):
             if not summary:
                 order.qualif_subtotals_html = False
                 continue
-            html = order._qualif_optionals_subtotals_html()
-            # str() força concatenação str+str: `str += Markup` dispara
-            # Markup.__radd__ (regra de prioridade de subclasse) e ESCAPARIA
-            # todo o html acumulado. O Markup já traz os valores escapados.
-            html += str(order._qualif_grand_total_html())
-            order.qualif_subtotals_html = html
+            order.qualif_subtotals_html = str(order._qualif_grand_total_html())
 
-    def _qualif_optionals_subtotals_html(self):
-        """Tabela HTML 'Subtotais de Opcionais' (só os aceitos). Vazio se
-        não houver opcionais aceitos. Anexada abaixo dos subtotais por
-        equipamento no painel do form do SO."""
+    def _qualif_additional_lines(self):
+        """Adicionais: tudo que não entra no escopo de nenhum equipamento.
+
+        Ex.: despesas de viagem, pasta impressa, e também opcionais
+        ACEITOS (o rateio os exclui do escopo; sem esta regra o valor
+        sumiria do impresso sem sumir do amount_untaxed).
+        Opcional recusado tem product_uom_qty=0 → subtotal 0 → fora,
+        sem precisar de regra especial.
+        """
         self.ensure_one()
-        accepted = self.order_line.filtered(
-            lambda l: l.is_proposal_optional and l.optional_accepted)
-        if not accepted:
-            return ""
-        rows = []
-        total = 0.0
-        for line in accepted:
-            qty = line.optional_qty
-            qty_str = (str(int(qty)) if qty == int(qty)
-                       else formatLang(self.env, qty, digits=2))
-            value = formatLang(self.env, line.price_subtotal,
-                               currency_obj=self.currency_id)
-            rows.append(
-                '<tr><td style="padding:4px 12px;">%s</td>'
-                '<td style="padding:4px 12px;text-align:right;">%s</td>'
-                '<td style="padding:4px 12px;text-align:right;'
-                'font-weight:bold;">%s</td></tr>'
-                % (line.name or "", qty_str, value)
-            )
-            total += line.price_subtotal
-        total_str = formatLang(self.env, total, currency_obj=self.currency_id)
-        rows.append(
-            '<tr style="border-top:2px solid #333;">'
-            '<td style="padding:6px 12px;font-weight:bold;">TOTAL OPCIONAIS</td>'
-            '<td></td>'
-            '<td style="padding:6px 12px;text-align:right;'
-            'font-weight:bold;font-size:14px;">%s</td></tr>' % total_str
-        )
-        return (
-            '<div style="margin-top:12px;width:100%%;">'
-            '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
-            'Subtotais de Opcionais (aceitos)'
-            '</div>'
-            '<table style="border-collapse:collapse;width:100%%;'
-            'border:1px solid #ddd;font-size:12px;">'
-            '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
-            '<th style="padding:6px 12px;text-align:left;">Serviço</th>'
-            '<th style="padding:6px 12px;text-align:right;">Qtd</th>'
-            '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
-            '</tr></thead>'
-            '<tbody>%s</tbody>'
-            '</table></div>'
-        ) % "".join(rows)
+        in_scope = self.env["sale.order.line"]
+        for table in self._qualif_scope_tables():
+            in_scope |= self._qualif_scope_lines(table["equipment"])
+        out = []
+        for line in self.order_line.sorted(key=lambda l: (l.sequence, l.id or 0)):
+            if line.display_type or line in in_scope:
+                continue
+            if self.currency_id.is_zero(line.price_subtotal):
+                continue
+            out.append({
+                "name": line.name or line.product_id.display_name or "",
+                "amount": line.price_subtotal,
+            })
+        return out
 
     def _qualif_proposal_totals(self):
-        """Totais reconciliados da proposta, fonte única para o banner do
-        form, o bloco financeiro do PDF e o portal.
+        """Totais da proposta — fonte única do form, do PDF e do portal.
 
-        `grand_total` é SEMPRE `amount_untaxed` (o total real da proposta).
-        Ele é decomposto em três baldes que somam exatamente a esse total:
+        `grand_total` continua sendo `amount_untaxed` (o total real). Ele
+        é decomposto em:
 
-        - `equip_total`: soma dos subtotais agrupados por equipamento
-          (linhas managed com equipment_id), via `_qualif_equipment_summary`.
-        - `optional_total`: opcionais aceitos.
-        - `outros_total`: remanescente — linhas regulares fora do agrupamento
-          por equipamento (ex.: linhas avulsas adicionadas manualmente,
-          managed sem equipment_id). Antes ficavam invisíveis no banner,
-          causando total subestimado (bug C26-06-0005).
+        - `equip_total`: soma dos Valores Unitários IMPRESSOS nas tabelas
+          de escopo (preço-alvo quando bate, soma real quando desviado).
+        - `adicionais`: lista enumerada `[{"name", "amount"}]`.
+        - `residual`: o que sobra. Deve ser zero; quando não for (alvo
+          desviado, arredondamento), é impresso como linha "Outros" para
+          que nenhum valor do amount_untaxed fique invisível — foi
+          exatamente esse o bug C26-06-0005.
         """
         self.ensure_one()
         equip_total = sum(
-            s["subtotal"] for s in self._qualif_equipment_summary())
-        accepted = self.order_line.filtered(
-            lambda l: l.is_proposal_optional and l.optional_accepted)
-        optional_total = sum(accepted.mapped("price_subtotal"))
+            t["footer"]["unit_price"] for t in self._qualif_scope_tables())
+        adicionais = self._qualif_additional_lines()
         grand_total = self.amount_untaxed
-        outros_total = self.currency_id.round(
-            grand_total - equip_total - optional_total)
+        residual = self.currency_id.round(
+            grand_total - equip_total - sum(a["amount"] for a in adicionais))
         return {
             "equip_total": equip_total,
-            "optional_total": optional_total,
-            "outros_total": outros_total,
+            "adicionais": adicionais,
+            "residual": residual,
             "grand_total": grand_total,
         }
 
     def _qualif_grand_total_html(self):
-        """Banner 'TOTAL GERAL DA PROPOSTA' = total real da proposta
-        (amount_untaxed), decomposto em equipamentos + outros + opcionais
-        aceitos. Anexado ao fim de qualif_subtotals_html."""
+        """Banner de totais do form + base do bloco de totais do PDF.
+
+        Sem adicionais nem residual, imprime só a linha do total geral.
+        """
         self.ensure_one()
         totals = self._qualif_proposal_totals()
-        equip_total = totals["equip_total"]
-        opt_total = totals["optional_total"]
-        outros_total = totals["outros_total"]
-        grand = totals["grand_total"]
-        grand_str = formatLang(
-            self.env, grand, currency_obj=self.currency_id)
-        note = Markup("")
-        # Nota de decomposição quando há mais de um balde além do equip.
-        parts = []
-        if outros_total:
-            parts.append(Markup('outros ') + escape(formatLang(
-                self.env, outros_total, currency_obj=self.currency_id)))
-        if opt_total:
-            parts.append(Markup('opcionais aceitos ') + escape(formatLang(
-                self.env, opt_total, currency_obj=self.currency_id)))
-        if parts:
-            equip_str = formatLang(
-                self.env, equip_total, currency_obj=self.currency_id)
-            note = (
-                Markup('<div style="font-size:11px;color:#888;'
-                       'margin-top:4px;">(equipamentos ')
-                + escape(equip_str)
-                + Markup(' + ') + Markup(' + ').join(parts)
-                + Markup(')</div>')
-            )
-        return (
-            Markup('<div style="margin-top:16px;padding:10px 14px;'
-                   'background:#f4f4f4;color:#333;border:1px solid #ccc;'
-                   'border-radius:6px;'
-                   'display:flex;justify-content:space-between;'
-                   'align-items:center;">'
-                   '<span style="font-weight:bold;font-size:14px;">'
-                   'TOTAL GERAL DA PROPOSTA</span>'
-                   '<span style="font-weight:bold;font-size:18px;">')
-            + escape(grand_str) + Markup('</span></div>') + note
+        rows = []
+        breakdown = bool(totals["adicionais"]) or not self.currency_id.is_zero(
+            totals["residual"])
+        if breakdown:
+            rows.append((
+                _("Total dos Serviços de Qualificação"), totals["equip_total"]))
+            for adicional in totals["adicionais"]:
+                rows.append((adicional["name"], adicional["amount"]))
+            if not self.currency_id.is_zero(totals["residual"]):
+                rows.append((_("Outros"), totals["residual"]))
+        body = "".join(
+            '<tr><td style="padding:4px 12px;">%s</td>'
+            '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
+            % (escape(name), escape(formatLang(
+                self.env, value, currency_obj=self.currency_id)))
+            for name, value in rows
         )
+        grand_str = formatLang(
+            self.env, totals["grand_total"], currency_obj=self.currency_id)
+        return Markup(
+            '<div style="margin-top:12px;width:100%%;">'
+            '<table style="border-collapse:collapse;width:100%%;'
+            'font-size:12px;">%s'
+            '<tr style="border-top:2px solid #333;">'
+            '<td style="padding:6px 12px;font-weight:bold;">'
+            'TOTAL GERAL DA PROPOSTA</td>'
+            '<td style="padding:6px 12px;text-align:right;font-weight:bold;'
+            'font-size:14px;">%s</td></tr>'
+            '</table></div>'
+        ) % (Markup(body), escape(grand_str))
 
     @api.depends(
         "order_line.is_qualificacao_managed",
