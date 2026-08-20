@@ -63,3 +63,15 @@ class TestScopePdfRender(TestScopeTable):
         html = self._render_pdf(self._full_so())
         self.assertNotIn("Total dos Serviços de Qualificação", html)
         self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+    def test_totals_not_duplicated_when_financial_block_present(self):
+        """Cotação antiga com `financial` materializado não imprime 2 totais."""
+        so = self._full_so()
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "financial",
+            "included": True,
+        })
+        html = self._render_pdf(so)
+        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)

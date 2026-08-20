@@ -87,7 +87,15 @@
                                         </table>
                                     </div>
                                 </t>
-                                <t t-call="afr_qualificacao.qq_totals_table"/>
+                                <!-- Totais no fim do escopo, salvo quando a cotação
+                                     ainda traz o bloco `financial` materializado (as
+                                     cotações anteriores a esta versão trazem) — senão
+                                     o total geral sairia impresso duas vezes. -->
+                                <t t-set="has_financial_block"
+                                   t-value="doc.proposal_block_ids.filtered(lambda b: b.included and b.block_kind == 'financial')"/>
+                                <t t-if="not has_financial_block">
+                                    <t t-call="afr_qualificacao.qq_totals_table"/>
+                                </t>
                                 <!-- Box de auditoria: itens não solicitados para execução. -->
                                 <t t-set="declined_items" t-value="doc._qualif_declined_items()"/>
                                 <t t-set="declined_section" t-value="doc.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>
