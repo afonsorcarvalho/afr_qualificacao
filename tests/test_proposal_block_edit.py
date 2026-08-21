@@ -7,6 +7,7 @@ Cobre:
 - o snapshot reflete os dados da cotação (ex. temperatura do ciclo).
 """
 
+from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
 from .common import AfrQualificacaoTestCommon
@@ -72,9 +73,10 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
         block.action_edit_block()
         self.assertEqual(block.block_kind, "static")
         self.assertTrue(block.body)
-        # F8.10 — subtotal por equip removido do escopo; snapshot tem
-        # cabeçalho de equipamento e lista de tipos.
-        self.assertIn("<h4>", str(block.body))
+        # Task 7 — snapshot passou a espelhar a tabela de escopo (uma
+        # <table> por equipamento, mesma estrutura do PDF/portal) em vez
+        # do antigo <h4> + <ul> por tipo.
+        self.assertIn("<table", str(block.body))
         # título vem do template (pode ter sido editado pelo cliente);
         # snapshot apenas garante que existe um título não-vazio.
         self.assertTrue(block.title)
@@ -88,11 +90,31 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
         self.assertEqual(block.block_kind, "static")
         self.assertIn("134°C", str(block.body))
 
+    def test_financial_block_cannot_be_frozen(self):
+        """Congelar o bloco de totais duplicaria o total geral no impresso.
+
+        Escopo tabela de ciclos (2026-08-20): `financial` saiu do template
+        default (`_built_so` não seeda mais este bloco) — o tipo continua
+        disponível pra quem montar template/proposta manualmente, então o
+        bloco é criado direto aqui em vez de vir do seed.
+        """
+        so = self._built_so()
+        block = self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "financial",
+            "included": True,
+        })
+        with self.assertRaises(UserError):
+            block.action_edit_block()
+
     def test_snapshotted_block_renders_in_report(self):
         """Bloco dinâmico após snapshot é renderizado como texto no PDF."""
         so = self._built_so()
-        self._block(so, "financial").action_edit_block()
+        block = self._block(so, "equipment_scope")
+        block.action_edit_block()
+        self.assertEqual(block.block_kind, "static")
+        self.assertTrue(block.body)
         report = self.env.ref("sale.action_report_saleorder")
         html, _ctype = report._render_qweb_html(report.report_name, so.ids)
         html = html.decode() if isinstance(html, bytes) else html
-        self.assertIn("TOTAL GERAL", html)
+        self.assertIn("Previsão de", html)

@@ -13,7 +13,7 @@ ordem de `sequence`.
 from markupsafe import Markup, escape
 
 from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tools.misc import formatLang
 
 from .proposal_template import PROPOSAL_BLOCK_KINDS
@@ -198,6 +198,12 @@ class AfrProposalBlock(models.Model):
         bloco passa a ser `static` — a partir daí é texto livre.
         """
         self.ensure_one()
+        if self.block_kind == "financial":
+            raise UserError(_(
+                "O bloco de totais é recalculado a cada emissão da proposta "
+                "e não pode ser convertido em bloco editável. Para alterar o "
+                "que aparece nos totais, edite as linhas da cotação."
+            ))
         if self.block_kind != "static":
             self.body = self._snapshot_html()
             if not self.title:
@@ -216,6 +222,32 @@ class AfrProposalBlock(models.Model):
             "target": "new",
         }
 
+    def _qualif_is_frozen_financial_summary(self):
+        """True se este bloco `static` é um Resumo Financeiro congelado.
+
+        Critério ESTREITO (3 condições cumulativas) usado pela migração
+        16.0.7.0.0 para limpar blocos `financial` que alguém converteu
+        para `static` (snapshot manual) ANTES do `UserError` em
+        `action_edit_block` passar a proibir essa conversão — cobre o
+        caso real da base (afr.proposal.block id=636, SO C26-08-0018,
+        com "TOTAL GERAL: R$ 10.373,48" congelado no body).
+
+        As 3 condições, cumulativas, para não apagar um bloco de texto
+        livre que o usuário só batizou com o mesmo título:
+        - `block_kind == 'static'`;
+        - `title` igual ao rótulo do bloco financeiro
+          (`PROPOSAL_BLOCK_KINDS['financial']`, hoje "Resumo Financeiro");
+        - `body` contendo o texto "TOTAL GERAL" (assinatura do totalizador
+          antigo, `_qualif_grand_total_html`/SEÇÃO 6 do fallback).
+        """
+        self.ensure_one()
+        if self.block_kind != "static":
+            return False
+        financial_label = dict(PROPOSAL_BLOCK_KINDS).get("financial")
+        if not financial_label or self.title != financial_label:
+            return False
+        return bool(self.body) and "TOTAL GERAL" in str(self.body)
+
     def _snapshot_html(self):
         """Renderiza o conteúdo dinâmico atual do bloco em HTML editável."""
         self.ensure_one()
@@ -224,7 +256,6 @@ class AfrProposalBlock(models.Model):
             "cycle_specs": self._html_cycle_specs,
             "schedule": self._html_schedule,
             "standards_table": self._html_standards,
-            "financial": self._html_financial,
             "optionals": self._html_optionals,
             "acceptance": self._html_acceptance,
         }.get(self.block_kind)
@@ -237,69 +268,84 @@ class AfrProposalBlock(models.Model):
         return formatLang(self.env, value, currency_obj=order.currency_id)
 
     def _html_equipment_scope(self, order):
-        # F8.10 — sem subtotal por equipamento; calib formatado como
-        # "0N Calibração de <malha>" (item.name já traz o prefixo
-        # "Calibração de " via _qualif_equipment_summary).
+        """Snapshot HTML da tabela de escopo (DOCX + bloco editável).
+
+        Espelha o QWeb `qq_block_equipment_scope` byte-a-byte na estrutura
+        (mesmas classes de `reports/templates_blocos/styles.xml`): o
+        snapshot é reaproveitado dentro do PDF/portal sob o mesmo CSS, e
+        precisa renderizar igual ao bloco dinâmico ao lado (card, quebra
+        de página controlada, etc).
+        """
         parts = []
-        for eq in order._qualif_equipment_summary():
-            equip = eq["equipment"]
-            head = escape(equip.name or "")
+        for index, table in enumerate(order._qualif_scope_tables()):
+            equip = table["equipment"]
+            letter = chr(ord("a") + index)
+            head = escape("%s. %s" % (letter, equip.name or ""))
             if equip.serial_number:
                 head += Markup(" — S/N: ") + escape(equip.serial_number)
-            parts.append(Markup("<h4>%s</h4>") % head)
-            for tipo in eq["types"]:
-                parts.append(
-                    Markup("<p><strong>%s</strong></p>") % escape(tipo["label"])
-                )
-                is_calib = tipo["code"] == "calibration"
-                # Subagrupa por Parte (01 → 02 → sem tag), estável.
-                for part in ("01", "02", ""):
-                    group = [
-                        it for it in tipo["items"]
-                        if (it.get("part") or "") == part
-                    ]
-                    if not group:
-                        continue
-                    header = self._part_header(part, tipo["code"])
-                    if header:
-                        parts.append(
-                            Markup("<p class='qq-part-title'><strong>%s</strong></p>")
-                            % escape(header)
-                        )
-                    items = []
-                    for it in group:
-                        if it.get("declined"):
-                            items.append(Markup(
-                                "<li><span class='qq-strike'>%s</span> "
-                                "<span class='qq-declined'>NÃO SOLICITADO EXECUÇÃO</span> "
-                                "<span class='qq-ref-price'>(ref.: %s)</span></li>"
-                            ) % (
-                                escape(it["name"]),
-                                escape(self._money(order, it["ref_price"])),
-                            ))
-                        elif is_calib:
-                            items.append(Markup("<li>%02d %s</li>") % (
-                                int(it["qty"] or 0), escape(it["name"]),
-                            ))
-                        else:
-                            suffix = (
-                                Markup(" — qtd: %s") % it["qty"]
-                                if it["qty"] and it["qty"] != 1 else Markup("")
-                            )
-                            items.append(Markup("<li>%s%s</li>") % (
-                                escape(it["name"]), suffix,
-                            ))
-                    parts.append(Markup("<ul>%s</ul>") % Markup("").join(items))
+            rows = [Markup(
+                "<tr class='qq-scope-equip-header'>"
+                "<td colspan='2'><strong>%s</strong></td></tr>") % head]
+            for group in table["groups"]:
+                for row in group["rows"]:
+                    rows.append(Markup(
+                        "<tr class='qq-scope-group-row'>"
+                        "<td class='qq-scope-stage'>%s</td>"
+                        "<td class='qq-scope-description'>%s</td></tr>"
+                    ) % (escape(row["label"]), self._html_scope_cell(row)))
+                rows.append(Markup(
+                    "<tr class='qq-scope-subtotal-row'><td>%s</td>"
+                    "<td>%s: %s</td></tr>"
+                ) % (
+                    escape(order._qualif_days_label(group["days"])),
+                    escape(group["subtotal_label"]),
+                    escape(self._money(order, group["subtotal"])),
+                ))
+            rows.append(Markup(
+                "<tr class='qq-scope-footer-row'><td>%s</td>"
+                "<td>Valor Unitário: %s</td></tr>"
+            ) % (
+                escape(order._qualif_days_label(table["footer"]["days"])),
+                escape(self._money(order, table["footer"]["unit_price"])),
+            ))
+            head_row, body_rows = rows[0], Markup("").join(rows[1:])
+            parts.append(Markup(
+                "<div class='qq-equip-card'>"
+                "<table class='qq-scope-table'>"
+                "<thead>%s</thead><tbody>%s</tbody></table></div>"
+            ) % (head_row, body_rows))
+        # Totais no fim do escopo. Emitido sempre, uma única vez — não há
+        # mais bloco de Resumo Financeiro separado (ver F8.2x).
+        parts.append(order._qualif_grand_total_html())
         parts.append(self._html_declined_items(order))
         return Markup("").join(parts) or Markup("<p></p>")
 
-    def _part_header(self, part, code):
-        """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho.
-
-        Delega ao helper compartilhado em sale.order (PDF + portal usam o
-        mesmo rótulo).
-        """
-        return self.sale_order_id._qualif_part_header(part, code)
+    def _html_scope_cell(self, row):
+        """Conteúdo da coluna direita de uma linha do escopo."""
+        if row["kind"] == "ref":
+            return escape(row["ref"])
+        if row["kind"] == "cycles":
+            body = Markup("").join(
+                Markup("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>")
+                % (
+                    escape("%02d" % cyc["qty"]), escape(cyc["name"]),
+                    escape(cyc["temperature"]), escape(cyc["duration"]),
+                )
+                for cyc in row["cycles"]
+            )
+            return Markup(
+                "<div class='qq-scope-subtitle'><strong>%s</strong></div>"
+                "<table class='qq-cycle-table'><thead><tr>"
+                "<th>Quantidade</th><th>Ciclo</th><th>Temperatura</th>"
+                "<th>%s</th></tr></thead><tbody>%s</tbody></table>"
+            ) % (escape(row["title"]), escape(row["time_label"]), body)
+        items = Markup("").join(
+            Markup("<li>%s</li>") % escape(it) for it in row["items"])
+        title = (
+            Markup("<div class='qq-scope-subtitle'><strong>%s</strong></div>")
+            % escape(row["title"]) if row["title"] else Markup("")
+        )
+        return title + Markup("<ul class='qq-scope-list'>%s</ul>") % items
 
     def _html_declined_items(self, order):
         """Box institucional 'Itens Não Solicitados para Execução' (formato c).
@@ -424,27 +470,6 @@ class AfrProposalBlock(models.Model):
             "<th>Organismo</th><th>Escopo</th></tr></thead>"
             "<tbody>%s</tbody></table>"
         ) % rows
-
-    def _html_financial(self, order):
-        rows = Markup("").join(
-            Markup("<tr><td>%s</td><td>%s</td></tr>") % (
-                escape(eq["equipment"].name or ""),
-                escape(self._money(order, eq["subtotal"])),
-            )
-            for eq in order._qualif_equipment_summary()
-        )
-        return Markup(
-            "<table><thead><tr><th>Equipamento</th><th>Subtotal</th></tr>"
-            "</thead><tbody>%s</tbody></table>"
-            "<p><strong>Subtotal: %s</strong></p>"
-            "<p><strong>Impostos: %s</strong></p>"
-            "<p><strong>TOTAL GERAL: %s</strong></p>"
-        ) % (
-            rows,
-            escape(self._money(order, order.amount_untaxed)),
-            escape(self._money(order, order.amount_tax)),
-            escape(self._money(order, order.amount_total)),
-        )
 
     def _html_optionals(self, order):
         opt_lines = order.order_line.filtered("is_proposal_optional")

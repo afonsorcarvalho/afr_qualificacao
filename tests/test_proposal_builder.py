@@ -200,3 +200,69 @@ class TestProposalBuilder(AfrQualificacaoTestCommon):
         self.assertNotIn(
             "EDITADO MANUALMENTE", so.proposal_block_ids.mapped("title")
         )
+
+
+@tagged("post_install", "-at_install")
+class TestFrozenFinancialSummaryPredicate(AfrQualificacaoTestCommon):
+    """F1 (fix round 2026-08-21) — predicado usado pela migração 16.0.7.0.0
+    para identificar um bloco `financial` congelado em `static` (snapshot
+    manual feito ANTES do `UserError` em `action_edit_block` existir).
+
+    Migração não roda nos testes (só num upgrade real de versão, ver
+    `TestTemplateCleanup` em test_scope_render.py) — o que dá para testar
+    diretamente é o próprio predicado que ela usa,
+    `AfrProposalBlock._qualif_is_frozen_financial_summary`, com as 3
+    condições cumulativas do critério estreito.
+    """
+
+    def _new_so(self):
+        return self.env["sale.order"].create({"partner_id": self.partner.id})
+
+    def _block(self, so, **vals):
+        vals.setdefault("sale_order_id", so.id)
+        return self.env["afr.proposal.block"].create(vals)
+
+    def test_matches_static_titled_resumo_financeiro_with_total_geral_in_body(self):
+        """Caso real: id=636, SO C26-08-0018 — as 3 condições batem."""
+        so = self._new_so()
+        block = self._block(
+            so, block_kind="static", title="Resumo Financeiro",
+            body="<p>TOTAL GERAL: R$ 10.373,48</p>",
+        )
+        self.assertTrue(block._qualif_is_frozen_financial_summary())
+
+    def test_does_not_match_static_same_title_without_total_geral_in_body(self):
+        """Mesmo título, mas corpo sem a assinatura do totalizador antigo —
+        pode ser um bloco de texto livre que o usuário só batizou assim;
+        não é seguro apagar."""
+        so = self._new_so()
+        block = self._block(
+            so, block_kind="static", title="Resumo Financeiro",
+            body="<p>Ver anexo para detalhes de precificação.</p>",
+        )
+        self.assertFalse(block._qualif_is_frozen_financial_summary())
+
+    def test_does_not_match_different_title(self):
+        """Bloco `static` com "TOTAL GERAL" no body mas título diferente —
+        não é um Resumo Financeiro congelado, é outra coisa."""
+        so = self._new_so()
+        block = self._block(
+            so, block_kind="static", title="Observações",
+            body="<p>TOTAL GERAL: R$ 10.373,48</p>",
+        )
+        self.assertFalse(block._qualif_is_frozen_financial_summary())
+
+    def test_does_not_match_non_static_financial_block(self):
+        """Bloco `financial` (não convertido para `static`) é tratado à
+        parte pela migração (busca direta por `block_kind`), não por este
+        predicado — que só reconhece `static`."""
+        so = self._new_so()
+        block = self._block(so, block_kind="financial")
+        self.assertFalse(block._qualif_is_frozen_financial_summary())
+
+    def test_does_not_match_static_without_body(self):
+        so = self._new_so()
+        block = self._block(
+            so, block_kind="static", title="Resumo Financeiro", body=False,
+        )
+        self.assertFalse(block._qualif_is_frozen_financial_summary())

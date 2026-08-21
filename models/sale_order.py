@@ -11,6 +11,7 @@
   cotação (inherit condicional em `sale.report_saleorder_document`).
 """
 
+import math
 import re
 from collections import OrderedDict, defaultdict
 
@@ -35,6 +36,71 @@ QUALIF_TYPE_LABELS = OrderedDict([
     ("performance", "Qualificação de Desempenho"),
     ("software", "Qualificação de Software"),
 ])
+
+# Tipo de qualificação → code da seção da biblioteca que o descreve.
+# Usado pela remissiva do escopo ("Conforme item 5.1 — ...").
+SCOPE_REF_SECTION_CODES = {
+    "installation": "SEC-QI",
+    "operational": "SEC-QO",
+    "performance": "SEC-QD",
+    "software": "SEC-QS",
+    "calibration": "SEC-CALIB",
+}
+
+# Agrupamento das linhas "Previsão de dias / Subtotal" no escopo impresso.
+# Fiel à proposta antiga do cliente: QI parte 01 e QO parte 01 fecham
+# sozinhos; parte 02 (calibrações + ciclos sem carga) e QD fecham juntos
+# sob o rótulo "Subtotal QD". `part=None` = qualquer parte.
+SCOPE_GROUPS = (
+    {
+        "key": "qi1",
+        "subtotal_label": "Subtotal QI",
+        "members": (("installation", "01"),),
+    },
+    {
+        "key": "qo1",
+        "subtotal_label": "Subtotal QO",
+        "members": (("operational", "01"),),
+    },
+    {
+        "key": "parte2",
+        "subtotal_label": "Subtotal QD",
+        "members": (
+            ("installation", "02"),
+            ("calibration", None),
+            ("operational", "02"),
+            ("performance", None),
+        ),
+    },
+)
+
+# Como cada (tipo, parte) se apresenta na coluna direita da tabela.
+SCOPE_ROW_SPECS = {
+    ("installation", "01"): {
+        "label": "Qualificação da Instalação — QI (primeira parte)",
+        "kind": "ref", "title": "",
+    },
+    ("operational", "01"): {
+        "label": "Qualificação de Operação — QO (primeira parte)",
+        "kind": "ref", "title": "",
+    },
+    ("installation", "02"): {
+        "label": "Qualificação da Instalação — QI (segunda parte)",
+        "kind": "list", "title": "Itens a serem avaliados:",
+    },
+    ("calibration", None): {
+        "label": "Qualificação da Instalação — QI (segunda parte)",
+        "kind": "list", "title": "Calibração dos equipamentos de controle:",
+    },
+    ("operational", "02"): {
+        "label": "Qualificação de Operação — QO (segunda parte)",
+        "kind": "cycles", "title": "Execução dos ciclos sem carga",
+    },
+    ("performance", None): {
+        "label": "Qualificação de Desempenho — QD",
+        "kind": "cycles", "title": "Execução dos ciclos com carga",
+    },
+}
 
 # Descrições padrão por tipo — usadas no Descritivo Técnico do relatório
 # de cotação. Texto voltado ao cliente leigo (sem jargão excessivo).
@@ -145,7 +211,7 @@ class SaleOrder(models.Model):
         sanitize=False,
         help=(
             "Painel HTML exibido no form do SO abaixo das linhas: banner do "
-            "TOTAL GERAL DA PROPOSTA e, quando houver, a tabela de opcionais "
+            "Valor Geral da Proposta e, quando houver, a tabela de opcionais "
             "aceitos."
         ),
     )
@@ -282,11 +348,12 @@ class SaleOrder(models.Model):
     def _compute_qualif_subtotals_html(self):
         """Render o painel de totais abaixo das linhas no form do SO.
 
-        Só o TOTAL GERAL (mais a tabela de opcionais aceitos, quando
-        houver). A tabela de subtotais por equipamento foi retirada em
-        16.0.6.13.5: o preço por equipamento passou a ser editável na
-        própria aba Comercial (`equipment_target_ids`), que já mostra a
-        base do rateio — a tabela repetia essa informação.
+        Só o TOTAL GERAL, com adicionais enumerados quando houver (ver
+        `_qualif_grand_total_html`). A tabela de subtotais por equipamento
+        foi retirada em 16.0.6.13.5 (preço por equipamento editável na aba
+        Comercial via `equipment_target_ids`) e a de opcionais aceitos
+        nesta task — o opcional aceito agora aparece como adicional no
+        próprio banner de total, evitando duplicidade.
 
         Vazio se a SO não tem qualif_lines.
         """
@@ -298,135 +365,127 @@ class SaleOrder(models.Model):
             if not summary:
                 order.qualif_subtotals_html = False
                 continue
-            html = order._qualif_optionals_subtotals_html()
-            # str() força concatenação str+str: `str += Markup` dispara
-            # Markup.__radd__ (regra de prioridade de subclasse) e ESCAPARIA
-            # todo o html acumulado. O Markup já traz os valores escapados.
-            html += str(order._qualif_grand_total_html())
-            order.qualif_subtotals_html = html
+            order.qualif_subtotals_html = str(order._qualif_grand_total_html())
 
-    def _qualif_optionals_subtotals_html(self):
-        """Tabela HTML 'Subtotais de Opcionais' (só os aceitos). Vazio se
-        não houver opcionais aceitos. Anexada abaixo dos subtotais por
-        equipamento no painel do form do SO."""
-        self.ensure_one()
-        accepted = self.order_line.filtered(
-            lambda l: l.is_proposal_optional and l.optional_accepted)
-        if not accepted:
-            return ""
-        rows = []
-        total = 0.0
-        for line in accepted:
-            qty = line.optional_qty
-            qty_str = (str(int(qty)) if qty == int(qty)
-                       else formatLang(self.env, qty, digits=2))
-            value = formatLang(self.env, line.price_subtotal,
-                               currency_obj=self.currency_id)
-            rows.append(
-                '<tr><td style="padding:4px 12px;">%s</td>'
-                '<td style="padding:4px 12px;text-align:right;">%s</td>'
-                '<td style="padding:4px 12px;text-align:right;'
-                'font-weight:bold;">%s</td></tr>'
-                % (line.name or "", qty_str, value)
-            )
-            total += line.price_subtotal
-        total_str = formatLang(self.env, total, currency_obj=self.currency_id)
-        rows.append(
-            '<tr style="border-top:2px solid #333;">'
-            '<td style="padding:6px 12px;font-weight:bold;">TOTAL OPCIONAIS</td>'
-            '<td></td>'
-            '<td style="padding:6px 12px;text-align:right;'
-            'font-weight:bold;font-size:14px;">%s</td></tr>' % total_str
-        )
-        return (
-            '<div style="margin-top:12px;width:100%%;">'
-            '<div style="font-weight:bold;color:#444;margin-bottom:4px;">'
-            'Subtotais de Opcionais (aceitos)'
-            '</div>'
-            '<table style="border-collapse:collapse;width:100%%;'
-            'border:1px solid #ddd;font-size:12px;">'
-            '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
-            '<th style="padding:6px 12px;text-align:left;">Serviço</th>'
-            '<th style="padding:6px 12px;text-align:right;">Qtd</th>'
-            '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
-            '</tr></thead>'
-            '<tbody>%s</tbody>'
-            '</table></div>'
-        ) % "".join(rows)
+    def _qualif_additional_lines(self, scope_tables=None):
+        """Adicionais: tudo que não entra no escopo de nenhum equipamento.
 
-    def _qualif_proposal_totals(self):
-        """Totais reconciliados da proposta, fonte única para o banner do
-        form, o bloco financeiro do PDF e o portal.
+        Ex.: despesas de viagem, pasta impressa, e também opcionais
+        ACEITOS (o rateio os exclui do escopo; sem esta regra o valor
+        sumiria do impresso sem sumir do amount_untaxed).
+        Opcional recusado normalmente tem product_uom_qty=0 → subtotal 0
+        → fora pelo filtro de is_zero(); o guard explícito abaixo cobre o
+        caso em que esse invariante procedural é violado (write direto).
+        Linha declinada (`part01_declined`) com subtotal ≠ 0 é excluída
+        pelo mesmo motivo — senão apareceria, na mesma proposta, riscada
+        na caixa "Itens Não Solicitados" (não executado) E nomeada como
+        item pago na lista de adicionais: contradição visual, ainda que o
+        total geral (`amount_untaxed`) não mude — sem o guard, o valor só
+        migraria do bucket "Outros"/residual para essa linha nomeada.
 
-        `grand_total` é SEMPRE `amount_untaxed` (o total real da proposta).
-        Ele é decomposto em três baldes que somam exatamente a esse total:
-
-        - `equip_total`: soma dos subtotais agrupados por equipamento
-          (linhas managed com equipment_id), via `_qualif_equipment_summary`.
-        - `optional_total`: opcionais aceitos.
-        - `outros_total`: remanescente — linhas regulares fora do agrupamento
-          por equipamento (ex.: linhas avulsas adicionadas manualmente,
-          managed sem equipment_id). Antes ficavam invisíveis no banner,
-          causando total subestimado (bug C26-06-0005).
+        `scope_tables`: reaproveita tabelas já construídas por quem chama
+        (ex. `_qualif_proposal_totals`) para não reconstruir o escopo
+        inteiro duas vezes — campo computed, custo importa. Default
+        constrói na hora, para chamadores isolados (testes etc.).
         """
         self.ensure_one()
-        equip_total = sum(
-            s["subtotal"] for s in self._qualif_equipment_summary())
-        accepted = self.order_line.filtered(
-            lambda l: l.is_proposal_optional and l.optional_accepted)
-        optional_total = sum(accepted.mapped("price_subtotal"))
+        if scope_tables is None:
+            scope_tables = self._qualif_scope_tables()
+        in_scope = self.env["sale.order.line"]
+        for table in scope_tables:
+            in_scope |= self._qualif_scope_lines(table["equipment"])
+        out = []
+        for line in self.order_line.sorted(key=lambda l: (l.sequence, l.id or 0)):
+            if line.display_type or line in in_scope:
+                continue
+            # Opcional pendente não pode virar adicional: o filtro de
+            # is_zero() abaixo só o exclui via qty=0, um invariante
+            # procedural (wizard/onchange/_sync_optional_qty), não uma
+            # constraint de banco. Um write() direto poderia deixar um
+            # opcional pendente com qty>0 escapar para o impresso.
+            if line.is_proposal_optional and not line.optional_accepted:
+                continue
+            # Simétrico ao guard acima: linha declinada (Parte 01) não
+            # pode virar adicional mesmo que um write() direto deixe seu
+            # subtotal ≠ 0 — sem isto ela apareceria ao mesmo tempo
+            # riscada na caixa de itens não solicitados E listada como
+            # item pago nos adicionais (contradição visual; o total geral
+            # não muda, o valor só trocaria de rótulo).
+            if line.part01_declined:
+                continue
+            if self.currency_id.is_zero(line.price_subtotal):
+                continue
+            out.append({
+                "name": line.name or line.product_id.display_name or "",
+                "amount": line.price_subtotal,
+            })
+        return out
+
+    def _qualif_proposal_totals(self):
+        """Totais da proposta — fonte única do form, do PDF e do portal.
+
+        `grand_total` continua sendo `amount_untaxed` (o total real). Ele
+        é decomposto em:
+
+        - `equip_total`: soma dos Valores Unitários IMPRESSOS nas tabelas
+          de escopo (preço-alvo quando bate, soma real quando desviado).
+        - `adicionais`: lista enumerada `[{"name", "amount"}]`.
+        - `residual`: o que sobra. Deve ser zero; quando não for (alvo
+          desviado, arredondamento), é impresso como linha "Outros" para
+          que nenhum valor do amount_untaxed fique invisível — foi
+          exatamente esse o bug C26-06-0005.
+        """
+        self.ensure_one()
+        scope_tables = self._qualif_scope_tables()
+        equip_total = sum(t["footer"]["unit_price"] for t in scope_tables)
+        adicionais = self._qualif_additional_lines(scope_tables)
         grand_total = self.amount_untaxed
-        outros_total = self.currency_id.round(
-            grand_total - equip_total - optional_total)
+        residual = self.currency_id.round(
+            grand_total - equip_total - sum(a["amount"] for a in adicionais))
         return {
             "equip_total": equip_total,
-            "optional_total": optional_total,
-            "outros_total": outros_total,
+            "adicionais": adicionais,
+            "residual": residual,
             "grand_total": grand_total,
         }
 
     def _qualif_grand_total_html(self):
-        """Banner 'TOTAL GERAL DA PROPOSTA' = total real da proposta
-        (amount_untaxed), decomposto em equipamentos + outros + opcionais
-        aceitos. Anexado ao fim de qualif_subtotals_html."""
+        """Banner de totais do form + base do bloco de totais do PDF.
+
+        Sem adicionais nem residual, imprime só a linha do total geral.
+        """
         self.ensure_one()
         totals = self._qualif_proposal_totals()
-        equip_total = totals["equip_total"]
-        opt_total = totals["optional_total"]
-        outros_total = totals["outros_total"]
-        grand = totals["grand_total"]
-        grand_str = formatLang(
-            self.env, grand, currency_obj=self.currency_id)
-        note = Markup("")
-        # Nota de decomposição quando há mais de um balde além do equip.
-        parts = []
-        if outros_total:
-            parts.append(Markup('outros ') + escape(formatLang(
-                self.env, outros_total, currency_obj=self.currency_id)))
-        if opt_total:
-            parts.append(Markup('opcionais aceitos ') + escape(formatLang(
-                self.env, opt_total, currency_obj=self.currency_id)))
-        if parts:
-            equip_str = formatLang(
-                self.env, equip_total, currency_obj=self.currency_id)
-            note = (
-                Markup('<div style="font-size:11px;color:#888;'
-                       'margin-top:4px;">(equipamentos ')
-                + escape(equip_str)
-                + Markup(' + ') + Markup(' + ').join(parts)
-                + Markup(')</div>')
-            )
-        return (
-            Markup('<div style="margin-top:16px;padding:10px 14px;'
-                   'background:#f4f4f4;color:#333;border:1px solid #ccc;'
-                   'border-radius:6px;'
-                   'display:flex;justify-content:space-between;'
-                   'align-items:center;">'
-                   '<span style="font-weight:bold;font-size:14px;">'
-                   'TOTAL GERAL DA PROPOSTA</span>'
-                   '<span style="font-weight:bold;font-size:18px;">')
-            + escape(grand_str) + Markup('</span></div>') + note
+        rows = []
+        breakdown = bool(totals["adicionais"]) or not self.currency_id.is_zero(
+            totals["residual"])
+        if breakdown:
+            rows.append((
+                _("Valor total dos Serviços de Qualificação"), totals["equip_total"]))
+            for adicional in totals["adicionais"]:
+                rows.append((adicional["name"], adicional["amount"]))
+            if not self.currency_id.is_zero(totals["residual"]):
+                rows.append((_("Outros"), totals["residual"]))
+        body = "".join(
+            '<tr><td style="padding:4px 12px;">%s</td>'
+            '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
+            % (escape(name), escape(formatLang(
+                self.env, value, currency_obj=self.currency_id)))
+            for name, value in rows
         )
+        grand_str = formatLang(
+            self.env, totals["grand_total"], currency_obj=self.currency_id)
+        return Markup(
+            '<div style="margin-top:12px;width:100%%;">'
+            '<table style="border-collapse:collapse;width:100%%;'
+            'font-size:12px;">%s'
+            '<tr style="border-top:2px solid #333;">'
+            '<td style="padding:6px 12px;font-weight:bold;">'
+            'Valor Geral da Proposta</td>'
+            '<td style="padding:6px 12px;text-align:right;font-weight:bold;'
+            'font-size:14px;">%s</td></tr>'
+            '</table></div>'
+        ) % (Markup(body), escape(grand_str))
 
     @api.depends(
         "order_line.is_qualificacao_managed",
@@ -591,18 +650,6 @@ class SaleOrder(models.Model):
             })
         return out
 
-    def _qualif_part_header(self, part, code):
-        """Rótulo de cabeçalho por Parte (compartilhado PDF + portal)."""
-        if part == "01":
-            return "PARTE 01 — Verificações"
-        if part == "02":
-            if code == "installation":
-                return "PARTE 02 — Calibrações"
-            if code == "operational":
-                return "PARTE 02 — Ciclos de Operação"
-            return "PARTE 02"
-        return ""
-
     def _qualif_estimated_hours(self, equipment=None):
         """F8.14 — soma horas estimadas das qualif lines do SO.
 
@@ -642,32 +689,42 @@ class SaleOrder(models.Model):
         )[:1]
         return section.work_hours_per_day or 8.0
 
-    def _qualif_estimated_days(self, equipment=None):
-        """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
-        wh = self._qualif_work_hours_per_day(equipment) if equipment else 8.0
-        return self._qualif_estimated_hours(equipment) / (wh or 8.0)
+    def _qualif_scope_lines(self, equipment, qtype=None, part=None):
+        """Linhas que compõem o escopo impresso de um equipamento.
 
-    def _qualif_section_hours(self, equipment, phase):
-        """F8.14 — soma horas só de uma fase (qo/qd/calibration) por equip.
+        Conjunto IDÊNTICO ao de `sale.order.line._rateio_base_lines()` —
+        managed, sem display_type, não opcional, não declinada, qty > 0.
+        Manter os dois em sincronia é o que garante que a soma dos
+        subtotais dos grupos bata com `equipment_subtotal` (e portanto
+        com o Valor Unitário impresso).
 
-        Usado pelos tfoots das tabelas QO/QD/Calib inline no Equipment Scope.
-        phase ∈ {'qo', 'qd', 'calibration'}.
+        `qtype` filtra por qualification_type; `part` filtra por parte
+        ('01'/'02'). `part=None` = qualquer parte.
         """
         self.ensure_one()
-        phase_to_qtype = {
-            "qo": "operational",
-            "qd": "performance",
-            "calibration": "calibration",
-        }
-        qtype = phase_to_qtype.get(phase)
-        if not qtype:
-            return 0.0
         lines = self.order_line.filtered(
-            lambda l: l.is_qualificacao_managed
+            lambda l: l.equipment_id == equipment
+            and l.is_qualificacao_managed
+            and not l.display_type
+            and not l.is_proposal_optional
             and not l.part01_declined
-            and l.equipment_id == equipment
-            and l.qualification_type == qtype
+            and l.product_uom_qty > 0
         )
+        if qtype:
+            lines = lines.filtered(lambda l: l.qualification_type == qtype)
+        if part is not None:
+            lines = lines.filtered(lambda l: (l.part or "") == part)
+        return lines
+
+    def _qualif_group_hours(self, lines):
+        """Horas estimadas de um conjunto de linhas do escopo.
+
+        Hierarquia da hora unitária: override na linha → cycle_type →
+        malha_type → afr.qualificacao.type.config (QI/QS). Multiplicada
+        por `qualif_cycle_qty` (fallback `product_uom_qty`).
+        """
+        self.ensure_one()
+        TypeConfig = self.env["afr.qualificacao.type.config"]
         total = 0.0
         for line in lines:
             hours = line.estimated_hours
@@ -676,8 +733,200 @@ class SaleOrder(models.Model):
                     hours = line.cycle_type_id.estimated_hours
                 elif line.malha_type_id:
                     hours = line.malha_type_id.estimated_hours
-            total += (hours or 0.0) * (line.qualif_cycle_qty or int(line.product_uom_qty or 0))
+                elif line.qualification_type in ("installation", "software"):
+                    cfg = TypeConfig.get_config_for(
+                        line.qualification_type, self.company_id,
+                    )
+                    if cfg:
+                        hours = cfg.estimated_hours
+            qty = line.qualif_cycle_qty or int(line.product_uom_qty or 0)
+            total += (hours or 0.0) * qty
         return total
+
+    def _qualif_days_from_hours(self, hours, equipment):
+        """Horas → dias de serviço, arredondado PARA CIMA ao próximo 0,5.
+
+        3,2 dias → 3,5; 3,6 → 4,0. `round(..., 6)` antes do ceil evita
+        que 3.0000000001 (ruído de float) vire 3,5.
+        """
+        self.ensure_one()
+        wh = self._qualif_work_hours_per_day(equipment) or 8.0
+        return math.ceil(round((hours / wh) * 2, 6)) / 2.0
+
+    def _qualif_days_label(self, days):
+        """Rótulo de previsão de dias com separador decimal pt-BR.
+
+        O documento é pt-BR e os valores monetários já são locale-aware;
+        o `%.1f` cru imprimia "5.5 dia(s)".
+        """
+        self.ensure_one()
+        return _("Previsão de %s dia(s) de serviço") % (
+            ("%.1f" % (days or 0.0)).replace(".", ","))
+
+    def _qualif_scope_ref(self, qtype):
+        """Remissiva ao tópico da proposta que descreve o tipo.
+
+        Com bloco incluído e numerado:
+            "Conforme item 5.1 — Qualificação de Instalação (QI)"
+        Sem bloco (cliente removeu) ou com bloco presente mas sem número
+        (show_number=False) — mesmo texto nos dois casos, sempre citando
+        o nome da seção da biblioteca:
+            "Conforme descrito no tópico Qualificação de Instalação (QI)"
+
+        NUNCA devolve vazio/None — o QWeb interpola direto.
+        """
+        self.ensure_one()
+        code = SCOPE_REF_SECTION_CODES.get(qtype)
+        label = QUALIF_TYPE_LABELS.get(qtype) or _("este escopo")
+        if code:
+            section = self.env["afr.proposal.section"].search(
+                [("code", "=", code)], limit=1)
+            if section.name:
+                label = section.name
+        block = self.env["afr.proposal.block"]
+        if code:
+            block = self.proposal_block_ids.filtered(
+                lambda b: b.included and b.section_id
+                and b.section_id.code == code
+            )[:1]
+        if not block:
+            return _("Conforme descrito no tópico %s") % label
+        name = block.section_id.name or label
+        num = self._proposal_block_numbering().get(block.id) or ""
+        if not num:
+            return _("Conforme descrito no tópico %s") % name
+        return _("Conforme item %s — %s") % (num, name)
+
+    def _qualif_scope_row(self, equipment, qtype, row_spec, lines):
+        """Monta uma linha da coluna direita da tabela de escopo."""
+        self.ensure_one()
+        row = {
+            "kind": row_spec["kind"],
+            "label": row_spec["label"],
+            "title": row_spec["title"],
+        }
+        if row_spec["kind"] == "ref":
+            row["ref"] = self._qualif_scope_ref(qtype)
+        elif row_spec["kind"] == "cycles":
+            row["time_label"] = (
+                equipment.category_id._qualif_time_label()
+                if equipment.category_id else _("Tempo de Esterilização")
+            )
+            row["cycles"] = [{
+                "qty": line.qualif_cycle_qty or int(line.product_uom_qty or 0),
+                "name": line.cycle_type_id.name or line.name or "",
+                "temperature": (
+                    line.temperature
+                    or line.cycle_type_id.temperature or ""
+                ),
+                "duration": (
+                    line.duration or line.cycle_type_id.duration or ""
+                ),
+            } for line in lines]
+        else:
+            row["items"] = [
+                line.name or line.product_id.display_name or ""
+                for line in lines
+            ]
+        return row
+
+    def _qualif_scope_table(self, equipment):
+        """Tabela de escopo completa de um equipamento.
+
+        Fonte ÚNICA dos três renders (PDF, portal, HTML do bloco). Nenhum
+        deles refaz agregação nem aritmética. Ver spec
+        docs/superpowers/specs/2026-08-20-escopo-tabela-ciclos-design.md.
+        """
+        self.ensure_one()
+        all_lines = self._qualif_scope_lines(equipment)
+        used = self.env["sale.order.line"]
+        groups = []
+        for spec in SCOPE_GROUPS:
+            rows = []
+            group_lines = self.env["sale.order.line"]
+            for qtype, part in spec["members"]:
+                lines = self._qualif_scope_lines(equipment, qtype, part)
+                if not lines:
+                    continue
+                group_lines |= lines
+                rows.append(self._qualif_scope_row(
+                    equipment, qtype, SCOPE_ROW_SPECS[(qtype, part)], lines,
+                ))
+            if not group_lines:
+                continue
+            used |= group_lines
+            groups.append({
+                "key": spec["key"],
+                "rows": rows,
+                "days": self._qualif_days_from_hours(
+                    self._qualif_group_hours(group_lines), equipment),
+                "subtotal": sum(group_lines.mapped("price_subtotal")),
+                "subtotal_label": spec["subtotal_label"],
+            })
+
+        # Sobras: tipo/parte fora da matriz (ex.: QS). Cada tipo vira um
+        # grupo próprio — nada some silenciosamente do escopo impresso.
+        leftovers = all_lines - used
+        for qtype in OrderedDict.fromkeys(
+                leftovers.mapped("qualification_type")):
+            lines = leftovers.filtered(
+                lambda l: l.qualification_type == qtype)
+            label = QUALIF_TYPE_LABELS.get(qtype) or _("Outros serviços")
+            groups.append({
+                "key": "extra-%s" % (qtype or "other"),
+                "rows": [{
+                    "kind": "list", "label": label, "title": "",
+                    "items": [
+                        line.name or line.product_id.display_name or ""
+                        for line in lines
+                    ],
+                }],
+                "days": self._qualif_days_from_hours(
+                    self._qualif_group_hours(lines), equipment),
+                "subtotal": sum(lines.mapped("price_subtotal")),
+                "subtotal_label": _("Subtotal %s") % label,
+            })
+
+        # Valor Unitário: o preço-alvo quando ele bate com a soma real;
+        # senão a soma real, para o impresso sempre fechar com o
+        # amount_untaxed do SO. Drift continua sinalizado no form.
+        section = self.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.equipment_id == equipment
+        )[:1]
+        if section and section.equipment_target_state == "ok":
+            unit_price = section.equipment_target_price
+        else:
+            unit_price = sum(all_lines.mapped("price_subtotal"))
+
+        return {
+            "equipment": equipment,
+            "groups": groups,
+            "footer": {
+                "days": sum(g["days"] for g in groups),
+                "unit_price": unit_price,
+            },
+        }
+
+    def _qualif_scope_tables(self):
+        """Tabelas de escopo de todos os equipamentos, na ordem do resumo.
+
+        Equipamento cujas linhas foram todas declinadas/optadas fora não
+        gera tabela (grupos vazios) e é omitido — os itens declinados
+        continuam aparecendo no box de auditoria.
+        """
+        self.ensure_one()
+        out = []
+        for summary in self._qualif_equipment_summary():
+            table = self._qualif_scope_table(summary["equipment"])
+            if table["groups"]:
+                out.append(table)
+        return out
+
+    def _qualif_estimated_days(self, equipment=None):
+        """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
+        wh = self._qualif_work_hours_per_day(equipment) if equipment else 8.0
+        return self._qualif_estimated_hours(equipment) / (wh or 8.0)
 
     def _qualif_schedule_rows(self):
         """F8.14 — retorna lista [{equipment, hours, days}] por equip + total geral.

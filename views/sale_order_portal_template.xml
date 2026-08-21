@@ -118,7 +118,6 @@
             <!-- ============================================================
                  3. BLOCOS — mesma dispatch do PDF, adaptada
             ============================================================= -->
-            <t t-set="summary" t-value="sale_order._qualif_equipment_summary()"/>
             <t t-set="type_descs" t-value="sale_order._qualif_type_descriptions()"/>
 
             <t t-foreach="sale_order.proposal_block_ids.filtered('included')" t-as="block">
@@ -147,95 +146,125 @@
                             <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
                             <span t-esc="block.title or 'Escopo por Equipamento'"/>
                         </div>
-                        <t t-foreach="summary" t-as="eq">
-                            <t t-set="equip_letter" t-value="chr(ord('a') + eq_index)"/>
+                        <t t-set="scope_tables" t-value="sale_order._qualif_scope_tables()"/>
+                        <t t-foreach="scope_tables" t-as="st">
+                            <t t-set="equip_letter" t-value="chr(ord('a') + st_index)"/>
                             <div class="lq-equip-card">
-                                <!-- F8.16 — Hierarchical table layout: Type → Parte → Items -->
                                 <table class="lq-scope-table">
                                     <thead>
                                         <tr class="lq-scope-equip-header">
                                             <td colspan="2">
                                                 <span class="lq-scope-equip-num"><t t-esc="equip_letter"/>.</span>
-                                                <span t-esc="eq['equipment'].name"/>
+                                                <span t-esc="st['equipment'].name"/>
                                                 <span class="lq-equip-meta">
-                                                    <t t-if="eq['equipment'].serial_number">
-                                                        · S/N: <span t-esc="eq['equipment'].serial_number"/>
-                                                    </t>
-                                                    <t t-if="eq['equipment'].category_id">
-                                                        · Categoria: <span t-esc="eq['equipment'].category_id.name"/>
+                                                    <t t-if="st['equipment'].serial_number">
+                                                        · S/N: <span t-esc="st['equipment'].serial_number"/>
                                                     </t>
                                                 </span>
                                             </td>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <t t-set="main_type_counter" t-value="0"/>
-                                        <t t-set="last_main_num" t-value="0"/>
-                                        <t t-foreach="eq['types']" t-as="tp">
-                                            <t t-if="tp['code'] != 'calibration'">
-                                                <t t-set="main_type_counter" t-value="main_type_counter + 1"/>
-                                                <t t-set="last_main_num" t-value="main_type_counter"/>
-                                                <t t-set="type_num" t-value="equip_letter + '.' + str(main_type_counter)"/>
+                                        <t t-foreach="st['groups']" t-as="grp">
+                                            <t t-foreach="grp['rows']" t-as="row">
+                                                <tr class="lq-scope-group-row">
+                                                    <td class="lq-scope-stage" t-esc="row['label']"/>
+                                                    <td class="lq-scope-description">
+                                                        <t t-if="row['kind'] == 'ref'">
+                                                            <span t-esc="row['ref']"/>
+                                                        </t>
+                                                        <t t-elif="row['kind'] == 'cycles'">
+                                                            <div class="lq-scope-subtitle" t-esc="row['title']"/>
+                                                            <div class="table-responsive">
+                                                                <table class="table table-sm lq-cycle-table">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>Quantidade</th>
+                                                                            <th>Ciclo</th>
+                                                                            <th>Temperatura</th>
+                                                                            <th><t t-esc="row['time_label']"/></th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        <t t-foreach="row['cycles']" t-as="cyc">
+                                                                            <tr>
+                                                                                <td t-esc="'%02d' % cyc['qty']"/>
+                                                                                <td t-esc="cyc['name']"/>
+                                                                                <td t-esc="cyc['temperature']"/>
+                                                                                <td t-esc="cyc['duration']"/>
+                                                                            </tr>
+                                                                        </t>
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </t>
+                                                        <t t-else="">
+                                                            <div class="lq-scope-subtitle" t-if="row['title']" t-esc="row['title']"/>
+                                                            <ul class="lq-scope-list">
+                                                                <li t-foreach="row['items']" t-as="it" t-esc="it"/>
+                                                            </ul>
+                                                        </t>
+                                                    </td>
+                                                </tr>
                                             </t>
-                                            <t t-else="">
-                                                <t t-set="type_num" t-value="equip_letter + '.' + str(last_main_num) + '.1'"/>
-                                            </t>
-                                            <tr t-att-class="'lq-scope-type-row' + (' lq-scope-type-row-calib' if tp['code'] == 'calibration' else '')">
-                                                <td colspan="2">
-                                                    <span class="lq-scope-type-num"><t t-esc="type_num"/></span>
-                                                    <span t-esc="tp['label']"/>
+                                            <tr class="lq-scope-subtotal-row">
+                                                <td t-esc="sale_order._qualif_days_label(grp['days'])"/>
+                                                <td>
+                                                    <t t-esc="grp['subtotal_label']"/>:
+                                                    <span t-esc="grp['subtotal']"
+                                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
                                                 </td>
                                             </tr>
-                                            <t t-foreach="['01', '02', '']" t-as="pcode">
-                                                <t t-set="part_items" t-value="[i for i in tp['items'] if (i.get('part') or '') == pcode]"/>
-                                                <t t-if="part_items">
-                                                    <t t-set="part_label" t-value="'Parte ' + pcode if pcode else ''"/>
-                                                    <t t-set="first_item" t-value="part_items[0]"/>
-                                                    <t t-set="rowspan" t-value="len(part_items)"/>
-                                                    <tr t-att-class="'lq-scope-declined' if first_item.get('declined') else ''">
-                                                        <td t-att-rowspan="rowspan" class="lq-scope-parte" t-esc="part_label"/>
-                                                        <td class="lq-scope-description">
-                                                            <t t-if="first_item.get('declined')">
-                                                                <span class="lq-strike" t-esc="first_item['name']"/>
-                                                                <span class="lq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
-                                                                <span class="lq-ref-price"> (ref.: <t t-esc="first_item['ref_price']" t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>)</span>
-                                                            </t>
-                                                            <t t-elif="first_item.get('subtype') == 'cycle_type'">
-                                                                <span t-esc="first_item['name']"/>
-                                                                <t t-if="first_item.get('temperature')"> — <t t-esc="first_item['temperature']"/></t>
-                                                                <t t-if="first_item.get('duration')"> — <t t-esc="first_item['duration']"/> esterilização</t>
-                                                            </t>
-                                                            <t t-else="">
-                                                                <span t-esc="first_item['name']"/>
-                                                            </t>
-                                                        </td>
-                                                    </tr>
-                                                    <t t-foreach="part_items[1:]" t-as="it">
-                                                        <tr t-att-class="'lq-scope-declined' if it.get('declined') else ''">
-                                                            <td class="lq-scope-item-name">
-                                                                <t t-if="it.get('declined')">
-                                                                    <span class="lq-strike" t-esc="it['name']"/>
-                                                                    <span class="lq-declined"> NÃO SOLICITADO EXECUÇÃO</span>
-                                                                    <span class="lq-ref-price"> (ref.: <t t-esc="it['ref_price']" t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>)</span>
-                                                                </t>
-                                                                <t t-elif="it.get('subtype') == 'cycle_type'">
-                                                                    <span t-esc="it['name']"/>
-                                                                    <t t-if="it.get('temperature')"> — <t t-esc="it['temperature']"/></t>
-                                                                    <t t-if="it.get('duration')"> — <t t-esc="it['duration']"/> esterilização</t>
-                                                                </t>
-                                                                <t t-else="">
-                                                                    <span t-esc="it['name']"/>
-                                                                </t>
-                                                            </td>
-                                                        </tr>
-                                                    </t>
-                                                </t>
-                                            </t>
                                         </t>
+                                        <tr class="lq-scope-footer-row">
+                                            <td t-esc="sale_order._qualif_days_label(st['footer']['days'])"/>
+                                            <td>
+                                                Valor Unitário:
+                                                <span t-esc="st['footer']['unit_price']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
                         </t>
+                        <table class="lq-total-table">
+                            <t t-set="totals" t-value="sale_order._qualif_proposal_totals()"/>
+                            <t t-set="tot_breakdown"
+                               t-value="bool(totals['adicionais']) or not sale_order.currency_id.is_zero(totals['residual'])"/>
+                            <t t-if="tot_breakdown">
+                                <tr>
+                                    <td class="lq-tot-label">Valor total dos Serviços de Qualificação</td>
+                                    <td class="lq-tot-value">
+                                        <span t-esc="totals['equip_total']"
+                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                    </td>
+                                </tr>
+                                <t t-foreach="totals['adicionais']" t-as="adic">
+                                    <tr>
+                                        <td class="lq-tot-label" t-esc="adic['name']"/>
+                                        <td class="lq-tot-value">
+                                            <span t-esc="adic['amount']"
+                                                  t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                                <tr t-if="not sale_order.currency_id.is_zero(totals['residual'])">
+                                    <td class="lq-tot-label">Outros</td>
+                                    <td class="lq-tot-value">
+                                        <span t-esc="totals['residual']"
+                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                    </td>
+                                </tr>
+                            </t>
+                            <tr class="lq-total-grand">
+                                <td class="lq-tot-label">Valor Geral da Proposta</td>
+                                <td class="lq-tot-value">
+                                    <span t-esc="totals['grand_total']"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                        </table>
                         <t t-set="declined" t-value="sale_order._qualif_declined_items()"/>
                         <t t-set="declined_section" t-value="sale_order.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>
                         <div t-if="declined" class="lq-declined-box">
@@ -400,73 +429,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-                </t>
-
-                <!-- Resumo financeiro -->
-                <t t-if="block.block_kind == 'financial'">
-                    <section class="lq-section">
-                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
-                             t-if="block.show_title">
-                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
-                            <span t-esc="block.title or 'Resumo Financeiro'"/>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-sm lq-table">
-                                <thead>
-                                    <tr>
-                                        <th>Equipamento</th>
-                                        <th class="text-end">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <t t-foreach="summary" t-as="eq">
-                                        <tr>
-                                            <td t-esc="eq['equipment'].name"/>
-                                            <td class="text-end">
-                                                <span t-esc="eq['subtotal']"
-                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                            </td>
-                                        </tr>
-                                    </t>
-                                </tbody>
-                            </table>
-                        </div>
-                        <table class="lq-total-table">
-                            <t t-set="totals" t-value="sale_order._qualif_proposal_totals()"/>
-                            <tr>
-                                <td class="lq-tot-label">Subtotal:</td>
-                                <td class="lq-tot-value">
-                                    <span t-esc="totals['equip_total']"
-                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                </td>
-                            </tr>
-                            <t t-if="totals['outros_total']">
-                                <tr>
-                                    <td class="lq-tot-label">Outros:</td>
-                                    <td class="lq-tot-value">
-                                        <span t-esc="totals['outros_total']"
-                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                    </td>
-                                </tr>
-                            </t>
-                            <t t-if="totals['optional_total']">
-                                <tr>
-                                    <td class="lq-tot-label">Opcionais:</td>
-                                    <td class="lq-tot-value">
-                                        <span t-esc="totals['optional_total']"
-                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                    </td>
-                                </tr>
-                            </t>
-                            <tr class="lq-total-grand">
-                                <td class="lq-tot-label">TOTAL GERAL:</td>
-                                <td class="lq-tot-value">
-                                    <span t-esc="totals['grand_total']"
-                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                </td>
-                            </tr>
-                        </table>
                     </section>
                 </t>
 

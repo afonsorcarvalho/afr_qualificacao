@@ -123,7 +123,17 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         self.assertIn("ciclo", html)
 
     def test_render_equipment_scope_omits_cronograma_footer(self):
-        """Rodapé Equipment Scope NÃO mostra cronograma (movido para bloco schedule)."""
+        """Rodapé Equipment Scope NÃO mostra cronograma (movido para bloco schedule).
+
+        Diagnóstico (Task 8, 2026-08-20): esta asserção já falhava antes do
+        plano — não por colisão com a nova linha "Previsão de ... dia(s) de
+        serviço" do escopo, mas porque `.qq-equip-schedule` continuava
+        definida em `styles.xml` (embutida no <style> do PDF) mesmo depois
+        de o rodapé de cronograma inline ter sido removido do
+        `block_equipment_scope.xml` (F8.16) — grep confirmou zero
+        consumidores HTML da classe. CSS morta removida de `styles.xml`;
+        a asserção volta a testar o que sempre pretendeu testar.
+        """
         self.cycle_cmax.estimated_hours = 2.0
         so = self._built_so()
         html = self._render(so)

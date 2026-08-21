@@ -138,7 +138,14 @@ class TestQoCycles(AfrQualificacaoTestCommon):
         html = html.decode() if isinstance(html, bytes) else html
         self.assertIn("Qualificação de Operação", html)
         self.assertIn("134°C", html)
-        self.assertIn("esteril", html)
-        # line.name vira default product name; aqui basta confirmar presence
-        # da Categoria do produto QO de teste.
-        self.assertIn("Test QO", html)
+        # F8.16/escopo-tabela-ciclos: a "palavra de processo" saiu da
+        # célula do ciclo e migrou para o cabeçalho da coluna de tempo,
+        # via engc.equipment.category._qualif_time_label(). Categoria de
+        # teste (common.py) usa o default "esterilizacao".
+        self.assertIn(self.equip1.category_id._qualif_time_label(), html)
+        # Escopo tabela de ciclos (2026-08-20): a tabela de ciclos QO
+        # identifica cada linha pelo nome do CYCLE TYPE
+        # (`_qualif_cycle_rows_for` → cyc["name"] = cycle_type_id.name),
+        # não mais pelo nome do produto ("Test QO") — o produto nunca
+        # chega a ser impresso no bloco Equipment Scope neste formato.
+        self.assertIn(self.cycle_qo_bowie.name, html)

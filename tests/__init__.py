@@ -99,3 +99,7 @@ from . import test_create_default_vector_task14
 
 # OS por grupo de equipamento — Task 2: regra de nome das OS (sufixo -1, -2, -3)
 from . import test_os_por_grupo
+
+# Escopo por equipamento como tabela única — camada de agregação
+from . import test_scope_table
+from . import test_scope_render

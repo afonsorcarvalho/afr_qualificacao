@@ -5,6 +5,15 @@
         Sequência de blocos reproduzindo a estrutura da proposta atual do
         cliente. Carregado APÓS proposal_section_seed.xml (linhas referenciam
         as seções). noupdate="1": cliente reordena/customiza sem perder.
+
+        ATENÇÃO (F9.2, confirmado 2026-08-20): este arquivo NÃO está na lista
+        `data` do __manifest__.py e portanto NÃO é carregado por ninguém. O
+        seed real do template default roda em Python, no post_init_hook
+        `_install_proposal_template_seed` (hooks.py), a partir da constante
+        `PROPOSAL_TEMPLATE_LINES`. Este XML é mantido só como referência
+        histórica/documentação da estrutura — editar aqui NÃO tem efeito em
+        nenhuma instalação. Para mudar o template default, editar
+        `PROPOSAL_TEMPLATE_LINES` em hooks.py.
     -->
 
     <record id="proposal_template_labquali" model="afr.proposal.template">
@@ -86,22 +95,17 @@
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_entregaveis"/>
     </record>
-    <record id="proposal_template_labquali_l12" model="afr.proposal.template.line">
-        <field name="template_id" ref="proposal_template_labquali"/>
-        <field name="sequence">120</field>
-        <field name="block_kind">financial</field>
-        <field name="page_break" eval="True"/>
-    </record>
-    <record id="proposal_template_labquali_l13" model="afr.proposal.template.line">
-        <field name="template_id" ref="proposal_template_labquali"/>
-        <field name="sequence">130</field>
-        <field name="block_kind">optionals</field>
-    </record>
+    <!-- Escopo tabela de ciclos (2026-08-20) — l12 (financial) e l13
+         (optionals) removidos do template default: os totais passaram
+         para o fim do bloco equipment_scope e os opcionais aceitos
+         aparecem lá como adicionais. Os dois tipos de bloco continuam
+         disponíveis para quem montar template manualmente. -->
     <record id="proposal_template_labquali_l14" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">140</field>
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_responsabilidades"/>
+        <field name="page_break" eval="True"/>
     </record>
     <record id="proposal_template_labquali_l15" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
