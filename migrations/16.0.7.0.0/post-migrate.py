@@ -52,6 +52,27 @@ outro por duplicar a tabela de ciclos. Por isso, ao contrário do
 comentário original acima ("Só mexe no TEMPLATE"), esta migração agora
 TAMBÉM remove esses blocos materializados, em todas as cotações — não só
 no template.
+
+Ajuste de 2026-08-21 (fix round, F1): existe ainda um TERCEIRO caso —
+bloco `financial` que alguém converteu para `static` (snapshot manual)
+ANTES do `UserError` em `action_edit_block` passar a proibir essa
+conversão (caso real: afr.proposal.block id=636, SO C26-08-0018, com
+"TOTAL GERAL: R$ 10.373,48" congelado no body). Um bloco `static` sempre
+renderiza seu `body` incondicionalmente — com o guard antigo removido,
+esse registro específico voltaria a imprimir DOIS totais (o congelado no
+body + o novo incondicional do fim do escopo).
+
+Diferente de `financial`/`cycle_specs` (que dá para identificar só pelo
+`block_kind`), aqui é preciso um critério mais cuidadoso, porque um bloco
+`static` pode ter conteúdo de texto livre editado pelo usuário — não dá
+para apagar todo `static` com um título parecido. O critério ESTREITO
+(3 condições cumulativas, ver `AfrProposalBlock.
+_qualif_is_frozen_financial_summary`) é: `block_kind == 'static'` E
+`title` igual ao rótulo do bloco financeiro ("Resumo Financeiro") E
+`body` contendo o texto "TOTAL GERAL". Só com as três é seguro afirmar
+que é um Resumo Financeiro congelado, e não um bloco de texto que o
+usuário só batizou assim. Cada remoção é logada individualmente com o
+nome da cotação, para o registro ficar auditável.
 """
 
 import logging
@@ -95,3 +116,29 @@ def migrate(cr, version):
             len(blocks), n_orders,
         )
         blocks.unlink()
+
+    # F1 (fix round 2026-08-21): bloco `financial` congelado em `static`
+    # ANTES do UserError em action_edit_block existir — critério estreito,
+    # ver AfrProposalBlock._qualif_is_frozen_financial_summary. Candidatos
+    # filtrados pelo título no domain (barato); o critério completo
+    # (inclui checar "TOTAL GERAL" no body) roda em Python por registro,
+    # e cada remoção é logada individualmente com a cotação, por ser uma
+    # exclusão sensível de conteúdo potencialmente editado pelo usuário.
+    financial_label = dict(
+        env["afr.proposal.block"]._fields["block_kind"].selection
+    ).get("financial")
+    frozen_candidates = env["afr.proposal.block"].search([
+        ("block_kind", "=", "static"),
+        ("title", "=", financial_label),
+    ]) if financial_label else env["afr.proposal.block"]
+    frozen_financial = frozen_candidates.filtered(
+        lambda b: b._qualif_is_frozen_financial_summary())
+    for block in frozen_financial:
+        _logger.info(
+            "afr_qualificacao 16.0.7.0.0: removendo bloco static "
+            "'Resumo Financeiro' congelado (id=%d) da cotação %s — "
+            "'TOTAL GERAL' encontrado no body, teria duplicado o total.",
+            block.id, block.sale_order_id.display_name,
+        )
+    if frozen_financial:
+        frozen_financial.unlink()

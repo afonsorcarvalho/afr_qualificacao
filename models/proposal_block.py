@@ -222,6 +222,32 @@ class AfrProposalBlock(models.Model):
             "target": "new",
         }
 
+    def _qualif_is_frozen_financial_summary(self):
+        """True se este bloco `static` é um Resumo Financeiro congelado.
+
+        Critério ESTREITO (3 condições cumulativas) usado pela migração
+        16.0.7.0.0 para limpar blocos `financial` que alguém converteu
+        para `static` (snapshot manual) ANTES do `UserError` em
+        `action_edit_block` passar a proibir essa conversão — cobre o
+        caso real da base (afr.proposal.block id=636, SO C26-08-0018,
+        com "TOTAL GERAL: R$ 10.373,48" congelado no body).
+
+        As 3 condições, cumulativas, para não apagar um bloco de texto
+        livre que o usuário só batizou com o mesmo título:
+        - `block_kind == 'static'`;
+        - `title` igual ao rótulo do bloco financeiro
+          (`PROPOSAL_BLOCK_KINDS['financial']`, hoje "Resumo Financeiro");
+        - `body` contendo o texto "TOTAL GERAL" (assinatura do totalizador
+          antigo, `_qualif_grand_total_html`/SEÇÃO 6 do fallback).
+        """
+        self.ensure_one()
+        if self.block_kind != "static":
+            return False
+        financial_label = dict(PROPOSAL_BLOCK_KINDS).get("financial")
+        if not financial_label or self.title != financial_label:
+            return False
+        return bool(self.body) and "TOTAL GERAL" in str(self.body)
+
     def _snapshot_html(self):
         """Renderiza o conteúdo dinâmico atual do bloco em HTML editável."""
         self.ensure_one()

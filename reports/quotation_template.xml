@@ -367,61 +367,23 @@
                 </div>
 
                 <!-- ========================================================
-                     SECÇÃO 6 — RESUMO FINANCEIRO
+                     SECÇÃO 6 — TOTAIS
+                     Não há mais seção "Resumo Financeiro" separada (ver
+                     F8.2x) — reaproveita o mesmo `qq_totals_table` usado no
+                     fim do escopo por equipamento no layout baseado em
+                     blocos, para os rótulos e o negrito do total geral
+                     baterem nos dois layouts. A tabela "Equipamento /
+                     Subtotal" que existia aqui saiu por ser redundante com
+                     os cards de "Subtotal do equipamento" da SECÇÃO 4
+                     acima (mesmo raciocínio do C2 no portal).
                 ========================================================= -->
                 <div class="qq-section">
-                    <div class="qq-section-title">Resumo Financeiro</div>
-                    <p>
-                        Resumo dos valores conforme escopo apresentado. Valores
-                        em
-                        <span t-esc="doc.currency_id.name"/>.
-                    </p>
-                    <table class="qq-table">
-                        <tr>
-                            <th>Equipamento</th>
-                            <th class="text-end" style="text-align: right;">Subtotal</th>
-                        </tr>
-                        <t t-foreach="summary" t-as="eq">
-                            <tr>
-                                <td>
-                                    <span t-esc="eq['equipment'].name"/>
-                                </td>
-                                <td style="text-align: right;">
-                                    <span t-esc="eq['subtotal']"
-                                          t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
-                                </td>
-                            </tr>
-                        </t>
-                    </table>
-
-                    <table class="qq-total-table">
-                        <tr>
-                            <td class="qq-tot-label">Subtotal:</td>
-                            <td class="qq-tot-value">
-                                <span t-field="doc.amount_untaxed"
-                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="qq-tot-label">Impostos:</td>
-                            <td class="qq-tot-value">
-                                <span t-field="doc.amount_tax"
-                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
-                            </td>
-                        </tr>
-                        <tr class="qq-total-grand">
-                            <td class="qq-tot-label">TOTAL GERAL:</td>
-                            <td class="qq-tot-value">
-                                <span t-field="doc.amount_total"
-                                      t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
-                            </td>
-                        </tr>
-                    </table>
+                    <t t-call="afr_qualificacao.qq_totals_table"/>
                 </div>
 
                 <!-- ========================================================
                      SECÇÃO 7 — CONDIÇÕES COMERCIAIS
-                     (continua na mesma página do Resumo Financeiro)
+                     (continua na mesma página da tabela de Totais)
                 ========================================================= -->
                 <div class="qq-section qq-section-cont">
                     <div class="qq-section-title">Condições Comerciais</div>
