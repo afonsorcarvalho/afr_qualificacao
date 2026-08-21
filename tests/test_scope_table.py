@@ -422,9 +422,10 @@ class TestProposalTotals(TestScopeTable):
         Guard simétrico ao do opcional pendente: normalmente uma linha
         declinada tem qty=0 → subtotal 0 → já fora pelo filtro de
         is_zero(). O guard explícito cobre o caso em que esse invariante
-        procedural é violado (write direto) — senão a linha apareceria
-        riscada na caixa "Itens Não Solicitados" E cobrada nos totais ao
-        mesmo tempo.
+        procedural é violado (write direto) — senão a linha apareceria ao
+        mesmo tempo riscada na caixa "Itens Não Solicitados" E listada
+        como item pago nos adicionais (contradição visual; o total geral
+        não muda, o valor só trocaria de rótulo).
         """
         so = self._full_so()
         decl = self._line(so, self.equip1, "installation", "01", 900.0,

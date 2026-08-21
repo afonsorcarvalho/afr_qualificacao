@@ -379,8 +379,11 @@ class SaleOrder(models.Model):
         → fora pelo filtro de is_zero(); o guard explícito abaixo cobre o
         caso em que esse invariante procedural é violado (write direto).
         Linha declinada (`part01_declined`) com subtotal ≠ 0 é excluída
-        pelo mesmo motivo — senão apareceria riscada na caixa "Itens Não
-        Solicitados" E cobrada nos totais ao mesmo tempo.
+        pelo mesmo motivo — senão apareceria, na mesma proposta, riscada
+        na caixa "Itens Não Solicitados" (não executado) E nomeada como
+        item pago na lista de adicionais: contradição visual, ainda que o
+        total geral (`amount_untaxed`) não mude — sem o guard, o valor só
+        migraria do bucket "Outros"/residual para essa linha nomeada.
 
         `scope_tables`: reaproveita tabelas já construídas por quem chama
         (ex. `_qualif_proposal_totals`) para não reconstruir o escopo
@@ -406,9 +409,10 @@ class SaleOrder(models.Model):
                 continue
             # Simétrico ao guard acima: linha declinada (Parte 01) não
             # pode virar adicional mesmo que um write() direto deixe seu
-            # subtotal ≠ 0 — ela já é cobrada visualmente na caixa de
-            # itens não solicitados, cobrá-la aqui também duplicaria o
-            # valor sem duplicar o serviço.
+            # subtotal ≠ 0 — sem isto ela apareceria ao mesmo tempo
+            # riscada na caixa de itens não solicitados E listada como
+            # item pago nos adicionais (contradição visual; o total geral
+            # não muda, o valor só trocaria de rótulo).
             if line.part01_declined:
                 continue
             if self.currency_id.is_zero(line.price_subtotal):
