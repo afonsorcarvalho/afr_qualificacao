@@ -100,8 +100,11 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
     def test_snapshotted_block_renders_in_report(self):
         """Bloco dinâmico após snapshot é renderizado como texto no PDF."""
         so = self._built_so()
-        self._block(so, "financial").action_edit_block()
+        block = self._block(so, "equipment_scope")
+        block.action_edit_block()
+        self.assertEqual(block.block_kind, "static")
+        self.assertTrue(block.body)
         report = self.env.ref("sale.action_report_saleorder")
         html, _ctype = report._render_qweb_html(report.report_name, so.ids)
         html = html.decode() if isinstance(html, bytes) else html
-        self.assertIn("TOTAL GERAL", html)
+        self.assertIn("Previsão de", html)
