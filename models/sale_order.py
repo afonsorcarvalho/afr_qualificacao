@@ -21,8 +21,6 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
 
-from .proposal_template import PROPOSAL_BLOCK_KINDS
-
 
 # Sufixo "— N ciclo(s)/malha(s)" anexado pelo configurador ao nome da linha.
 _QTY_SUFFIX_RE = re.compile(r"\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$")
@@ -213,7 +211,7 @@ class SaleOrder(models.Model):
         sanitize=False,
         help=(
             "Painel HTML exibido no form do SO abaixo das linhas: banner do "
-            "TOTAL GERAL DA PROPOSTA e, quando houver, a tabela de opcionais "
+            "Valor Geral da Proposta e, quando houver, a tabela de opcionais "
             "aceitos."
         ),
     )
@@ -451,33 +449,6 @@ class SaleOrder(models.Model):
             "grand_total": grand_total,
         }
 
-    def _qualif_has_financial_block(self):
-        """True se a proposta já tem um bloco de totais materializado.
-
-        Fonte única do guard anti-duplicação usado pelos três renders
-        (PDF `block_equipment_scope.xml`, portal
-        `sale_order_portal_template.xml` e o snapshot Python
-        `_html_equipment_scope`): quando há bloco financeiro incluído, o
-        escopo NÃO imprime totais no fim — senão sairiam dois "TOTAL
-        GERAL" na mesma proposta.
-
-        Reconhece `block_kind == 'financial'` (caso normal) E também um
-        bloco `static` cujo título seja o rótulo do bloco financeiro
-        (`PROPOSAL_BLOCK_KINDS`) — cobre blocos financeiros que alguém
-        converteu para `static` (snapshot/edição manual) ANTES do guard
-        em `action_edit_block` que passou a proibir essa conversão. Um
-        bloco assim continua sendo "o resumo financeiro" na prática,
-        mesmo já congelado.
-        """
-        self.ensure_one()
-        financial_label = dict(PROPOSAL_BLOCK_KINDS).get("financial")
-        return bool(self.proposal_block_ids.filtered(
-            lambda b: b.included and (
-                b.block_kind == "financial"
-                or (b.block_kind == "static" and b.title == financial_label)
-            )
-        ))
-
     def _qualif_grand_total_html(self):
         """Banner de totais do form + base do bloco de totais do PDF.
 
@@ -490,7 +461,7 @@ class SaleOrder(models.Model):
             totals["residual"])
         if breakdown:
             rows.append((
-                _("Total dos Serviços de Qualificação"), totals["equip_total"]))
+                _("Valor total dos Serviços de Qualificação"), totals["equip_total"]))
             for adicional in totals["adicionais"]:
                 rows.append((adicional["name"], adicional["amount"]))
             if not self.currency_id.is_zero(totals["residual"]):
@@ -510,7 +481,7 @@ class SaleOrder(models.Model):
             'font-size:12px;">%s'
             '<tr style="border-top:2px solid #333;">'
             '<td style="padding:6px 12px;font-weight:bold;">'
-            'TOTAL GERAL DA PROPOSTA</td>'
+            'Valor Geral da Proposta</td>'
             '<td style="padding:6px 12px;text-align:right;font-weight:bold;'
             'font-size:14px;">%s</td></tr>'
             '</table></div>'

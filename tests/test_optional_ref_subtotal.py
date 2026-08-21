@@ -72,8 +72,8 @@ class TestOptionalRefSubtotal(AfrQualificacaoTestCommon):
         # opcional aceito agora entra como adicional enumerado no próprio
         # banner de TOTAL GERAL (`_qualif_grand_total_html`).
         self.assertIn("Pasta Opt", html)
-        self.assertIn("Total dos Serviços de Qualificação", html)
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertIn("Valor total dos Serviços de Qualificação", html)
+        self.assertIn("Valor Geral da Proposta", html)
 
     def test_subtotals_html_no_optional_section_when_none_accepted(self):
         so = self._so_with_qualif_line()

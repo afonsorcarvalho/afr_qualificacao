@@ -195,11 +195,6 @@
                             <t t-call="afr_qualificacao.qq_block_standards_table"/>
                         </t>
 
-                        <!-- Resumo financeiro -->
-                        <t t-if="block.block_kind == 'financial'">
-                            <t t-call="afr_qualificacao.qq_block_financial"/>
-                        </t>
-
                         <!-- Serviços opcionais -->
                         <t t-if="block.block_kind == 'optionals'">
                             <t t-call="afr_qualificacao.qq_block_optionals"/>

@@ -219,7 +219,6 @@
         "reports/templates_blocos/block_cycle_specs.xml",
         "reports/templates_blocos/block_schedule.xml",
         "reports/templates_blocos/block_standards_table.xml",
-        "reports/templates_blocos/block_financial.xml",
         "reports/templates_blocos/block_optionals.xml",
         "reports/templates_blocos/block_sales_items.xml",
         "reports/templates_blocos/block_acceptance.xml",

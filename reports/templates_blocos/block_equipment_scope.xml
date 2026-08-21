@@ -87,14 +87,11 @@
                                         </table>
                                     </div>
                                 </t>
-                                <!-- Totais no fim do escopo, salvo quando a cotação
-                                     ainda traz o bloco financeiro materializado
-                                     (`financial`, ou um `static` congelado a partir
-                                     dele — ver `_qualif_has_financial_block`) — senão
-                                     o total geral sairia impresso duas vezes. -->
-                                <t t-if="not doc._qualif_has_financial_block()">
-                                    <t t-call="afr_qualificacao.qq_totals_table"/>
-                                </t>
+                                <!-- Totais no fim do escopo. Emitido sempre, uma
+                                     única vez, ao final de todas as tabelas de
+                                     equipamento — não há mais bloco de Resumo
+                                     Financeiro separado (ver F8.2x). -->
+                                <t t-call="afr_qualificacao.qq_totals_table"/>
                                 <!-- Box de auditoria: itens não solicitados para execução. -->
                                 <t t-set="declined_items" t-value="doc._qualif_declined_items()"/>
                                 <t t-set="declined_section" t-value="doc.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>

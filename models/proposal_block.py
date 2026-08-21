@@ -230,7 +230,6 @@ class AfrProposalBlock(models.Model):
             "cycle_specs": self._html_cycle_specs,
             "schedule": self._html_schedule,
             "standards_table": self._html_standards,
-            "financial": self._html_financial,
             "optionals": self._html_optionals,
             "acceptance": self._html_acceptance,
         }.get(self.block_kind)
@@ -289,13 +288,9 @@ class AfrProposalBlock(models.Model):
                 "<table class='qq-scope-table'>"
                 "<thead>%s</thead><tbody>%s</tbody></table></div>"
             ) % (head_row, body_rows))
-        # Totais no fim do escopo, salvo quando a cotação ainda traz o
-        # bloco financeiro materializado (`financial`, ou um `static`
-        # congelado a partir dele — ver `_qualif_has_financial_block`) —
-        # senão o total geral sairia impresso duas vezes (uma vez aqui,
-        # outra em `_html_financial` ou no corpo congelado).
-        if not order._qualif_has_financial_block():
-            parts.append(order._qualif_grand_total_html())
+        # Totais no fim do escopo. Emitido sempre, uma única vez — não há
+        # mais bloco de Resumo Financeiro separado (ver F8.2x).
+        parts.append(order._qualif_grand_total_html())
         parts.append(self._html_declined_items(order))
         return Markup("").join(parts) or Markup("<p></p>")
 
@@ -449,10 +444,6 @@ class AfrProposalBlock(models.Model):
             "<th>Organismo</th><th>Escopo</th></tr></thead>"
             "<tbody>%s</tbody></table>"
         ) % rows
-
-    def _html_financial(self, order):
-        """Bloco financeiro = bloco de totais (mesmo conteúdo do escopo)."""
-        return order._qualif_grand_total_html()
 
     def _html_optionals(self, order):
         opt_lines = order.order_line.filtered("is_proposal_optional")

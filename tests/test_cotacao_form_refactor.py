@@ -143,7 +143,7 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         equip_total = sum(s["subtotal"] for s in so._qualif_equipment_summary())
         expected = formatLang(self.env, equip_total, currency_obj=so.currency_id)
         html = so.qualif_subtotals_html
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertIn("Valor Geral da Proposta", html)
         self.assertIn(expected, html)
         # Escopo tabela de ciclos (2026-08-20): o banner de total
         # (`_qualif_grand_total_html`) agora É SEMPRE uma <table> (mesmo

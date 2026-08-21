@@ -490,12 +490,12 @@ class TestProposalTotals(TestScopeTable):
         so = self._full_so()
         self._extra(so, "Pasta impressa e envio correio", 400.0)
         html = str(so._qualif_grand_total_html())
-        self.assertIn("Total dos Serviços de Qualificação", html)
+        self.assertIn("Valor total dos Serviços de Qualificação", html)
         self.assertIn("Pasta impressa e envio correio", html)
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertIn("Valor Geral da Proposta", html)
 
     def test_grand_total_html_omits_breakdown_without_additionals(self):
         so = self._full_so()
         html = str(so._qualif_grand_total_html())
-        self.assertNotIn("Total dos Serviços de Qualificação", html)
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertNotIn("Valor total dos Serviços de Qualificação", html)
+        self.assertIn("Valor Geral da Proposta", html)

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Bloco de totais compartilhado: usado no fim do Escopo por
-         Equipamento e pelo bloco `financial` (que segue disponível como
-         tipo, mesmo fora do template default). -->
+    <!-- Bloco de totais compartilhado: chamado sempre ao fim da tabela de
+         escopo por equipamento (`qq_block_equipment_scope`). Não há mais
+         bloco de Resumo Financeiro separado — este é o único emissor de
+         totais da proposta. -->
     <template id="qq_totals_table">
         <t t-set="totals" t-value="doc._qualif_proposal_totals()"/>
         <t t-set="tot_breakdown"
@@ -10,7 +11,7 @@
         <table class="qq-total-table">
             <t t-if="tot_breakdown">
                 <tr>
-                    <td class="qq-tot-label">Total dos Serviços de Qualificação</td>
+                    <td class="qq-tot-label">Valor total dos Serviços de Qualificação</td>
                     <td class="qq-tot-value">
                         <span t-esc="totals['equip_total']"
                               t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
@@ -34,7 +35,7 @@
                 </tr>
             </t>
             <tr class="qq-total-grand">
-                <td class="qq-tot-label">TOTAL GERAL DA PROPOSTA</td>
+                <td class="qq-tot-label">Valor Geral da Proposta</td>
                 <td class="qq-tot-value">
                     <span t-esc="totals['grand_total']"
                           t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>

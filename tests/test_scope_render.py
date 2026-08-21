@@ -63,18 +63,34 @@ class TestScopePdfRender(TestScopeTable):
         so = self._full_so()
         self._extra(so, "Despesas de viagem", 1000.0)
         html = self._render_pdf(so)
-        self.assertIn("Total dos Serviços de Qualificação", html)
+        self.assertIn("Valor total dos Serviços de Qualificação", html)
         self.assertIn("Despesas de viagem", html)
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertIn("Valor Geral da Proposta", html)
 
     def test_pdf_totals_without_additionals_is_single_line(self):
         html = self._render_pdf(self._full_so())
-        self.assertNotIn("Total dos Serviços de Qualificação", html)
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
-        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+        self.assertNotIn("Valor total dos Serviços de Qualificação", html)
+        self.assertIn("Valor Geral da Proposta", html)
+        self.assertEqual(html.count("Valor Geral da Proposta"), 1)
 
-    def test_totals_not_duplicated_when_financial_block_present(self):
-        """Cotação antiga com `financial` materializado não imprime 2 totais."""
+    def test_pdf_materialized_financial_block_is_a_no_op(self):
+        """Cotação antiga com bloco `financial` materializado (todo o parque
+        labquali, até a migração 16.0.7.0.0 rodar) não pode duplicar o total:
+        o bloco `financial` não tem mais nenhum ramo de CONTEÚDO em
+        `quotation_template.xml` (nenhum `qq_block_*` é chamado para ele), e
+        a tabela de totais do fim do escopo continua sendo a única fonte de
+        totais — sem um segundo painel de "Resumo Financeiro".
+
+        NOTA: o bloco ainda aparece como entrada fantasma no Índice (TOC) —
+        `doc.proposal_block_ids.filtered(lambda b: b.included and
+        b.show_title)` lista todo bloco incluído com título, sem filtrar por
+        `block_kind`, então "Resumo Financeiro" (rótulo de
+        `PROPOSAL_BLOCK_KINDS`) aparece como link morto e consome um número
+        na numeração hierárquica. Esse é exatamente o "buraco" que a
+        migração 16.0.7.0.0 resolve ao apagar os blocos materializados
+        `financial`/`cycle_specs` — aqui testamos apenas que não há
+        duplicação de CONTEÚDO de totais.
+        """
         so = self._full_so()
         self.env["afr.proposal.block"].create({
             "sale_order_id": so.id,
@@ -82,28 +98,7 @@ class TestScopePdfRender(TestScopeTable):
             "included": True,
         })
         html = self._render_pdf(so)
-        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
-
-    def test_totals_not_duplicated_when_static_frozen_financial_block_present(self):
-        """C3: bloco `financial` congelado em `static` ANTES do guard novo.
-
-        Reproduz a base real (afr.proposal.block id=636, SO C26-08-0018):
-        um bloco `financial` foi convertido para `static` (snapshot) antes
-        do UserError em `action_edit_block` passar a proibir essa
-        conversão. O guard antigo só reconhecia `block_kind == 'financial'`
-        e deixava esse bloco passar batido — o escopo reimprimia um total
-        novo por cima do total antigo congelado no corpo `static`.
-        """
-        so = self._full_so()
-        self.env["afr.proposal.block"].create({
-            "sale_order_id": so.id,
-            "block_kind": "static",
-            "title": "Resumo Financeiro",
-            "included": True,
-            "body": "<p>TOTAL GERAL: R$ 10.373,48</p>",
-        })
-        html = self._render_pdf(so)
-        self.assertEqual(html.count("TOTAL GERAL"), 1)
+        self.assertEqual(html.count("Valor Geral da Proposta"), 1)
 
 
 @tagged("post_install", "-at_install")
@@ -144,11 +139,6 @@ class TestScopeHtmlBlock(TestScopeTable):
         html = str(self._block(so)._html_equipment_scope(so))
         self.assertIn("Itens Não Solicitados", html)
 
-    def test_html_financial_uses_new_totals(self):
-        so = self._full_so()
-        html = str(self._block(so, "financial")._html_financial(so))
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
-
     def test_snapshot_to_static_preserves_table(self):
         so = self._full_so()
         block = self._block(so)
@@ -156,48 +146,16 @@ class TestScopeHtmlBlock(TestScopeTable):
         self.assertEqual(block.block_kind, "static")
         self.assertIn("Previsão de", str(block.body))
 
-    def test_html_totals_not_duplicated_when_financial_block_present(self):
-        """Cotação com `financial` materializado não duplica o total no HTML.
+    def test_html_scope_always_emits_totals_exactly_once(self):
+        """O snapshot do escopo sempre imprime o total geral, uma única vez.
 
-        Simula a concatenação feita pelo consumidor da proposta (DOCX):
-        cada bloco incluído contribui com seu snapshot HTML, na ordem —
-        aqui, `equipment_scope` seguido de `financial`.
+        Não há mais bloco de Resumo Financeiro separado nem guard
+        anti-duplicação: `_html_equipment_scope` é o único emissor de
+        totais, incondicional.
         """
-        so = self._full_so()
-        financial_block = self.env["afr.proposal.block"].create({
-            "sale_order_id": so.id,
-            "block_kind": "financial",
-            "included": True,
-        })
-        scope_html = str(self._block(so)._html_equipment_scope(so))
-        financial_html = str(financial_block._html_financial(so))
-        html = scope_html + financial_html
-        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
-
-    def test_html_scope_emits_totals_when_no_financial_block(self):
-        """Sem bloco `financial` materializado, o escopo imprime o total."""
         so = self._full_so()
         html = str(self._block(so)._html_equipment_scope(so))
-        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
-
-    def test_html_scope_skips_totals_when_static_frozen_financial_block_present(self):
-        """C3: bloco `financial` congelado em `static` também suprime o total no snapshot.
-
-        Simula a concatenação feita pelo consumidor da proposta (DOCX):
-        o snapshot do `equipment_scope` não deve reimprimir "TOTAL GERAL"
-        quando já existe um bloco `static` com o título do resumo
-        financeiro (caso de dado legado, ver C3 do review da branch).
-        """
-        so = self._full_so()
-        self.env["afr.proposal.block"].create({
-            "sale_order_id": so.id,
-            "block_kind": "static",
-            "title": "Resumo Financeiro",
-            "included": True,
-            "body": "<p>TOTAL GERAL: R$ 10.373,48</p>",
-        })
-        scope_html = str(self._block(so)._html_equipment_scope(so))
-        self.assertNotIn("TOTAL GERAL DA PROPOSTA", scope_html)
+        self.assertEqual(html.count("Valor Geral da Proposta"), 1)
 
     def test_html_scope_carries_the_pdf_css_classes(self):
         """Snapshot é reaproveitado sob o mesmo CSS do PDF — classes têm de bater."""
@@ -264,7 +222,7 @@ class TestScopePortalRender(TestScopeTable):
     def test_portal_has_unit_price_and_grand_total(self):
         html = self._render_portal(self._full_so())
         self.assertIn("Valor Unitário", html)
-        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
+        self.assertIn("Valor Geral da Proposta", html)
 
     def test_portal_lists_additionals(self):
         so = self._full_so()
@@ -277,41 +235,22 @@ class TestScopePortalRender(TestScopeTable):
         })
         html = self._render_portal(so)
         self.assertIn("Pasta impressa e envio correio", html)
-        self.assertIn("Total dos Serviços de Qualificação", html)
+        self.assertIn("Valor total dos Serviços de Qualificação", html)
 
-    def test_portal_totals_not_duplicated_when_financial_block_present(self):
-        """Cotação antiga com `financial` materializado não imprime 2 totais no portal.
+    def test_portal_totals_emitted_exactly_once(self):
+        """C2: a tabela de totais do portal sai sempre, uma única vez.
 
-        C2: o bloco `financial` do portal foi reduzido para só os totais
-        (a tabela "Equipamento / Subtotal" saiu — ela vinha de
-        `_qualif_equipment_summary()`, que não filtra opcionais/declinadas
-        e podia contradizer o total logo abaixo). Confirma as duas pontas:
-        o cabeçalho da tabela removida não aparece mais, e o total geral
-        (que agora só vem do bloco `equipment_scope`, via
-        `_qualif_has_financial_block`) aparece exatamente uma vez.
+        A tabela "Equipamento / Subtotal" que vinha de
+        `_qualif_equipment_summary()` foi removida do portal (podia
+        contradizer o total logo abaixo, que não filtra do mesmo jeito
+        opcionais/declinadas) — confirma que o cabeçalho dessa tabela
+        antiga não aparece mais e que o total geral, agora emitido
+        incondicionalmente pelo bloco `equipment_scope`, aparece uma
+        única vez.
         """
-        so = self._full_so()
-        self.env["afr.proposal.block"].create({
-            "sale_order_id": so.id,
-            "block_kind": "financial",
-            "included": True,
-        })
-        html = self._render_portal(so)
+        html = self._render_portal(self._full_so())
         self.assertNotIn("<th>Equipamento</th>", html)
-        self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
-
-    def test_portal_totals_not_duplicated_when_static_frozen_financial_block_present(self):
-        """C3: bloco `financial` congelado em `static` também é reconhecido no portal."""
-        so = self._full_so()
-        self.env["afr.proposal.block"].create({
-            "sale_order_id": so.id,
-            "block_kind": "static",
-            "title": "Resumo Financeiro",
-            "included": True,
-            "body": "<p>TOTAL GERAL: R$ 10.373,48</p>",
-        })
-        html = self._render_portal(so)
-        self.assertEqual(html.count("TOTAL GERAL"), 1)
+        self.assertEqual(html.count("Valor Geral da Proposta"), 1)
 
 
 @tagged("post_install", "-at_install")
