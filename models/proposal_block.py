@@ -328,14 +328,6 @@ class AfrProposalBlock(models.Model):
         )
         return title + Markup("<ul class='qq-scope-list'>%s</ul>") % items
 
-    def _part_header(self, part, code):
-        """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho.
-
-        Delega ao helper compartilhado em sale.order (PDF + portal usam o
-        mesmo rótulo).
-        """
-        return self.sale_order_id._qualif_part_header(part, code)
-
     def _html_declined_items(self, order):
         """Box institucional 'Itens Não Solicitados para Execução' (formato c).
 

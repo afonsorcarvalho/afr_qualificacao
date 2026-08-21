@@ -67,9 +67,13 @@ class TestOptionalRefSubtotal(AfrQualificacaoTestCommon):
             "optional_qty": 1.0, "price_unit": 150.0})
         line._sync_optional_qty()
         html = so.qualif_subtotals_html or ""
-        self.assertIn("Subtotais de Opcionais", html)
+        # Escopo tabela de ciclos (2026-08-20): a tabela própria de
+        # "Subtotais de Opcionais"/"TOTAL OPCIONAIS" foi removida — o
+        # opcional aceito agora entra como adicional enumerado no próprio
+        # banner de TOTAL GERAL (`_qualif_grand_total_html`).
         self.assertIn("Pasta Opt", html)
-        self.assertIn("TOTAL OPCIONAIS", html)
+        self.assertIn("Total dos Serviços de Qualificação", html)
+        self.assertIn("TOTAL GERAL DA PROPOSTA", html)
 
     def test_subtotals_html_no_optional_section_when_none_accepted(self):
         so = self._so_with_qualif_line()

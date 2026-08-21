@@ -2,6 +2,7 @@
 """Renders da tabela de escopo — PDF, portal e HTML do bloco."""
 
 from odoo.tests.common import tagged
+from .common import AfrQualificacaoTestCommon
 from .test_scope_table import TestScopeTable
 
 
@@ -226,3 +227,19 @@ class TestScopePortalRender(TestScopeTable):
         })
         html = self._render_portal(so)
         self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+
+@tagged("post_install", "-at_install")
+class TestTemplateCleanup(AfrQualificacaoTestCommon):
+
+    def test_default_template_has_no_financial_or_optionals(self):
+        tpl = self.env.ref(
+            "afr_qualificacao.proposal_template_labquali",
+            raise_if_not_found=False,
+        )
+        if not tpl:
+            self.skipTest("template default não instalado nesta base")
+        kinds = tpl.line_ids.mapped("block_kind")
+        self.assertNotIn("financial", kinds)
+        self.assertNotIn("optionals", kinds)
+        self.assertIn("equipment_scope", kinds)

@@ -86,22 +86,17 @@
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_entregaveis"/>
     </record>
-    <record id="proposal_template_labquali_l12" model="afr.proposal.template.line">
-        <field name="template_id" ref="proposal_template_labquali"/>
-        <field name="sequence">120</field>
-        <field name="block_kind">financial</field>
-        <field name="page_break" eval="True"/>
-    </record>
-    <record id="proposal_template_labquali_l13" model="afr.proposal.template.line">
-        <field name="template_id" ref="proposal_template_labquali"/>
-        <field name="sequence">130</field>
-        <field name="block_kind">optionals</field>
-    </record>
+    <!-- Escopo tabela de ciclos (2026-08-20) — l12 (financial) e l13
+         (optionals) removidos do template default: os totais passaram
+         para o fim do bloco equipment_scope e os opcionais aceitos
+         aparecem lá como adicionais. Os dois tipos de bloco continuam
+         disponíveis para quem montar template manualmente. -->
     <record id="proposal_template_labquali_l14" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>
         <field name="sequence">140</field>
         <field name="block_kind">static</field>
         <field name="section_id" ref="proposal_section_responsabilidades"/>
+        <field name="page_break" eval="True"/>
     </record>
     <record id="proposal_template_labquali_l15" model="afr.proposal.template.line">
         <field name="template_id" ref="proposal_template_labquali"/>

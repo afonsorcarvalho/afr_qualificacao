@@ -269,14 +269,6 @@
                     .qq-declined-box { border: 1px solid #c0392b; padding: 8px 12px; margin-top: 14px; page-break-inside: avoid; }
                     .qq-declined-box h4 { color: #c0392b; margin: 0 0 6px; }
                     .qq-declined-equip-row td { background: #f5f5f5; font-weight: bold; color: #2c3e6b; padding: 4px 10px; }
-                    .qq-equip-schedule {
-                        border-top: 1px solid var(--lq-gray-light);
-                        padding-top: 8px;
-                        margin-top: 10px;
-                        font-size: 14px;
-                        color: var(--lq-brand);
-                        text-align: right;
-                    }
                     .qq-equip-card {
                         border: 1px solid var(--lq-gray-light);
                         border-left: 4px solid var(--lq-brand-2); /* destaque azul médio */

@@ -145,9 +145,11 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         html = so.qualif_subtotals_html
         self.assertIn("TOTAL GERAL DA PROPOSTA", html)
         self.assertIn(expected, html)
-        # 16.0.6.13.5: sem opcionais aceitos o painel é SÓ o banner — a
-        # tabela de subtotais por equipamento foi retirada.
-        self.assertNotIn("<table", html)
+        # Escopo tabela de ciclos (2026-08-20): o banner de total
+        # (`_qualif_grand_total_html`) agora É SEMPRE uma <table> (mesmo
+        # sem adicionais, só com a linha do total geral) — a tabela de
+        # subtotais por equipamento continua retirada (16.0.6.13.5).
+        self.assertIn("<table", html)
         self.assertNotIn("&lt;", html)
 
     def test_grand_total_includes_accepted_optional(self):
@@ -174,8 +176,14 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
     def test_grand_total_reconciles_with_manual_line(self):
         """Regressão (C26-06-0005): linha avulsa (não-managed, sem equipment)
         conta em amount_untaxed mas era ignorada pelo banner TOTAL GERAL →
-        total subestimado. O banner deve reconciliar com amount_untaxed e
-        expor o remanescente como 'Outros'."""
+        total subestimado. O banner deve reconciliar com amount_untaxed.
+
+        Escopo tabela de ciclos (2026-08-20): `_qualif_proposal_totals` não
+        tem mais uma chave agregada `outros_total` — toda linha fora do
+        escopo de equipamento (como esta) é enumerada nominalmente em
+        `adicionais` via `_qualif_additional_lines`. `residual` só absorve
+        o que sobrar sem nome (ex.: drift de arredondamento), então aqui
+        deve ficar em zero."""
         so = self._so()
         self._equip_line(so, price=700.0, qty=1.0)          # equip = 700
         # linha avulsa: produto comum, não managed, sem equipment → +1350
@@ -185,7 +193,10 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         })
         totals = so._qualif_proposal_totals()
         self.assertAlmostEqual(totals["equip_total"], 700.0, places=2)
-        self.assertAlmostEqual(totals["outros_total"], 1350.0, places=2)
+        adicionais = {a["name"]: a["amount"] for a in totals["adicionais"]}
+        self.assertAlmostEqual(adicionais.get("Ciclo avulso", 0.0), 1350.0,
+                               places=2)
+        self.assertAlmostEqual(totals["residual"], 0.0, places=2)
         self.assertAlmostEqual(totals["grand_total"], so.amount_untaxed,
                                places=2)
         self.assertAlmostEqual(totals["grand_total"], 2050.0, places=2)
@@ -193,6 +204,7 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         expected = formatLang(self.env, so.amount_untaxed,
                               currency_obj=so.currency_id)
         self.assertIn(expected, so.qualif_subtotals_html)
+        self.assertIn("Ciclo avulso", so.qualif_subtotals_html)
 
     def test_optional_accept_persists_qty_and_updates_total_live(self):
         """Aceitar opcional na aba Opcionais persiste product_uom_qty
@@ -213,11 +225,17 @@ class TestCotacaoFormRefactor(AfrQualificacaoTestCommon):
         })
         view = "afr_qualificacao.view_sale_order_form_inherit_qualificacao"
         f = Form(so, view=view)
-        self.assertNotIn("Subtotais de Opcionais", f.qualif_subtotals_html or "")
+        # Escopo tabela de ciclos (2026-08-20): não existe mais uma seção
+        # própria de "Subtotais de Opcionais" — o opcional aceito passa a
+        # ser enumerado como adicional dentro do próprio banner de TOTAL
+        # GERAL. Antes do aceite (pending, qty=0) o guard de
+        # `_qualif_additional_lines` o exclui; depois do aceite ele
+        # aparece pelo nome da linha ("Opc").
+        self.assertNotIn("Opc", f.qualif_subtotals_html or "")
         with f.optional_line_ids.edit(0) as line:
             line.optional_accepted = True
-        # Reatividade live: a seção de opcionais aceitos aparece sem salvar.
-        self.assertIn("Subtotais de Opcionais", f.qualif_subtotals_html or "")
+        # Reatividade live: o adicional aparece no banner sem salvar.
+        self.assertIn("Opc", f.qualif_subtotals_html or "")
         f.save()
         # Persistência: qty e subtotal corretos (não 0).
         self.assertEqual(opt.product_uom_qty, 1.0)

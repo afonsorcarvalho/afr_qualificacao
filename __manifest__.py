@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.6.13.5",
+    "version": "16.0.7.0.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -161,6 +161,9 @@
         "data/proposal_section_seed.xml",
         "data/proposal_optional_seed.xml",
         "data/proposal_venda_calibracao_seed.xml",
+        # Escopo tabela de ciclos — remove financial/optionals do template
+        # default em bases já instaladas (seed só roda no post_init_hook).
+        "data/proposal_template_cleanup.xml",
         # F9.3 — Email template LabQuali para envio de proposta
         "data/mail_template_proposal.xml",
         # Views — config (master data) com actions
