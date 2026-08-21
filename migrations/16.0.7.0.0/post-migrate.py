@@ -23,18 +23,32 @@ mira só o template com o XMLID do seed, e só nesse upgrade específico.
 Ajuste de 2026-08-20 (fix pós-validação do PDF pelo cliente): o bloco
 `financial` ("Resumo Financeiro") deixou de ter QUALQUER renderização nos
 três renders (PDF/portal/snapshot Python) — a tabela de totais agora é
-emitida sempre, incondicionalmente, ao fim do escopo por equipamento. O
-tipo `cycle_specs` ("Tabela de Ciclos") também já não é mais semeado no
-template default desde que os ciclos passaram a aparecer embutidos nas
-tabelas de escopo por equipamento (`_qualif_scope_tables`).
+emitida sempre, incondicionalmente, ao fim do escopo por equipamento.
+
+Os dois tipos abaixo viram lixo por motivos DIFERENTES — nenhum dos dois
+é "inofensivo" de deixar para trás:
+
+- `financial`: não renderiza mais NENHUM conteúdo (nenhum `qq_block_*` é
+  chamado para esse `block_kind`), mas continua contando na numeração
+  hierárquica dos tópicos (`SaleOrder._proposal_block_numbering()` conta
+  todo bloco `included`, independente do que ele desenha) e ainda aparece
+  como entrada fantasma (link morto) no Índice/TOC do PDF — daí o buraco
+  na numeração (ex.: o índice pula do 7 pro 9).
+- `cycle_specs` ("Tabela de Ciclos"): ao contrário do `financial`, ESTE
+  AINDA RENDERIZA — `quotation_template.xml` e o portal continuam com um
+  ramo `t-if="block.block_kind == 'cycle_specs'"` ativo. O problema aqui
+  não é numeração: desde que os ciclos passaram a aparecer embutidos nas
+  tabelas de escopo por equipamento (`_qualif_scope_tables`), um bloco
+  `cycle_specs` materializado imprime os MESMOS ciclos DUAS VEZES na
+  mesma proposta (uma vez dentro do escopo, outra na tabela solta do
+  bloco). `cycle_specs` também já não é mais semeado no template default
+  por esse motivo. Apagar esses blocos é remoção de conteúdo duplicado,
+  não uma correção de numeração.
 
 Isso significa que blocos `afr.proposal.block` materializados com
 `block_kind in ('financial', 'cycle_specs')` em cotações já existentes
-(labquali) viraram lixo: não renderizam mais nada, mas continuam
-contando na numeração hierárquica dos tópicos
-(`SaleOrder._proposal_block_numbering()` conta todo bloco `included`,
-independente do que ele renderiza), deixando um buraco na numeração do
-PDF (ex.: o índice pula do 7 pro 9). Por isso, ao contrário do
+(labquali) precisam sumir — um por deixar buraco na numeração/TOC, o
+outro por duplicar a tabela de ciclos. Por isso, ao contrário do
 comentário original acima ("Só mexe no TEMPLATE"), esta migração agora
 TAMBÉM remove esses blocos materializados, em todas as cotações — não só
 no template.
@@ -74,8 +88,10 @@ def migrate(cr, version):
         _logger.info(
             "afr_qualificacao 16.0.7.0.0: removendo %d bloco(s) "
             "financial/cycle_specs materializados em %d cotação(ões) — "
-            "esses tipos não renderizam mais nada e deixavam buraco na "
-            "numeração hierárquica dos tópicos.",
+            "financial não renderiza mais nada e deixava buraco na "
+            "numeração hierárquica dos tópicos; cycle_specs ainda "
+            "renderiza e duplicava a tabela de ciclos já embutida no "
+            "escopo por equipamento.",
             len(blocks), n_orders,
         )
         blocks.unlink()
