@@ -13,7 +13,7 @@ ordem de `sequence`.
 from markupsafe import Markup, escape
 
 from odoo import api, fields, models, _
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tools.misc import formatLang
 
 from .proposal_template import PROPOSAL_BLOCK_KINDS
@@ -198,6 +198,12 @@ class AfrProposalBlock(models.Model):
         bloco passa a ser `static` — a partir daí é texto livre.
         """
         self.ensure_one()
+        if self.block_kind == "financial":
+            raise UserError(_(
+                "O bloco de totais é recalculado a cada emissão da proposta "
+                "e não pode ser convertido em bloco editável. Para alterar o "
+                "que aparece nos totais, edite as linhas da cotação."
+            ))
         if self.block_kind != "static":
             self.body = self._snapshot_html()
             if not self.title:
@@ -239,9 +245,11 @@ class AfrProposalBlock(models.Model):
     def _html_equipment_scope(self, order):
         """Snapshot HTML da tabela de escopo (DOCX + bloco editável).
 
-        Espelha o QWeb `qq_block_equipment_scope`: uma tabela por
-        equipamento, com etapa à esquerda e conteúdo à direita, linhas de
-        previsão/subtotal por grupo e rodapé com Valor Unitário.
+        Espelha o QWeb `qq_block_equipment_scope` byte-a-byte na estrutura
+        (mesmas classes de `reports/templates_blocos/styles.xml`): o
+        snapshot é reaproveitado dentro do PDF/portal sob o mesmo CSS, e
+        precisa renderizar igual ao bloco dinâmico ao lado (card, quebra
+        de página controlada, etc).
         """
         parts = []
         for index, table in enumerate(order._qualif_scope_tables()):
@@ -251,11 +259,14 @@ class AfrProposalBlock(models.Model):
             if equip.serial_number:
                 head += Markup(" — S/N: ") + escape(equip.serial_number)
             rows = [Markup(
-                "<tr><td colspan='2'><strong>%s</strong></td></tr>") % head]
+                "<tr class='qq-scope-equip-header'>"
+                "<td colspan='2'><strong>%s</strong></td></tr>") % head]
             for group in table["groups"]:
                 for row in group["rows"]:
                     rows.append(Markup(
-                        "<tr><td class='qq-scope-stage'>%s</td><td>%s</td></tr>"
+                        "<tr class='qq-scope-group-row'>"
+                        "<td class='qq-scope-stage'>%s</td>"
+                        "<td class='qq-scope-description'>%s</td></tr>"
                     ) % (escape(row["label"]), self._html_scope_cell(row)))
                 rows.append(Markup(
                     "<tr class='qq-scope-subtotal-row'><td>%s</td>"
@@ -273,8 +284,12 @@ class AfrProposalBlock(models.Model):
                        % table["footer"]["days"]),
                 escape(self._money(order, table["footer"]["unit_price"])),
             ))
-            parts.append(Markup("<table class='qq-scope-table'>%s</table>")
-                         % Markup("").join(rows))
+            head_row, body_rows = rows[0], Markup("").join(rows[1:])
+            parts.append(Markup(
+                "<div class='qq-equip-card'>"
+                "<table class='qq-scope-table'>"
+                "<thead>%s</thead><tbody>%s</tbody></table></div>"
+            ) % (head_row, body_rows))
         # Totais no fim do escopo, salvo quando a cotação ainda traz o
         # bloco `financial` materializado (cotações anteriores a esta
         # versão trazem) — senão o total geral sairia impresso duas
@@ -311,7 +326,7 @@ class AfrProposalBlock(models.Model):
             Markup("<div class='qq-scope-subtitle'><strong>%s</strong></div>")
             % escape(row["title"]) if row["title"] else Markup("")
         )
-        return title + Markup("<ul>%s</ul>") % items
+        return title + Markup("<ul class='qq-scope-list'>%s</ul>") % items
 
     def _part_header(self, part, code):
         """Rótulo do sub-cabeçalho de Parte; "" = sem cabeçalho.

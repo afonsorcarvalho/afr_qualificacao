@@ -143,6 +143,34 @@ class TestScopeHtmlBlock(TestScopeTable):
         html = str(self._block(so)._html_equipment_scope(so))
         self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
 
+    def test_html_scope_carries_the_pdf_css_classes(self):
+        """Snapshot é reaproveitado sob o mesmo CSS do PDF — classes têm de bater."""
+        so = self._full_so()
+        html = str(self._block(so)._html_equipment_scope(so))
+        for css_class in ("qq-equip-card", "qq-scope-table", "qq-scope-stage",
+                          "qq-scope-description", "qq-scope-group-row",
+                          "qq-scope-subtotal-row", "qq-scope-footer-row"):
+            self.assertIn(css_class, html)
+
+    def test_html_scope_css_classes_survive_the_sanitize_roundtrip(self):
+        """`body` é `Html(sanitize=True)` — classes têm de sobreviver ao write().
+
+        `_html_equipment_scope` direto prova só que o gerador emite as
+        classes; o PDF/portal reaproveitam o snapshot lendo `block.body`
+        de volta do banco, passando pelo sanitizer do campo Html.
+        """
+        so = self._full_so()
+        block = self._block(so)
+        block.action_edit_block()
+        body = str(block.body)
+        for css_class in ("qq-equip-card", "qq-scope-table", "qq-scope-stage",
+                          "qq-scope-description", "qq-scope-group-row",
+                          "qq-scope-subtotal-row", "qq-scope-footer-row",
+                          "qq-scope-list", "qq-cycle-table"):
+            self.assertIn(css_class, body)
+        self.assertIn("<thead>", body)
+        self.assertIn("<tbody>", body)
+
 
 @tagged("post_install", "-at_install")
 class TestScopePortalRender(TestScopeTable):

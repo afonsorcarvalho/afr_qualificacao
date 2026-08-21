@@ -7,6 +7,7 @@ Cobre:
 - o snapshot reflete os dados da cotação (ex. temperatura do ciclo).
 """
 
+from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
 from .common import AfrQualificacaoTestCommon
@@ -88,6 +89,13 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
         block.action_edit_block()
         self.assertEqual(block.block_kind, "static")
         self.assertIn("134°C", str(block.body))
+
+    def test_financial_block_cannot_be_frozen(self):
+        """Congelar o bloco de totais duplicaria o total geral no impresso."""
+        so = self._built_so()
+        block = self._block(so, "financial")
+        with self.assertRaises(UserError):
+            block.action_edit_block()
 
     def test_snapshotted_block_renders_in_report(self):
         """Bloco dinâmico após snapshot é renderizado como texto no PDF."""
