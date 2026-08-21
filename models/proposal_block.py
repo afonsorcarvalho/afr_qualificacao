@@ -272,7 +272,7 @@ class AfrProposalBlock(models.Model):
                     "<tr class='qq-scope-subtotal-row'><td>%s</td>"
                     "<td>%s: %s</td></tr>"
                 ) % (
-                    escape("Previsão de %.1f dia(s) de serviço" % group["days"]),
+                    escape(order._qualif_days_label(group["days"])),
                     escape(group["subtotal_label"]),
                     escape(self._money(order, group["subtotal"])),
                 ))
@@ -280,8 +280,7 @@ class AfrProposalBlock(models.Model):
                 "<tr class='qq-scope-footer-row'><td>%s</td>"
                 "<td>Valor Unitário: %s</td></tr>"
             ) % (
-                escape("Previsão de %.1f dia(s) de serviço"
-                       % table["footer"]["days"]),
+                escape(order._qualif_days_label(table["footer"]["days"])),
                 escape(self._money(order, table["footer"]["unit_price"])),
             ))
             head_row, body_rows = rows[0], Markup("").join(rows[1:])

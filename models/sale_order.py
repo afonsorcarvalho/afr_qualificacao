@@ -782,6 +782,16 @@ class SaleOrder(models.Model):
         wh = self._qualif_work_hours_per_day(equipment) or 8.0
         return math.ceil(round((hours / wh) * 2, 6)) / 2.0
 
+    def _qualif_days_label(self, days):
+        """Rótulo de previsão de dias com separador decimal pt-BR.
+
+        O documento é pt-BR e os valores monetários já são locale-aware;
+        o `%.1f` cru imprimia "5.5 dia(s)".
+        """
+        self.ensure_one()
+        return _("Previsão de %s dia(s) de serviço") % (
+            ("%.1f" % (days or 0.0)).replace(".", ","))
+
     def _qualif_scope_ref(self, qtype):
         """Remissiva ao tópico da proposta que descreve o tipo.
 

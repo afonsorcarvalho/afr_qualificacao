@@ -208,7 +208,7 @@
                                                 </tr>
                                             </t>
                                             <tr class="lq-scope-subtotal-row">
-                                                <td t-esc="'Previsão de %.1f dia(s) de serviço' % grp['days']"/>
+                                                <td t-esc="sale_order._qualif_days_label(grp['days'])"/>
                                                 <td>
                                                     <t t-esc="grp['subtotal_label']"/>:
                                                     <span t-esc="grp['subtotal']"
@@ -217,7 +217,7 @@
                                             </tr>
                                         </t>
                                         <tr class="lq-scope-footer-row">
-                                            <td t-esc="'Previsão de %.1f dia(s) de serviço' % st['footer']['days']"/>
+                                            <td t-esc="sale_order._qualif_days_label(st['footer']['days'])"/>
                                             <td>
                                                 Valor Unitário:
                                                 <span t-esc="st['footer']['unit_price']"

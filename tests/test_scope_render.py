@@ -42,6 +42,13 @@ class TestScopePdfRender(TestScopeTable):
         self.assertIn("Subtotal QO", html)
         self.assertIn("Subtotal QD", html)
 
+    def test_pdf_day_forecast_uses_comma_not_dot(self):
+        """pt-BR: vírgula no separador decimal — nunca o `.` cru do `%.1f`."""
+        html = self._render_pdf(self._full_so())
+        self.assertIn("dia(s) de serviço", html)
+        self.assertNotIn(".0 dia(s)", html)
+        self.assertNotIn(".5 dia(s)", html)
+
     def test_pdf_has_cycle_table_headers(self):
         html = self._render_pdf(self._full_so())
         self.assertIn("Execução dos ciclos com carga", html)
@@ -114,6 +121,14 @@ class TestScopeHtmlBlock(TestScopeTable):
         self.assertIn("Previsão de", html)
         self.assertIn("Subtotal QI", html)
         self.assertIn("Valor Unitário", html)
+
+    def test_html_scope_day_forecast_uses_comma_not_dot(self):
+        """pt-BR: vírgula no separador decimal — nunca o `.` cru do `%.1f`."""
+        so = self._full_so()
+        html = str(self._block(so)._html_equipment_scope(so))
+        self.assertIn("dia(s) de serviço", html)
+        self.assertNotIn(".0 dia(s)", html)
+        self.assertNotIn(".5 dia(s)", html)
 
     def test_html_scope_has_cycle_rows(self):
         so = self._full_so()
@@ -233,6 +248,13 @@ class TestScopePortalRender(TestScopeTable):
         self.assertIn("lq-scope-stage", html)
         self.assertIn("Previsão de", html)
         self.assertIn("Subtotal QD", html)
+
+    def test_portal_day_forecast_uses_comma_not_dot(self):
+        """pt-BR: vírgula no separador decimal — nunca o `.` cru do `%.1f`."""
+        html = self._render_portal(self._full_so())
+        self.assertIn("dia(s) de serviço", html)
+        self.assertNotIn(".0 dia(s)", html)
+        self.assertNotIn(".5 dia(s)", html)
 
     def test_portal_has_cycle_table(self):
         html = self._render_portal(self._full_so())

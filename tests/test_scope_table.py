@@ -84,6 +84,22 @@ class TestScopeLinesAndHours(AfrQualificacaoTestCommon):
         self._section(so, self.equip1, work_hours=4.0)
         self.assertEqual(so._qualif_days_from_hours(4.0, self.equip1), 1.0)
 
+    def test_days_label_uses_comma_as_decimal_separator(self):
+        """pt-BR: vírgula, nunca ponto — mesmo para os múltiplos de 0,5."""
+        so = self._so()
+        self.assertEqual(
+            so._qualif_days_label(0.0),
+            "Previsão de 0,0 dia(s) de serviço")
+        self.assertEqual(
+            so._qualif_days_label(0.5),
+            "Previsão de 0,5 dia(s) de serviço")
+        self.assertEqual(
+            so._qualif_days_label(5.5),
+            "Previsão de 5,5 dia(s) de serviço")
+        self.assertEqual(
+            so._qualif_days_label(2.0),
+            "Previsão de 2,0 dia(s) de serviço")
+
 
 @tagged("post_install", "-at_install")
 class TestScopeRef(AfrQualificacaoTestCommon):
