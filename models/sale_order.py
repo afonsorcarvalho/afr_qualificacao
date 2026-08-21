@@ -21,6 +21,8 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
 
+from .proposal_template import PROPOSAL_BLOCK_KINDS
+
 
 # Sufixo "— N ciclo(s)/malha(s)" anexado pelo configurador ao nome da linha.
 _QTY_SUFFIX_RE = re.compile(r"\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$")
@@ -367,7 +369,7 @@ class SaleOrder(models.Model):
                 continue
             order.qualif_subtotals_html = str(order._qualif_grand_total_html())
 
-    def _qualif_additional_lines(self):
+    def _qualif_additional_lines(self, scope_tables=None):
         """Adicionais: tudo que não entra no escopo de nenhum equipamento.
 
         Ex.: despesas de viagem, pasta impressa, e também opcionais
@@ -376,10 +378,20 @@ class SaleOrder(models.Model):
         Opcional recusado normalmente tem product_uom_qty=0 → subtotal 0
         → fora pelo filtro de is_zero(); o guard explícito abaixo cobre o
         caso em que esse invariante procedural é violado (write direto).
+        Linha declinada (`part01_declined`) com subtotal ≠ 0 é excluída
+        pelo mesmo motivo — senão apareceria riscada na caixa "Itens Não
+        Solicitados" E cobrada nos totais ao mesmo tempo.
+
+        `scope_tables`: reaproveita tabelas já construídas por quem chama
+        (ex. `_qualif_proposal_totals`) para não reconstruir o escopo
+        inteiro duas vezes — campo computed, custo importa. Default
+        constrói na hora, para chamadores isolados (testes etc.).
         """
         self.ensure_one()
+        if scope_tables is None:
+            scope_tables = self._qualif_scope_tables()
         in_scope = self.env["sale.order.line"]
-        for table in self._qualif_scope_tables():
+        for table in scope_tables:
             in_scope |= self._qualif_scope_lines(table["equipment"])
         out = []
         for line in self.order_line.sorted(key=lambda l: (l.sequence, l.id or 0)):
@@ -391,6 +403,13 @@ class SaleOrder(models.Model):
             # constraint de banco. Um write() direto poderia deixar um
             # opcional pendente com qty>0 escapar para o impresso.
             if line.is_proposal_optional and not line.optional_accepted:
+                continue
+            # Simétrico ao guard acima: linha declinada (Parte 01) não
+            # pode virar adicional mesmo que um write() direto deixe seu
+            # subtotal ≠ 0 — ela já é cobrada visualmente na caixa de
+            # itens não solicitados, cobrá-la aqui também duplicaria o
+            # valor sem duplicar o serviço.
+            if line.part01_declined:
                 continue
             if self.currency_id.is_zero(line.price_subtotal):
                 continue
@@ -415,9 +434,9 @@ class SaleOrder(models.Model):
           exatamente esse o bug C26-06-0005.
         """
         self.ensure_one()
-        equip_total = sum(
-            t["footer"]["unit_price"] for t in self._qualif_scope_tables())
-        adicionais = self._qualif_additional_lines()
+        scope_tables = self._qualif_scope_tables()
+        equip_total = sum(t["footer"]["unit_price"] for t in scope_tables)
+        adicionais = self._qualif_additional_lines(scope_tables)
         grand_total = self.amount_untaxed
         residual = self.currency_id.round(
             grand_total - equip_total - sum(a["amount"] for a in adicionais))
@@ -427,6 +446,33 @@ class SaleOrder(models.Model):
             "residual": residual,
             "grand_total": grand_total,
         }
+
+    def _qualif_has_financial_block(self):
+        """True se a proposta já tem um bloco de totais materializado.
+
+        Fonte única do guard anti-duplicação usado pelos três renders
+        (PDF `block_equipment_scope.xml`, portal
+        `sale_order_portal_template.xml` e o snapshot Python
+        `_html_equipment_scope`): quando há bloco financeiro incluído, o
+        escopo NÃO imprime totais no fim — senão sairiam dois "TOTAL
+        GERAL" na mesma proposta.
+
+        Reconhece `block_kind == 'financial'` (caso normal) E também um
+        bloco `static` cujo título seja o rótulo do bloco financeiro
+        (`PROPOSAL_BLOCK_KINDS`) — cobre blocos financeiros que alguém
+        converteu para `static` (snapshot/edição manual) ANTES do guard
+        em `action_edit_block` que passou a proibir essa conversão. Um
+        bloco assim continua sendo "o resumo financeiro" na prática,
+        mesmo já congelado.
+        """
+        self.ensure_one()
+        financial_label = dict(PROPOSAL_BLOCK_KINDS).get("financial")
+        return bool(self.proposal_block_ids.filtered(
+            lambda b: b.included and (
+                b.block_kind == "financial"
+                or (b.block_kind == "static" and b.title == financial_label)
+            )
+        ))
 
     def _qualif_grand_total_html(self):
         """Banner de totais do form + base do bloco de totais do PDF.
@@ -896,38 +942,6 @@ class SaleOrder(models.Model):
         """F8.14 — horas / jornada (h/dia) do equipamento (default 8)."""
         wh = self._qualif_work_hours_per_day(equipment) if equipment else 8.0
         return self._qualif_estimated_hours(equipment) / (wh or 8.0)
-
-    def _qualif_section_hours(self, equipment, phase):
-        """F8.14 — soma horas só de uma fase (qo/qd/calibration) por equip.
-
-        Usado pelos tfoots das tabelas QO/QD/Calib inline no Equipment Scope.
-        phase ∈ {'qo', 'qd', 'calibration'}.
-        """
-        self.ensure_one()
-        phase_to_qtype = {
-            "qo": "operational",
-            "qd": "performance",
-            "calibration": "calibration",
-        }
-        qtype = phase_to_qtype.get(phase)
-        if not qtype:
-            return 0.0
-        lines = self.order_line.filtered(
-            lambda l: l.is_qualificacao_managed
-            and not l.part01_declined
-            and l.equipment_id == equipment
-            and l.qualification_type == qtype
-        )
-        total = 0.0
-        for line in lines:
-            hours = line.estimated_hours
-            if not hours:
-                if line.cycle_type_id:
-                    hours = line.cycle_type_id.estimated_hours
-                elif line.malha_type_id:
-                    hours = line.malha_type_id.estimated_hours
-            total += (hours or 0.0) * (line.qualif_cycle_qty or int(line.product_uom_qty or 0))
-        return total
 
     def _qualif_schedule_rows(self):
         """F8.14 — retorna lista [{equipment, hours, days}] por equip + total geral.

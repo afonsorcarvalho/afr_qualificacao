@@ -416,6 +416,26 @@ class TestProposalTotals(TestScopeTable):
         nomes = [a["name"] for a in so._qualif_additional_lines()]
         self.assertNotIn("Ciclo pendente", nomes)
 
+    def test_declined_line_with_forced_subtotal_is_not_an_additional(self):
+        """Linha declinada (Parte 01) com subtotal forçado ≠ 0 não vira adicional.
+
+        Guard simétrico ao do opcional pendente: normalmente uma linha
+        declinada tem qty=0 → subtotal 0 → já fora pelo filtro de
+        is_zero(). O guard explícito cobre o caso em que esse invariante
+        procedural é violado (write direto) — senão a linha apareceria
+        riscada na caixa "Itens Não Solicitados" E cobrada nos totais ao
+        mesmo tempo.
+        """
+        so = self._full_so()
+        decl = self._line(so, self.equip1, "installation", "01", 900.0,
+                          name="Verificação recusada")
+        decl.write({"part01_declined": True})
+        # burla o invariante procedural: qty > 0 sem declinar de fato a qty
+        decl.write({"product_uom_qty": 1.0})
+        self.assertTrue(decl.price_subtotal)
+        nomes = [a["name"] for a in so._qualif_additional_lines()]
+        self.assertNotIn("Verificação recusada", nomes)
+
     def test_sections_are_not_additionals(self):
         so = self._full_so()
         nomes = [a["name"] for a in so._qualif_additional_lines()]

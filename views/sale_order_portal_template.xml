@@ -118,7 +118,6 @@
             <!-- ============================================================
                  3. BLOCOS — mesma dispatch do PDF, adaptada
             ============================================================= -->
-            <t t-set="summary" t-value="sale_order._qualif_equipment_summary()"/>
             <t t-set="type_descs" t-value="sale_order._qualif_type_descriptions()"/>
 
             <t t-foreach="sale_order.proposal_block_ids.filtered('included')" t-as="block">
@@ -229,9 +228,7 @@
                                 </table>
                             </div>
                         </t>
-                        <t t-set="has_financial_block"
-                           t-value="sale_order.proposal_block_ids.filtered(lambda b: b.included and b.block_kind == 'financial')"/>
-                        <t t-if="not has_financial_block">
+                        <t t-if="not sale_order._qualif_has_financial_block()">
                             <table class="lq-total-table">
                                 <t t-set="totals" t-value="sale_order._qualif_proposal_totals()"/>
                                 <t t-set="tot_breakdown"
@@ -444,27 +441,6 @@
                              t-if="block.show_title">
                             <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
                             <span t-esc="block.title or 'Resumo Financeiro'"/>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="table table-sm lq-table">
-                                <thead>
-                                    <tr>
-                                        <th>Equipamento</th>
-                                        <th class="text-end">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <t t-foreach="summary" t-as="eq">
-                                        <tr>
-                                            <td t-esc="eq['equipment'].name"/>
-                                            <td class="text-end">
-                                                <span t-esc="eq['subtotal']"
-                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                            </td>
-                                        </tr>
-                                    </t>
-                                </tbody>
-                            </table>
                         </div>
                         <table class="lq-total-table">
                             <t t-set="totals" t-value="sale_order._qualif_proposal_totals()"/>

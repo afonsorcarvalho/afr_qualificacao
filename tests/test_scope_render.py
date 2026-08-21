@@ -77,6 +77,27 @@ class TestScopePdfRender(TestScopeTable):
         html = self._render_pdf(so)
         self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
 
+    def test_totals_not_duplicated_when_static_frozen_financial_block_present(self):
+        """C3: bloco `financial` congelado em `static` ANTES do guard novo.
+
+        Reproduz a base real (afr.proposal.block id=636, SO C26-08-0018):
+        um bloco `financial` foi convertido para `static` (snapshot) antes
+        do UserError em `action_edit_block` passar a proibir essa
+        conversão. O guard antigo só reconhecia `block_kind == 'financial'`
+        e deixava esse bloco passar batido — o escopo reimprimia um total
+        novo por cima do total antigo congelado no corpo `static`.
+        """
+        so = self._full_so()
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "static",
+            "title": "Resumo Financeiro",
+            "included": True,
+            "body": "<p>TOTAL GERAL: R$ 10.373,48</p>",
+        })
+        html = self._render_pdf(so)
+        self.assertEqual(html.count("TOTAL GERAL"), 1)
+
 
 @tagged("post_install", "-at_install")
 class TestScopeHtmlBlock(TestScopeTable):
@@ -143,6 +164,25 @@ class TestScopeHtmlBlock(TestScopeTable):
         so = self._full_so()
         html = str(self._block(so)._html_equipment_scope(so))
         self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+    def test_html_scope_skips_totals_when_static_frozen_financial_block_present(self):
+        """C3: bloco `financial` congelado em `static` também suprime o total no snapshot.
+
+        Simula a concatenação feita pelo consumidor da proposta (DOCX):
+        o snapshot do `equipment_scope` não deve reimprimir "TOTAL GERAL"
+        quando já existe um bloco `static` com o título do resumo
+        financeiro (caso de dado legado, ver C3 do review da branch).
+        """
+        so = self._full_so()
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "static",
+            "title": "Resumo Financeiro",
+            "included": True,
+            "body": "<p>TOTAL GERAL: R$ 10.373,48</p>",
+        })
+        scope_html = str(self._block(so)._html_equipment_scope(so))
+        self.assertNotIn("TOTAL GERAL DA PROPOSTA", scope_html)
 
     def test_html_scope_carries_the_pdf_css_classes(self):
         """Snapshot é reaproveitado sob o mesmo CSS do PDF — classes têm de bater."""
@@ -218,7 +258,16 @@ class TestScopePortalRender(TestScopeTable):
         self.assertIn("Total dos Serviços de Qualificação", html)
 
     def test_portal_totals_not_duplicated_when_financial_block_present(self):
-        """Cotação antiga com `financial` materializado não imprime 2 totais no portal."""
+        """Cotação antiga com `financial` materializado não imprime 2 totais no portal.
+
+        C2: o bloco `financial` do portal foi reduzido para só os totais
+        (a tabela "Equipamento / Subtotal" saiu — ela vinha de
+        `_qualif_equipment_summary()`, que não filtra opcionais/declinadas
+        e podia contradizer o total logo abaixo). Confirma as duas pontas:
+        o cabeçalho da tabela removida não aparece mais, e o total geral
+        (que agora só vem do bloco `equipment_scope`, via
+        `_qualif_has_financial_block`) aparece exatamente uma vez.
+        """
         so = self._full_so()
         self.env["afr.proposal.block"].create({
             "sale_order_id": so.id,
@@ -226,20 +275,58 @@ class TestScopePortalRender(TestScopeTable):
             "included": True,
         })
         html = self._render_portal(so)
+        self.assertNotIn("<th>Equipamento</th>", html)
         self.assertEqual(html.count("TOTAL GERAL DA PROPOSTA"), 1)
+
+    def test_portal_totals_not_duplicated_when_static_frozen_financial_block_present(self):
+        """C3: bloco `financial` congelado em `static` também é reconhecido no portal."""
+        so = self._full_so()
+        self.env["afr.proposal.block"].create({
+            "sale_order_id": so.id,
+            "block_kind": "static",
+            "title": "Resumo Financeiro",
+            "included": True,
+            "body": "<p>TOTAL GERAL: R$ 10.373,48</p>",
+        })
+        html = self._render_portal(so)
+        self.assertEqual(html.count("TOTAL GERAL"), 1)
 
 
 @tagged("post_install", "-at_install")
 class TestTemplateCleanup(AfrQualificacaoTestCommon):
+    """Seed do template default (hooks.PROPOSAL_TEMPLATE_LINES).
 
-    def test_default_template_has_no_financial_or_optionals(self):
-        tpl = self.env.ref(
-            "afr_qualificacao.proposal_template_labquali",
-            raise_if_not_found=False,
-        )
-        if not tpl:
-            self.skipTest("template default não instalado nesta base")
-        kinds = tpl.line_ids.mapped("block_kind")
+    NOTA (2026-08-20): esta classe testava o efeito do antigo
+    `data/proposal_template_cleanup.xml` (um <delete> reexecutado em todo
+    -u), lendo o template JÁ instalado no banco de teste — o que só
+    confirmava a mutação, não a fonte. Esse data file foi substituído por
+    uma migração one-shot (migrations/16.0.7.0.0/post-migrate.py), que não
+    roda durante os testes (só dispara num upgrade real de versão). Testar
+    o template instalado neste banco de teste passaria por acidente
+    (dependeria de quantas vezes -u já rodou nesta DB e com qual versão).
+
+    O teste honesto e determinístico é sobre a fonte da verdade: a
+    constante `PROPOSAL_TEMPLATE_LINES` que o post_init_hook usa para criar
+    o template default numa instalação NOVA. Ver também C1 do review da
+    branch escopo-tabela-ciclos: o XML `data/proposal_template_seed.xml`
+    não é carregado por ninguém — é só referência histórica.
+    """
+
+    def test_seed_lines_have_no_financial_or_optionals(self):
+        from odoo.addons.afr_qualificacao.hooks import PROPOSAL_TEMPLATE_LINES
+
+        kinds = [line[2] for line in PROPOSAL_TEMPLATE_LINES]
         self.assertNotIn("financial", kinds)
         self.assertNotIn("optionals", kinds)
         self.assertIn("equipment_scope", kinds)
+
+    def test_seed_l14_inherits_the_page_break(self):
+        """l14 (responsabilidades) herda a quebra de página que era do l12
+        (financial, removido) — senão a seção passaria a colar na anterior.
+        """
+        from odoo.addons.afr_qualificacao.hooks import PROPOSAL_TEMPLATE_LINES
+
+        by_suffix = {line[0]: line for line in PROPOSAL_TEMPLATE_LINES}
+        l14 = by_suffix["l14"]
+        self.assertEqual(l14[3], "proposal_section_responsabilidades")
+        self.assertTrue(l14[4], "l14.page_break deveria ser True")

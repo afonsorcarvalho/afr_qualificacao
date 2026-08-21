@@ -291,12 +291,11 @@ class AfrProposalBlock(models.Model):
                 "<thead>%s</thead><tbody>%s</tbody></table></div>"
             ) % (head_row, body_rows))
         # Totais no fim do escopo, salvo quando a cotação ainda traz o
-        # bloco `financial` materializado (cotações anteriores a esta
-        # versão trazem) — senão o total geral sairia impresso duas
-        # vezes (uma vez aqui, outra em `_html_financial`).
-        has_financial = order.proposal_block_ids.filtered(
-            lambda b: b.included and b.block_kind == "financial")
-        if not has_financial:
+        # bloco financeiro materializado (`financial`, ou um `static`
+        # congelado a partir dele — ver `_qualif_has_financial_block`) —
+        # senão o total geral sairia impresso duas vezes (uma vez aqui,
+        # outra em `_html_financial` ou no corpo congelado).
+        if not order._qualif_has_financial_block():
             parts.append(order._qualif_grand_total_html())
         parts.append(self._html_declined_items(order))
         return Markup("").join(parts) or Markup("<p></p>")

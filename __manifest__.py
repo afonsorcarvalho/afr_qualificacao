@@ -88,8 +88,8 @@
             F8.14 (16.0.4.13.0): cronograma estimado — estimated_hours
               em cycle_type/malha_type/type.config + override no
               template/configurator/SO line. Helpers _qualif_estimated_hours,
-              _qualif_estimated_days (hours/8), _qualif_schedule_rows,
-              _qualif_section_hours. PDF: tfoot subtotal em tabelas QO/QD
+              _qualif_estimated_days (hours/8), _qualif_schedule_rows.
+              PDF: tfoot subtotal em tabelas QO/QD
               do Equipment Scope, rodapé "Cronograma estimado: N dias úteis"
               por equipamento, novo block_kind='schedule' opcional com
               tabela equipamento × horas × dias.
@@ -161,9 +161,11 @@
         "data/proposal_section_seed.xml",
         "data/proposal_optional_seed.xml",
         "data/proposal_venda_calibracao_seed.xml",
-        # Escopo tabela de ciclos — remove financial/optionals do template
-        # default em bases já instaladas (seed só roda no post_init_hook).
-        "data/proposal_template_cleanup.xml",
+        # Escopo tabela de ciclos — remoção de financial/optionals do
+        # template default em bases já instaladas virou migração one-shot
+        # (migrations/16.0.7.0.0/post-migrate.py), não data file: mira o
+        # template pelo XMLID, não pelo `code` (que não é único — bases
+        # reais têm templates customizados do cliente com o mesmo code).
         # F9.3 — Email template LabQuali para envio de proposta
         "data/mail_template_proposal.xml",
         # Views — config (master data) com actions
