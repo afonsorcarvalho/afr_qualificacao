@@ -21,6 +21,7 @@
 - **Sem push até a Task 6.** Os commits das Tasks 1–5 ficam locais no branch.
 - **Rotas preservadas:** o app continua servindo em `/tecnico/qualificacao/**`. Não renomear rotas — o `F7_0_TEST_CHECKLIST.md`, o `manifest.json` (`start_url`) e o `localStorage` dos aparelhos dependem delas.
 - **`.env.local` não migra** (é gitignored e contém a `GROQ_API_KEY`). A chave está comprometida e deve ser rotacionada antes de ser reusada.
+- **Medições de controle, tiradas em 2026-09-02 antes de qualquer arquivo ser copiado** (referência para as comparações das tasks): boot do container `odoo_engenapp-web-qualificacao-1` até `HTTP service (werkzeug) running` = **4 segundos**; `npx tsc --noEmit` na origem (`SRC`) = **limpo**, com as 7 suítes de `app/tecnico/qualificacao/__tests__/` presentes na árvore.
 
 ## File Structure
 
@@ -117,7 +118,15 @@ cd /home/afonso/docker/odoo_engenapp/addons/afr_qualificacao/pwa
 npm ci
 ```
 
-Esperado: instalação completa e a linha `pdfjs worker copiado de node_modules/...` vinda do `postinstall`. Confirmar: `ls public/pdf.worker.min.mjs` existe.
+Esperado: instalação completa e a linha `pdfjs worker copiado de node_modules/...` vinda do `postinstall`.
+
+**Verificação bloqueante:**
+
+```bash
+ls -la public/pdf.worker.min.mjs
+```
+
+O `postinstall` procura o worker em `node_modules/react-pdf/node_modules/pdfjs-dist/build/` e em `node_modules/pdfjs-dist/build/`, e **engole o erro** se não achar em nenhum dos dois (`catch` que só imprime). Se o arquivo não existir, o hoisting do npm colocou o `pdfjs-dist` em outro lugar: achar com `find node_modules -name pdf.worker.min.mjs`, copiar para `public/` na mão e acrescentar o caminho ao array `candidates` do `postinstall`. Sem esse arquivo, o `PdfViewerModal` quebra em runtime **com build verde** — a mesma classe de falha silenciosa que a verificação do manifest cobre na Task 2.
 
 - [ ] **Step 4: Enxugar o root layout**
 
@@ -286,6 +295,8 @@ npx tsc --noEmit
 
 Cada erro `Cannot find module '@/...'` nomeia um arquivo que ficou para trás. Para cada um: copiar o arquivo correspondente de `$SRC` preservando o caminho relativo, e rodar `tsc` de novo. Repetir até saída vazia.
 
+**Erros que NÃO são de arquivo faltando:** `tsconfig.json` exclui `tests/**`, mas as 7 suítes do técnico vivem em `app/tecnico/qualificacao/__tests__/` — dentro do `include`. O `tsc` vai type-checá-las, e elas importam `vitest`, `@testing-library/react` e globais de DOM. Na origem isso compila limpo com o mesmo `tsconfig.json` (verificado em 2026-09-02, ver Global Constraints). Portanto: erro que **não** seja `Cannot find module '@/...'` significa divergência de ambiente, não peça faltando — rodar `npx tsc --noEmit` na origem (`SRC`) e comparar as saídas antes de mexer em qualquer configuração. Não relaxar `strict`, não acrescentar `skipLibCheck` extra, não excluir `__tests__` do `tsconfig` para "resolver".
+
 **Regra de parada:** se um erro apontar para `@/components/layout/*`, `@/components/dashboard/*`, `@/lib/odoo/{ciclos,os,partners,reports,bus}`, `@/lib/hooks/use{Ciclos,Os,Contacts,Dashboard,GlobalSearch,...}` ou `@/lib/types/{ciclo,os,partner}`, **não copiar**: é sinal de que algo do shell ficou apontando para um módulo que não viaja. Achar o consumidor e cortar a dependência (como foi feito no Step 4 e no Step 7), não arrastar o módulo.
 
 Esperado ao final: `npx tsc --noEmit` sem nenhuma saída.
@@ -451,23 +462,29 @@ git commit -m "test(pwa): record post-migration test baseline"
 - Consumes: build verde (Task 2), suíte verde (Task 3)
 - Produces: evidência de que o app autentica e lista OSs contra o Odoo real; medição do boot do container Odoo com `node_modules` na árvore de addons
 
-- [ ] **Step 1: Medir o boot do Odoo ANTES, como controle**
+- [ ] **Step 1: Medir o boot do Odoo com o `node_modules` já na árvore**
 
-`addons/` é bind-montado em `/mnt/extra-addons` e o container roda `--dev=all` com `watchdog`. `pwa/node_modules` entra na árvore observada.
+`addons/` é bind-montado em `/mnt/extra-addons` e o container roda `--dev=all` com `watchdog`. Depois da Task 1, `pwa/node_modules` (~500 diretórios) entra na árvore observada.
+
+O controle já foi tirado antes da migração: **4 segundos** (ver Global Constraints). Medir agora, no mesmo formato:
 
 ```bash
 cd /home/afonso/docker/odoo_engenapp
-docker restart odoo_engenapp-web-qualificacao-1
-docker logs -f --since 1m odoo_engenapp-web-qualificacao-1 2>&1 | grep -m1 "HTTP service (werkzeug) running"
+docker restart odoo_engenapp-web-qualificacao-1 >/dev/null && START=$(date +%s)
+for i in $(seq 1 120); do
+  if docker logs --since 30s odoo_engenapp-web-qualificacao-1 2>&1 | grep -q "HTTP service (werkzeug) running"; then
+    echo "BOOT_SECONDS=$(( $(date +%s) - START ))"; break
+  fi
+done
 ```
 
-Cronometrar do `docker restart` até a linha aparecer. Registrar o valor.
+Não usar `docker logs -f | grep -m1`: o `grep` fecha o pipe, o shell recebe SIGTERM (exit 143) e o `echo` do tempo nunca roda.
 
-- [ ] **Step 2: Comparar com a medição prévia**
+- [ ] **Step 2: Comparar com o controle**
 
-`fs.inotify.max_user_watches` = 524288 no host e no container (já verificado), então numericamente há folga. O que se mede aqui é o tempo de walk da árvore.
+`fs.inotify.max_user_watches` = 524288 no host e no container (verificado), então numericamente há folga. O que se mede aqui é o tempo de walk da árvore.
 
-Se o boot degradar em mais de ~30s em relação ao que era antes da migração, aplicar a mitigação prevista no spec: mover `node_modules` para um volume nomeado, adicionando ao `pwa/docker-compose.yml` um serviço de dev com `- /app/node_modules` mascarando o bind. Se não degradar, registrar a medição no relatório e seguir.
+Critério: boot acima de **30 segundos** (controle de 4s + margem larga) dispara a mitigação prevista no spec — `node_modules` vai para um volume nomeado, acrescentando ao `pwa/docker-compose.yml` um serviço de dev com `- /app/node_modules` mascarando o bind, e o `npm` passa a rodar dentro desse container. Abaixo disso, registrar o número medido no relatório e seguir.
 
 - [ ] **Step 3: Criar o `.env.local` com a chave da Groq**
 
@@ -648,10 +665,12 @@ Esperado: os três verdes, com a contagem de testes batendo com `docs/BASELINE.m
 
 ```bash
 cd /home/afonso/docker/odoo_engenapp/addons/afr_qualificacao
-git diff --stat main..feat/pwa-tecnico-no-addon -- . ':!pwa'
+git diff --stat $(git merge-base main feat/pwa-tecnico-no-addon)..feat/pwa-tecnico-no-addon -- . ':!pwa'
 ```
 
-Esperado: saída vazia, exceto `docs/superpowers/plans/2026-09-02-pwa-tecnico-no-addon.md` se o plano tiver sido commitado no branch. Nenhuma mudança em `models/`, `views/`, `security/`, `tests/` ou `__manifest__.py`.
+Diffar contra o merge-base, não contra `main`: o spec e o plano foram commitados em `main` **depois** do corte do branch, então um `main..branch` os mostraria como deleções do lado do branch — falso positivo.
+
+Esperado: saída vazia. Nenhuma mudança em `models/`, `views/`, `security/`, `tests/` ou `__manifest__.py`.
 
 - [ ] **Step 3: Merge e push do submodule**
 
