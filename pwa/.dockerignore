@@ -1,0 +1,24 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env*.local
+.vscode
+.claude
+.remember
+Dockerfile
+docker-compose*.yml
+.dockerignore
+README.md
+DESIGN_PITCH.md
+TODO.md
+docs
+tests
+coverage
+*.log
+*.tsbuildinfo
+next-env.d.ts
+Propagando Fitadigital
+image.png
+.DS_Store
