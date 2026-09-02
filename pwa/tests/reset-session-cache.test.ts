@@ -2,7 +2,6 @@
  * Testa o reset completo do cache da sessão, garantindo que:
  *  - React Query cache é apagado
  *  - schemaStore é limpo (fields + access + loadedAt)
- *  - filtros de contatos e ciclos voltam ao default
  *  - dados da empresa (companyId, companyName, companyLogo) são zerados
  *
  * Cobre o caso "login em servidor diferente deve limpar dados da empresa anterior".
