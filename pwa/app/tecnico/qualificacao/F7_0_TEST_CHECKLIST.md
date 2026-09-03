@@ -91,9 +91,11 @@ manifest do `afr_qualificacao` pra `16.0.6.4.0` — ver a versão instalada
 satisfeita **não** significa que os Tasks 2-4 (pausados) estão no backend.
 Confirmar as capacidades abaixo antes de rodar H4-H12, senão H4+ quebra com
 `AttributeError`/campo inválido mesmo com a versão "certa":
-- Método `action_start_daily_relatorio(day_start, day_end)` existe em
-  `afr.qualificacao.os` (ex.: `odoo_execute_kw`/shell — checar que não dá
-  `AttributeError`).
+- Métodos `action_start_daily_relatorio()` e `action_get_daily_relatorio()`
+  existem em `afr.qualificacao.os` (ex.: `odoo_execute_kw`/shell — checar que
+  não dá `AttributeError`). **Sem argumentos** desde o fix de 2026-09-03: a
+  janela do dia é decidida no servidor (`_janela_do_dia`), o front não manda
+  mais `day_start`/`day_end`.
 - Campos `signature_technician` e `signature_technician_date` existem em
   `afr.qualificacao.os.relatorio` (`fields_get`).
 - `descricao` é opcional em relatório rascunho — criar um relatório novo e
@@ -104,22 +106,62 @@ Versão mínima do manifest (`afr_qualificacao` ≥ 16.0.6.4.0) continua sendo
 pré-requisito, mas não é suficiente sozinha — usar a lista de capacidades
 acima como o gate de fato.
 
-Nota: no db `odoo-labquali` não existe nenhuma OS com `tecnico_default_id`
-preenchido — o item H2 ("Só minhas") vai precisar de dado semeado antes de
-poder ser validado.
+Nota: rodar contra o db `qualificacao-dev` (Odoo :8084 — que é também o
+backoffice deste bloco, **não** o :8083). Dado semeado em 2026-09-03:
+OS 4 `OS26-06-0002` (`in_progress`) → `tecnico_default_user_id` = uid 2, e
+OS 4832 `OS26-08-0006-1` (`draft`) → uid 8, o par que H2/H3 comparam.
 
-- [ ] **H1** — Login como técnico (user com `hr.employee` vinculado e grupo Técnico) → home lista OSs.
-- [ ] **H2** — Toggle "Só minhas" **on**: só aparecem OSs com `tecnico_default_user_id` = user logado (espelho stored de `tecnico_default_id.user_id`). Era o gap da ACL de hr — antes vinha vazio.
-- [ ] **H3** — Toggle "Só minhas" **off**: aparecem as demais OSs do grupo.
-- [ ] **H4** — "Iniciar relatório do dia" → card "REL #N" aparece, sem erro de RPC.
-- [ ] **H5** — Reload da mesma tela → **mesmo** REL #N (idempotência de `action_start_daily_relatorio`).
-- [ ] **H6** — Tocar "Iniciar" 2× seguidas → não cria segundo relatório (conferir no backoffice `8083` a lista de relatórios da OS).
-- [ ] **H7** — Backoffice: relatório criado pelo PWA está em rascunho, **sem descrição**, com o técnico logado em "Técnicos".
-- [ ] **H8** — Salvar uma coleta com foto → item sai de pendentes, `relatorio_id` do item aponta pro REL #N.
-- [ ] **H9a** — Finalizar: descrição vazia + Fechar → a guarda do FRONT bloqueia o envio antes de qualquer RPC. Toast mostra exatamente `Descrição do turno é obrigatória` (string do front, `handleFinish` em
-  `app/tecnico/qualificacao/[osId]/relatorio/[relId]/finalizar/page.tsx`). Conferir no DevTools → Network que **nenhuma** chamada `write`/`action_done` sai pro relatório — este item sozinho não exercita o backend.
-- [ ] **H9b** — Contornar a guarda do front pra chegar de fato no backend: comentar/pular temporariamente o `if (!descricao.trim())` em `handleFinish` (ou disparar o RPC equivalente direto, ex. via `odoo_execute_kw`/shell chamando `action_done` num relatório sem `descricao`) e então finalizar → o BACKEND recusa com `"Descrição do serviço é obrigatória."` e o relatório permanece em `draft`. Sem este passo, H9 "passa" sem nunca ter exercitado o guard real do backend (Task 2).
+**Execução de 2026-09-03 (db `qualificacao-dev`, user `afonso@jgma.com.br`
+= uid 2, PWA em :3010): 12/12 verdes.** Evidências por item abaixo.
+
+- [x] **H1** — Login como técnico (user com `hr.employee` vinculado e grupo Técnico) → home lista OSs. ✅ redirecionou pra `/tecnico/qualificacao` com OS26-06-0002 listada.
+- [x] **H2** — Toggle "Só minhas" **on**: só aparecem OSs com `tecnico_default_user_id` = user logado (espelho stored de `tecnico_default_id.user_id`). Era o gap da ACL de hr — antes vinha vazio. ✅ só OS 4 (uid 2); OS 4832 (uid 8) e OS 4831 (sem técnico) fora.
+- [x] **H3** — Toggle "Só minhas" **off**: aparecem as demais OSs do grupo. ✅ aparece OS26-08-0005-2 (alheia) em "Agendadas".
+  ⚠️ Pra este item o dado precisou ser semeado: o front só renderiza a seção
+  "Rascunhos" quando o filtro está **on** (`page.tsx:23`,
+  `filterMine ? drafts : []`), então com as 3 OSs alheias em `draft` desligar o
+  toggle mostrava *menos* cards, não mais. OS 4831 `OS26-08-0005-2` foi movida
+  pra `scheduled` (e continua assim) só pra dar um caso alheio visível com o
+  filtro off. A regra "rascunho só aparece se for minha" parece deliberada mas
+  não está documentada — confirmar com o dono do produto.
+- [x] **H4** — "Iniciar relatório do dia" → card "REL #N" aparece, sem erro de RPC. ✅ criou REL #1972 (`RQOS00021`).
+- [x] **H5** — Reload da mesma tela → **mesmo** REL #N (o reload lê por `action_get_daily_relatorio`, que reusa a mesma janela do dia do servidor). ✅ #1972 de novo.
+- [x] **H6** — Tocar "Iniciar" 2× seguidas → não cria segundo relatório (idempotência de `action_start_daily_relatorio`; conferir no backoffice `8084` a lista de relatórios da OS). ✅ duas chamadas em paralelo devolveram `[1972, 1972]`; a OS continuou com 3 relatórios (os 2 antigos + o novo).
+- [x] **H7** — Backoffice: relatório criado pelo PWA está em rascunho, **sem descrição**, com o técnico logado em "Técnicos". ✅ `state=draft`, `descricao=false`, `tecnico_ids=[441]`.
+- [x] **H8** — Salvar uma coleta com foto → item sai de pendentes, `relatorio_id` do item aponta pro REL #N. ✅ item 215 (`QI`, `kind=foto`) → `state=collected`, `relatorio_id=1972`, `captured_at 04:38 UTC` (01:38 local).
+- [x] **H9a** — Finalizar: descrição vazia + Fechar → a guarda do FRONT bloqueia o envio antes de qualquer RPC. Toast mostra exatamente `Descrição do turno é obrigatória` (string do front, `handleFinish` em
+  `app/tecnico/qualificacao/[osId]/relatorio/[relId]/finalizar/page.tsx`). Conferir no DevTools → Network que **nenhuma** chamada `write`/`action_done` sai pro relatório — este item sozinho não exercita o backend. ✅ contador de POSTs pro proxy não mexeu (83 → 83) e o toast trouxe a string exata.
+- [x] **H9b** — Contornar a guarda do front pra chegar de fato no backend: comentar/pular temporariamente o `if (!descricao.trim())` em `handleFinish` (ou disparar o RPC equivalente direto, ex. via `odoo_execute_kw`/shell chamando `action_done` num relatório sem `descricao`) e então finalizar → o BACKEND recusa com `"Descrição do serviço é obrigatória."` e o relatório permanece em `draft`. Sem este passo, H9 "passa" sem nunca ter exercitado o guard real do backend (Task 2).
   ⚠️ `finalizeRelatorio` grava `data_fim`/`signature_technician`/`signature_technician_date` no 1º RPC (`write`) **antes** do 2º RPC (`action_done`) que falha — então mesmo após o erro esperado, o relatório fica em `draft` mas já COM esses campos preenchidos. Usar um relatório descartável pra H9b, ou limpar `data_fim`/`signature_technician`/`signature_technician_date` no backoffice antes de seguir pra H10/H11 — senão H10/H11 acham `time_execution > 0` e assinatura já gravados de antemão e "passam" sem testar nada.
-- [ ] **H10** — Finalizar com descrição + assinatura → sucesso; backoffice mostra state=Concluído, `descricao` preenchida, page "Assinatura" com o traço renderizado e data de hoje.
-- [ ] **H11** — Tempo: `time_execution` do relatório fechado é > 0 (gate do `action_done`).
-- [ ] **H12** — Histórico do PWA lista o relatório fechado (filtro por `create_uid` — relatório criado pelo próprio PWA).
+  ✅ Rota usada em 2026-09-03: relatório descartável criado por RPC
+  (`create` + `action_done` sem `descricao`, id 1973) → `UserError`
+  `"Descrição do serviço é obrigatória."`, registro ficou em `draft` e foi
+  apagado depois. Esse caminho não passa pelo `write` do `finalizeRelatorio`,
+  então nem o relatório do dia nem H10/H11 foram contaminados — preferir esta
+  rota à de comentar a guarda do front.
+- [x] **H10** — Finalizar com descrição + assinatura → sucesso; backoffice mostra state=Concluído, `descricao` preenchida, page "Assinatura" com o traço renderizado e data de hoje. ✅ #1972 `state=done`, `descricao` gravada, `signature_technician` = PNG 454×160, `signature_technician_date 04:42 UTC` (01:42 local).
+- [x] **H11** — Tempo: `time_execution` do relatório fechado é > 0 (gate do `action_done`). ✅ `0.0967 h` (04:36:15 → 04:42:03 UTC).
+- [x] **H12** — Histórico do PWA lista o relatório fechado (filtro por `create_uid` — relatório criado pelo próprio PWA). ✅ card "REL #1972 · 03/09/26 01:42 · 0.1h · 1 item".
+  ⚠️ Verificado só pela **presença do card**. Os contadores do topo ("5 coletas
+  / 1 OS / 3 rel. fechados hoje") NÃO foram validados: saem de `todayRangeOdoo`
+  (relógio do aparelho, pendência aberta no `TODO.md`) e ainda incluem
+  REL #1971 e #1857, carimbados 05:06 e 04:59 pela sessão de relógio adiantado —
+  ou seja, no futuro em relação ao próprio momento do teste. Só caem dentro da
+  janela "hoje" por acaso. Pra validar os contadores de verdade, apagar esses
+  dois relatórios antes e conferir os números.
+
+### Notas de ferramental (2026-09-03)
+
+- **`agent-browser` precisa de viewport alto** (`set viewport 1280 1800`).
+  Com a janela padrão, tudo abaixo da dobra (botão "Entrar", cards de coleta,
+  "Salvar coleta", canvas de assinatura) recebe clique em coordenada fora da
+  viewport e nada acontece — `document.elementFromPoint` no alvo devolve `null`.
+  Não é bug do app: `find text "<label>" click` (que rola até o elemento) e
+  `.click()` via `eval` funcionam mesmo com a janela pequena.
+- **Relógio do WSL adianta ~5h** depois de suspender/retomar, e o RTC vem
+  errado junto (`hwclock -s` não resolve). Corrigir pela rede
+  (`sudo date -u -s "$(curl -sI https://www.google.com | grep -i ^date: | cut -d' ' -f2-)" && sudo hwclock -w`)
+  **antes** de rodar o bloco — senão H11/H12 e os contadores "hoje" do
+  Histórico falham por motivo alheio ao que testam. Depois de mexer no relógio,
+  reiniciar o `npm run dev` com `.next` limpo: o cache gravado com mtime no
+  futuro trava toda request (o `curl` no `/login` estourava 90s).

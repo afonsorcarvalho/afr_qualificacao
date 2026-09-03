@@ -1,6 +1,6 @@
 'use client'
 
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
@@ -43,8 +43,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     })
   })
 
+  // No SSR não há `localStorage`, então não há persister — mas o client ainda
+  // precisa existir na árvore: sem ele, todo `useQuery`/`useQueryClient`
+  // renderizado no servidor estoura "No QueryClient set" e o HTML do servidor
+  // é descartado na hidratação.
   if (!persister) {
-    return <>{children}</>
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
   }
 
   return (

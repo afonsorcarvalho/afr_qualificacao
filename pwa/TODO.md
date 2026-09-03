@@ -9,8 +9,13 @@
   item com `state='collected'`, mas o front trata `outro` como anexo-opcional
   (`pwa/app/tecnico/qualificacao/[osId]/coleta/[itemId]/page.tsx:17,71`). Salvar um item "Outro" sem
   foto quebra. Decidir de que lado corrigir: relaxar a constraint para `kind='outro'` no backend,
-  ou exigir anexo no front. Achado no final review de 2026-07-27; vai bloquear o bloco H do
-  `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md`.
+  ou exigir anexo no front. Achado no final review de 2026-07-27. (Não bloqueou o bloco H —
+  nenhum item H1–H12 salva `kind='outro'`; a OS 4 semeada só tem `foto`/`excel`.)
+- **"Só minhas" off esconde os rascunhos** (`pwa/app/tecnico/qualificacao/page.tsx:23`:
+  `filterMine ? drafts : []`). Desligar o filtro mostra *menos* cards quando as OSs alheias
+  estão em `draft` — foi o que travou o H3 até semear uma OS alheia em `scheduled`. Parece
+  deliberado (evitar inundar com rascunho dos outros), mas não está documentado nem comentado.
+  Confirmar a intenção e, se for regra mesmo, comentar no código e ajustar o texto do H3/A.3.
 - ~~Relógio do dispositivo vs. do servidor no fechamento do relatório.~~ **Resolvido em
   2026-09-03.** Abertura e fechamento do relatório do dia agora são carimbados inteiramente pelo
   servidor: `action_start_daily_relatorio`/`action_get_daily_relatorio` decidem a janela do dia
@@ -27,9 +32,11 @@
   errados — janela do dia calculada local, comparada contra `captured_at`/`signature_technician_date`
   gravados pelo servidor. Fix seria análogo: um método RPC somente-leitura que devolve os contadores
   já calculados no servidor, com a janela do dia decidida lá.
-- Bloco H do `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (H1-H12) ainda não foi executado — é o gate de aceitação
-  end-to-end da adequação PWA↔backend. H2 precisa de uma OS com `tecnico_default_id` preenchido
-  semeada no db (hoje não há nenhuma).
+- ~~Bloco H do `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (H1-H12).~~ **Executado em
+  2026-09-03: 12/12 verdes** no db `qualificacao-dev` (uid 2), evidência por item no próprio
+  checklist. O gate de aceitação end-to-end da adequação PWA↔backend está fechado. Blocos A–G
+  (funcionalidade geral, PWA, IA, record rules) continuam sem execução manual — o Bloco F em
+  particular precisa de uma conta **só** com o grupo Técnico, que ainda não existe no db.
 
 ### Backend `afr_qualificacao` — autorização (deferido em 2026-07-27)
 
