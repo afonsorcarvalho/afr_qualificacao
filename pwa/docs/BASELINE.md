@@ -35,3 +35,20 @@ trocada: sem `day_start`/`day_end`). Delta líquido: -1 teste.
 | Comando | `npm test` (vitest run) |
 | `npx tsc --noEmit` | limpo |
 | `npm run build` | não rodado (dev server em uso na porta 3010) |
+
+## Atualização — 2026-09-03 (fix/relatorio-dia-relogio-servidor, fechamento)
+
+Mesma classe de fix, agora no **fechamento** do relatório do dia:
+`finalizeRelatorio` deixa de fazer `write` (com `data_fim`/
+`signature_technician_date` carimbados no dispositivo) + `action_done`, e
+passa a chamar só `action_finish_daily_relatorio` (servidor carimba tudo).
+Os 2 testes de `describe('finalizeRelatorio', ...)` foram reescritos para o
+novo contrato de 1 RPC só — contagem de testes não muda (2 → 2).
+
+| Métrica | Valor |
+|---|---|
+| Arquivos de teste | 11 |
+| Testes | 38 pass / 0 skip / 0 fail |
+| Comando | `npm test` (vitest run) |
+| `npx tsc --noEmit` | limpo |
+| `npm run build` | não rodado (dev server em uso na porta 3010) |

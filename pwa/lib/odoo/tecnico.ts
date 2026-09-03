@@ -348,16 +348,14 @@ export async function finalizeRelatorio(
   relId: number,
   payload: FinalizeRelatorioPayload,
 ): Promise<void> {
-  const now = toOdooDatetime(new Date())
-  // 1º RPC: grava o conteúdo. `data_fim` precisa estar persistido antes do
-  // action_done, porque `time_execution` é stored/computed e o gate exige > 0.
-  await odooClient.write('afr.qualificacao.os.relatorio', [relId], {
-    data_fim: now,
-    descricao: payload.descricao,
-    signature_technician: payload.signature_b64,
-    signature_technician_date: now,
-  })
-  // 2º RPC: transição oficial (valida descrição, tempo > 0 e técnicos).
-  // Nunca escrever state='done' direto — pularia essas validações.
-  await odooClient.callKw('afr.qualificacao.os.relatorio', 'action_done', [[relId]])
+  // Quem carimba `data_fim`/`signature_technician_date` é o servidor — um
+  // relógio de dispositivo atrasado fazia `data_fim` cair antes de
+  // `data_inicio` (também gravado pelo servidor, na abertura) e esbarrar na
+  // constraint. Ver `action_finish_daily_relatorio` no backend.
+  await odooClient.callKw(
+    'afr.qualificacao.os.relatorio',
+    'action_finish_daily_relatorio',
+    [[relId]],
+    { descricao: payload.descricao, signature_b64: payload.signature_b64 },
+  )
 }

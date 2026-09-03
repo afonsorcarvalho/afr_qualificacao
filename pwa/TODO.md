@@ -11,15 +11,14 @@
   foto quebra. Decidir de que lado corrigir: relaxar a constraint para `kind='outro'` no backend,
   ou exigir anexo no front. Achado no final review de 2026-07-27; vai bloquear o bloco H do
   `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md`.
-- **Relógio do dispositivo vs. do servidor no fechamento do relatório.** `data_inicio` é gravado
-  pelo servidor (`action_start_daily_relatorio` usa `fields.Datetime.now()`), mas `finalizeRelatorio`
-  (`pwa/lib/odoo/tecnico.ts`) manda `data_fim` do relógio do **celular**. Um aparelho atrasado em relação
-  ao servidor faz a constraint `_check_dates` rejeitar o fecho do relatório. Fix é front-side:
-  buscar `data_inicio` do relatório e garantir `data_fim >= data_inicio` antes de enviar.
-  (A abertura do relatório do dia já foi corrigida em 2026-09-03 — `action_get_daily_relatorio` +
-  `action_start_daily_relatorio` agora decidem a janela do dia inteiramente no servidor, sem
-  `day_start`/`day_end` vindos do front; este item cobre só o `data_fim` do fechamento, que continua
-  vindo do relógio do celular.)
+- ~~Relógio do dispositivo vs. do servidor no fechamento do relatório.~~ **Resolvido em
+  2026-09-03.** Abertura e fechamento do relatório do dia agora são carimbados inteiramente pelo
+  servidor: `action_start_daily_relatorio`/`action_get_daily_relatorio` decidem a janela do dia
+  (sem `day_start`/`day_end` vindos do front), e `action_finish_daily_relatorio`
+  (`afr.qualificacao.os.relatorio`) grava `data_fim = fields.Datetime.now()` no fechamento — o front
+  (`finalizeRelatorio`, `pwa/lib/odoo/tecnico.ts`) manda só `descricao`/`signature_b64`, sem
+  `data_fim` nem `signature_technician_date`. O relógio do celular não entra mais em nenhum dos
+  dois lados do ciclo diário.
 - **`getHistoricoSummary`/`todayRangeOdoo` ainda calculam "hoje" pelo relógio do dispositivo.**
   Mesmo viés que o fix de 2026-09-03 eliminou do caminho de abertura do relatório do dia
   (`dayWindowOdoo`/`action_start_daily_relatorio`), só que aqui em `todayRangeOdoo`

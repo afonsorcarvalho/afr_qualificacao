@@ -99,47 +99,34 @@ describe('startDailyRelatorio', () => {
 describe('finalizeRelatorio', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('escreve os campos e só depois chama action_done', async () => {
-    mocked.write.mockResolvedValue(true)
+  it('faz uma única chamada a action_finish_daily_relatorio, sem write nem carimbo de tempo do dispositivo', async () => {
     mocked.callKw.mockResolvedValue(true)
-    const order: string[] = []
-    mocked.write.mockImplementation(async () => {
-      order.push('write')
-      return true
-    })
-    mocked.callKw.mockImplementation(async () => {
-      order.push('callKw')
-      return true
-    })
 
     await finalizeRelatorio(9, { descricao: 'Turno OK', signature_b64: 'QUJD' })
 
-    expect(order).toEqual(['write', 'callKw'])
+    // Não há mais 1º RPC de write — quem carimba data_fim/signature_technician_date
+    // é o servidor, dentro de action_finish_daily_relatorio.
+    expect(mocked.write).not.toHaveBeenCalled()
+    expect(mocked.callKw).toHaveBeenCalledTimes(1)
 
-    const [model, ids, vals] = mocked.write.mock.calls[0]
+    const [model, method, args, kwargs] = mocked.callKw.mock.calls[0]
     expect(model).toBe('afr.qualificacao.os.relatorio')
-    expect(ids).toEqual([9])
-    expect(vals).toMatchObject({
+    expect(method).toBe('action_finish_daily_relatorio')
+    expect(args).toEqual([[9]])
+    expect(kwargs).toMatchObject({
       descricao: 'Turno OK',
-      signature_technician: 'QUJD',
+      signature_b64: 'QUJD',
     })
-    expect(vals).toHaveProperty('data_fim')
-    expect(vals).toHaveProperty('signature_technician_date')
-    // state NÃO vai no write — quem transiciona é action_done
-    expect(vals).not.toHaveProperty('state')
-
-    expect(mocked.callKw).toHaveBeenCalledWith(
-      'afr.qualificacao.os.relatorio',
-      'action_done',
-      [[9]],
-    )
+    // Relógio do dispositivo não entra: nem data_fim nem
+    // signature_technician_date são mandados pelo front.
+    expect(kwargs).not.toHaveProperty('data_fim')
+    expect(kwargs).not.toHaveProperty('signature_technician_date')
   })
 
-  it('não chama action_done se o write falhar', async () => {
-    mocked.write.mockRejectedValue(new Error('odoo down'))
+  it('propaga erro do RPC sem engolir', async () => {
+    mocked.callKw.mockRejectedValue(new Error('odoo down'))
     await expect(
       finalizeRelatorio(9, { descricao: 'x', signature_b64: 'QUJD' }),
     ).rejects.toThrow('odoo down')
-    expect(mocked.callKw).not.toHaveBeenCalled()
   })
 })

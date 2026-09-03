@@ -11,7 +11,7 @@ import base64
 from datetime import datetime, timedelta
 
 from odoo import fields
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase, tagged
 
 from .common import AfrQualificacaoTestCommon
@@ -507,6 +507,71 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertEqual(os_rec.state, "draft")
         with self.assertRaisesRegex(UserError, "agendada ou em execução"):
             os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+
+    # ─────────────────────────────────────────────────────────────
+    # 5. action_finish_daily_relatorio (fechamento — relógio do servidor)
+    # ─────────────────────────────────────────────────────────────
+    def test_write_direto_com_relogio_do_dispositivo_atrasado_falha(self):
+        """Reproduz o bug real (mesma classe do fix de abertura, agora no
+        fechamento): um aparelho com relógio atrasado ~4h30 manda `data_fim`
+        anterior ao `data_inicio` que o servidor gravou na abertura. O
+        caminho antigo do front (write direto de `data_fim` + `action_done`)
+        esbarra em `_check_dates` — por isso ele foi substituído."""
+        agora = fields.Datetime.now()
+        rel = self._make_relatorio(descricao=False, data_inicio=agora, data_fim=agora)
+        atrasado = agora - timedelta(hours=4, minutes=30)
+        with self.assertRaises(ValidationError):
+            rel.write({
+                "data_fim": atrasado,
+                "descricao": "Turno concluído",
+                "signature_technician": self.PNG_1X1,
+                "signature_technician_date": atrasado,
+            })
+
+    def test_finish_daily_fecha_sem_receber_tempo_do_cliente(self):
+        """`action_finish_daily_relatorio` não recebe `data_fim` nenhuma do
+        chamador — quem carimba é o servidor — e ainda assim fecha com
+        tempo de execução positivo."""
+        inicio = fields.Datetime.now() - timedelta(minutes=5)
+        rel = self._make_relatorio(descricao=False, data_inicio=inicio, data_fim=inicio)
+        rel.action_finish_daily_relatorio(
+            descricao="Turno concluído.",
+            signature_b64=self.PNG_1X1,
+        )
+        self.assertEqual(rel.state, "done")
+        self.assertGreaterEqual(rel.data_fim, rel.data_inicio)
+        self.assertGreater(rel.time_execution, 0)
+
+    def test_finish_daily_carimba_data_assinatura_pelo_servidor(self):
+        """`signature_technician_date` não é passada explicitamente pelo
+        método — sai carimbada pelo `write()` (guard já existente) com o
+        relógio do servidor."""
+        inicio = fields.Datetime.now() - timedelta(minutes=5)
+        rel = self._make_relatorio(descricao=False, data_inicio=inicio, data_fim=inicio)
+        rel.action_finish_daily_relatorio(
+            descricao="Turno concluído.",
+            signature_b64=self.PNG_1X1,
+        )
+        self.assertTrue(rel.signature_technician_date)
+        self.assertGreaterEqual(rel.signature_technician_date, rel.data_inicio)
+
+    def test_finish_daily_exige_draft(self):
+        rel = self._make_relatorio()
+        rel.action_done()
+        with self.assertRaises(UserError):
+            rel.action_finish_daily_relatorio(
+                descricao="x", signature_b64=self.PNG_1X1,
+            )
+
+    def test_finish_daily_descricao_vazia_continua_barrada(self):
+        """O caminho novo não pode contornar a validação existente de
+        `action_done` — descrição só espaços continua rejeitada."""
+        inicio = fields.Datetime.now() - timedelta(minutes=5)
+        rel = self._make_relatorio(descricao=False, data_inicio=inicio, data_fim=inicio)
+        with self.assertRaises(UserError):
+            rel.action_finish_daily_relatorio(
+                descricao="   ", signature_b64=self.PNG_1X1,
+            )
 
 
 @tagged("afr_qualificacao", "pwa_tecnico", "post_install", "-at_install")
