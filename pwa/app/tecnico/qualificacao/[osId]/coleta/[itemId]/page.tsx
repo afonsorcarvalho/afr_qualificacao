@@ -1,0 +1,178 @@
+'use client'
+import { useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { Lightbulb } from 'lucide-react'
+import { CameraInput } from '../../../_components/CameraInput'
+import { FileInput } from '../../../_components/FileInput'
+import { MicButton } from '../../../_components/MicButton'
+import { useCollectItem, useOsDetail } from '@/lib/hooks/useTecnicoQualif'
+import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
+import odooClient from '@/lib/odoo/client'
+import toast from 'react-hot-toast'
+import type { ColetaItemDetail } from '@/lib/odoo/tecnico'
+
+const FILE_REQUIRED_KINDS = ['foto', 'excel', 'pdf', 'qualificador_data']
+const FILE_OPTIONAL_KINDS = ['outro']
+
+export default function ColetaPage() {
+  const { osId, itemId } = useParams<{ osId: string; itemId: string }>()
+  const oid = parseInt(osId, 10)
+  const iid = parseInt(itemId, 10)
+  const router = useRouter()
+
+  const { data: itemList } = useQuery({
+    queryKey: ['coleta', iid],
+    queryFn: () => odooClient.searchRead<ColetaItemDetail>(
+      'afr.qualificacao.collect.item',
+      [['id', '=', iid]],
+      ['name', 'kind', 'required', 'state', 'description', 'instruction',
+       'requires_instrument', 'docx_section', 'qualif_id', 'equipment_id'],
+    ),
+    enabled: iid > 0,
+  })
+  const item = itemList?.[0]
+
+  const { lastUserId } = useTecnicoSettings()
+  const userId = lastUserId ?? 0
+  const osDetail = useOsDetail(oid, userId)
+  const relatorioId = osDetail.data?.open_relatorio_id ?? null
+
+  const [fileData, setFileData] = useState<{
+    base64: string
+    filename: string
+    mimetype: string
+  } | null>(null)
+  const [description, setDescription] = useState('')
+
+  const mutation = useCollectItem(oid)
+
+  if (!item) return <p className="text-center">Carregando...</p>
+
+  if (!relatorioId) {
+    return (
+      <div className="space-y-3">
+        <Button variant="ghost" size="sm" onClick={() => router.back()}>
+        ← Voltar
+        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+      </Button>
+        <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
+          Inicie um relatório do dia antes de coletar.
+        </p>
+      </div>
+    )
+  }
+
+  const fileRequired = FILE_REQUIRED_KINDS.includes(item.kind)
+  const fileAllowed = fileRequired || FILE_OPTIONAL_KINDS.includes(item.kind)
+
+  const handleSave = (skip: boolean) => {
+    if (!skip && fileRequired && !fileData) {
+      toast.error('Anexe arquivo antes de salvar')
+      return
+    }
+    mutation.mutate(
+      {
+        itemId: iid,
+        payload: {
+          ...(fileData
+            ? {
+                file_b64: fileData.base64,
+                filename: fileData.filename,
+                mimetype: fileData.mimetype,
+              }
+            : {}),
+          description,
+          relatorio_id: relatorioId,
+          state: skip ? 'skipped' : 'collected',
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success(skip ? 'Item pulado' : 'Coleta salva')
+          router.back()
+        },
+        onError: (e: any) => toast.error(`Erro: ${e.message}`),
+      },
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <Button variant="ghost" size="sm" onClick={() => router.back()}>
+        ← Voltar
+        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+      </Button>
+
+      {item.equipment_id && (
+        <div className="flex items-center gap-2 rounded-md bg-cyan-500/10 px-3 py-2 border border-cyan-500/30">
+          <span className="text-base">🔧</span>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-cyan-300/60">Equipamento</p>
+            <p className="truncate text-sm font-semibold text-cyan-300">{item.equipment_id[1]}</p>
+          </div>
+        </div>
+      )}
+
+      <h1 className="text-lg font-semibold">{item.name}</h1>
+
+      {item.instruction && (
+        <div className="flex gap-2 rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-950">
+          <Lightbulb className="h-4 w-4 shrink-0 text-amber-600" />
+          <p>{item.instruction}</p>
+        </div>
+      )}
+
+      {fileAllowed && (
+        <div>
+          <label className="text-sm font-medium">
+            Arquivo {fileRequired ? '*' : <span className="text-muted-foreground/80 font-normal">(opcional)</span>}
+          </label>
+          {item.kind === 'foto' ? (
+            <CameraInput onCapture={setFileData} />
+          ) : (
+            <FileInput kind={item.kind} onCapture={setFileData} />
+          )}
+        </div>
+      )}
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <label htmlFor="desc" className="text-sm font-medium">Observação</label>
+          <MicButton
+            onTranscribe={(t) =>
+              setDescription((prev) => (prev ? `${prev} ${t}`.trim() : t))
+            }
+          />
+        </div>
+        <textarea
+          id="desc"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Notas adicionais..."
+          rows={3}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </div>
+
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          className="flex-1"
+          onClick={() => handleSave(true)}
+          disabled={mutation.isPending}
+        >
+          Pular
+        </Button>
+        <Button
+          className="flex-[2] bg-emerald-500 hover:bg-emerald-600"
+          onClick={() => handleSave(false)}
+          disabled={mutation.isPending}
+        >
+          {mutation.isPending ? 'Salvando...' : '✓ Salvar coleta'}
+        </Button>
+      </div>
+    </div>
+  )
+}
