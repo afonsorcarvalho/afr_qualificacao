@@ -1,8 +1,11 @@
 # Checklist F7.0 — PWA Técnico de Campo (manual)
 
 ## Ambiente
-- Backend Odoo apontando worktree F7.0 (rodando em http://localhost:8083)
-- Frontend Next dev: `cd /home/afonso/docker/frontend_odoo/.worktrees/tecnico-qualif-pwa && npm run dev` → http://localhost:3010
+- Backend Odoo do addon rodando em http://localhost:8084
+  (container `odoo_engenapp-web-qualificacao-1`)
+- Frontend Next dev:
+  `cd /home/afonso/docker/odoo_engenapp/addons/afr_qualificacao/pwa && npm run dev`
+  → http://localhost:3010
 
 ## Pré-condições
 - DB tem ao menos 1 user com grupo Técnico + employee linkado (`hr.employee.user_id`)
