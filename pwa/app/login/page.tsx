@@ -240,7 +240,7 @@ function LoginPageInner() {
           </motion.div>
 
           <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-neon-blue/80 to-neon-purple bg-clip-text text-transparent">
-            FitaDigital Connect
+            Labquali Connect
           </h1>
           <p className="text-white/40 text-sm mt-1">
             {step === 'server' ? 'Conecte ao seu servidor Odoo' : 'Entre com suas credenciais'}
@@ -322,7 +322,7 @@ function LoginPageInner() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
-          FitaDigital · Comunicação via JSON-RPC
+          Labquali · Comunicação via JSON-RPC
         </motion.p>
       </motion.div>
     </div>
