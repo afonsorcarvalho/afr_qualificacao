@@ -38,6 +38,9 @@ export interface ColetaItemDetail {
   mimetype: string | false
   captured_at: string | false
   captured_by: [number, string] | false
+  // Qual relatório (turno) recolheu o item. Permite separar "neste turno" de
+  // "nesta OS" na tela de finalizar.
+  relatorio_id: [number, string] | false
 }
 
 export interface InstrumentInfo {
@@ -170,7 +173,7 @@ export async function getOsDetail(
       'requires_instrument', 'docx_section', 'qualif_id', 'cycle_id',
       'malha_id', 'equipment_id', 'standard_instrument_ids',
       'file', 'filename', 'mimetype',
-      'captured_at', 'captured_by',
+      'captured_at', 'captured_by', 'relatorio_id',
     ],
   )
   // Quem resolve "o relatório do dia" é o servidor (relógio + fuso do
@@ -276,7 +279,7 @@ export async function getRelatorioDetail(relId: number): Promise<RelatorioFullDe
       'requires_instrument', 'docx_section', 'qualif_id', 'cycle_id',
       'malha_id', 'equipment_id', 'standard_instrument_ids',
       'file', 'filename', 'mimetype',
-      'captured_at', 'captured_by',
+      'captured_at', 'captured_by', 'relatorio_id',
     ],
     { order: 'captured_at desc, id desc' },
   )

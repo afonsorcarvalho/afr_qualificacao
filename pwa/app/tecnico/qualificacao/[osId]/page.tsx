@@ -186,7 +186,7 @@ export default function OsDetailPage() {
       {open_relatorio_id && (
         <Button
           onClick={handleFinalize}
-          className="h-12 w-full bg-emerald-500 hover:bg-emerald-600"
+          className="h-12 w-full"
         >
           Finalizar relatório do dia
         </Button>

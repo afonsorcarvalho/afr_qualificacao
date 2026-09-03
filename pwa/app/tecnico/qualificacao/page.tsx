@@ -24,16 +24,27 @@ export default function HomePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between rounded-lg bg-card p-3 shadow-sm">
-        <label htmlFor="filter-mine" className="text-sm font-medium">Só minhas</label>
+      {/* A linha inteira é o alvo de toque (≥44px): o técnico usa de luva, e um
+          checkbox de 20px é alvo de mouse. O `<label>` embrulha o input, então
+          tocar em qualquer ponto da faixa alterna o filtro. */}
+      <label
+        htmlFor="filter-mine"
+        className="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+      >
+        <span className="text-sm font-medium">
+          Só minhas
+          <span className="block text-xs font-normal text-muted-foreground">
+            {filterMine ? 'OSs atribuídas a você' : 'Todas as OSs em aberto'}
+          </span>
+        </span>
         <input
           id="filter-mine"
           type="checkbox"
           checked={filterMine}
           onChange={(e) => setFilterMine(e.target.checked)}
-          className="h-5 w-9 cursor-pointer"
+          className="h-6 w-6 shrink-0 cursor-pointer accent-emerald-500"
         />
-      </div>
+      </label>
 
       {isLoading && <p className="text-center text-muted-foreground">Carregando...</p>}
       {error && (

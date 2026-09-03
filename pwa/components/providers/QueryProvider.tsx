@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const PERSIST_BUSTER = 'v1'
 const MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -33,6 +33,15 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         },
       })
   )
+
+  // O ReactQueryDevtools injeta um `<div>` no body que o servidor nunca
+  // renderizou. Isso quebrava a hidratação do documento inteiro em toda
+  // navegação ("Expected server HTML to contain a matching <div> in <body>"
+  // → "The server HTML was replaced with client content"), forçando um
+  // re-render completo no cliente e enchendo o overlay de erro do Next —
+  // erro fantasma que mascarava os de verdade. Só depois de montado.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   const [persister] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -68,7 +77,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
-      <ReactQueryDevtools initialIsOpen={false} />
+      {mounted && <ReactQueryDevtools initialIsOpen={false} />}
     </PersistQueryClientProvider>
   )
 }

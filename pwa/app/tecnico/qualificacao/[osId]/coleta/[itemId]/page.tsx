@@ -166,7 +166,7 @@ export default function ColetaPage() {
           Pular
         </Button>
         <Button
-          className="flex-[2] bg-emerald-500 hover:bg-emerald-600"
+          className="min-h-[48px] flex-[2]"
           onClick={() => handleSave(false)}
           disabled={mutation.isPending}
         >

@@ -2,7 +2,8 @@
 import { ReactNode, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Wrench } from 'lucide-react'
+import { Wrench, ClipboardList, BarChart3, User } from 'lucide-react'
+import { clsx } from 'clsx'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 
 const ROOT_PATH = '/tecnico/qualificacao'
@@ -59,15 +60,29 @@ function BottomNav() {
   const isHist = pathname.startsWith(ROOT_PATH + '/historico')
   const isPerfil = pathname.startsWith(ROOT_PATH + '/perfil')
   const isHome = pathname === ROOT_PATH || (!isHist && !isPerfil && pathname.startsWith(ROOT_PATH))
+  // Alvo de 44px por item (PRODUCT.md: o técnico usa de luva) e ícone SVG —
+  // emoji como ícone de interface está proibido no DESIGN.md.
   const link = (active: boolean) =>
-    active
-      ? 'font-semibold text-primary'
-      : 'opacity-60 hover:opacity-100 transition'
+    clsx(
+      'flex min-h-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-md transition-colors',
+      active
+        ? 'font-semibold text-foreground'
+        : 'text-muted-foreground hover:text-foreground',
+    )
   return (
-    <nav className="sticky bottom-0 flex justify-around border-t border-border bg-card px-2 py-2 text-xs text-muted-foreground shadow-[0_-2px_8px_rgba(0,0,0,0.08)]">
-      <Link href={ROOT_PATH} className={link(isHome)}>📋 OSs</Link>
-      <Link href={`${ROOT_PATH}/historico`} className={link(isHist)}>📊 Histórico</Link>
-      <Link href={`${ROOT_PATH}/perfil`} className={link(isPerfil)}>👤 Perfil</Link>
+    <nav className="sticky bottom-0 flex justify-around border-t border-border bg-card px-2 py-1 text-xs shadow-[0_-8px_24px_rgba(0,0,0,0.45)]">
+      <Link href={ROOT_PATH} className={link(isHome)} aria-current={isHome ? 'page' : undefined}>
+        <ClipboardList className="h-5 w-5" aria-hidden />
+        OSs
+      </Link>
+      <Link href={`${ROOT_PATH}/historico`} className={link(isHist)} aria-current={isHist ? 'page' : undefined}>
+        <BarChart3 className="h-5 w-5" aria-hidden />
+        Histórico
+      </Link>
+      <Link href={`${ROOT_PATH}/perfil`} className={link(isPerfil)} aria-current={isPerfil ? 'page' : undefined}>
+        <User className="h-5 w-5" aria-hidden />
+        Perfil
+      </Link>
     </nav>
   )
 }

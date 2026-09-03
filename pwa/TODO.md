@@ -2,8 +2,46 @@
 
 ## Pendente
 
+### Design system (novo em 2026-09-03)
+
+`PRODUCT.md` e `DESIGN.md` agora existem na raiz do PWA, com o sidecar
+`.impeccable/design.json` e a config do live mode. North star: **"A Prancheta"**
+— checklist de campo, coluna única, cor só para estado. O tema "cyber/neon"
+(roxo, rosa, gradiente, glow) está aposentado por decisão registrada lá.
+
+- ~~Classes utilitárias mortas.~~ **Resolvido.** `bg-card`, `text-muted-foreground`,
+  `border-border`, `bg-primary`, `bg-muted` e cia. eram usadas em ~236 lugares sem
+  nunca terem sido definidas — geravam zero CSS (botão primário sem fundo, texto
+  secundário sem cor própria). Tokens definidos em `app/globals.css` + mapeamento
+  em `tailwind.config.ts`, no formato HSL que o modificador de opacidade exige.
+- ~~`--text-muted` do tema escuro reprovava em contraste~~ (`rgba(255,255,255,0.4)`
+  ≈ 3.4:1). Agora `#a3adc2`, acima do piso AA de 4.5:1.
+- **Limpeza de neon pendente.** Ainda existem `shadow-glow-*`, `bg-gradient-cyber`,
+  `animate-pulse-glow`, `glass` e as cores `neon-purple`/`neon-pink` no
+  `tailwind.config.ts` e em componentes (`GlassCard`, `NeonBadge`, fundo do
+  `app/layout.tsx`). O DESIGN.md os proíbe; remover numa passada dedicada.
+- **`KindPill` usa violeta/azul/roxo por tipo de qualificação** — cor como
+  categoria, não estado. Revisar contra a Regra do Estado.
+- Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
+
 ### Técnico Qualificação
 - CollectedCard: mostrar campo `description` (observação) nos itens já coletados (OsDetail + RelatorioDetail)
+- ~~"Coletas realizadas" na tela de fechar turno contava a OS inteira.~~ **Resolvido
+  em 2026-09-03**: o bloco agora mostra os três escopos — quantas coletas *neste
+  turno* (número protagonista), o progresso da OS (`7 de 25`) e quantas faltam. Os
+  itens passaram a trazer `relatorio_id` no `getOsDetail` pra isso ser possível.
+- ~~Cartões com faixa lateral colorida e cartão aninhado.~~ **Resolvido**: o resumo
+  do turno virou um bloco único com barra de progresso, e o box "Qualificador /
+  padrão cadastrado" dentro da linha de coleta virou uma linha de texto (some
+  quando não há nada a dizer).
+- ~~Emoji como ícone de navegação~~ (📋 📊 👤) → ícones SVG do lucide, com alvo de
+  44px e `aria-current`.
+- ~~Duas coletas do mesmo ciclo (foto e planilha) eram indistinguíveis na lista~~ —
+  só o ícone diferenciava. Agora o tipo aparece por extenso ("Foto", "Planilha").
+- ~~Hidratação quebrada em toda navegação~~: o `ReactQueryDevtools` injetava um
+  `<div>` que o servidor não renderizava, o React descartava o HTML do servidor e
+  o overlay do Next mostrava "1 error" permanente (que mascarou erros reais
+  durante os testes). Agora só monta no cliente.
 - **Service worker: confirmar em Chrome de verdade.** O `next-pwa` 5.6 só injeta o script de
   registro pelo Pages Router; com App Router o `sw.js` era gerado e nunca registrado. Foi
   adicionado `components/providers/ServiceWorkerRegister.tsx` (registra `/sw.js` no `load`, só em

@@ -54,8 +54,18 @@ export default function FinalizarPage() {
       .finally(() => setGenerating(false))
   }, [data, descricao, groqEnabled])
 
-  const collected = (data?.collect_items ?? []).filter((i) => i.state === 'collected').length
-  const pending = (data?.collect_items ?? []).filter((i) => i.state === 'pending').length
+  // Três escopos distintos, porque a tela fala do turno mas o progresso é da
+  // OS: o que ESTE relatório recolheu, o acumulado da OS e o que ainda falta.
+  // Antes só existia `collected` (OS inteira) sob o rótulo "Coletas
+  // realizadas", numa tela de fechar turno — um turno de 1 coleta exibia 6.
+  const items = data?.collect_items ?? []
+  const noTurno = items.filter(
+    (i) => i.state === 'collected' && i.relatorio_id && i.relatorio_id[0] === rid,
+  ).length
+  const collected = items.filter((i) => i.state === 'collected').length
+  const pending = items.filter((i) => i.state === 'pending').length
+  const totalOs = collected + pending
+  const pctOs = totalOs > 0 ? Math.round((collected / totalOs) * 100) : 0
 
   const handleFinish = () => {
     if (!descricao.trim()) {
@@ -89,22 +99,56 @@ export default function FinalizarPage() {
       </Button>
       <h1 className="text-lg font-semibold">Finalizar relatório #{rid}</h1>
 
-      <div className="border-l-4 border-l-emerald-500 rounded-lg bg-muted/30 border border-border/70 p-3">
-        <div className="flex justify-between">
-          <strong>Coletas realizadas</strong>
-          <span className="font-semibold text-emerald-600">{collected}</span>
-        </div>
-      </div>
-
-      <div className="border-l-4 border-l-amber-500 rounded-lg bg-muted/30 border border-border/70 p-3">
-        <div className="flex justify-between">
-          <strong>Pendentes restantes</strong>
-          <span className="font-semibold text-amber-600">{pending}</span>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Voltam pra próxima sessão
+      <section
+        className="rounded-lg border border-border/70 bg-muted/30 p-4"
+        aria-label="Resumo das coletas"
+      >
+        <p className="flex items-baseline gap-2">
+          <span className="text-3xl font-semibold tabular-nums leading-none text-emerald-600 dark:text-emerald-400">
+            {noTurno}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {noTurno === 1 ? 'coleta neste turno' : 'coletas neste turno'}
+          </span>
         </p>
-      </div>
+
+        {totalOs > 0 && (
+          <>
+            <div
+              className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted/50"
+              role="progressbar"
+              aria-valuenow={collected}
+              aria-valuemin={0}
+              aria-valuemax={totalOs}
+              aria-valuetext={`${collected} de ${totalOs} coletas da OS`}
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                style={{ width: `${pctOs}%` }}
+              />
+            </div>
+
+            <p className="mt-2 text-sm text-foreground/90">
+              <span className="font-semibold tabular-nums">{collected}</span> de{' '}
+              <span className="font-semibold tabular-nums">{totalOs}</span> coletas
+              da OS concluídas
+              {pending > 0 && (
+                <>
+                  {' · faltam '}
+                  <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                    {pending}
+                  </span>
+                </>
+              )}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {pending > 0
+                ? 'As pendentes voltam pra próxima sessão.'
+                : 'Nenhuma coleta pendente nesta OS.'}
+            </p>
+          </>
+        )}
+      </section>
 
       <div>
         <div className="flex items-center justify-between mb-1">
@@ -153,8 +197,10 @@ export default function FinalizarPage() {
         <Button variant="outline" className="flex-1" onClick={() => router.back()}>
           Cancelar
         </Button>
+        {/* Ação principal chama por contraste, não por matiz: verde está
+            reservado ao estado "coletado" (DESIGN.md, A Regra do Estado). */}
         <Button
-          className="flex-[2] bg-emerald-500 hover:bg-emerald-600"
+          className="min-h-[48px] flex-[2]"
           onClick={handleFinish}
           disabled={mutation.isPending}
         >

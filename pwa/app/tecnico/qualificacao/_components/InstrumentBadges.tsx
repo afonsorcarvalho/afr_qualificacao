@@ -1,5 +1,5 @@
 'use client'
-import { Gauge, ShieldCheck, ShieldAlert, RotateCw, Activity } from 'lucide-react'
+import { ShieldCheck, ShieldAlert, RotateCw, Activity } from 'lucide-react'
 import type { ColetaItemDetail, InstrumentInfo } from '@/lib/odoo/tecnico'
 
 export function InstrumentBadges({
@@ -19,47 +19,52 @@ export function InstrumentBadges({
 
   return (
     <div className="mt-1.5 space-y-1.5">
+      {/* Ciclo e malha são categoria do item, não estado — chip neutro. Violeta
+          e laranja saíram: no DESIGN.md cor só comunica estado. */}
       {item.cycle_id && (
-        <div className="inline-flex items-center gap-1 rounded border border-violet-600/40 bg-violet-500/20 px-2 py-0.5 text-[11px] text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-200">
-          <RotateCw className="h-3 w-3" /> Ciclo: {item.cycle_id[1]}
+        <div className="inline-flex items-center gap-1 rounded border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+          <RotateCw className="h-3 w-3 shrink-0" aria-hidden /> Ciclo: {item.cycle_id[1]}
         </div>
       )}
       {item.malha_id && (
-        <div className="inline-flex items-center gap-1 rounded border border-orange-600/40 bg-orange-500/20 px-2 py-0.5 text-[11px] text-orange-900 dark:border-orange-500/30 dark:bg-orange-500/15 dark:text-orange-200">
-          <Activity className="h-3 w-3" /> Malha: {item.malha_id[1]}
+        <div className="inline-flex items-center gap-1 rounded border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+          <Activity className="h-3 w-3 shrink-0" aria-hidden /> Malha: {item.malha_id[1]}
         </div>
       )}
-      {(item.requires_instrument || item.kind === 'qualificador_data' || linked.length > 0) && (
-        <div className="rounded border border-border/70 bg-muted/20 p-2">
-          <p className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground/90">
-            <Gauge className="h-3 w-3" />
-            Qualificador / Padrão{linked.length > 1 ? 'es' : ''} cadastrado{linked.length > 1 ? 's' : ''}
-          </p>
-          {linked.length === 0 ? (
-            <p className="text-[11px] italic text-amber-300/80">Nenhum cadastrado</p>
-          ) : (
-            <ul className="space-y-0.5">
-              {linked.map((inst) => (
-                <li key={inst.id} className="flex items-start gap-1.5 text-[11px] text-foreground/90">
-                  {inst.has_valid_certificate
-                    ? <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
-                    : <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0 text-amber-400" />
-                  }
-                  <span className="min-w-0">
-                    <strong className="text-foreground">{inst.name}</strong>
-                    {inst.tag && <span className="ml-1 font-mono text-cyan-700 dark:text-cyan-300/80">[{inst.tag}]</span>}
-                    {inst.id_number && <span className="ml-1 text-muted-foreground/90">#{inst.id_number}</span>}
-                    {(inst.marca || inst.modelo) && (
-                      <span className="block text-[10px] text-muted-foreground/80">
-                        {[inst.marca, inst.modelo].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
+
+      {/* Sem instrumento cadastrado: uma linha de aviso, não um cartão dentro
+          do cartão da coleta (cartão aninhado é proibido no DESIGN.md). */}
+      {(item.requires_instrument || item.kind === 'qualificador_data') && linked.length === 0 && (
+        <p className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+          <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Sem qualificador/padrão cadastrado
+        </p>
+      )}
+
+      {linked.length > 0 && (
+        <ul className="space-y-0.5">
+          {linked.map((inst) => (
+            <li key={inst.id} className="flex items-start gap-1.5 text-[11px] text-foreground">
+              {inst.has_valid_certificate
+                ? <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                : <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+              }
+              <span className="min-w-0">
+                <span className="sr-only">
+                  {inst.has_valid_certificate ? 'Certificado válido: ' : 'Sem certificado válido: '}
+                </span>
+                <strong className="font-semibold">{inst.name}</strong>
+                {inst.tag && <span className="ml-1 font-mono text-muted-foreground">[{inst.tag}]</span>}
+                {inst.id_number && <span className="ml-1 text-muted-foreground">#{inst.id_number}</span>}
+                {(inst.marca || inst.modelo) && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {[inst.marca, inst.modelo].filter(Boolean).join(' · ')}
                   </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
