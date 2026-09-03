@@ -86,7 +86,7 @@ export default function FinalizarPage() {
           toast.success('Relatório finalizado')
           router.push(`/tecnico/qualificacao/${oid}`)
         },
-        onError: (e: any) => toast.error(`Erro: ${e.message}`),
+        onError: (e: any) => toast.error(e.message),
       },
     )
   }

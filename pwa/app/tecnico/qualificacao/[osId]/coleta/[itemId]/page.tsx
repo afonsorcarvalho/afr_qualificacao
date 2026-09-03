@@ -13,8 +13,13 @@ import odooClient from '@/lib/odoo/client'
 import toast from 'react-hot-toast'
 import type { ColetaItemDetail } from '@/lib/odoo/tecnico'
 
-const FILE_REQUIRED_KINDS = ['foto', 'excel', 'pdf', 'qualificador_data']
-const FILE_OPTIONAL_KINDS = ['outro']
+// Todo item coletado precisa de anexo, 'outro' incluído. O backend sempre
+// exigiu isso (`_check_required_has_file`: qualquer item em `state=collected`
+// precisa de `file`), mas o front tratava 'outro' como anexo opcional — salvar
+// um item "Outro" sem foto estourava ValidationError na cara do técnico, em
+// campo, depois de ele já ter preenchido a observação. Decisão de 2026-09-03:
+// alinhar pelo backend — item coletado é item com evidência anexada.
+const FILE_REQUIRED_KINDS = ['foto', 'excel', 'pdf', 'qualificador_data', 'outro']
 
 export default function ColetaPage() {
   const { osId, itemId } = useParams<{ osId: string; itemId: string }>()
@@ -65,7 +70,6 @@ export default function ColetaPage() {
   }
 
   const fileRequired = FILE_REQUIRED_KINDS.includes(item.kind)
-  const fileAllowed = fileRequired || FILE_OPTIONAL_KINDS.includes(item.kind)
 
   const handleSave = (skip: boolean) => {
     if (!skip && fileRequired && !fileData) {
@@ -93,7 +97,7 @@ export default function ColetaPage() {
           toast.success(skip ? 'Item pulado' : 'Coleta salva')
           router.back()
         },
-        onError: (e: any) => toast.error(`Erro: ${e.message}`),
+        onError: (e: any) => toast.error(e.message),
       },
     )
   }
@@ -124,10 +128,10 @@ export default function ColetaPage() {
         </div>
       )}
 
-      {fileAllowed && (
+      {fileRequired && (
         <div>
           <label className="text-sm font-medium">
-            Arquivo {fileRequired ? '*' : <span className="text-muted-foreground/80 font-normal">(opcional)</span>}
+            Arquivo *
           </label>
           {item.kind === 'foto' ? (
             <CameraInput onCapture={setFileData} />

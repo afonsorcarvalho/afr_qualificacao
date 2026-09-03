@@ -17,6 +17,36 @@ interface JsonRpcResponse<T = unknown> {
   }
 }
 
+/**
+ * Converte a falha de transporte do axios numa frase que o técnico entende.
+ *
+ * O que chegava na tela era `Request failed with status code 502` — texto do
+ * axios, em inglês, sobre uma camada que o técnico não conhece. Ele precisa
+ * saber duas coisas: se o trabalho dele foi perdido (quase nunca é — a foto
+ * segue anexada na tela) e o que fazer agora.
+ */
+function mensagemDeFalha(error: any): string {
+  const status: number | undefined = error?.response?.status
+  const nadaPerdido = 'O que você preencheu continua aqui'
+  if (!status) {
+    const offline =
+      typeof navigator !== 'undefined' && navigator.onLine === false
+    return offline
+      ? `Sem conexão. ${nadaPerdido} — tente salvar de novo quando o sinal voltar.`
+      : `Não deu para falar com o servidor. ${nadaPerdido} — tente de novo em instantes.`
+  }
+  if (status === 403) {
+    return 'Você não tem permissão para esta ação nesta OS. Fale com o responsável.'
+  }
+  if (status === 404) {
+    return 'Registro não encontrado no servidor. Atualize a tela e tente de novo.'
+  }
+  if (status >= 500) {
+    return `O servidor não respondeu (erro ${status}). ${nadaPerdido} — tente de novo em instantes.`
+  }
+  return `Falha na comunicação com o servidor (erro ${status}). ${nadaPerdido}.`
+}
+
 export class OdooError extends Error {
   constructor(
     message: string,
@@ -80,7 +110,16 @@ class OdooClient {
             if (typeof window !== 'undefined') window.location.href = '/login'
             throw new OdooSessionError()
           }
-          return Promise.reject(error)
+          // Traduz aqui, e não em cada `onError` de mutation: assim toda tela
+          // herda a mensagem humana. `odooDebug` guarda o texto original do
+          // axios pra quem for depurar.
+          return Promise.reject(
+            new OdooError(
+              mensagemDeFalha(error),
+              error?.response?.status ?? 0,
+              error?.message,
+            ),
+          )
         }
       )
     }

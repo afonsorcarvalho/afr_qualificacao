@@ -46,7 +46,7 @@ export default function OsDetailPage() {
 
   const handleStart = () => {
     startMutation.mutate(id, {
-      onError: (e: any) => toast.error(`Erro: ${e.message}`),
+      onError: (e: any) => toast.error(e.message),
     })
   }
   const handleContinue = () => {
