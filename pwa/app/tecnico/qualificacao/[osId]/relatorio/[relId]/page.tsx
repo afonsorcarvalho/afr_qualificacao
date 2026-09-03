@@ -1,7 +1,7 @@
 'use client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, ClipboardList, CheckCircle2, Clock, FileText, Camera } from 'lucide-react'
+import { ArrowLeft, ClipboardList, CheckCircle2, Clock, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useRelatorioDetail } from '@/lib/hooks/useTecnicoQualif'
 import { CollectedCard } from '../../../_components/CollectedCard'

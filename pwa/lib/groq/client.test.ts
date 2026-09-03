@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { groqChat, groqTranscribe, GroqError } from './client'
+import { groqChat, groqTranscribe } from './client'
 
 const originalFetch = globalThis.fetch
 const originalKey = process.env.GROQ_API_KEY

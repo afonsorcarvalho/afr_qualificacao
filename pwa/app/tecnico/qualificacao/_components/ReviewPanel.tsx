@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { Search, AlertTriangle, Info, CheckCircle2, EyeOff, RotateCw, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
-import { useReviewDismissed, type DismissedIssue } from '@/lib/hooks/useReviewDismissed'
+import { useReviewDismissed } from '@/lib/hooks/useReviewDismissed'
 import { useReviewCache } from '@/lib/hooks/useReviewCache'
 import toast from 'react-hot-toast'
 import type { SummaryRequestBody } from '@/app/api/groq/summary/route'
@@ -38,8 +38,8 @@ export function ReviewPanel({
   className,
 }: ReviewPanelProps) {
   const { enabled } = useGroqStatus()
-  const { dismissed, dismiss, restore, isDismissed: isDism } = useReviewDismissed(relId)
-  const { data: cachedData, fetchedAt, hydrated, save: saveCache, clear: clearCache } = useReviewCache(relId)
+  const { dismiss, restore, isDismissed: isDism } = useReviewDismissed(relId)
+  const { data: cachedData, fetchedAt, hydrated, save: saveCache } = useReviewCache(relId)
   const [open, setOpen] = useState(!collapsedByDefault)
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<ReviewResponse | null>(null)
