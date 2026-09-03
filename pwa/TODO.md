@@ -4,6 +4,25 @@
 
 ### Técnico Qualificação
 - CollectedCard: mostrar campo `description` (observação) nos itens já coletados (OsDetail + RelatorioDetail)
+- **Service worker: confirmar em Chrome de verdade.** O `next-pwa` 5.6 só injeta o script de
+  registro pelo Pages Router; com App Router o `sw.js` era gerado e nunca registrado. Foi
+  adicionado `components/providers/ServiceWorkerRegister.tsx` (registra `/sw.js` no `load`, só em
+  produção), mas o Chrome headless do `agent-browser` ignora service workers — nem o registro
+  manual instala. Validar em navegador normal/device: SW ativo, prompt de instalação e navegação
+  offline (E.2/E.3/E.4 do checklist).
+- **Erro de rede aparece cru pro técnico:** ao salvar coleta sem backend, o toast é
+  `Erro: Request failed with status code 502` (texto do axios). Trocar por mensagem em pt-BR que
+  diga o que fazer — o trabalho não se perde, a foto continua anexada, mas o técnico não sabe disso.
+- **"Coletas realizadas" na tela de fechar o turno conta a OS inteira**, não o relatório
+  (`app/tecnico/qualificacao/[osId]/relatorio/[relId]/finalizar/page.tsx:57-58` derivam de
+  `getOsDetail`). Um turno com 1 coleta exibiu "6". Decidir: filtrar por `relatorio_id` ou trocar
+  o rótulo pra deixar claro que é o total da OS.
+- **Leitura de OS não é restrita por técnico.** As `ir.rule` do grupo Técnico têm
+  `perm_read = False` (`afr_qualificacao/security/qualificacao_groups.xml:59`) — escopo só de
+  escrita. Um técnico com o toggle "Só minhas" desligado lista as OSs de todos os colegas
+  (verificado com conta só-Técnico em 2026-09-03). Foi deliberado no backend, mas o Bloco F do
+  checklist prometia isolamento de leitura. Decidir se restringe leitura ou se ajusta a
+  expectativa (e o texto do F.1/F.2).
 - **Item `kind='outro'` sem anexo estoura ValidationError.** O backend `_check_required_has_file`
   (`afr_qualificacao/models/qualificacao_collect_item.py:269-276`) exige `file` para **qualquer**
   item com `state='collected'`, mas o front trata `outro` como anexo-opcional
@@ -37,6 +56,17 @@
   checklist. O gate de aceitação end-to-end da adequação PWA↔backend está fechado. Blocos A–G
   (funcionalidade geral, PWA, IA, record rules) continuam sem execução manual — o Bloco F em
   particular precisa de uma conta **só** com o grupo Técnico, que ainda não existe no db.
+- ~~Blocos A–D e F do checklist.~~ **Executados em 2026-09-03**: A 6/6, B 6/6, C 8/9 (C.3 precisa de
+  tablet/celular), D 8/8, F 3/3 com a ressalva de leitura acima. Contas de teste criadas no
+  `qualificacao-dev`: `tecnico.a@teste.local`, `tecnico.b@teste.local`, `gestor@teste.local`
+  (senha `Teste@2026`). **Falta**: Bloco E (E.2/E.3/E.4 dependem de Chrome real) e Bloco G
+  (precisa de `GROQ_API_KEY` reposta + microfone).
+- **Bloco G (IA/Groq, G1–G9) — adiado por decisão de 2026-09-03.** Dois bloqueios: (1) não existe
+  `pwa/.env.local` e a `GROQ_API_KEY` antiga vazou numa sessão, precisa ser rotacionada antes de
+  qualquer teste; (2) G4, G5, G6 e G9 dependem de microfone real — browser headless não tem, então
+  isso só roda em máquina com mic. Retomar quando a chave for reposta.
+- ~~`/manifest.json` respondia 307 sem sessão.~~ **Corrigido em 2026-09-03**: o bypass de estáticos
+  do `middleware.ts` não cobria `.json`/`.webmanifest`. Rotas do app seguem protegidas.
 
 ### Backend `afr_qualificacao` — autorização (deferido em 2026-07-27)
 

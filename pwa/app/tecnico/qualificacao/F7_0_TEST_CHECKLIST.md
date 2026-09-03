@@ -13,59 +13,106 @@
 - DB tem coletas pendentes em cada OS (collect.item state=pending)
 
 ## Bloco A — Login + Home
-- [ ] A.1 GET / → redireciona /login
-- [ ] A.2 Login com user técnico → http://localhost:3010/tecnico/qualificacao
-- [ ] A.3 Lista mostra OSs agrupadas (Em andamento / Agendadas / Rascunhos)
-- [ ] A.4 Toggle "Só minhas" off → mais OSs aparecem (se user em grupos maiores)
-- [ ] A.5 OS sem coletas pendentes mostra "0 coletas pendentes"
-- [ ] A.6 Empty state visível quando lista vazia
+
+**Execução de 2026-09-03 (db `qualificacao-dev`): 6/6.**
+
+- [x] A.1 GET / → redireciona /login — ✅ e ainda preserva `?server=…&db=…`.
+- [x] A.2 Login com user técnico → http://localhost:3010/tecnico/qualificacao ✅
+- [x] A.3 Lista mostra OSs agrupadas (Em andamento / Agendadas / Rascunhos) — ✅ as 3 seções ao mesmo tempo, com o filtro "Só minhas" **on** (é o único modo em que rascunho aparece; ver A.4).
+- [x] A.4 Toggle "Só minhas" off → mais OSs aparecem (se user em grupos maiores) — ✅ "Agendadas" foi de 1 pra 2. ⚠️ Mas a seção "Rascunhos" **some** ao desligar o filtro (`page.tsx:23`): num banco onde as OSs alheias são rascunho, desligar mostra *menos* cards. Ver pendência no `TODO.md`.
+- [x] A.5 OS sem coletas pendentes mostra "0 coletas pendentes" — ✅ com itens todos coletados o card mostra "1 coletadas · 0 pendentes · 1/1". ⚠️ OS com **zero** itens não mostra bloco nenhum (guard `collect_total_count > 0`, senão a barra de progresso dividiria por zero) — é o comportamento correto, o texto do item é que induz ao erro.
+- [x] A.6 Empty state visível quando lista vazia — ✅ "Nenhuma OS atribuída." (verificado com o Técnico Teste B sem nenhuma OS atribuída).
 
 ## Bloco B — Detalhe OS + Iniciar relatório
-- [ ] B.1 Click OS → /tecnico/qualificacao/{osId}
-- [ ] B.2 Header mostra nome OS + partner
-- [ ] B.3 Botão "Iniciar relatório do dia" visível (sem relatório aberto)
-- [ ] B.4 Click "Iniciar" → loading → card "REL #N" aparece + botão "Continuar"
-- [ ] B.5 Reload → mesmo REL #N persiste (idempotência via action_start_daily_relatorio)
-- [ ] B.6 Lista coletas pendentes aparece agrupada
+
+**Execução de 2026-09-03: 6/6.**
+
+- [x] B.1 Click OS → /tecnico/qualificacao/{osId} ✅
+- [x] B.2 Header mostra nome OS + partner ✅
+- [x] B.3 Botão "Iniciar relatório do dia" visível (sem relatório aberto) ✅
+- [x] B.4 Click "Iniciar" → loading → card "REL #N" aparece + botão "Continuar" — ✅ card "RELATÓRIO ABERTO / REL #1974". ⚠️ **Não existe botão "Continuar"**: o card traz "Atualizar" e o CTA de saída é "Finalizar relatório do dia", no rodapé da página. Texto do item desatualizado, não é defeito.
+- [x] B.5 Reload → mesmo REL #N persiste (idempotência via action_start_daily_relatorio) ✅
+- [x] B.6 Lista coletas pendentes aparece agrupada ✅ agrupada por equipamento, com contador no cabeçalho.
 
 ## Bloco C — Coleta item
-- [ ] C.1 Click coleta pendente → /tecnico/qualificacao/{osId}/coleta/{itemId}
-- [ ] C.2 Banner instrução (amarelo) renderiza se item.instruction existe
-- [ ] C.3 Botão câmera: tocar → abre câmera nativa (testar em tablet/mobile real)
-- [ ] C.4 Selecionar imagem → preview thumbnail aparece
-- [ ] C.5 Trocar foto funciona (botão Trocar foto)
-- [ ] C.6 Click "Salvar coleta" sem foto (kind=foto/excel/pdf/qualificador_data) → toast erro
-- [ ] C.7 Com foto → "Salvando..." → toast sucesso → volta detalhe OS
-- [ ] C.8 Coleta some da lista pendentes (refetcha automático)
-- [ ] C.9 Backend Odoo: collect.item.state=collected, file preenchido, relatorio_id linked
+
+**Execução de 2026-09-03: 8/9 (C.3 exige device real).**
+
+- [x] C.1 Click coleta pendente → /tecnico/qualificacao/{osId}/coleta/{itemId} ✅
+- [x] C.2 Banner instrução (amarelo) renderiza se item.instruction existe ✅ (`bg-amber-50 dark:bg-amber-950`)
+- [ ] C.3 Botão câmera: tocar → abre câmera nativa (testar em tablet/mobile real) — **N/A no headless.** O input está correto: `accept="image/*"` + `capture="environment"` (`_components/CameraInput.tsx:77-78`). Continua pendente de teste em tablet/celular.
+- [x] C.4 Selecionar imagem → preview thumbnail aparece ✅
+- [x] C.5 Trocar foto funciona (botão Trocar foto) ✅ (o preview muda; o app re-encoda a imagem pra JPEG no cliente antes de enviar)
+- [x] C.6 Click "Salvar coleta" sem foto (kind=foto/excel/pdf/qualificador_data) → toast erro ✅ `Anexe arquivo antes de salvar`
+- [x] C.7 Com foto → "Salvando..." → toast sucesso → volta detalhe OS ✅ (às vezes emenda direto na próxima coleta pendente em vez de voltar pro detalhe — comportamento de auto-avanço, não previsto no texto do item)
+- [x] C.8 Coleta some da lista pendentes (refetcha automático) ✅ 20 → 19
+- [x] C.9 Backend Odoo: collect.item.state=collected, file preenchido, relatorio_id linked ✅ item 219 → `collected`, `coleta_….jpg`, REL #1974
+- [x] C.10 (novo) Coletar sem relatório do dia aberto → a tela bloqueia com "Inicie um relatório do dia antes de coletar." ✅ (achado durante a execução; guard não estava no checklist)
 
 ## Bloco D — Finalizar relatório
-- [ ] D.1 Após >0 coletas, click "Finalizar relatório do dia"
-- [ ] D.2 /tecnico/qualificacao/{osId}/relatorio/{relId}/finalizar
-- [ ] D.3 Resumo mostra "N realizadas / M pendentes"
-- [ ] D.4 Descrição vazia + Fechar → toast erro
-- [ ] D.5 Assinatura vazia + Fechar → toast erro
-- [ ] D.6 Desenhar assinatura → botão "Limpar" funciona
-- [ ] D.7 Preencher tudo + Fechar → toast sucesso → volta detalhe OS
-- [ ] D.8 Backend Odoo: relatorio state=done, signature_technician preenchido (base64), signature_technician_date hoje
+
+**Execução de 2026-09-03: 8/8 (com uma ressalva em D.3).**
+
+- [x] D.1 Após >0 coletas, click "Finalizar relatório do dia" ✅
+- [x] D.2 /tecnico/qualificacao/{osId}/relatorio/{relId}/finalizar ✅
+- [x] D.3 Resumo mostra "N realizadas / M pendentes" — ✅ renderiza, ⚠️ mas os números são da **OS inteira**, não do turno: `collected`/`pending` saem de `getOsDetail` (`finalizar/page.tsx:57-58`), então um relatório com 1 coleta exibiu "Coletas realizadas 6". O rótulo, na tela de fechar o turno, sugere o turno. Decidir se muda o número (filtrar por `relatorio_id`) ou o rótulo.
+- [x] D.4 Descrição vazia + Fechar → toast erro ✅ `Descrição do turno é obrigatória` (mesmo caminho de H9a)
+- [x] D.5 Assinatura vazia + Fechar → toast erro ✅ `Assinatura é obrigatória`
+- [x] D.6 Desenhar assinatura → botão "Limpar" funciona ✅ (canvas com 1241 px pintados → 0 após Limpar)
+- [x] D.7 Preencher tudo + Fechar → toast sucesso → volta detalhe OS ✅
+- [x] D.8 Backend Odoo: relatorio state=done, signature_technician preenchido (base64), signature_technician_date hoje ✅ REL #1974 `done`, assinatura gravada, data 03/09 e `time_execution` 0.0756 h
 
 ## Bloco E — PWA
-- [ ] E.1 Chrome DevTools → Application → Manifest carrega corretamente
-- [ ] E.2 "Add to Home Screen" disponível (DevTools Application)
-- [ ] E.3 Service worker registrado e ativo (DevTools Application > Service Workers)
-- [ ] E.4 Offline com cache: navegação para tela já visitada funciona (static assets cached)
-- [ ] E.5 Offline + tentar salvar coleta → toast erro claro (sem queue MVP)
+
+⚠️ **Só faz sentido em build de produção**: `next-pwa` tem
+`disable: NODE_ENV === 'development'`, então no `npm run dev` não existe
+`sw.js`. Rodar `npm run build && npx next start -p 3011` e testar em :3011.
+Ressalva: o `next.config.mjs` usa `output: 'standalone'`, e o próprio Next
+avisa que `next start` não é o modo suportado nessa configuração — a execução
+de 2026-09-03 foi por `next start` mesmo assim (serviu rotas, manifesto e
+`sw.js` corretamente). Quem for refazer E.3/E.4 em Chrome normal deve subir
+por `node .next/standalone/server.js` pra não perseguir diferença já conhecida.
+
+**Execução de 2026-09-03: E.1 ✅, E.2 parcial, E.3/E.4 não verificáveis no
+headless, E.5 ⚠️.**
+
+- [x] E.1 Chrome DevTools → Application → Manifest carrega corretamente — ✅ **depois do fix**: `/manifest.json` respondia 307 pro `/login` porque o bypass de estáticos do `middleware.ts` não cobria `.json`. Agora responde 200 sem sessão, e as rotas do app continuam protegidas (307).
+- [~] E.2 "Add to Home Screen" disponível (DevTools Application) — parcial: `<link rel="manifest">` presente, manifesto e `icons/icon-192.png` baixados pelo browser (200). O prompt de instalação em si depende de service worker ativo (E.3) e não é observável no headless.
+- [ ] E.3 Service worker registrado e ativo — **não verificável neste ambiente.** Achado real: o `register: true` do `next-pwa` 5.6 só injeta o script de registro pelo Pages Router; com App Router o `sw.js` era gerado mas **nunca registrado**. Adicionado `components/providers/ServiceWorkerRegister.tsx` (registra `/sw.js` no `load`, só em produção) e montado no `app/layout.tsx`. O Chrome headless do `agent-browser` ignora service workers — mesmo um `navigator.serviceWorker.register()` manual resolve sem `installing`/`waiting`/`active` e sem nenhum GET de `/sw.js` —, então **este item continua pendente de confirmação em Chrome normal ou device real**.
+- [ ] E.4 Offline com cache: navegação para tela já visitada funciona — bloqueado por E.3 (sem SW ativo não há cache de navegação).
+- [~] E.5 Offline + tentar salvar coleta → toast erro claro (sem queue MVP) — ⚠️ o caminho de erro funciona (toast aparece, a página segura a foto anexada e o botão volta ao normal, nada se perde), mas a mensagem é crua: `Erro: Request failed with status code 502`. Falta traduzir/humanizar. Nota: `agent-browser set offline on` **não** serve pra este teste — a emulação de rede é por sessão CDP e evapora quando o comando termina (a coleta salvou "offline"); o teste foi feito derrubando o container do Odoo.
 
 ## Bloco F — Record rules (record-level security)
-- [ ] F.1 Login como Técnico A → vê só OSs onde tecnico_default_id = Técnico A
-- [ ] F.2 Login como Técnico B → vê só OSs onde tecnico_default_id = Técnico B
-- [ ] F.3 Login como Gerente → vê todas OSs (rule não aplica)
+
+**Execução de 2026-09-03.** Contas criadas no `qualificacao-dev` só pra isto
+(senha `Teste@2026`): `tecnico.a@teste.local` (uid 659, employee 510),
+`tecnico.b@teste.local` (uid 660, employee 511) — ambos com **só** o grupo
+Técnico das qualificações (mais os grupos internos padrão, sem o grupo
+"Usuário") — e `gestor@teste.local` (uid 661, grupo Gestor).
+
+⚠️ **O enunciado dos itens F.1/F.2 não corresponde à implementação.** As
+`ir.rule` do Técnico têm `perm_read = False`
+(`security/qualificacao_groups.xml:59`): elas restringem **escrita**, não
+leitura. Um técnico lê qualquer OS do banco. Quem limita a lista é o filtro
+"Só minhas" no cliente (domínio `tecnico_default_user_id = uid`), que o
+próprio usuário pode desligar. Isso foi deliberado no backend (os comentários
+das rules falam só de write), mas o checklist prometia isolamento de leitura.
+**Decisão de produto pendente:** leitura deve ser restrita também?
+
+- [x] F.1 Login como Técnico A → vê só OSs onde tecnico_default_id = Técnico A — ✅ **com "Só minhas" ligado** (só QOS00004). ❌ Com o filtro desligado ele vê a OS do Afonso e as demais — leitura não é restrita.
+- [x] F.2 Login como Técnico B → vê só OSs onde tecnico_default_id = Técnico B — ✅ mesma ressalva do F.1 (só OS26-08-0005-2 com o filtro ligado).
+- [x] F.3 Login como Gerente → vê todas OSs (rule não aplica) ✅ com o filtro desligado, as 3 OSs não-rascunho.
 
 ## Reportar
 - [ ] Tudo OK → confirmar pra merge F7.0 (backend + frontend) no main
 - [ ] Falha → bloco/passo + screenshot + log
 
 ## Bloco G — IA (Groq)
+
+**Não executado em 2026-09-03 — bloqueado.** Falta `pwa/.env.local` com
+`GROQ_API_KEY` (a chave antiga vazou numa sessão e precisa ser rotacionada), e
+G4–G6/G9 dependem de microfone real, que o browser headless não tem. Rodar
+manualmente em máquina com mic depois de repor a chave.
 
 Pré-requisitos: `.env.local` com `GROQ_API_KEY=gsk_...` válida, dev server em `localhost:3010`, OS de teste com ao menos 1 relatório aberto e itens coletados.
 

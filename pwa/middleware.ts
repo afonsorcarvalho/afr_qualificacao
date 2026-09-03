@@ -11,7 +11,11 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api') ||
     pathname.startsWith('/favicon') ||
     pathname === '/pdf.worker.min.mjs' ||
-    /\.(mjs|js|css|svg|png|jpg|jpeg|ico|woff2?)$/i.test(pathname)
+    // `.json`/`.webmanifest` entram aqui por causa do `/manifest.json`: o
+    // browser busca o manifesto antes de qualquer sessão, e sem esta exceção
+    // ele levava 307 pro /login — sem manifesto não há prompt de instalação
+    // nem ícone de app. O manifesto só tem nome/cores/ícones, nada sensível.
+    /\.(mjs|js|css|json|webmanifest|svg|png|jpg|jpeg|ico|woff2?)$/i.test(pathname)
   ) {
     return NextResponse.next()
   }

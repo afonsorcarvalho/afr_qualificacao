@@ -150,8 +150,10 @@ export async function getOsDetail(
   // Não é mais usado pra achar o relatório do dia (o servidor resolve isso
   // via `action_get_daily_relatorio`, filtrando por `tecnico_ids` de
   // verdade) — mantido na assinatura porque entra na query key do React
-  // Query, pra não servir cache de um usuário pra outro.
-  userId: number,
+  // Query, pra não servir cache de um usuário pra outro. Prefixo `_` porque
+  // o corpo não o consome — sem ele o `next build` falha no
+  // `@typescript-eslint/no-unused-vars`.
+  _userId: number,
 ): Promise<{
   os: OsTecnicoSummary
   collect_items: ColetaItemDetail[]
