@@ -16,6 +16,18 @@
   (`pwa/lib/odoo/tecnico.ts`) manda `data_fim` do relógio do **celular**. Um aparelho atrasado em relação
   ao servidor faz a constraint `_check_dates` rejeitar o fecho do relatório. Fix é front-side:
   buscar `data_inicio` do relatório e garantir `data_fim >= data_inicio` antes de enviar.
+  (A abertura do relatório do dia já foi corrigida em 2026-09-03 — `action_get_daily_relatorio` +
+  `action_start_daily_relatorio` agora decidem a janela do dia inteiramente no servidor, sem
+  `day_start`/`day_end` vindos do front; este item cobre só o `data_fim` do fechamento, que continua
+  vindo do relógio do celular.)
+- **`getHistoricoSummary`/`todayRangeOdoo` ainda calculam "hoje" pelo relógio do dispositivo.**
+  Mesmo viés que o fix de 2026-09-03 eliminou do caminho de abertura do relatório do dia
+  (`dayWindowOdoo`/`action_start_daily_relatorio`), só que aqui em `todayRangeOdoo`
+  (`pwa/lib/odoo/tecnico.ts`), usado por `getHistoricoSummary` e pelos contadores "hoje" do
+  histórico (coletas/OS/relatórios fechados do dia). Um aparelho com relógio torto mostra contadores
+  errados — janela do dia calculada local, comparada contra `captured_at`/`signature_technician_date`
+  gravados pelo servidor. Fix seria análogo: um método RPC somente-leitura que devolve os contadores
+  já calculados no servidor, com a janela do dia decidida lá.
 - Bloco H do `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (H1-H12) ainda não foi executado — é o gate de aceitação
   end-to-end da adequação PWA↔backend. H2 precisa de uma OS com `tecnico_default_id` preenchido
   semeada no db (hoje não há nenhuma).

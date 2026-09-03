@@ -408,6 +408,59 @@ class TestPwaTecnicoRpc(TransactionCase):
             os_rec.with_user(user_outro_tecnico).action_start_daily_relatorio()
 
     # ─────────────────────────────────────────────────────────────
+    # 6. action_get_daily_relatorio — consulta somente-leitura (fix do
+    #    acoplamento ao relógio do dispositivo: quem resolve "o relatório
+    #    do dia" é o servidor, sem criar nada e sem exigir scheduled/
+    #    in_progress).
+    # ─────────────────────────────────────────────────────────────
+    def test_get_daily_sem_relatorio_devolve_false(self):
+        os_rec = self._to_scheduled(self._make_os())
+        found = os_rec.with_user(self.user_tecnico).action_get_daily_relatorio()
+        self.assertFalse(found)
+
+    def test_get_daily_com_relatorio_devolve_id(self):
+        os_rec = self._to_scheduled(self._make_os()).with_user(self.user_tecnico)
+        rel_id = os_rec.action_start_daily_relatorio()
+        found = os_rec.action_get_daily_relatorio()
+        self.assertEqual(found, rel_id)
+
+    def test_get_daily_nao_cria_registro(self):
+        os_rec = self._to_scheduled(self._make_os())
+        Relatorio = self.env["afr.qualificacao.os.relatorio"]
+        antes = Relatorio.search_count([("os_id", "=", os_rec.id)])
+        os_rec.with_user(self.user_tecnico).action_get_daily_relatorio()
+        depois = Relatorio.search_count([("os_id", "=", os_rec.id)])
+        self.assertEqual(antes, depois)
+        self.assertEqual(depois, 0)
+
+    def test_get_daily_sem_employee_devolve_false_sem_levantar(self):
+        """Diferente de `action_start_daily_relatorio` (que levanta
+        UserError "colaborador ausente"): é consulta, então usuário sem
+        hr.employee vinculado só recebe False."""
+        user_sem_emp = self.env["res.users"].create({
+            "name": "Sem Employee Get",
+            "login": "sem.employee.get.pwa.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        os_rec = self._to_in_progress(self._make_os()).with_user(user_sem_emp)
+        found = os_rec.action_get_daily_relatorio()
+        self.assertFalse(found)
+
+    def test_get_daily_os_draft_nao_levanta(self):
+        """Consulta pura: OS em `draft` não passa pelo guard de estado de
+        `action_start_daily_relatorio` (scheduled/in_progress) — o sibling
+        que cria continua exigindo o guard."""
+        os_rec = self._make_os()
+        self.assertEqual(os_rec.state, "draft")
+        found = os_rec.with_user(self.user_tecnico).action_get_daily_relatorio()
+        self.assertFalse(found)
+        with self.assertRaisesRegex(UserError, "agendada ou em execução"):
+            os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+
+    # ─────────────────────────────────────────────────────────────
     # 5. guard de estado + transição (Task 8) — scheduled/in_progress
     #    aceitos, resto rejeita SEM efeito colateral (nenhum relatório
     #    é criado). A transição em si prova o ACL de write do técnico:

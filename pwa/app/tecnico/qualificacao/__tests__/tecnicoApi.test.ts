@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import odooClient from '@/lib/odoo/client'
 import {
-  dayWindowOdoo,
   listOsMine,
   getOsDetail,
   startDailyRelatorio,
@@ -18,32 +17,6 @@ vi.mock('@/lib/odoo/client', () => ({
 }))
 
 const mocked = vi.mocked(odooClient)
-
-describe('dayWindowOdoo', () => {
-  it('devolve janela de 24h em formato datetime do Odoo', () => {
-    const { from, to } = dayWindowOdoo(new Date('2026-07-02T15:30:00-03:00'))
-    expect(from).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
-    expect(to).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
-    // datetime do Odoo usa espaço; ISO exige 'T' — sem o replace, o parse
-    // depende do fallback leniente do V8 e a asserção pode flakear.
-    const asIso = (s: string) => new Date(`${s.replace(' ', 'T')}Z`).getTime()
-    expect(asIso(to) - asIso(from)).toBe(86400000)
-  })
-
-  it('fixa `from` na meia-noite local do dia de referência, não em qualquer horário', () => {
-    // Referência fica no meio da tarde (15:30) de propósito: se `dayWindowOdoo`
-    // não fizer `setHours(0,0,0,0)`, `from` sairia com 15:30 em vez de 00:00 e
-    // este teste pega isso. A expectativa é construída a partir de
-    // `new Date(ano, mês, dia, 0, 0, 0)` (local, mês 0-indexado) e passa pela
-    // MESMA conversão pra string que a função usa — assim a asserção não
-    // depende do fuso horário de quem roda o teste.
-    const ref = new Date(2026, 6, 2, 15, 30, 0) // 2026-07-02 15:30 local
-    const { from } = dayWindowOdoo(ref)
-    const localMidnight = new Date(2026, 6, 2, 0, 0, 0) // 2026-07-02 00:00 local
-    const expectedFrom = localMidnight.toISOString().slice(0, 19).replace('T', ' ')
-    expect(from).toBe(expectedFrom)
-  })
-})
 
 describe('listOsMine', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -69,47 +42,57 @@ describe('listOsMine', () => {
 describe('getOsDetail', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('busca o relatório aberto do dia escopado por create_uid (não por tecnico_ids)', async () => {
+  it('resolve o relatório aberto do dia via action_get_daily_relatorio (servidor decide a janela)', async () => {
     mocked.searchRead.mockImplementation(async (model: string) => {
       if (model === 'afr.qualificacao.os') {
         return [{ id: 10, name: 'OS0010' }] as any
       }
       // collect_item vazio => getOsDetail não chega a buscar equipment/instrument
       if (model === 'afr.qualificacao.collect.item') return [] as any
-      if (model === 'afr.qualificacao.os.relatorio') return [] as any
       return [] as any
     })
+    mocked.callKw.mockResolvedValue(55)
 
-    await getOsDetail(10, 42)
+    const detail = await getOsDetail(10, 42)
 
-    const relCall = mocked.searchRead.mock.calls.find(
-      ([model]) => model === 'afr.qualificacao.os.relatorio',
+    expect(mocked.callKw).toHaveBeenCalledWith(
+      'afr.qualificacao.os',
+      'action_get_daily_relatorio',
+      [[10]],
     )
-    expect(relCall).toBeDefined()
-    const [, domain] = relCall!
-    // Escopo por técnico: dois técnicos na mesma OS/dia não podem "roubar"
-    // o relatório um do outro por engano — ver comentário em getOsDetail.
-    expect(domain).toContainEqual(['create_uid', '=', 42])
-    // Nunca travessia em hr.employee (mesmo motivo do tecnico_default_user_id).
-    expect(JSON.stringify(domain)).not.toContain('tecnico_ids')
+    expect(detail.open_relatorio_id).toBe(55)
+  })
+
+  it('open_relatorio_id fica null quando o servidor devolve false', async () => {
+    mocked.searchRead.mockImplementation(async (model: string) => {
+      if (model === 'afr.qualificacao.os') {
+        return [{ id: 10, name: 'OS0010' }] as any
+      }
+      if (model === 'afr.qualificacao.collect.item') return [] as any
+      return [] as any
+    })
+    mocked.callKw.mockResolvedValue(false)
+
+    const detail = await getOsDetail(10, 42)
+
+    expect(detail.open_relatorio_id).toBeNull()
   })
 })
 
 describe('startDailyRelatorio', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('passa day_start/day_end como kwargs pro método da OS', async () => {
+  it('chama action_start_daily_relatorio sem day_start/day_end — quem decide a janela é o servidor', async () => {
     mocked.callKw.mockResolvedValue(77)
     const relId = await startDailyRelatorio(5)
     expect(relId).toBe(77)
-    const [model, method, args, kwargs] = mocked.callKw.mock.calls[0]
+    const call = mocked.callKw.mock.calls[0]
+    const [model, method, args] = call
     expect(model).toBe('afr.qualificacao.os')
     expect(method).toBe('action_start_daily_relatorio')
     expect(args).toEqual([[5]])
-    expect(kwargs).toMatchObject({
-      day_start: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
-      day_end: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
-    })
+    // Nenhum 4º argumento (kwargs) com day_start/day_end.
+    expect(call.length).toBeLessThanOrEqual(3)
   })
 })
 

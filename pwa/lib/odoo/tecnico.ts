@@ -8,19 +8,6 @@ function toOdooDatetime(d: Date): string {
   return d.toISOString().slice(0, 19).replace('T', ' ')
 }
 
-/**
- * Janela do dia local (00:00 → 00:00 do dia seguinte) em datetime UTC do Odoo.
- * Usada pelo detalhe da OS (achar o relatório aberto) e por
- * `startDailyRelatorio` — a fronteira do dia tem de ser a MESMA nos dois, e a
- * mesma que o backend recebe, senão relatórios criados de madrugada duplicam.
- */
-export function dayWindowOdoo(ref?: Date): { from: string; to: string } {
-  const start = ref ? new Date(ref) : new Date()
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(start.getTime() + 86400000)
-  return { from: toOdooDatetime(start), to: toOdooDatetime(end) }
-}
-
 export interface OsTecnicoSummary {
   id: number
   name: string
@@ -158,7 +145,14 @@ export async function listOsMine(
   return os.map((o) => ({ ...o, equipment_count: byOs.get(o.id)?.size ?? 0 }))
 }
 
-export async function getOsDetail(osId: number, userId: number): Promise<{
+export async function getOsDetail(
+  osId: number,
+  // Não é mais usado pra achar o relatório do dia (o servidor resolve isso
+  // via `action_get_daily_relatorio`, filtrando por `tecnico_ids` de
+  // verdade) — mantido na assinatura porque entra na query key do React
+  // Query, pra não servir cache de um usuário pra outro.
+  userId: number,
+): Promise<{
   os: OsTecnicoSummary
   collect_items: ColetaItemDetail[]
   open_relatorio_id: number | null
@@ -181,34 +175,12 @@ export async function getOsDetail(osId: number, userId: number): Promise<{
       'captured_at', 'captured_by',
     ],
   )
-  const { from: dayFrom, to: dayTo } = dayWindowOdoo()
-  const [openRel] = await odooClient.searchRead<{ id: number }>(
-    'afr.qualificacao.os.relatorio',
-    [
-      ['os_id', '=', osId],
-      ['state', '=', 'draft'],
-      ['data_inicio', '>=', dayFrom],
-      ['data_inicio', '<', dayTo],
-      // Escopo por técnico: o backend (`action_start_daily_relatorio`) só
-      // reusa um relatório do dia se o técnico chamador estiver em
-      // `tecnico_ids`. Aqui usamos `create_uid` como aproximação — NÃO dá
-      // pra checar `tecnico_ids` de verdade sem um domain que atravesse
-      // `hr.employee`, e essa travessia é exatamente o problema de ACL que o
-      // mirror `tecnico_default_user_id` existe pra evitar (grupo Técnico
-      // não lê hr.employee no Odoo 16).
-      // `create_uid` é aproximado, NÃO auto-corrige: se o técnico A criou o
-      // relatório do dia com A e B em `tecnico_ids`, o técnico B não o
-      // enxerga aqui (create_uid = A ≠ B) — pra B, `open_relatorio_id` fica
-      // null, o botão continua "Iniciar relatório do dia", e a tela de
-      // coleta mostra "Inicie um relatório do dia antes de coletar." B fica
-      // sem relatório do dia nessa OS até A fechar o dele ou alguém recriar
-      // um relatório com B como `create_uid`. Esse dead-end é o preço aceito
-      // do fail-safe: melhor B ficar sem ação aqui do que escrever por
-      // engano no relatório de A.
-      ['create_uid', '=', userId],
-    ],
-    ['id'],
-    { limit: 1 },
+  // Quem resolve "o relatório do dia" é o servidor (relógio + fuso do
+  // usuário Odoo), não o front — ver `action_get_daily_relatorio` no backend.
+  const openRelId: number | false = await odooClient.callKw(
+    'afr.qualificacao.os',
+    'action_get_daily_relatorio',
+    [[osId]],
   )
   const equipmentIds = Array.from(
     new Set(
@@ -241,7 +213,7 @@ export async function getOsDetail(osId: number, userId: number): Promise<{
   return {
     os,
     collect_items,
-    open_relatorio_id: openRel?.id ?? null,
+    open_relatorio_id: openRelId || null,
     equipments,
     instruments,
   }
@@ -328,12 +300,13 @@ export async function getRelatorioDetail(relId: number): Promise<RelatorioFullDe
 }
 
 export async function startDailyRelatorio(osId: number): Promise<number> {
-  const { from, to } = dayWindowOdoo()
+  // Sem day_start/day_end: quem decide a janela do dia é o servidor (fuso
+  // do usuário Odoo + relógio do servidor), não o relógio do dispositivo —
+  // ver `action_get_daily_relatorio`/`_janela_do_dia` no backend.
   return odooClient.callKw(
     'afr.qualificacao.os',
     'action_start_daily_relatorio',
     [[osId]],
-    { day_start: from, day_end: to },
   )
 }
 

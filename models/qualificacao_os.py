@@ -436,6 +436,97 @@ class AfrQualificacaoOs(models.Model):
         # Abre wizard de novo relatório
         return self.action_open_new_relatorio_wizard()
 
+    def _janela_do_dia(self, day_start=None, day_end=None):
+        """Devolve `(inicio, fim)` da janela UTC do dia — critério único
+        reusado por `action_start_daily_relatorio` e
+        `action_get_daily_relatorio`, pra que os dois nunca divirjam.
+
+        Com `day_start`/`day_end` explícitos (UTC, formato Odoo), usa a
+        janela recebida tal qual. Sem eles, cai no fallback backoffice:
+        meia-noite local do usuário convertida pra UTC.
+
+        :param day_start: início da janela (str/datetime, UTC). Opcional.
+        :param day_end: fim exclusivo da janela (str/datetime, UTC). Opcional.
+        :return: tupla (datetime inicio, datetime fim) — sem tzinfo, UTC naive.
+        """
+        self.ensure_one()
+        if day_start and day_end:
+            inicio = fields.Datetime.to_datetime(day_start)
+            fim = fields.Datetime.to_datetime(day_end)
+        else:
+            # Fallback backoffice: meia-noite local do usuário convertida pra
+            # UTC. Não dá pra usar `datetime.combine(context_today, time.min)`
+            # cru — seria lido como meia-noite UTC e, entre 21h e 00h local
+            # (UTC-3), a janela excluiria o próprio registro recém-criado.
+            tz = pytz.timezone(self.env.user.tz or "UTC")
+            agora_local = fields.Datetime.context_timestamp(
+                self, fields.Datetime.now()
+            )
+            inicio_local = tz.localize(
+                datetime.combine(agora_local.date(), time.min)
+            )
+            inicio = inicio_local.astimezone(pytz.UTC).replace(tzinfo=None)
+            fim = inicio + timedelta(days=1)
+        return inicio, fim
+
+    def _busca_relatorio_do_dia(self, employee, day_start=None, day_end=None):
+        """Busca o relatório draft do dia do `employee` nesta OS.
+
+        Domínio único reusado por `action_start_daily_relatorio` (que cria
+        se não achar) e `action_get_daily_relatorio` (que só consulta) —
+        pra não duplicar o critério de "é o relatório do dia" em dois
+        lugares.
+
+        :return: recordset de `afr.qualificacao.os.relatorio` (vazio se
+            não achar).
+        """
+        self.ensure_one()
+        inicio, fim = self._janela_do_dia(day_start, day_end)
+        Relatorio = self.env["afr.qualificacao.os.relatorio"]
+        return Relatorio.search(
+            [
+                ("os_id", "=", self.id),
+                ("state", "=", "draft"),
+                ("tecnico_ids", "in", employee.ids),
+                ("data_inicio", ">=", inicio),
+                ("data_inicio", "<", fim),
+            ],
+            order="data_inicio desc, id desc",
+            limit=1,
+        )
+
+    def action_get_daily_relatorio(self, day_start=None, day_end=None):
+        """Consulta somente-leitura: id do relatório do dia (draft) do
+        técnico logado nesta OS, ou `False`.
+
+        Mesmo critério de busca de `action_start_daily_relatorio`, via
+        `_busca_relatorio_do_dia`/`_janela_do_dia` — mas **não cria nada,
+        não escreve estado, e não exige OS `scheduled`/`in_progress`**: é
+        consulta pura. Existe pra que o PWA descubra se já existe um
+        relatório aberto sem apostar no relógio do dispositivo — quem
+        decide a janela do dia é sempre o servidor.
+
+        Se o usuário não tiver `hr.employee` vinculado, devolve `False`
+        em vez de levantar (diferente de `action_start_daily_relatorio`,
+        que levanta `UserError` — lá é ação, aqui é consulta).
+
+        :param day_start: início da janela (str/datetime, UTC). Opcional.
+        :param day_end: fim exclusivo da janela (str/datetime, UTC). Opcional.
+        :return: int — id de `afr.qualificacao.os.relatorio`, ou `False`.
+        """
+        self.ensure_one()
+        employee = self.env["hr.employee"].sudo().search(
+            [
+                ("user_id", "=", self.env.uid),
+                ("company_id", "in", [self.company_id.id, False]),
+            ],
+            limit=1,
+        )
+        if not employee:
+            return False
+        existente = self._busca_relatorio_do_dia(employee, day_start, day_end)
+        return existente.id if existente else False
+
     def action_start_daily_relatorio(self, day_start=None, day_end=None):
         """Devolve o id do relatório do dia (draft) do técnico logado nesta OS.
 
@@ -497,42 +588,14 @@ class AfrQualificacaoOs(models.Model):
                 % self.env.user.name
             )
 
-        if day_start and day_end:
-            inicio = fields.Datetime.to_datetime(day_start)
-            fim = fields.Datetime.to_datetime(day_end)
-        else:
-            # Fallback backoffice: meia-noite local do usuário convertida pra
-            # UTC. Não dá pra usar `datetime.combine(context_today, time.min)`
-            # cru — seria lido como meia-noite UTC e, entre 21h e 00h local
-            # (UTC-3), a janela excluiria o próprio registro recém-criado.
-            tz = pytz.timezone(self.env.user.tz or "UTC")
-            agora_local = fields.Datetime.context_timestamp(
-                self, fields.Datetime.now()
-            )
-            inicio_local = tz.localize(
-                datetime.combine(agora_local.date(), time.min)
-            )
-            inicio = inicio_local.astimezone(pytz.UTC).replace(tzinfo=None)
-            fim = inicio + timedelta(days=1)
-
-        Relatorio = self.env["afr.qualificacao.os.relatorio"]
-        existente = Relatorio.search(
-            [
-                ("os_id", "=", self.id),
-                ("state", "=", "draft"),
-                ("tecnico_ids", "in", employee.ids),
-                ("data_inicio", ">=", inicio),
-                ("data_inicio", "<", fim),
-            ],
-            order="data_inicio desc, id desc",
-            limit=1,
-        )
+        existente = self._busca_relatorio_do_dia(employee, day_start, day_end)
         if existente:
             return existente.id
 
         agora = fields.Datetime.now()
         # data_fim é required e alimenta time_execution: nasce == data_inicio
         # (mesmo padrão do wizard oficial) e o fechamento grava o valor real.
+        Relatorio = self.env["afr.qualificacao.os.relatorio"]
         novo = Relatorio.create({
             "os_id": self.id,
             "data_inicio": agora,
