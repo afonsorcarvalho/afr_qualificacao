@@ -183,22 +183,12 @@ function LoginPageInner() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Partículas de fundo */}
-      <Particles />
-
-      {/* Orbs */}
-      <div className="fixed top-1/4 left-1/6 w-72 h-72 bg-neon-blue/8 rounded-full blur-3xl pointer-events-none animate-float" />
-      <div
-        className="fixed bottom-1/3 right-1/6 w-64 h-64 bg-neon-purple/8 rounded-full blur-3xl pointer-events-none animate-float"
-        style={{ animationDelay: '-2s' }}
-      />
-      <div
-        className="fixed top-2/3 left-1/2 w-48 h-48 bg-neon-pink/5 rounded-full blur-3xl pointer-events-none animate-float"
-        style={{ animationDelay: '-4s' }}
-      />
+      {/* Saíram daqui: 20 partículas animadas e três orbs neon desfocados.
+          Custavam composição de camada em celular e não diziam nada sobre o
+          servidor ao qual o técnico está se conectando. */}
 
       <motion.div
-        initial={{ opacity: 0, y: 30 }}
+        initial={{ y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 240, damping: 24 }}
         className="w-full max-w-md relative z-10"
@@ -206,20 +196,12 @@ function LoginPageInner() {
         {/* Logo / título */}
         <motion.div
           className="text-center mb-8"
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
           <motion.div
-            className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-neon-blue/10 border border-neon-blue/20 mb-4 overflow-hidden p-2"
-            animate={{
-              boxShadow: [
-                '0 0 20px rgba(0,212,255,0.1)',
-                '0 0 40px rgba(0,212,255,0.4)',
-                '0 0 20px rgba(0,212,255,0.1)',
-              ],
-            }}
-            transition={{ duration: 3, repeat: Infinity }}
+            className="inline-flex items-center justify-center w-20 h-20 rounded-lg border border-border bg-card mb-4 overflow-hidden p-2"
           >
             {companyLogoUrl && !companyLogoFailed ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -230,34 +212,27 @@ function LoginPageInner() {
                 onError={() => setCompanyLogoFailed(true)}
               />
             ) : (
-              <motion.div
-                animate={{ rotate: [0, 5, -5, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <Server size={28} className="text-neon-blue" />
-              </motion.div>
+              <Server size={28} className="text-muted-foreground" />
             )}
           </motion.div>
 
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-neon-blue/80 to-neon-purple bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold text-foreground">
             Labquali Connect
           </h1>
-          <p className="text-white/40 text-sm mt-1">
+          <p className="text-muted-foreground text-sm mt-1">
             {step === 'server' ? 'Conecte ao seu servidor Odoo' : 'Entre com suas credenciais'}
           </p>
         </motion.div>
 
         {/* Card principal */}
-        <div className="relative rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-glass-lg overflow-hidden">
-          {/* Shimmer top */}
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neon-blue/40 to-transparent" />
+        <div className="relative rounded-lg border border-border bg-card overflow-hidden">
 
           {/* Progress indicator */}
           <div className="flex items-center gap-0 px-6 pt-5 pb-0">
             <StepIndicator active={step === 'server'} done={step === 'credentials'} label="Servidor" icon={<Server size={12} />} />
             <div className="flex-1 h-px mx-2 bg-white/10 relative overflow-hidden">
               <motion.div
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-neon-blue/40 to-neon-purple/40"
+                className="absolute inset-y-0 left-0 bg-foreground/30"
                 animate={{ width: step === 'credentials' ? '100%' : '0%' }}
                 transition={{ duration: 0.5, ease: 'easeInOut' }}
               />
@@ -270,7 +245,7 @@ function LoginPageInner() {
               {step === 'server' ? (
                 <motion.div
                   key="server"
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ type: 'spring', stiffness: 280, damping: 26 }}
@@ -288,7 +263,7 @@ function LoginPageInner() {
               ) : (
                 <motion.div
                   key="credentials"
-                  initial={{ opacity: 0, x: 20 }}
+                  initial={{ x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ type: 'spring', stiffness: 280, damping: 26 }}
@@ -318,7 +293,7 @@ function LoginPageInner() {
 
         <motion.p
           className="text-center text-xs text-white/20 mt-6"
-          initial={{ opacity: 0 }}
+          initial={false}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
@@ -362,7 +337,7 @@ function ServerStep({
     <div className="space-y-5">
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
-          <Server size={11} className="text-neon-blue/70" />
+          <Server size={11} className="text-muted-foreground" />
           URL do servidor
         </label>
 
@@ -370,10 +345,10 @@ function ServerStep({
           <div className={clsx(
             'absolute -inset-0.5 rounded-xl blur transition-all duration-500',
             status.state === 'ok'
-              ? 'bg-neon-green/20'
+              ? 'bg-emerald-500/20'
               : status.state === 'error'
-              ? 'bg-neon-pink/20'
-              : 'bg-neon-blue/0 group-focus-within:bg-neon-blue/15'
+              ? 'bg-red-500/20'
+              : 'bg-transparent group-focus-within:bg-foreground/10'
           )} />
 
           <div className="relative flex items-center">
@@ -389,10 +364,10 @@ function ServerStep({
                 'bg-white/[0.05] border text-white placeholder-white/25',
                 'focus:outline-none focus:bg-white/[0.08] transition-all duration-200',
                 status.state === 'ok'
-                  ? 'border-neon-green/40'
+                  ? 'border-emerald-500/40'
                   : status.state === 'error'
-                  ? 'border-neon-pink/40'
-                  : 'border-white/10 focus:border-neon-blue/40'
+                  ? 'border-red-500/40'
+                  : 'border-input focus:border-ring'
               )}
             />
 
@@ -400,22 +375,22 @@ function ServerStep({
             <div className="absolute right-[82px]">
               <AnimatePresence mode="wait">
                 {status.state === 'checking' && (
-                  <motion.div key="check" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <Loader2 size={14} className="text-neon-blue animate-spin" />
+                  <motion.div key="check" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <Loader2 size={14} className="text-foreground animate-spin" />
                   </motion.div>
                 )}
                 {status.state === 'ok' && (
-                  <motion.div key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                    <CheckCircle2 size={14} className="text-neon-green" />
+                  <motion.div key="ok" initial={{ scale: 0.6 }} animate={{ scale: 1 }} exit={{ scale: 0.6 }}>
+                    <CheckCircle2 size={14} className="text-emerald-400" />
                   </motion.div>
                 )}
                 {status.state === 'error' && (
-                  <motion.div key="err" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
-                    <WifiOff size={14} className="text-neon-pink" />
+                  <motion.div key="err" initial={{ scale: 0.6 }} animate={{ scale: 1 }} exit={{ scale: 0.6 }}>
+                    <WifiOff size={14} className="text-red-400" />
                   </motion.div>
                 )}
                 {status.state === 'idle' && (
-                  <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <motion.div key="idle" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <Wifi size={14} className="text-white/20" />
                   </motion.div>
                 )}
@@ -432,8 +407,8 @@ function ServerStep({
                 'text-xs font-medium transition-all duration-200',
                 'disabled:opacity-40 disabled:cursor-not-allowed',
                 status.state === 'checking'
-                  ? 'bg-neon-blue/10 text-neon-blue/60'
-                  : 'bg-neon-blue/15 text-neon-blue hover:bg-neon-blue/25 border border-neon-blue/20'
+                  ? 'bg-muted text-muted-foreground'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
               )}
             >
               {status.state === 'checking' ? (
@@ -448,12 +423,12 @@ function ServerStep({
         <AnimatePresence>
           {status.message && (
             <motion.p
-              initial={{ opacity: 0, y: -4 }}
+              initial={{ y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               className={clsx(
                 'text-xs flex items-center gap-1.5',
-                status.state === 'error' ? 'text-neon-pink' : 'text-neon-green'
+                status.state === 'error' ? 'text-red-400' : 'text-emerald-400'
               )}
             >
               <AlertCircle size={11} />
@@ -470,7 +445,7 @@ function ServerStep({
             <div key={h} className="flex items-center gap-1 group/item">
               <button
                 onClick={() => setUrl(h)}
-                className="flex-1 text-left text-xs text-white/40 hover:text-neon-blue/80 transition-colors py-0.5 font-mono truncate"
+                className="flex-1 text-left text-xs text-white/40 hover:text-foreground transition-colors py-0.5 font-mono truncate"
               >
                 {h}
               </button>
@@ -518,12 +493,12 @@ function CredentialsStep({
     <form onSubmit={onSubmit} className="space-y-5">
       {/* Servidor conectado */}
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-neon-green/5 border border-neon-green/20"
+        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30"
       >
-        <CheckCircle2 size={13} className="text-neon-green flex-shrink-0" />
-        <span className="text-xs text-neon-green/80 truncate font-mono">{url}</span>
+        <CheckCircle2 size={13} className="text-emerald-400 flex-shrink-0" />
+        <span className="text-xs text-emerald-400 truncate font-mono">{url}</span>
         <button
           type="button"
           onClick={onBack}
@@ -536,20 +511,20 @@ function CredentialsStep({
       {/* Banco de dados */}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
-          <Database size={11} className="text-neon-purple/70" />
+          <Database size={11} className="text-muted-foreground" />
           Banco de dados
           <span className="ml-auto text-white/25 font-normal">{databases.length} disponível{databases.length !== 1 ? 'is' : ''}</span>
         </label>
 
         <div className="relative">
-          <Database size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neon-purple/50 pointer-events-none" />
+          <Database size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <select
             value={selectedDb}
             onChange={(e) => setSelectedDb(e.target.value)}
             className={clsx(
               'w-full pl-9 pr-4 py-3 rounded-xl text-sm appearance-none cursor-pointer',
               'bg-white/[0.05] border border-white/10 text-white',
-              'focus:outline-none focus:border-neon-purple/40 focus:bg-white/[0.08]',
+              'focus:outline-none focus:border-ring focus:bg-white/[0.08]',
               'transition-all duration-200'
             )}
           >
@@ -571,11 +546,11 @@ function CredentialsStep({
       {/* Login */}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
-          <User size={11} className="text-neon-blue/70" />
+          <User size={11} className="text-muted-foreground" />
           Usuário
         </label>
         <div className="relative">
-          <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neon-blue/40 pointer-events-none" />
+          <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             ref={loginInputRef}
             type="text"
@@ -586,7 +561,7 @@ function CredentialsStep({
             className={clsx(
               'w-full pl-9 pr-4 py-3 rounded-xl text-sm',
               'bg-white/[0.05] border border-white/10 text-white placeholder-white/25',
-              'focus:outline-none focus:border-neon-blue/40 focus:bg-white/[0.08]',
+              'focus:outline-none focus:border-ring focus:bg-white/[0.08]',
               'transition-all duration-200'
             )}
           />
@@ -596,11 +571,11 @@ function CredentialsStep({
       {/* Senha */}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
-          <Lock size={11} className="text-neon-blue/70" />
+          <Lock size={11} className="text-muted-foreground" />
           Senha
         </label>
         <div className="relative">
-          <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neon-blue/40 pointer-events-none" />
+          <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             type={showPassword ? 'text' : 'password'}
             value={password}
@@ -612,8 +587,8 @@ function CredentialsStep({
               'bg-white/[0.05] border text-white placeholder-white/25',
               'focus:outline-none focus:bg-white/[0.08] transition-all duration-200',
               error
-                ? 'border-neon-pink/40 focus:border-neon-pink/60'
-                : 'border-white/10 focus:border-neon-blue/40'
+                ? 'border-red-500/40 focus:border-red-500/60'
+                : 'border-input focus:border-ring'
             )}
           />
           <button
@@ -630,13 +605,13 @@ function CredentialsStep({
       <AnimatePresence>
         {error && (
           <motion.div
-            initial={{ opacity: 0, y: -6, height: 0 }}
+            initial={false}
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: -6, height: 0 }}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-neon-pink/8 border border-neon-pink/20"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30"
           >
-            <AlertCircle size={13} className="text-neon-pink flex-shrink-0" />
-            <span className="text-xs text-neon-pink">{error}</span>
+            <AlertCircle size={13} className="text-red-400 flex-shrink-0" />
+            <span className="text-xs text-red-400">{error}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -651,9 +626,8 @@ function CredentialsStep({
           'w-full flex items-center justify-center gap-2 py-3 rounded-xl',
           'text-sm font-semibold transition-all duration-200',
           'disabled:opacity-40 disabled:cursor-not-allowed',
-          'bg-gradient-to-r from-neon-blue/20 to-neon-purple/20',
-          'border border-neon-blue/30 hover:border-neon-blue/50',
-          'text-white shadow-glow-sm hover:shadow-glow-blue'
+          'min-h-[48px] bg-primary text-primary-foreground',
+          'hover:bg-primary/90',
         )}
       >
         {loading ? (
@@ -684,26 +658,26 @@ function StepIndicator({ active, done, label, icon }: {
           backgroundColor: done
             ? 'rgba(16,185,129,0.2)'
             : active
-            ? 'rgba(0,212,255,0.15)'
+            ? 'rgba(248,250,252,0.15)'
             : 'rgba(255,255,255,0.04)',
           borderColor: done
             ? 'rgba(16,185,129,0.5)'
             : active
-            ? 'rgba(0,212,255,0.4)'
+            ? 'rgba(248,250,252,0.4)'
             : 'rgba(255,255,255,0.1)',
         }}
         transition={{ duration: 0.3 }}
         className="w-6 h-6 rounded-full border flex items-center justify-center"
       >
         {done ? (
-          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>
-            <CheckCircle2 size={12} className="text-neon-green" />
+          <motion.div initial={{ scale: 0.6 }} animate={{ scale: 1 }}>
+            <CheckCircle2 size={12} className="text-emerald-400" />
           </motion.div>
         ) : (
-          <span className={clsx(active ? 'text-neon-blue' : 'text-white/30')}>{icon}</span>
+          <span className={clsx(active ? 'text-foreground' : 'text-white/30')}>{icon}</span>
         )}
       </motion.div>
-      <span className={clsx('text-xs font-medium', active ? 'text-white/70' : done ? 'text-neon-green/70' : 'text-white/25')}>
+      <span className={clsx('text-xs font-medium', active ? 'text-white/70' : done ? 'text-emerald-400' : 'text-white/25')}>
         {label}
       </span>
     </div>
@@ -711,36 +685,3 @@ function StepIndicator({ active, done, label, icon }: {
 }
 
 // ─── Partículas decorativas ──────────────────────────────────────────────────
-
-function Particles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
-    id: i,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    size: Math.random() * 2 + 1,
-    duration: Math.random() * 10 + 8,
-    delay: Math.random() * 5,
-  }))
-
-  return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden">
-      {particles.map((p) => (
-        <motion.div
-          key={p.id}
-          className="absolute rounded-full bg-neon-blue/20"
-          style={{ left: `${p.x}%`, top: `${p.y}%`, width: p.size, height: p.size }}
-          animate={{
-            y: [0, -30, 0],
-            opacity: [0, 0.6, 0],
-          }}
-          transition={{
-            duration: p.duration,
-            delay: p.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
-  )
-}

@@ -324,7 +324,13 @@ assinatura é documento, e documento é sobre papel.
 - **Don't** usar emoji como ícone de interface.
 - **Don't** comunicar estado só por cor, sem texto ou ícone.
 - **Don't** usar `glass` / `backdrop-filter` como textura de superfície parada.
-- **Don't** escrever classe utilitária que não exista no projeto
-  (`bg-primary`, `bg-card`, `text-muted-foreground`, `bg-muted`,
-  `border-border` hoje geram **zero CSS**); ou o token é definido, ou a classe
-  não é usada. Ver o débito registrado no `TODO.md`.
+- **Don't** escrever classe utilitária que não exista no projeto. Os papéis
+  semânticos (`bg-card`, `text-muted-foreground`, `border-border`,
+  `bg-primary`, `bg-muted`) passaram a existir em 2026-09-03 — antes disso
+  geravam zero CSS e o botão primário ficava sem fundo. Token novo entra em
+  `app/globals.css` **e** no mapa de `tailwind.config.ts`, nunca só num deles.
+- **Don't** gatilhar a visibilidade do conteúdo numa animação de entrada
+  (`initial={{ opacity: 0 }}` ou `scale: 0` no framer-motion). Se a animação
+  não roda — aba em segundo plano, PWA retomado do standby, renderizador
+  headless — a tela fica em branco com o conteúdo no DOM. Entrada é
+  deslocamento sobre conteúdo já visível.

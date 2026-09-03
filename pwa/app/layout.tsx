@@ -42,16 +42,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <QueryProvider>
             <ErrorReporter />
             <ServiceWorkerRegister />
-            <div className="fixed inset-0 bg-[var(--bg-base)] bg-mesh-gradient -z-10" />
-            <div
-              className="fixed top-0 left-1/4 w-96 h-96 bg-neon-blue/5 rounded-full blur-3xl pointer-events-none -z-10 animate-float"
-              aria-hidden
-            />
-            <div
-              className="fixed bottom-1/4 right-1/4 w-80 h-80 bg-neon-purple/5 rounded-full blur-3xl pointer-events-none -z-10 animate-float"
-              style={{ animationDelay: '-3s' }}
-              aria-hidden
-            />
+            {/* O fundo era um mesh gradient com dois círculos neon flutuando
+                (`animate-float`, `blur-3xl`). Enfeite puro, caro de compor em
+                celular e contrário ao DESIGN.md: o fundo é chapado, a
+                profundidade vem da escada tonal das superfícies. */}
 
             <PageTitle />
             <AuthGuard>{children}</AuthGuard>

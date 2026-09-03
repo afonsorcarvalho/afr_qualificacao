@@ -16,12 +16,24 @@
   em `tailwind.config.ts`, no formato HSL que o modificador de opacidade exige.
 - ~~`--text-muted` do tema escuro reprovava em contraste~~ (`rgba(255,255,255,0.4)`
   ≈ 3.4:1). Agora `#a3adc2`, acima do piso AA de 4.5:1.
-- **Limpeza de neon pendente.** Ainda existem `shadow-glow-*`, `bg-gradient-cyber`,
-  `animate-pulse-glow`, `glass` e as cores `neon-purple`/`neon-pink` no
-  `tailwind.config.ts` e em componentes (`GlassCard`, `NeonBadge`, fundo do
-  `app/layout.tsx`). O DESIGN.md os proíbe; remover numa passada dedicada.
+- ~~Limpeza de neon.~~ **Feita em 2026-09-03.** Saíram do código e do
+  `tailwind.config.ts`: paleta `neon`, `bg-gradient-cyber`, `mesh-gradient`,
+  sombras `glow-*`/`glass*`, animações `float`/`pulse-glow`/`gradient-shift`,
+  a utilidade `.glass` e o texto com gradiente do login (`bg-clip-text`, que o
+  DESIGN.md proíbe explicitamente). `NeonBadge` virou `StatusBadge` com tons
+  semânticos; `GlassCard` perdeu o vidro e o hover com zoom e virou superfície
+  tonal. O `globals.css` também perdeu ~370 linhas de utilitários herdados do
+  app de Equipamentos (`*-glow`, `phase-*`, `ib-*`, `dashboard-mode`) — nenhum
+  tinha uso aqui, e vários rodavam animação em loop.
 - **`KindPill` usa violeta/azul/roxo por tipo de qualificação** — cor como
-  categoria, não estado. Revisar contra a Regra do Estado.
+  categoria, não estado. Revisar contra a Regra do Estado. (Único resquício;
+  o componente só aparece quando o item tem `docx_section`.)
+- ~~Entradas animadas escondiam o conteúdo.~~ **Corrigido**: os `initial` de
+  `framer-motion` partiam de `opacity: 0` (e `scale: 0`) no login e no
+  visualizador de PDF. Se a animação não roda — aba em segundo plano, PWA
+  retomado do standby, renderizador headless — a tela ficava **em branco**,
+  com o conteúdo no DOM e invisível. Foi assim que o print do login saiu preto.
+  Agora a entrada é só deslocamento; o conteúdo nasce legível.
 - Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
 
 ### Técnico Qualificação
@@ -48,26 +60,23 @@
   produção), mas o Chrome headless do `agent-browser` ignora service workers — nem o registro
   manual instala. Validar em navegador normal/device: SW ativo, prompt de instalação e navegação
   offline (E.2/E.3/E.4 do checklist).
-- **Erro de rede aparece cru pro técnico:** ao salvar coleta sem backend, o toast é
-  `Erro: Request failed with status code 502` (texto do axios). Trocar por mensagem em pt-BR que
-  diga o que fazer — o trabalho não se perde, a foto continua anexada, mas o técnico não sabe disso.
-- **"Coletas realizadas" na tela de fechar o turno conta a OS inteira**, não o relatório
-  (`app/tecnico/qualificacao/[osId]/relatorio/[relId]/finalizar/page.tsx:57-58` derivam de
-  `getOsDetail`). Um turno com 1 coleta exibiu "6". Decidir: filtrar por `relatorio_id` ou trocar
-  o rótulo pra deixar claro que é o total da OS.
+- ~~Erro de rede aparecia cru pro técnico~~ (`Erro: Request failed with status code 502`).
+  **Corrigido**: a tradução vive no interceptor do `odooClient`, então toda tela herda. Distingue
+  sem-conexão, 403, 404 e 5xx, e sempre diz que o que ele preencheu continua ali. Conferido
+  derrubando o container do Odoo: "O servidor não respondeu (erro 502). O que você preencheu
+  continua aqui — tente de novo em instantes.".
 - **Leitura de OS não é restrita por técnico.** As `ir.rule` do grupo Técnico têm
   `perm_read = False` (`afr_qualificacao/security/qualificacao_groups.xml:59`) — escopo só de
   escrita. Um técnico com o toggle "Só minhas" desligado lista as OSs de todos os colegas
   (verificado com conta só-Técnico em 2026-09-03). Foi deliberado no backend, mas o Bloco F do
   checklist prometia isolamento de leitura. Decidir se restringe leitura ou se ajusta a
   expectativa (e o texto do F.1/F.2).
-- **Item `kind='outro'` sem anexo estoura ValidationError.** O backend `_check_required_has_file`
-  (`afr_qualificacao/models/qualificacao_collect_item.py:269-276`) exige `file` para **qualquer**
-  item com `state='collected'`, mas o front trata `outro` como anexo-opcional
-  (`pwa/app/tecnico/qualificacao/[osId]/coleta/[itemId]/page.tsx:17,71`). Salvar um item "Outro" sem
-  foto quebra. Decidir de que lado corrigir: relaxar a constraint para `kind='outro'` no backend,
-  ou exigir anexo no front. Achado no final review de 2026-07-27. (Não bloqueou o bloco H —
-  nenhum item H1–H12 salva `kind='outro'`; a OS 4 semeada só tem `foto`/`excel`.)
+- ~~Item `kind='outro'` sem anexo estourava ValidationError.~~ **Resolvido em 2026-09-03.**
+  O backend `_check_required_has_file` sempre exigiu `file` para qualquer item em
+  `state='collected'`, mas o front tratava `outro` como anexo opcional — salvar um item "Outro"
+  sem foto estourava na cara do técnico, em campo, depois de ele já ter escrito a observação.
+  Decisão: alinhar pelo backend (item coletado é item com evidência anexada). `outro` entrou em
+  `FILE_REQUIRED_KINDS`.
 - **"Só minhas" off esconde os rascunhos** (`pwa/app/tecnico/qualificacao/page.tsx:23`:
   `filterMine ? drafts : []`). Desligar o filtro mostra *menos* cards quando as OSs alheias
   estão em `draft` — foi o que travou o H3 até semear uma OS alheia em `scheduled`. Parece
@@ -114,7 +123,31 @@
 - ~~`/manifest.json` respondia 307 sem sessão.~~ **Corrigido em 2026-09-03**: o bypass de estáticos
   do `middleware.ts` não cobria `.json`/`.webmanifest`. Rotas do app seguem protegidas.
 
-### Backend `afr_qualificacao` — autorização (deferido em 2026-07-27)
+### Backend `afr_qualificacao` — autorização
+
+**Os cinco achados foram fechados em 2026-09-03 (v16.0.7.4.0)**, depois que as
+contas puramente técnicas passaram a existir (Bloco F) e os tornaram
+alcançáveis de verdade:
+
+- `cycle` e `malha` ganharam o par de `ir.rule` (restritiva no Técnico via
+  `qualificacao_id.os_id.tecnico_default_user_id` + permissiva no grupo
+  Usuário). Era o achado grave: técnico alheio editava ciclo de qualificação
+  aprovada e o certificado do cliente virava `tampered`.
+- `collect.item` ganhou o mesmo par (write + create) e **perdeu `unlink` na
+  ACL do Técnico** — apagar evidência não é ação de campo.
+- `approver_id` passou a exigir Gestor (`_check_approver_write` no mixin de
+  segurança, chamado do `write()` de `afr.qualificacao` e `.os`). O campo
+  entra no `_snapshot_for_hash`, então dava pra assinar um certificado
+  nomeando um gestor que nunca aprovou nada.
+- Report do certificado ganhou `groups_id` = grupo Usuário (Gestor herda):
+  `/report/pdf/...` e o menu Imprimir contornavam o gate de `state ==
+  'approved'`. Decisão de produto: emitir certificado é ato de escritório.
+- Botões Aprovar/Reprovar/Cancelar da view ganharam `groups=` — já levantavam
+  `UserError` para não-Gestor, mas continuavam visíveis.
+
+Cobertura: `tests/test_authorization_scope.py`, 14 testes.
+
+### Contexto original (auditoria de 2026-07-27)
 
 Achados de uma auditoria adversarial que rodou junto da adequação PWA↔backend. **Nenhum é
 explorável hoje**: os 5 usuários do db têm os três grupos (Técnico/Usuário/Gestor) por implicação,

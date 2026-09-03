@@ -187,7 +187,7 @@ export function PdfViewerModal({
           <Dialog.Portal forceMount>
             <Dialog.Overlay asChild>
               <motion.div
-                initial={{ opacity: 0 }}
+                initial={false}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 bg-black/85 backdrop-blur-md z-50"
@@ -196,18 +196,17 @@ export function PdfViewerModal({
 
             <Dialog.Content asChild>
               <motion.div
-                initial={{ opacity: 0, scale: 0.97, y: 10 }}
+                initial={{ scale: 0.99 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.97, y: 10 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-                className="fixed inset-4 md:inset-6 z-50 flex flex-col rounded-2xl border border-white/10 bg-dark-900/95 backdrop-blur-2xl shadow-glass-lg overflow-hidden"
+                className="fixed inset-4 md:inset-6 z-50 flex flex-col rounded-lg border border-border bg-card shadow-[0_-8px_24px_rgba(0,0,0,0.45)] overflow-hidden"
               >
-                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-neon-pink/40 to-transparent pointer-events-none" />
 
                 {/* Header */}
                 <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10">
-                  <div className="p-2 rounded-xl bg-neon-pink/10 border border-neon-pink/20 flex-shrink-0">
-                    <FileText size={16} className="text-neon-pink" />
+                  <div className="p-2 rounded-lg bg-muted border border-border flex-shrink-0">
+                    <FileText size={16} className="text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
                     {title && (
@@ -246,7 +245,7 @@ export function PdfViewerModal({
                         value={pageInputValue}
                         onChange={(e) => setPageInputValue(e.target.value)}
                         onBlur={handlePageInput}
-                        className="w-12 px-2 py-1.5 rounded-lg text-center bg-white/[0.04] border border-white/10 text-white font-mono tabular-nums focus:outline-none focus:border-neon-blue/40"
+                        className="w-12 px-2 py-1.5 rounded-lg text-center bg-background border border-input text-foreground font-mono tabular-nums focus:outline-none focus:border-ring"
                       />
                       <span className="text-white/40 font-mono">/ {numPages || '—'}</span>
                     </form>
@@ -306,7 +305,7 @@ export function PdfViewerModal({
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={handleSearchKey}
                         placeholder="Buscar no PDF..."
-                        className="w-full pl-9 pr-4 py-1.5 rounded-lg text-sm bg-white/[0.04] border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-neon-blue/40 focus:bg-white/[0.08] transition-all"
+                        className="w-full pl-9 pr-4 py-1.5 rounded-lg text-sm bg-background border border-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors"
                       />
                     </div>
 
@@ -413,7 +412,7 @@ function ToolBtn({
       className={clsx(
         'p-2 rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed',
         danger
-          ? 'bg-neon-pink/5 border-neon-pink/20 text-neon-pink hover:bg-neon-pink/15'
+          ? 'bg-muted border-border text-foreground hover:bg-accent'
           : 'bg-white/5 border-white/10 text-white/70 hover:text-white hover:bg-white/10'
       )}
     >
@@ -425,7 +424,7 @@ function ToolBtn({
 function LoadingBlock() {
   return (
     <div className="h-full flex flex-col items-center justify-center gap-3 text-white/40 py-20">
-      <Loader2 size={24} className="animate-spin text-neon-pink" />
+      <Loader2 size={24} className="animate-spin text-muted-foreground" />
       <span className="text-sm">Carregando PDF...</span>
     </div>
   )
@@ -433,7 +432,7 @@ function LoadingBlock() {
 
 function ErrorBlock() {
   return (
-    <div className="h-full flex items-center justify-center text-neon-pink py-20 text-sm">
+    <div className="h-full flex items-center justify-center text-red-400 py-20 text-sm">
       Erro ao renderizar o PDF
     </div>
   )

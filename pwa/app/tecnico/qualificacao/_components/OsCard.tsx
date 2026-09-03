@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { CheckCircle2, Clock, Wrench } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
-import { NeonBadge } from '@/components/ui/NeonBadge'
+import { StatusBadge, type StatusTone } from '@/components/ui/StatusBadge'
 import type { OsTecnicoSummary } from '@/lib/odoo/tecnico'
 
 const STATE_LABELS: Record<string, string> = {
@@ -15,16 +15,19 @@ const STATE_LABELS: Record<string, string> = {
   cancelled: 'Cancelada',
 }
 
-type NeonColor = 'blue' | 'purple' | 'pink' | 'green' | 'orange' | 'gray'
 
-const STATE_COLORS: Record<string, NeonColor> = {
-  draft: 'gray',
-  scheduled: 'blue',
-  in_progress: 'green',
-  in_approved: 'orange',
-  approved: 'purple',
-  done: 'gray',
-  cancelled: 'gray',
+// Tom semântico, não paleta decorativa: o que está andando ou pronto é
+// verde, o que espera alguém é âmbar, o que morreu é vermelho, o resto é
+// neutro. Antes "aprovado" era roxo e "agendado" azul — cores que não
+// diziam nada sozinhas.
+const STATE_TONES: Record<string, StatusTone> = {
+  draft: 'neutral',
+  scheduled: 'neutral',
+  in_progress: 'progress',
+  in_approved: 'waiting',
+  approved: 'done',
+  done: 'done',
+  cancelled: 'error',
 }
 
 export function OsCard({ os }: { os: OsTecnicoSummary }) {
@@ -37,9 +40,9 @@ export function OsCard({ os }: { os: OsTecnicoSummary }) {
       >
         <div className="flex items-center justify-between gap-2">
           <strong className="truncate text-foreground text-sm">{os.name}</strong>
-          <NeonBadge color={STATE_COLORS[os.state] ?? 'gray'} size="sm">
+          <StatusBadge tone={STATE_TONES[os.state] ?? 'neutral'} size="sm">
             {STATE_LABELS[os.state] ?? os.state}
-          </NeonBadge>
+          </StatusBadge>
         </div>
         <p className="mt-1 truncate text-sm text-muted-foreground/90">
           {os.partner_id?.[1] ?? '—'}
