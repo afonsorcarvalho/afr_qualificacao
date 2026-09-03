@@ -1,6 +1,9 @@
 'use client'
+import { useTransition } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { useNavProgress } from '@/components/providers/NavProgress'
 import { ColetaCard } from '../_components/ColetaCard'
 import { CollectedCard } from '../_components/CollectedCard'
 import { EquipmentHeader } from '../_components/EquipmentHeader'
@@ -20,10 +23,14 @@ export default function OsDetailPage() {
   const router = useRouter()
   const { lastUserId } = useTecnicoSettings()
   const userId = lastUserId ?? 0
-  const { data, isLoading, error } = useOsDetail(id, userId)
+  const { data, isLoading, isFetching, error, refetch } = useOsDetail(id, userId)
   const startMutation = useStartDailyRelatorio()
+  const { begin } = useNavProgress()
+  // A ida pra tela de fechar turno também busca dados: sem `useTransition` o
+  // botão ficava mudo entre o toque e a troca de tela.
+  const [finalizando, startFinalize] = useTransition()
 
-  if (isLoading) return <p className="text-center text-muted-foreground">Carregando...</p>
+  if (isLoading) return <LoadingState label="Carregando OS..." />
   if (error || !data) return <p className="text-center text-red-400">Erro ao carregar OS</p>
 
   const { os, collect_items, open_relatorio_id, equipments, instruments } = data
@@ -50,12 +57,14 @@ export default function OsDetailPage() {
     })
   }
   const handleContinue = () => {
-    router.refresh()
+    refetch()
   }
   const handleFinalize = () => {
-    if (open_relatorio_id) {
-      router.push(`/tecnico/qualificacao/${id}/relatorio/${open_relatorio_id}/finalizar`)
-    }
+    if (!open_relatorio_id || finalizando) return
+    begin()
+    startFinalize(() =>
+      router.push(`/tecnico/qualificacao/${id}/relatorio/${open_relatorio_id}/finalizar`),
+    )
   }
 
   return (
@@ -75,6 +84,7 @@ export default function OsDetailPage() {
         onStart={handleStart}
         onContinue={handleContinue}
         starting={startMutation.isPending}
+        refreshing={isFetching && !isLoading}
         allDone={pending_items.length === 0 && done_items.length > 0}
       />
 
@@ -187,6 +197,8 @@ export default function OsDetailPage() {
         <Button
           onClick={handleFinalize}
           className="h-12 w-full"
+          loading={finalizando}
+          loadingText="Abrindo fechamento..."
         >
           Finalizar relatório do dia
         </Button>

@@ -3,6 +3,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, ClipboardList, CheckCircle2, Clock, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { useRelatorioDetail } from '@/lib/hooks/useTecnicoQualif'
 import { CollectedCard } from '../../../_components/CollectedCard'
 
@@ -32,7 +33,7 @@ export default function RelatorioDetailPage() {
   const router = useRouter()
   const { data, isLoading, error } = useRelatorioDetail(rid)
 
-  if (isLoading) return <p className="py-8 text-center text-sm text-muted-foreground/90">Carregando relatório...</p>
+  if (isLoading) return <LoadingState label="Carregando relatório..." />
   if (error || !data) {
     return (
       <div className="space-y-3">

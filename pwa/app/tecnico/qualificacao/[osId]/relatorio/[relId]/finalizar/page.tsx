@@ -194,7 +194,12 @@ export default function FinalizarPage() {
       </div>
 
       <div className="flex gap-2">
-        <Button variant="outline" className="flex-1" onClick={() => router.back()}>
+        <Button
+          variant="outline"
+          className="min-h-[48px] flex-1"
+          onClick={() => router.back()}
+          disabled={mutation.isPending}
+        >
           Cancelar
         </Button>
         {/* Ação principal chama por contraste, não por matiz: verde está
@@ -202,9 +207,10 @@ export default function FinalizarPage() {
         <Button
           className="min-h-[48px] flex-[2]"
           onClick={handleFinish}
-          disabled={mutation.isPending}
+          loading={mutation.isPending}
+          loadingText="Finalizando..."
         >
-          {mutation.isPending ? 'Finalizando...' : 'Fechar relatório'}
+          Fechar relatório
         </Button>
       </div>
     </div>

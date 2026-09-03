@@ -1,10 +1,14 @@
 'use client'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Wrench, ClipboardList, BarChart3, User } from 'lucide-react'
+import { Wrench, ClipboardList, BarChart3, User, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
+import {
+  NavProgressBar,
+  NavProgressProvider,
+  useNavProgress,
+} from '@/components/providers/NavProgress'
 
 const ROOT_PATH = '/tecnico/qualificacao'
 
@@ -42,16 +46,22 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
   }, [pathname, router])
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-[480px] flex-col bg-background">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-4 py-3 shadow-md">
-        <div className="flex items-center gap-2">
-          <Wrench className="h-5 w-5 text-primary" />
-          <span className="font-semibold">Qualificação · Técnico</span>
-        </div>
-      </header>
-      <main className="flex-1 overflow-auto p-3">{children}</main>
-      <BottomNav />
-    </div>
+    <NavProgressProvider>
+      <div className="mx-auto flex min-h-screen max-w-[480px] flex-col bg-background">
+        <header className="sticky top-0 z-10 border-b border-border bg-card shadow-md">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-foreground" />
+              <span className="font-semibold">Qualificação · Técnico</span>
+            </div>
+          </div>
+          {/* Toda navegação acende esta barra até a rota nova aparecer. */}
+          <NavProgressBar />
+        </header>
+        <main className="flex-1 overflow-auto p-3">{children}</main>
+        <BottomNav />
+      </div>
+    </NavProgressProvider>
   )
 }
 
@@ -71,18 +81,50 @@ function BottomNav() {
     )
   return (
     <nav className="sticky bottom-0 flex justify-around border-t border-border bg-card px-2 py-1 text-xs shadow-[0_-8px_24px_rgba(0,0,0,0.45)]">
-      <Link href={ROOT_PATH} className={link(isHome)} aria-current={isHome ? 'page' : undefined}>
-        <ClipboardList className="h-5 w-5" aria-hidden />
-        OSs
-      </Link>
-      <Link href={`${ROOT_PATH}/historico`} className={link(isHist)} aria-current={isHist ? 'page' : undefined}>
-        <BarChart3 className="h-5 w-5" aria-hidden />
-        Histórico
-      </Link>
-      <Link href={`${ROOT_PATH}/perfil`} className={link(isPerfil)} aria-current={isPerfil ? 'page' : undefined}>
-        <User className="h-5 w-5" aria-hidden />
-        Perfil
-      </Link>
+      <NavItem href={ROOT_PATH} active={isHome} icon={<ClipboardList className="h-5 w-5" aria-hidden />} label="OSs" className={link(isHome)} />
+      <NavItem href={`${ROOT_PATH}/historico`} active={isHist} icon={<BarChart3 className="h-5 w-5" aria-hidden />} label="Histórico" className={link(isHist)} />
+      <NavItem href={`${ROOT_PATH}/perfil`} active={isPerfil} icon={<User className="h-5 w-5" aria-hidden />} label="Perfil" className={link(isPerfil)} />
     </nav>
+  )
+}
+
+/**
+ * Item da barra inferior. Troca o ícone por spinner enquanto a rota carrega —
+ * o destino já está destacado antes mesmo de a tela trocar, então o técnico vê
+ * que o toque pegou.
+ */
+function NavItem({
+  href,
+  active,
+  icon,
+  label,
+  className,
+}: {
+  href: string
+  active: boolean
+  icon: React.ReactNode
+  label: string
+  className: string
+}) {
+  const router = useRouter()
+  const { begin } = useNavProgress()
+  const [isPending, startTransition] = useTransition()
+  return (
+    <a
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      aria-busy={isPending || undefined}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+        e.preventDefault()
+        if (active || isPending) return
+        begin()
+        startTransition(() => router.push(href))
+      }}
+      className={className}
+    >
+      {isPending ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : icon}
+      {label}
+    </a>
   )
 }

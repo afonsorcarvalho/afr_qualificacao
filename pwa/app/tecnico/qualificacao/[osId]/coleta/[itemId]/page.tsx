@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { Lightbulb } from 'lucide-react'
 import { CameraInput } from '../../../_components/CameraInput'
 import { FileInput } from '../../../_components/FileInput'
@@ -50,10 +51,11 @@ export default function ColetaPage() {
     mimetype: string
   } | null>(null)
   const [description, setDescription] = useState('')
+  const [acao, setAcao] = useState<'salvar' | 'pular' | null>(null)
 
   const mutation = useCollectItem(oid)
 
-  if (!item) return <p className="text-center">Carregando...</p>
+  if (!item) return <LoadingState label="Carregando coleta..." />
 
   if (!relatorioId) {
     return (
@@ -76,6 +78,7 @@ export default function ColetaPage() {
       toast.error('Anexe arquivo antes de salvar')
       return
     }
+    setAcao(skip ? 'pular' : 'salvar')
     mutation.mutate(
       {
         itemId: iid,
@@ -161,10 +164,15 @@ export default function ColetaPage() {
       </div>
 
       <div className="flex gap-2">
+        {/* Dois botões disparam a mesma mutation, então cada um guarda qual
+            foi tocado: sem isso, pular acendia o spinner em "Salvar" e vice-
+            versa, e o técnico não sabia qual ação estava rodando. */}
         <Button
           variant="outline"
-          className="flex-1"
+          className="min-h-[48px] flex-1"
           onClick={() => handleSave(true)}
+          loading={mutation.isPending && acao === 'pular'}
+          loadingText="Pulando..."
           disabled={mutation.isPending}
         >
           Pular
@@ -172,9 +180,11 @@ export default function ColetaPage() {
         <Button
           className="min-h-[48px] flex-[2]"
           onClick={() => handleSave(false)}
+          loading={mutation.isPending && acao === 'salvar'}
+          loadingText="Salvando..."
           disabled={mutation.isPending}
         >
-          {mutation.isPending ? 'Salvando...' : '✓ Salvar coleta'}
+          ✓ Salvar coleta
         </Button>
       </div>
     </div>

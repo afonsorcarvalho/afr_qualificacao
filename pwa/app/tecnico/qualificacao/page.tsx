@@ -1,6 +1,7 @@
 'use client'
 import { useEffect } from 'react'
 import { OsCard } from './_components/OsCard'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { useOsMine } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 
@@ -46,7 +47,7 @@ export default function HomePage() {
         />
       </label>
 
-      {isLoading && <p className="text-center text-muted-foreground">Carregando...</p>}
+      {isLoading && <LoadingState label="Carregando suas OSs..." />}
       {error && (
         <p className="text-center text-destructive">
           Erro ao carregar OSs. Verifique conexão.

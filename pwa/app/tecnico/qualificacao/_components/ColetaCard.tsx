@@ -1,5 +1,5 @@
 'use client'
-import Link from 'next/link'
+import { PendingLink } from '@/components/ui/PendingLink'
 import { Camera, FileSpreadsheet, FileText, Database, File, ChevronRight } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { KindPill } from './KindPill'
@@ -36,10 +36,7 @@ export function ColetaCard({
 }) {
   const Icon = ICONS[item.kind] ?? File
   return (
-    <Link
-      href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}
-      className="block"
-    >
+    <PendingLink href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}>
       <GlassCard
         variant="hover"
         noPadding
@@ -70,6 +67,6 @@ export function ColetaCard({
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         </div>
       </GlassCard>
-    </Link>
+    </PendingLink>
   )
 }

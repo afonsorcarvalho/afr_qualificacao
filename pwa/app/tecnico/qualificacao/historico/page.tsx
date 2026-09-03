@@ -1,6 +1,7 @@
 'use client'
 import { useEffect } from 'react'
-import Link from 'next/link'
+import { PendingLink } from '@/components/ui/PendingLink'
+import { LoadingState } from '@/components/ui/LoadingState'
 import { FileText, CheckCircle2, Camera, ClipboardList, Clock, ChevronRight } from 'lucide-react'
 import { useHistoricoSummary, useRelatoriosFechados } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
@@ -92,7 +93,7 @@ export default function HistoricoPage() {
       <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-cyan-500/15 via-blue-500/10 to-transparent p-4 shadow-lg shadow-cyan-500/10">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300/80">Hoje</p>
         {summary.isLoading ? (
-          <p className="mt-2 text-sm text-muted-foreground/80">Carregando...</p>
+          <LoadingState label="Carregando resumo..." className="py-3" />
         ) : summary.error ? (
           <p className="mt-2 text-sm text-red-400">Erro ao carregar resumo</p>
         ) : (
@@ -130,7 +131,7 @@ export default function HistoricoPage() {
         </div>
 
         {relatorios.isLoading && (
-          <p className="text-center text-sm text-muted-foreground/80">Carregando...</p>
+          <LoadingState label="Carregando relatórios..." />
         )}
         {relatorios.error && (
           <p className="text-center text-sm text-red-400">Erro ao carregar relatórios</p>
@@ -176,7 +177,7 @@ function RelatorioCard({ r }: { r: RelatorioHistorico }) {
   const itemCount = r.collect_item_ids?.length ?? 0
   const time = r.signature_technician_date || r.data_fim
   return (
-    <Link href={`/tecnico/qualificacao/${r.os_id?.[0]}/relatorio/${r.id}`} className="block">
+    <PendingLink href={`/tecnico/qualificacao/${r.os_id?.[0]}/relatorio/${r.id}`}>
       <div className="group rounded-lg border border-border/70 bg-muted/20 p-3 transition hover:border-emerald-400/40 hover:bg-emerald-500/[0.04]">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-300">
@@ -212,6 +213,6 @@ function RelatorioCard({ r }: { r: RelatorioHistorico }) {
           <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/60 transition group-hover:text-muted-foreground" />
         </div>
       </div>
-    </Link>
+    </PendingLink>
   )
 }

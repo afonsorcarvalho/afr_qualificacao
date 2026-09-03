@@ -247,6 +247,31 @@ real rolando por baixo (barra fixa), nunca como textura de cartão.
 
 ## 5. Components
 
+### Estados de espera (transversal)
+
+Nenhum controle fica mudo. O padrão é sempre o mesmo, pra que "estou
+processando" tenha uma cara só no app inteiro:
+
+- **Botão**: prop `loading` do `components/ui/button` — spinner de 16px à
+  esquerda, rótulo trocado pelo gerúndio do que está rodando ("Salvando...",
+  "Finalizando...", "Iniciando relatório..."), `disabled` e `aria-busy`
+  enquanto dura. Dois botões que disparam a mesma ação guardam qual foi
+  tocado, senão o spinner acende no botão errado.
+- **Navegação**: `components/ui/PendingLink` — a linha tocada escurece
+  (`opacity-60`), ganha spinner à direita e para de aceitar toque; ao mesmo
+  tempo acende a barra de 2px sob o cabeçalho (`NavProgressBar`), que só
+  apaga quando a rota nova aparece.
+- **Tela ou bloco carregando**: `components/ui/LoadingState` — spinner +
+  frase do que está sendo buscado, com `role="status"`. Nunca uma tela vazia,
+  nunca um "Carregando..." solto sem contexto.
+- **Depois da ação**: toast de sucesso ou a mensagem de erro em pt-BR (ver
+  "Erro é instrução" no PRODUCT.md). O estado de espera some só quando um dos
+  dois aparece.
+
+**A Regra do Toque Reconhecido.** Se um controle pode demorar mais que um
+quadro, ele muda de aparência no toque. Não existe caminho em que o técnico
+toque e a tela fique igual.
+
 ### Buttons
 - **Shape:** cantos suaves (8px), largura total em ação principal de tela.
 - **Primary:** Papel Invertido (#f8fafc) com tinta escura (#0a0f1e), altura
@@ -310,6 +335,8 @@ assinatura é documento, e documento é sobre papel.
   salvar"), dizendo se o trabalho foi perdido.
 - **Do** deixar o servidor carimbar data e hora; a tela exibe, não calcula.
 - **Do** respeitar `prefers-reduced-motion`: transição vira corte.
+- **Do** dar resposta imediata a todo toque que dispara ação demorada:
+  `loading` no botão, `PendingLink` na navegação, `LoadingState` no bloco.
 
 ### Don't:
 - **Don't** parecer **tela de ERP / backoffice Odoo**: nada de aba, tabela
@@ -329,6 +356,9 @@ assinatura é documento, e documento é sobre papel.
   `bg-primary`, `bg-muted`) passaram a existir em 2026-09-03 — antes disso
   geravam zero CSS e o botão primário ficava sem fundo. Token novo entra em
   `app/globals.css` **e** no mapa de `tailwind.config.ts`, nunca só num deles.
+- **Don't** deixar um toque sem retorno visual. Botão que dispara RPC sem
+  `loading`, linha de lista que navega sem `PendingLink` e espera sem
+  `LoadingState` são o mesmo defeito: o técnico lê como travamento.
 - **Don't** gatilhar a visibilidade do conteúdo numa animação de entrada
   (`initial={{ opacity: 0 }}` ou `scale: 0` no framer-motion). Se a animação
   não roda — aba em segundo plano, PWA retomado do standby, renderizador

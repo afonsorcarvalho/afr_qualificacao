@@ -412,7 +412,10 @@ function ServerStep({
               )}
             >
               {status.state === 'checking' ? (
-                <Loader2 size={12} className="animate-spin" />
+                <>
+                  <Loader2 size={12} className="animate-spin" aria-hidden />
+                  Conectando...
+                </>
               ) : (
                 <>Conectar <ChevronRight size={12} /></>
               )}

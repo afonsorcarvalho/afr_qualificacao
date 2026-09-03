@@ -1,5 +1,5 @@
 'use client'
-import Link from 'next/link'
+import { PendingLink } from '@/components/ui/PendingLink'
 import { CheckCircle2, Clock, Wrench } from 'lucide-react'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { StatusBadge, type StatusTone } from '@/components/ui/StatusBadge'
@@ -32,7 +32,7 @@ const STATE_TONES: Record<string, StatusTone> = {
 
 export function OsCard({ os }: { os: OsTecnicoSummary }) {
   return (
-    <Link href={`/tecnico/qualificacao/${os.id}`} className="block">
+    <PendingLink href={`/tecnico/qualificacao/${os.id}`} spinnerClassName="right-4 top-6">
       <GlassCard
         variant="hover"
         noPadding
@@ -88,6 +88,6 @@ export function OsCard({ os }: { os: OsTecnicoSummary }) {
           </div>
         )}
       </GlassCard>
-    </Link>
+    </PendingLink>
   )
 }

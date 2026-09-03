@@ -166,12 +166,13 @@ export default function PerfilPage() {
 
       <Button
         variant="outline"
-        className="w-full border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+        className="min-h-[48px] w-full border-red-500/40 text-red-600 hover:bg-red-500/10 dark:text-red-400"
         onClick={handleLogout}
-        disabled={loggingOut}
+        loading={loggingOut}
+        loadingText="Saindo..."
       >
-        <LogOut className="mr-2 h-4 w-4" />
-        {loggingOut ? 'Saindo...' : 'Sair'}
+        <LogOut className="mr-2 h-4 w-4" aria-hidden />
+        Sair
       </Button>
     </div>
   )

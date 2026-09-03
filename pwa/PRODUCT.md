@@ -64,15 +64,22 @@ legítima porque mostra quanto falta; um gradiente decorativo não é.
 2. **Cada toque precisa se pagar.** Registrar uma coleta é o gesto mais
    repetido do dia. Passo que não muda o resultado (confirmação supérflua,
    volta pra lista pra escolher o próximo item) é passo a eliminar.
-3. **Erro é instrução, não código.** Nenhuma mensagem devolve status HTTP ou
+3. **Nenhum toque fica sem resposta.** Todo controle que dispara algo que pode
+   demorar — RPC, upload, navegação que busca dados — muda de aparência no
+   instante do toque: spinner, rótulo do que está acontecendo e bloqueio de
+   repetição. Em 4G de hospital, meio segundo de tela parada já faz o técnico
+   achar que o app travou e tocar de novo; sem esse retorno ele duplica coleta,
+   dá dois "iniciar turno", desiste. Esperar é aceitável, não saber se o toque
+   pegou não é.
+4. **Erro é instrução, não código.** Nenhuma mensagem devolve status HTTP ou
    nome de campo pro técnico. Diz o que aconteceu, se o trabalho dele foi
    perdido (na maioria das vezes não foi) e o que fazer agora.
-4. **Offline é rotina, não exceção.** Sinal cai no meio do turno o tempo todo.
+5. **Offline é rotina, não exceção.** Sinal cai no meio do turno o tempo todo.
    O app assume isso: nunca descarta o que o técnico já preencheu, e sempre diz
    se o registro chegou no servidor ou não.
-5. **Uma mão, retrato, luva.** Coluna única, alvo de toque grande, pouca
+6. **Uma mão, retrato, luva.** Coluna única, alvo de toque grande, pouca
    digitação. Se algo só funciona em tablet deitado, não funciona.
-6. **O servidor é o relógio e a verdade.** Data, hora e janela do dia vêm do
+7. **O servidor é o relógio e a verdade.** Data, hora e janela do dia vêm do
    Odoo, nunca do aparelho — celular com relógio torto já produziu dado no
    futuro aqui. A tela nunca inventa número que o backend pode calcular.
 

@@ -65,11 +65,18 @@ const config: Config = {
       },
       animation: {
         'shimmer': 'shimmer 2s linear infinite',
+        // Barra de progresso de navegação: indeterminada, porque não dá pra
+        // saber quanto falta — o que importa é dizer "estou indo".
+        'nav-progress': 'navProgress 1.1s ease-in-out infinite',
       },
       keyframes: {
         shimmer: {
           '0%':   { backgroundPosition: '-200% center' },
           '100%': { backgroundPosition: '200% center' },
+        },
+        navProgress: {
+          '0%':   { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(400%)' },
         },
       },
     },
