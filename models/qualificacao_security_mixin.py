@@ -35,3 +35,28 @@ class AfrQualificacaoManagerGuardMixin(models.AbstractModel):
             "afr_qualificacao.group_afr_qualificacao_manager"
         ):
             raise UserError(_("Apenas o Gestor pode %s.") % acao)
+
+    def _check_approver_write(self, vals):
+        """Bloqueia gravação de `approver_id` por quem não é Gestor.
+
+        `approver_id` entra no `_snapshot_for_hash` como `"approver"`: sem
+        este guard, um técnico com write no registro nomeava como aprovador
+        um gestor que nunca aprovou nada, e o certificado saía com esse nome
+        assinado no hash. A `ir.rule` não resolve — ela escopa QUAIS
+        registros, não QUAIS campos.
+
+        Chamado do `write()` de `afr.qualificacao` e `afr.qualificacao.os`.
+        `self.env.su` libera as gravações internas (o próprio fluxo de
+        aprovação carimba o aprovador via sudo).
+
+        :param vals: dict de `write()`.
+        """
+        if self.env.su or "approver_id" not in vals:
+            return
+        if not self.env.user.has_group(
+            "afr_qualificacao.group_afr_qualificacao_manager"
+        ):
+            raise UserError(_(
+                "Apenas o Gestor pode definir o aprovador — o campo entra na "
+                "assinatura do certificado."
+            ))

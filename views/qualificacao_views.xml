@@ -39,12 +39,16 @@
                         class="oe_highlight"
                         states="draft"
                     />
+                    <!-- Aprovar/Reprovar/Cancelar levantam UserError pra
+                         não-Gestor desde a Task 12; sem `groups=` o botão
+                         continuava visível e o usuário só descobria no erro. -->
                     <button
                         name="action_mark_approved"
                         type="object"
                         string="Aprovar"
                         class="oe_highlight"
                         states="in_progress,rejected"
+                        groups="afr_qualificacao.group_afr_qualificacao_manager"
                     />
                     <button
                         name="action_mark_rejected"
@@ -52,12 +56,14 @@
                         string="Reprovar"
                         states="in_progress"
                         class="oe_stat_button"
+                        groups="afr_qualificacao.group_afr_qualificacao_manager"
                     />
                     <button
                         name="action_cancel"
                         type="object"
                         string="Cancelar"
                         states="draft,in_progress"
+                        groups="afr_qualificacao.group_afr_qualificacao_manager"
                     />
                     <button
                         name="action_generate_docx"

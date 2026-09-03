@@ -731,6 +731,8 @@ class AfrQualificacaoOs(models.Model):
     # SIGNATURE TRACKING
     # ═════════════════════════════════════════════════════════════
     def write(self, vals):
+        # `approver_id` entra no hash do certificado — só Gestor grava.
+        self._check_approver_write(vals)
         # Task 10 — Finding 2: a ir.rule (Task 9) só escopa QUAIS registros um
         # Técnico/Usuário não-Gestor pode escrever, não QUAIS valores. Sem
         # este guard, `os.write({'state': 'approved'})` direto (RPC) pulava

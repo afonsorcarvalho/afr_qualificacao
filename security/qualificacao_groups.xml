@@ -110,4 +110,102 @@
         <field name="active" eval="True"/>
     </record>
 
+    <!--
+        Auditoria de 2026-07-27, fechada em 2026-09-03: `cycle`, `malha` e
+        `collect.item` davam write ao Técnico SEM `ir.rule` nenhuma. Prova de
+        conceito da época: um técnico que não é dono da OS editou o ciclo de
+        uma qualificação alheia já aprovada e certificada, e o certificado do
+        cliente passou de `valid` para `tampered`. Enquanto todo usuário do
+        banco tinha os três grupos por implicação isso não era alcançável; as
+        contas puramente técnicas criadas no Bloco F do checklist do PWA
+        tornaram alcançável.
+
+        Mesmo par usado em `afr.qualificacao.os` e `afr.qualificacao`:
+        restritiva no Técnico + permissiva no grupo Usuário (que Gestor
+        herda), porque `ir.rule` de grupos diferentes é ORed — sem a
+        permissiva, o Gestor cairia na restritiva e ficaria trancado fora da
+        OS alheia. O domínio atravessa a OS (`tecnico_default_user_id`), não
+        `hr.employee`: o grupo Técnico não lê hr no Odoo 16.
+    -->
+    <record id="rule_cycle_technician_write_own" model="ir.rule">
+        <field name="name">Técnico só escreve ciclo da própria OS</field>
+        <field name="model_id" ref="model_afr_qualificacao_cycle"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
+        <field name="domain_force">[('qualificacao_id.os_id.tecnico_default_user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_cycle_user_write_all" model="ir.rule">
+        <field name="name">Usuário/Gestor escreve qualquer ciclo</field>
+        <field name="model_id" ref="model_afr_qualificacao_cycle"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_malha_technician_write_own" model="ir.rule">
+        <field name="name">Técnico só escreve malha da própria OS</field>
+        <field name="model_id" ref="model_afr_qualificacao_malha"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
+        <field name="domain_force">[('qualificacao_id.os_id.tecnico_default_user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_malha_user_write_all" model="ir.rule">
+        <field name="name">Usuário/Gestor escreve qualquer malha</field>
+        <field name="model_id" ref="model_afr_qualificacao_malha"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <!--
+        `collect.item` é o registro que o PWA de campo escreve o dia inteiro
+        (anexo, estado, observação). O escopo cobre write e create; o unlink
+        saiu da ACL do Técnico (apagar evidência não é ação de campo), então
+        não precisa de regra.
+
+        `os_id` é related stored de `qualif_id.os_id` — dá pra atravessar
+        direto, sem sub-busca em hr.employee.
+    -->
+    <record id="rule_collect_item_technician_write_own" model="ir.rule">
+        <field name="name">Técnico só escreve item de coleta da própria OS</field>
+        <field name="model_id" ref="model_afr_qualificacao_collect_item"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_technician'))]"/>
+        <field name="domain_force">[('os_id.tecnico_default_user_id', '=', user.id)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
+    <record id="rule_collect_item_user_write_all" model="ir.rule">
+        <field name="name">Usuário/Gestor escreve qualquer item de coleta</field>
+        <field name="model_id" ref="model_afr_qualificacao_collect_item"/>
+        <field name="groups" eval="[(4, ref('group_afr_qualificacao_user'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+        <field name="perm_read" eval="False"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="False"/>
+        <field name="active" eval="True"/>
+    </record>
+
 </odoo>

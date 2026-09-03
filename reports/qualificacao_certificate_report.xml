@@ -9,5 +9,14 @@
         <field name="print_report_name">'Certificado - %s' % (object.name)</field>
         <field name="binding_model_id" ref="model_afr_qualificacao"/>
         <field name="binding_type">report</field>
+        <!--
+            Sem `groups_id`, o gate de `state == 'approved'` que existe em
+            `action_print_certificate` não cobria `/report/pdf/...` nem o menu
+            Imprimir da UI — os dois contornam o método, e o único controle
+            que sobrava era a marca d'água "SEM VALIDADE" do template.
+            Emitir certificado é ato de escritório: Usuário (e Gestor, que o
+            herda) imprimem; o Técnico de campo, não.
+        -->
+        <field name="groups_id" eval="[(4, ref('afr_qualificacao.group_afr_qualificacao_user'))]"/>
     </record>
 </odoo>

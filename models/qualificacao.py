@@ -1009,6 +1009,8 @@ class AfrQualificacao(models.Model):
         return records
 
     def write(self, vals):
+        # `approver_id` entra no hash do certificado — só Gestor grava.
+        self._check_approver_write(vals)
         # Task 10 — Finding 2: mesmo problema encontrado em afr.qualificacao.os
         # (Task 9) — a ir.rule escopa QUAIS registros, não QUAIS valores. Sem
         # este guard, `qualif.write({'state': 'approved'})` direto (RPC)
