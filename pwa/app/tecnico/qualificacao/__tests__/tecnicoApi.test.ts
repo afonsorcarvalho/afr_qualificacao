@@ -5,6 +5,7 @@ import {
   getOsDetail,
   startDailyRelatorio,
   finalizeRelatorio,
+  getHistoricoSummary,
 } from '@/lib/odoo/tecnico'
 
 vi.mock('@/lib/odoo/client', () => ({
@@ -128,5 +129,46 @@ describe('finalizeRelatorio', () => {
     await expect(
       finalizeRelatorio(9, { descricao: 'x', signature_b64: 'QUJD' }),
     ).rejects.toThrow('odoo down')
+  })
+})
+
+describe('getHistoricoSummary', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('pede os contadores prontos ao servidor, sem montar janela no cliente', async () => {
+    mocked.callKw.mockResolvedValue({
+      hoje_coletas: 3,
+      hoje_oss: 2,
+      hoje_relatorios_fechados: 1,
+    })
+
+    const resumo = await getHistoricoSummary(42)
+
+    expect(resumo).toEqual({
+      hoje_coletas: 3,
+      hoje_oss: 2,
+      hoje_relatorios_fechados: 1,
+    })
+    const [model, method, args] = mocked.callKw.mock.calls[0]
+    expect(model).toBe('afr.qualificacao.os.relatorio')
+    expect(method).toBe('action_historico_hoje')
+    // Método @api.model: sem ids, sem janela, sem uid — o servidor resolve
+    // "hoje" no fuso do usuário logado.
+    expect(args).toEqual([])
+  })
+
+  it('não consulta collect.item nem conta relatórios no cliente', async () => {
+    mocked.callKw.mockResolvedValue({
+      hoje_coletas: 0,
+      hoje_oss: 0,
+      hoje_relatorios_fechados: 0,
+    })
+
+    await getHistoricoSummary(42)
+
+    // O caminho antigo lia collect.item por captured_at e fazia searchCount
+    // com a janela do relógio do aparelho — nada disso pode voltar.
+    expect(mocked.searchRead).not.toHaveBeenCalled()
+    expect(mocked.searchCount).not.toHaveBeenCalled()
   })
 })

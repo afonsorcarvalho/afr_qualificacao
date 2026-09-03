@@ -20,6 +20,20 @@ function fmtTime(s: string | false): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
+/** Chave `YYYY-MM-DD` do dia **local** do instante — não do dia UTC.
+ *
+ * `toISOString().slice(0, 10)` devolve o dia UTC: um relatório fechado às 22h
+ * de um fuso UTC-3 tem instante 01h UTC do dia seguinte e ia parar no grupo do
+ * dia errado (e no rótulo "Hoje" errado). Estes rótulos são de exibição e
+ * seguem o relógio do aparelho de propósito — os contadores do topo é que vêm
+ * carimbados pelo servidor (`action_historico_hoje`).
+ */
+function localDayKey(d: Date): string {
+  const mes = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mes}-${dia}`
+}
+
 function groupByDay(items: RelatorioHistorico[]): Array<{ key: string; label: string; items: RelatorioHistorico[] }> {
   const map = new Map<string, RelatorioHistorico[]>()
   for (const r of items) {
@@ -30,18 +44,22 @@ function groupByDay(items: RelatorioHistorico[]): Array<{ key: string; label: st
       continue
     }
     const d = new Date(ref.includes('T') ? ref : ref.replace(' ', 'T') + 'Z')
-    const key = d.toISOString().slice(0, 10)
+    const key = localDayKey(d)
     if (!map.has(key)) map.set(key, [])
     map.get(key)!.push(r)
   }
-  const today = new Date().toISOString().slice(0, 10)
-  const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  const today = localDayKey(new Date())
+  const yest = localDayKey(new Date(Date.now() - 86400000))
   return Array.from(map.entries()).map(([key, items]) => {
     let label = key
     if (key === today) label = 'Hoje'
     else if (key === yest) label = 'Ontem'
     else if (key !== 'sem-data') {
-      const d = new Date(key)
+      // `new Date('YYYY-MM-DD')` seria lido como meia-noite UTC e, em fuso
+      // negativo, renderizaria o dia anterior. Montando por partes a data
+      // nasce local, igual à chave.
+      const [ano, mes, dia] = key.split('-').map(Number)
+      const d = new Date(ano, mes - 1, dia)
       label = d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
     } else label = 'Sem data'
     return { key, label, items }

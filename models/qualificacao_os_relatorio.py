@@ -364,6 +364,48 @@ class AfrQualificacaoOsRelatorio(models.Model):
         })
         return self.action_done()
 
+    @api.model
+    def action_historico_hoje(self):
+        """Contadores "hoje" do Histórico do PWA, calculados no servidor.
+
+        Consulta pura (não escreve nada). Existe porque o PWA montava a janela
+        do dia com o relógio do aparelho (`todayRangeOdoo`) e comparava contra
+        `captured_at`/`signature_technician_date`, que o servidor carimba —
+        um celular com relógio torto mostrava contadores errados. Mesmo
+        remédio já aplicado à abertura/fechamento do relatório do dia: quem
+        decide "hoje" é o servidor, no fuso do usuário logado
+        (`afr.qualificacao.os._janela_do_dia_do_usuario`).
+
+        Escopo: só o próprio usuário logado — coletas que ele carimbou
+        (`captured_by`) e relatórios que ele criou (`create_uid`), espelhando
+        o filtro do Histórico.
+
+        :return: dict com `hoje_coletas` (itens coletados hoje), `hoje_oss`
+            (OSs distintas desses itens) e `hoje_relatorios_fechados`.
+        """
+        inicio, fim = self.env["afr.qualificacao.os"]._janela_do_dia_do_usuario()
+        grupos = self.env["afr.qualificacao.collect.item"].read_group(
+            [
+                ("captured_by", "=", self.env.uid),
+                ("captured_at", ">=", inicio),
+                ("captured_at", "<", fim),
+            ],
+            fields=["os_id"],
+            groupby=["os_id"],
+            lazy=False,
+        )
+        return {
+            "hoje_coletas": sum(g["__count"] for g in grupos),
+            # `os_id` vazio (qualif legada sem OS) não é uma OS visitada.
+            "hoje_oss": len([g for g in grupos if g["os_id"]]),
+            "hoje_relatorios_fechados": self.search_count([
+                ("state", "=", "done"),
+                ("create_uid", "=", self.env.uid),
+                ("signature_technician_date", ">=", inicio),
+                ("signature_technician_date", "<", fim),
+            ]),
+        }
+
     def action_reopen(self):
         """done|cancel → draft (manager-only via servidor, `_check_manager_only`).
 

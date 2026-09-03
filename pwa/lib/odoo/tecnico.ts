@@ -4,10 +4,6 @@
  */
 import odooClient from './client'
 
-function toOdooDatetime(d: Date): string {
-  return d.toISOString().slice(0, 19).replace('T', ' ')
-}
-
 export interface OsTecnicoSummary {
   id: number
   name: string
@@ -221,13 +217,6 @@ export async function getOsDetail(
   }
 }
 
-function todayRangeOdoo(): { from: string; to: string } {
-  const t = new Date()
-  t.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(t.getTime() + 86400000)
-  return { from: toOdooDatetime(t), to: toOdooDatetime(tomorrow) }
-}
-
 export async function listRelatoriosFechados(
   userId: number,
   limit = 50,
@@ -247,29 +236,22 @@ export async function listRelatoriosFechados(
   )
 }
 
-export async function getHistoricoSummary(userId: number): Promise<HistoricoSummary> {
-  const { from, to } = todayRangeOdoo()
-  const items = await odooClient.searchRead<{ os_id: [number, string] | false }>(
-    'afr.qualificacao.collect.item',
-    [
-      ['captured_by', '=', userId],
-      ['captured_at', '>=', from],
-      ['captured_at', '<', to],
-    ],
-    ['os_id'],
-  )
-  const hoje_coletas = items.length
-  const hoje_oss = new Set(items.map((i) => (i.os_id ? i.os_id[0] : 0)).filter(Boolean)).size
-  const hoje_relatorios_fechados = await odooClient.searchCount(
+export async function getHistoricoSummary(
+  // Só entra na query key do React Query, pra não servir cache de um usuário
+  // pro outro — o escopo por usuário quem aplica é o servidor (`self.env.uid`).
+  _userId: number,
+): Promise<HistoricoSummary> {
+  // Os contadores vêm prontos do servidor: a janela do dia é decidida lá, no
+  // fuso do usuário Odoo. Antes o front montava a janela com o relógio do
+  // aparelho e comparava contra `captured_at`/`signature_technician_date`,
+  // carimbados pelo servidor — celular com relógio torto mostrava número
+  // errado. Mesmo remédio já aplicado à abertura/fechamento do relatório do
+  // dia. Ver `action_historico_hoje` no backend.
+  return odooClient.callKw<HistoricoSummary>(
     'afr.qualificacao.os.relatorio',
-    [
-      ['state', '=', 'done'],
-      ['create_uid', '=', userId],
-      ['signature_technician_date', '>=', from],
-      ['signature_technician_date', '<', to],
-    ],
+    'action_historico_hoje',
+    [],
   )
-  return { hoje_coletas, hoje_oss, hoje_relatorios_fechados }
 }
 
 export async function getRelatorioDetail(relId: number): Promise<RelatorioFullDetail> {

@@ -76,6 +76,7 @@ from . import test_cotacao_form_refactor
 
 # 16.0.6.4.0 — superfície RPC do PWA Técnico de Campo
 from . import test_pwa_tecnico_rpc
+from . import test_pwa_historico_hoje
 
 # Rateio de preço final por equipamento — helper puro de rateio
 from . import test_price_allocation

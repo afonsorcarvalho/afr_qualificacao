@@ -436,6 +436,27 @@ class AfrQualificacaoOs(models.Model):
         # Abre wizard de novo relatório
         return self.action_open_new_relatorio_wizard()
 
+    @api.model
+    def _janela_do_dia_do_usuario(self):
+        """Janela UTC do dia de hoje no fuso do usuário logado.
+
+        Não depende de registro: é o critério de "hoje" do servidor, usado
+        pelo fallback de `_janela_do_dia` e pelos contadores do Histórico do
+        PWA (`afr.qualificacao.os.relatorio.action_historico_hoje`). Fica num
+        lugar só pra que "o dia" signifique a mesma coisa em todo o addon.
+
+        Não dá pra usar `datetime.combine(context_today, time.min)` cru —
+        seria lido como meia-noite UTC e, entre 21h e 00h local (UTC-3), a
+        janela excluiria registros do próprio dia local.
+
+        :return: tupla (datetime inicio, datetime fim) — sem tzinfo, UTC naive.
+        """
+        tz = pytz.timezone(self.env.user.tz or "UTC")
+        agora_local = fields.Datetime.context_timestamp(self, fields.Datetime.now())
+        inicio_local = tz.localize(datetime.combine(agora_local.date(), time.min))
+        inicio = inicio_local.astimezone(pytz.UTC).replace(tzinfo=None)
+        return inicio, inicio + timedelta(days=1)
+
     def _janela_do_dia(self, day_start=None, day_end=None):
         """Devolve `(inicio, fim)` da janela UTC do dia — critério único
         reusado por `action_start_daily_relatorio` e
@@ -455,18 +476,8 @@ class AfrQualificacaoOs(models.Model):
             fim = fields.Datetime.to_datetime(day_end)
         else:
             # Fallback backoffice: meia-noite local do usuário convertida pra
-            # UTC. Não dá pra usar `datetime.combine(context_today, time.min)`
-            # cru — seria lido como meia-noite UTC e, entre 21h e 00h local
-            # (UTC-3), a janela excluiria o próprio registro recém-criado.
-            tz = pytz.timezone(self.env.user.tz or "UTC")
-            agora_local = fields.Datetime.context_timestamp(
-                self, fields.Datetime.now()
-            )
-            inicio_local = tz.localize(
-                datetime.combine(agora_local.date(), time.min)
-            )
-            inicio = inicio_local.astimezone(pytz.UTC).replace(tzinfo=None)
-            fim = inicio + timedelta(days=1)
+            # UTC — mesmo critério de "hoje" dos contadores do Histórico.
+            inicio, fim = self._janela_do_dia_do_usuario()
         return inicio, fim
 
     def _busca_relatorio_do_dia(self, employee, day_start=None, day_end=None):

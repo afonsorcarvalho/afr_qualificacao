@@ -43,14 +43,22 @@
   (`finalizeRelatorio`, `pwa/lib/odoo/tecnico.ts`) manda só `descricao`/`signature_b64`, sem
   `data_fim` nem `signature_technician_date`. O relógio do celular não entra mais em nenhum dos
   dois lados do ciclo diário.
-- **`getHistoricoSummary`/`todayRangeOdoo` ainda calculam "hoje" pelo relógio do dispositivo.**
-  Mesmo viés que o fix de 2026-09-03 eliminou do caminho de abertura do relatório do dia
-  (`dayWindowOdoo`/`action_start_daily_relatorio`), só que aqui em `todayRangeOdoo`
-  (`pwa/lib/odoo/tecnico.ts`), usado por `getHistoricoSummary` e pelos contadores "hoje" do
-  histórico (coletas/OS/relatórios fechados do dia). Um aparelho com relógio torto mostra contadores
-  errados — janela do dia calculada local, comparada contra `captured_at`/`signature_technician_date`
-  gravados pelo servidor. Fix seria análogo: um método RPC somente-leitura que devolve os contadores
-  já calculados no servidor, com a janela do dia decidida lá.
+- ~~`getHistoricoSummary`/`todayRangeOdoo` calculam "hoje" pelo relógio do dispositivo.~~
+  **Resolvido em 2026-09-03 (v16.0.7.3.0).** Era o último resquício do relógio do aparelho: a
+  janela do dia saía de `todayRangeOdoo` e era comparada contra `captured_at`/
+  `signature_technician_date`, carimbados pelo servidor — celular torto, contador errado. Agora
+  `getHistoricoSummary` só chama `action_historico_hoje` (`afr.qualificacao.os.relatorio`,
+  `@api.model`), que devolve os três contadores prontos com a janela decidida no servidor, no fuso
+  do usuário Odoo. O critério de "hoje" ficou num lugar só: `_janela_do_dia_do_usuario`
+  (`afr.qualificacao.os`), que o fallback de `_janela_do_dia` também passou a usar.
+  `todayRangeOdoo`/`toOdooDatetime` foram removidos do front. 10 testes backend
+  (`tests/test_pwa_historico_hoje.py`, incluindo o par de fronteira ±1h da meia-noite local) + 2
+  no front; conferido na tela: RPC e Histórico mostram os mesmos 8/2/4.
+  Ressalva: os **rótulos** de agrupamento da lista ("Hoje"/"Ontem"/data) continuam saindo do
+  relógio do aparelho — são de exibição, não contadores. Junto com este fix eles deixaram de
+  agrupar por dia **UTC** (`toISOString().slice(0,10)`), que jogava um relatório fechado às 22h
+  local no grupo do dia seguinte, e o rótulo de datas antigas deixou de nascer um dia atrás por
+  `new Date('YYYY-MM-DD')` ser lido como meia-noite UTC.
 - ~~Bloco H do `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (H1-H12).~~ **Executado em
   2026-09-03: 12/12 verdes** no db `qualificacao-dev` (uid 2), evidência por item no próprio
   checklist. O gate de aceitação end-to-end da adequação PWA↔backend está fechado. Blocos A–G
