@@ -11,11 +11,22 @@
   foto quebra. Decidir de que lado corrigir: relaxar a constraint para `kind='outro'` no backend,
   ou exigir anexo no front. Achado no final review de 2026-07-27; vai bloquear o bloco H do
   `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md`.
-- **Relógio do dispositivo vs. do servidor no fechamento do relatório.** `data_inicio` é gravado
-  pelo servidor (`action_start_daily_relatorio` usa `fields.Datetime.now()`), mas `finalizeRelatorio`
-  (`pwa/lib/odoo/tecnico.ts`) manda `data_fim` do relógio do **celular**. Um aparelho atrasado em relação
-  ao servidor faz a constraint `_check_dates` rejeitar o fecho do relatório. Fix é front-side:
-  buscar `data_inicio` do relatório e garantir `data_fim >= data_inicio` antes de enviar.
+- ~~Relógio do dispositivo vs. do servidor no fechamento do relatório.~~ **Resolvido em
+  2026-09-03.** Abertura e fechamento do relatório do dia agora são carimbados inteiramente pelo
+  servidor: `action_start_daily_relatorio`/`action_get_daily_relatorio` decidem a janela do dia
+  (sem `day_start`/`day_end` vindos do front), e `action_finish_daily_relatorio`
+  (`afr.qualificacao.os.relatorio`) grava `data_fim = fields.Datetime.now()` no fechamento — o front
+  (`finalizeRelatorio`, `pwa/lib/odoo/tecnico.ts`) manda só `descricao`/`signature_b64`, sem
+  `data_fim` nem `signature_technician_date`. O relógio do celular não entra mais em nenhum dos
+  dois lados do ciclo diário.
+- **`getHistoricoSummary`/`todayRangeOdoo` ainda calculam "hoje" pelo relógio do dispositivo.**
+  Mesmo viés que o fix de 2026-09-03 eliminou do caminho de abertura do relatório do dia
+  (`dayWindowOdoo`/`action_start_daily_relatorio`), só que aqui em `todayRangeOdoo`
+  (`pwa/lib/odoo/tecnico.ts`), usado por `getHistoricoSummary` e pelos contadores "hoje" do
+  histórico (coletas/OS/relatórios fechados do dia). Um aparelho com relógio torto mostra contadores
+  errados — janela do dia calculada local, comparada contra `captured_at`/`signature_technician_date`
+  gravados pelo servidor. Fix seria análogo: um método RPC somente-leitura que devolve os contadores
+  já calculados no servidor, com a janela do dia decidida lá.
 - Bloco H do `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (H1-H12) ainda não foi executado — é o gate de aceitação
   end-to-end da adequação PWA↔backend. H2 precisa de uma OS com `tecnico_default_id` preenchido
   semeada no db (hoje não há nenhuma).

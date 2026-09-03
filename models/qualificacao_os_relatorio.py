@@ -328,6 +328,42 @@ class AfrQualificacaoOsRelatorio(models.Model):
             r.write({"state": "cancel"})
         return True
 
+    def action_finish_daily_relatorio(self, descricao, signature_b64):
+        """Fecha o relatório do dia do PWA técnico — RPC único, servidor
+        carimba o tempo.
+
+        Contraparte de `action_start_daily_relatorio`/`action_get_daily_relatorio`
+        (`qualificacao_os.py`): lá o front parou de mandar `day_start`/
+        `day_end` calculados no dispositivo porque um relógio atrasado fazia
+        o servidor nunca achar o relatório que ele mesmo tinha acabado de
+        criar. Aqui o mesmo relógio atrasado quebrava o fechamento: o front
+        mandava `data_fim` calculado no aparelho, que podia cair antes de
+        `data_inicio` (gravado pelo servidor na abertura) e esbarrar em
+        `_check_dates`. Agora quem carimba `data_fim` é `fields.Datetime.
+        now()` — servidor, não dispositivo.
+
+        `signature_technician_date` não é gravada aqui de propósito: o
+        `write()` deste model (acima) já carimba a data da assinatura com
+        `fields.Datetime.now()` quando ela chega sem data — basta mandar
+        `signature_technician` que a data também sai server-side.
+
+        :param descricao: texto da descrição do serviço. Validação de
+            obrigatoriedade é do `action_done()` (não duplicada aqui).
+        :param signature_b64: assinatura do técnico, em base64.
+        :return: o retorno de `action_done()`.
+        """
+        self.ensure_one()
+        if self.state != "draft":
+            raise UserError(
+                _("Só é possível finalizar relatório do dia em rascunho.")
+            )
+        self.write({
+            "descricao": descricao,
+            "signature_technician": signature_b64,
+            "data_fim": fields.Datetime.now(),
+        })
+        return self.action_done()
+
     def action_reopen(self):
         """done|cancel → draft (manager-only via servidor, `_check_manager_only`).
 

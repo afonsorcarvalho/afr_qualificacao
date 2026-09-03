@@ -46,7 +46,18 @@ export function useStartDailyRelatorio() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: startDailyRelatorio,
-    onSuccess: (_, osId) => {
+    onSuccess: (relId, osId) => {
+      // Escreve o id devolvido pelo servidor direto no cache do detalhe
+      // antes de invalidar — a UI vira na hora, sem esperar o refetch.
+      // Sem `exact`, o filtro casa qualquer key que comece com
+      // ['os-detail', osId], incluindo o `userId` que a key real carrega.
+      qc.setQueriesData(
+        { queryKey: ['os-detail', osId] },
+        (old: unknown) =>
+          old && typeof old === 'object'
+            ? { ...old, open_relatorio_id: relId }
+            : old,
+      )
       qc.invalidateQueries({ queryKey: ['os-detail', osId] })
     },
   })

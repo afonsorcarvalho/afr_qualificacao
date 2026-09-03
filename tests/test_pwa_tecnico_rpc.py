@@ -11,7 +11,7 @@ import base64
 from datetime import datetime, timedelta
 
 from odoo import fields
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase, tagged
 
 from .common import AfrQualificacaoTestCommon
@@ -408,6 +408,59 @@ class TestPwaTecnicoRpc(TransactionCase):
             os_rec.with_user(user_outro_tecnico).action_start_daily_relatorio()
 
     # ─────────────────────────────────────────────────────────────
+    # 6. action_get_daily_relatorio — consulta somente-leitura (fix do
+    #    acoplamento ao relógio do dispositivo: quem resolve "o relatório
+    #    do dia" é o servidor, sem criar nada e sem exigir scheduled/
+    #    in_progress).
+    # ─────────────────────────────────────────────────────────────
+    def test_get_daily_sem_relatorio_devolve_false(self):
+        os_rec = self._to_scheduled(self._make_os())
+        found = os_rec.with_user(self.user_tecnico).action_get_daily_relatorio()
+        self.assertFalse(found)
+
+    def test_get_daily_com_relatorio_devolve_id(self):
+        os_rec = self._to_scheduled(self._make_os()).with_user(self.user_tecnico)
+        rel_id = os_rec.action_start_daily_relatorio()
+        found = os_rec.action_get_daily_relatorio()
+        self.assertEqual(found, rel_id)
+
+    def test_get_daily_nao_cria_registro(self):
+        os_rec = self._to_scheduled(self._make_os())
+        Relatorio = self.env["afr.qualificacao.os.relatorio"]
+        antes = Relatorio.search_count([("os_id", "=", os_rec.id)])
+        os_rec.with_user(self.user_tecnico).action_get_daily_relatorio()
+        depois = Relatorio.search_count([("os_id", "=", os_rec.id)])
+        self.assertEqual(antes, depois)
+        self.assertEqual(depois, 0)
+
+    def test_get_daily_sem_employee_devolve_false_sem_levantar(self):
+        """Diferente de `action_start_daily_relatorio` (que levanta
+        UserError "colaborador ausente"): é consulta, então usuário sem
+        hr.employee vinculado só recebe False."""
+        user_sem_emp = self.env["res.users"].create({
+            "name": "Sem Employee Get",
+            "login": "sem.employee.get.pwa.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        os_rec = self._to_in_progress(self._make_os()).with_user(user_sem_emp)
+        found = os_rec.action_get_daily_relatorio()
+        self.assertFalse(found)
+
+    def test_get_daily_os_draft_nao_levanta(self):
+        """Consulta pura: OS em `draft` não passa pelo guard de estado de
+        `action_start_daily_relatorio` (scheduled/in_progress) — o sibling
+        que cria continua exigindo o guard."""
+        os_rec = self._make_os()
+        self.assertEqual(os_rec.state, "draft")
+        found = os_rec.with_user(self.user_tecnico).action_get_daily_relatorio()
+        self.assertFalse(found)
+        with self.assertRaisesRegex(UserError, "agendada ou em execução"):
+            os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+
+    # ─────────────────────────────────────────────────────────────
     # 5. guard de estado + transição (Task 8) — scheduled/in_progress
     #    aceitos, resto rejeita SEM efeito colateral (nenhum relatório
     #    é criado). A transição em si prova o ACL de write do técnico:
@@ -454,6 +507,71 @@ class TestPwaTecnicoRpc(TransactionCase):
         self.assertEqual(os_rec.state, "draft")
         with self.assertRaisesRegex(UserError, "agendada ou em execução"):
             os_rec.with_user(self.user_tecnico).action_start_daily_relatorio()
+
+    # ─────────────────────────────────────────────────────────────
+    # 5. action_finish_daily_relatorio (fechamento — relógio do servidor)
+    # ─────────────────────────────────────────────────────────────
+    def test_write_direto_com_relogio_do_dispositivo_atrasado_falha(self):
+        """Reproduz o bug real (mesma classe do fix de abertura, agora no
+        fechamento): um aparelho com relógio atrasado ~4h30 manda `data_fim`
+        anterior ao `data_inicio` que o servidor gravou na abertura. O
+        caminho antigo do front (write direto de `data_fim` + `action_done`)
+        esbarra em `_check_dates` — por isso ele foi substituído."""
+        agora = fields.Datetime.now()
+        rel = self._make_relatorio(descricao=False, data_inicio=agora, data_fim=agora)
+        atrasado = agora - timedelta(hours=4, minutes=30)
+        with self.assertRaises(ValidationError):
+            rel.write({
+                "data_fim": atrasado,
+                "descricao": "Turno concluído",
+                "signature_technician": self.PNG_1X1,
+                "signature_technician_date": atrasado,
+            })
+
+    def test_finish_daily_fecha_sem_receber_tempo_do_cliente(self):
+        """`action_finish_daily_relatorio` não recebe `data_fim` nenhuma do
+        chamador — quem carimba é o servidor — e ainda assim fecha com
+        tempo de execução positivo."""
+        inicio = fields.Datetime.now() - timedelta(minutes=5)
+        rel = self._make_relatorio(descricao=False, data_inicio=inicio, data_fim=inicio)
+        rel.action_finish_daily_relatorio(
+            descricao="Turno concluído.",
+            signature_b64=self.PNG_1X1,
+        )
+        self.assertEqual(rel.state, "done")
+        self.assertGreaterEqual(rel.data_fim, rel.data_inicio)
+        self.assertGreater(rel.time_execution, 0)
+
+    def test_finish_daily_carimba_data_assinatura_pelo_servidor(self):
+        """`signature_technician_date` não é passada explicitamente pelo
+        método — sai carimbada pelo `write()` (guard já existente) com o
+        relógio do servidor."""
+        inicio = fields.Datetime.now() - timedelta(minutes=5)
+        rel = self._make_relatorio(descricao=False, data_inicio=inicio, data_fim=inicio)
+        rel.action_finish_daily_relatorio(
+            descricao="Turno concluído.",
+            signature_b64=self.PNG_1X1,
+        )
+        self.assertTrue(rel.signature_technician_date)
+        self.assertGreaterEqual(rel.signature_technician_date, rel.data_inicio)
+
+    def test_finish_daily_exige_draft(self):
+        rel = self._make_relatorio()
+        rel.action_done()
+        with self.assertRaises(UserError):
+            rel.action_finish_daily_relatorio(
+                descricao="x", signature_b64=self.PNG_1X1,
+            )
+
+    def test_finish_daily_descricao_vazia_continua_barrada(self):
+        """O caminho novo não pode contornar a validação existente de
+        `action_done` — descrição só espaços continua rejeitada."""
+        inicio = fields.Datetime.now() - timedelta(minutes=5)
+        rel = self._make_relatorio(descricao=False, data_inicio=inicio, data_fim=inicio)
+        with self.assertRaises(UserError):
+            rel.action_finish_daily_relatorio(
+                descricao="   ", signature_b64=self.PNG_1X1,
+            )
 
 
 @tagged("afr_qualificacao", "pwa_tecnico", "post_install", "-at_install")
