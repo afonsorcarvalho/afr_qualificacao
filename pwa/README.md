@@ -37,6 +37,11 @@ Baseline em `docs/BASELINE.md`. Aceitação end-to-end:
 docker compose up -d --build   # publica em :3010
 ```
 
+Sem `GROQ_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
+sobe o container com a variável vazia: as features de IA (auto-resumo,
+ditado, revisão pré-fechamento) ficam desligadas (`/api/groq/status` →
+`enabled:false`) e o resto do app funciona normal.
+
 ## Versionamento
 
 Este PWA **não** bumpa `__manifest__.py` do addon. A versão do front está no

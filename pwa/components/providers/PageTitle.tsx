@@ -7,7 +7,7 @@ export function PageTitle() {
   const companyName = useAuthStore((s) => s.companyName)
 
   useEffect(() => {
-    document.title = companyName ? `frontend - ${companyName}` : 'frontend'
+    document.title = companyName ? `Qualificação · Técnico - ${companyName}` : 'Qualificação · Técnico'
   }, [companyName])
 
   return null

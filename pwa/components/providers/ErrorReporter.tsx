@@ -5,7 +5,8 @@ import { useEffect } from 'react'
 /**
  * Captura erros não-tratados do browser (window.onerror + unhandledrejection)
  * e também console.error(), e envia para /api/debug-log.
- * O endpoint imprime tudo no stdout do Next, visível em /tmp/next-dev.log.
+ * O endpoint imprime tudo no stdout do processo Next (ver com `docker logs`
+ * ou o terminal do `npm run dev`, conforme o ambiente).
  */
 export function ErrorReporter() {
   useEffect(() => {

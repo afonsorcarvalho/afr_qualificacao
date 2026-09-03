@@ -27,9 +27,7 @@
     "@tanstack/react-query-devtools": "^5.99.0",
     "@tanstack/react-query-persist-client": "^5.100.5",
     "@types/react-signature-canvas": "^1.0.7",
-    "@types/ws": "^8.18.1",
     "axios": "^1.15.0",
-    "bufferutil": "^4.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",
@@ -47,8 +45,6 @@
     "react-pdf": "^9.2.1",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "tailwind-merge": "^2.6.1",
-    "utf-8-validate": "^6.0.6",
-    "ws": "^8.20.0",
     "zod": "^3.25.76",
     "zustand": "^4.5.7"
   },

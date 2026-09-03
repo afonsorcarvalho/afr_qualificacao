@@ -11,7 +11,10 @@ para `addons/afr_qualificacao/pwa/`.
 | `npx tsc --noEmit` | limpo |
 | `npm run build` | verde |
 
-Qualquer falha em execução futura é regressão: esta baseline não tem
-falhas ambientais. As 3 falhas de rede da suíte antiga do `frontend_odoo`
+Esta é uma execução única e verde — não estabelece ausência de flakiness,
+só o estado no momento da medição. Ainda assim, qualquer falha em execução
+futura deve ser tratada como regressão a investigar, não como ruído
+ambiental conhecido: nenhuma falha ambiental foi identificada nesta
+baseline. As 3 falhas de rede da suíte antiga do `frontend_odoo`
 (`odoo-connection`, `reports`, `pdf-viewer`) pertenciam a módulos que não
 migraram.

@@ -10,6 +10,7 @@ services:
       - "3010:3000"
     environment:
       NODE_ENV: production
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
       interval: 30s

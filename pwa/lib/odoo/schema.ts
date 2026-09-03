@@ -6,25 +6,10 @@ import { useSchemaStore, type FieldMeta, type AccessRights } from '../store/sche
  * Adicione novos models aqui quando a UI passar a consumi-los.
  */
 export const APP_MODELS = [
-  'res.partner',
-  'res.country',
-  'res.partner.category',
-  'afr.supervisorio.ciclos',
-  'afr.supervisorio.cycle.materials.lines',
-  'afr.indicador.biologico',
-  'afr.ciclo.fotos',
-  'afr.supervisorio.materials',
-  'engc.equipment',
-  'afr.cycle.type',
-  'ir.actions.report',
-  // OS
-  'engc.os',
-  'engc.os.verify.checklist',
-  'engc.os.relatorios',
-  'engc.os.request.parts',
-  'product.product',
-  'hr.employee',
-  'hr.department',
+  'afr.qualificacao.os',
+  'afr.qualificacao.collect.item',
+  'afr.qualificacao.os.relatorio',
+  'res.company',
 ] as const
 
 type Operation = 'read' | 'write' | 'create' | 'unlink'

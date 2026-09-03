@@ -61,5 +61,18 @@ e por isso essas contas devem receber **só** o grupo Técnico: com o grupo Usu�
   `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (manifest e "Add to Home Screen"). A
   decidir: isentar `.json` no matcher do middleware, ou aceitar que o A2HS só funcione pós-login.
 - **`POST /api/odoo/.../session/destroy` devolve 502** no carregamento da tela de login (observado
-  na Task 4). Pode ser benigno (não há sessão para destruir) ou indicar problema no proxy migrado.
-  A investigar na rodada autenticada da Task 4.
+  na Task 4). **Diagnosticado no final review: benigno.** `AuthGuard.forceLogout()`
+  (`pwa/components/providers/AuthGuard.tsx:12-29`) dispara esse POST quando `serverUrl` está vazio
+  no `authStore`; sem cookie `odoo-target`, `normalizeTarget(undefined)`
+  (`pwa/app/api/odoo/[...path]/route.ts:5-10`) cai no `DEFAULT_ODOO_URL = 'http://localhost:8069'`,
+  onde nada escuta nesse ambiente — o `fetch` falha e o `catch` devolve o 502 deliberado
+  (`route.ts:48-61`). Não indica problema no proxy; não precisa de ação.
+- **Proxy de encaminhamento aberto em `/api/odoo/[...path]`.** `pwa/middleware.ts:11` isenta todo
+  `/api` do gate de sessão, e `pwa/app/api/odoo/[...path]/route.ts:19-23` honra um header
+  `x-odoo-target` fornecido pelo próprio chamador sem validar contra allowlist. Quem alcançar a
+  porta 3010 pode fazer o servidor Next buscar qualquer URL arbitrária (inclusive hosts internos da
+  rede) e ler a resposta — um SSRF/open proxy clássico. Herdado verbatim da origem
+  (`frontend_odoo`), não introduzido pela migração. **Não corrigido nesta wave** — só registrado
+  aqui porque não estava documentado em lugar nenhum e o README fala em prontidão para produção.
+  A decidir: allowlist de hosts, ou exigir que `x-odoo-target` bata com um valor já gravado em
+  cookie assinado no login.
