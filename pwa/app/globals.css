@@ -2,15 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Tokens de cor: light (default) e dark ── */
+/* ── Tokens de cor: light (default) e dark ──
+ *
+ * Duas famílias convivem aqui de propósito:
+ *
+ * 1. `--bg-*` / `--text-*`: as variáveis originais, consumidas via
+ *    `bg-[var(--bg-base)]` em alguns lugares. Mantidas pra não quebrar nada.
+ * 2. Os papéis semânticos (`--background`, `--card`, `--muted`,
+ *    `--primary`, ...): são o que o Tailwind mapeia em `bg-card`,
+ *    `text-muted-foreground`, `border-border` etc. O código já usava essas
+ *    classes em ~236 lugares, mas ninguém as tinha definido — geravam ZERO
+ *    CSS, então botão primário ficava sem fundo e "texto secundário" saía na
+ *    cor herdada. Valores conforme o DESIGN.md.
+ *
+ * Formato HSL sem `hsl()`: é o que permite o modificador de opacidade do
+ * Tailwind (`bg-muted/30`) via `hsl(var(--muted) / <alpha-value>)`.
+ */
 :root {
   --bg-base:     #f8fafc;
   --bg-card:     #ffffff;
   --bg-elevated: #f1f5f9;
   --text-base:   #1e293b;
-  --text-muted:  #64748b;
+  --text-muted:  #475569;
   --border-subtle: #e2e8f0;
   --toast-bg:    rgba(255, 255, 255, 0.95);
+
+  --background:            210 40% 98%;
+  --foreground:            217 33% 17%;
+  --card:                  0 0% 100%;
+  --card-foreground:       217 33% 17%;
+  --popover:               0 0% 100%;
+  --popover-foreground:    217 33% 17%;
+  --muted:                 210 40% 96%;
+  --muted-foreground:      215 19% 35%;
+  --accent:                210 40% 96%;
+  --accent-foreground:     217 33% 17%;
+  --secondary:             210 40% 96%;
+  --secondary-foreground:  217 33% 17%;
+  /* Ação principal: contraste, não matiz (DESIGN.md, "Papel Invertido"
+     invertido no tema claro). */
+  --primary:               217 33% 17%;
+  --primary-foreground:    210 40% 98%;
+  --destructive:           0 72% 51%;
+  --destructive-foreground: 210 40% 98%;
+  --border:                214 32% 91%;
+  --input:                 214 32% 91%;
+  --ring:                  188 86% 42%;
 }
 
 :root.dark {
@@ -18,9 +55,31 @@
   --bg-card:     #0a0f1e;
   --bg-elevated: #0d1424;
   --text-base:   #ffffff;
-  --text-muted:  rgba(255, 255, 255, 0.4);
+  /* Era `rgba(255,255,255,0.4)` — ~3.4:1 sobre o fundo, abaixo do piso AA de
+     4.5:1 que o PRODUCT.md fixa. #a3adc2 ("Tinta Fraca") passa. */
+  --text-muted:  #a3adc2;
   --border-subtle: rgba(255, 255, 255, 0.05);
   --toast-bg:    rgba(10, 15, 30, 0.95);
+
+  --background:            224 71% 4%;
+  --foreground:            0 0% 100%;
+  --card:                  225 50% 8%;
+  --card-foreground:       0 0% 100%;
+  --popover:               225 50% 8%;
+  --popover-foreground:    0 0% 100%;
+  --muted:                 222 47% 10%;
+  --muted-foreground:      221 20% 70%;
+  --accent:                222 47% 10%;
+  --accent-foreground:     0 0% 100%;
+  --secondary:             222 47% 10%;
+  --secondary-foreground:  0 0% 100%;
+  --primary:               210 40% 98%;
+  --primary-foreground:    225 50% 8%;
+  --destructive:           0 91% 71%;
+  --destructive-foreground: 224 71% 4%;
+  --border:                221 32% 15%;
+  --input:                 221 32% 15%;
+  --ring:                  188 86% 53%;
 }
 
 @layer base {

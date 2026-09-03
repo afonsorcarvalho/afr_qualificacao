@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-03T17:20:00.000Z",
+  "title": "Design System: PWA Técnico de Campo",
+  "extensions": {
+    "colorMeta": {
+      "base": {
+        "role": "neutral",
+        "displayName": "Preto Bancada",
+        "canonical": "#030712",
+        "tonalRamp": ["#030712", "#0a0f1e", "#0d1424", "#111827", "#1a2234", "#334155", "#64748b", "#cbd5e1"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Superfície",
+        "canonical": "#0a0f1e",
+        "tonalRamp": ["#05080f", "#0a0f1e", "#0d1424", "#131c2f", "#1b2334", "#2b3448", "#475569", "#94a3b8"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Tinta Fraca",
+        "canonical": "#a3adc2",
+        "tonalRamp": ["#1b2334", "#2a3448", "#3b475e", "#546076", "#6b7689", "#8791a4", "#a3adc2", "#d5dbe6"]
+      },
+      "action": {
+        "role": "primary",
+        "displayName": "Papel Invertido",
+        "canonical": "#f8fafc",
+        "tonalRamp": ["#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5f9", "#f8fafc"]
+      },
+      "state-done": {
+        "role": "secondary",
+        "displayName": "Verde Concluído",
+        "canonical": "#34d399",
+        "tonalRamp": ["#052e21", "#064e34", "#047857", "#059669", "#10b981", "#34d399", "#6ee7b7", "#a7f3d0"]
+      },
+      "state-pending": {
+        "role": "secondary",
+        "displayName": "Âmbar Pendente",
+        "canonical": "#fbbf24",
+        "tonalRamp": ["#3b2606", "#78350f", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a"]
+      },
+      "state-error": {
+        "role": "secondary",
+        "displayName": "Vermelho Falha",
+        "canonical": "#f87171",
+        "tonalRamp": ["#450a0a", "#7f1d1d", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca"]
+      },
+      "focus": {
+        "role": "tertiary",
+        "displayName": "Ciano Foco",
+        "canonical": "#22d3ee",
+        "tonalRamp": ["#083344", "#155e75", "#0e7490", "#0891b2", "#06b6d4", "#22d3ee", "#67e8f9", "#a5f3fc"]
+      }
+    },
+    "typographyMeta": {
+      "metric": { "displayName": "Metric", "purpose": "O número que a tela existe pra dar. Um por tela." },
+      "row": { "displayName": "Row", "purpose": "Nome da coleta na lista — a âncora de leitura." },
+      "stamp": { "displayName": "Stamp", "purpose": "Data, hora e duração carimbadas pelo servidor (mono, tabular)." }
+    },
+    "shadows": [
+      {
+        "name": "sobreposto",
+        "value": "0 -8px 24px rgba(0,0,0,0.45)",
+        "purpose": "Único uso de sombra: elemento que flutua sobre conteúdo rolável (barra inferior, modal, toast)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-change",
+        "value": "150ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Mudança de estado de controle (hover, foco, pressionado). Só background e opacidade."
+      },
+      {
+        "name": "progress-fill",
+        "value": "500ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Barra de progresso ao avançar coletas. Vira corte sob prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "390px" },
+      { "name": "sm", "value": "640px" },
+      { "name": "tablet", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "A ação que conclui: salvar coleta, fechar relatório. Chama por contraste, não por matiz.",
+      "html": "<button class=\"ds-btn-primary\">Salvar coleta</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; min-height:48px; width:100%; padding:12px 20px; background:#f8fafc; color:#0a0f1e; font:600 14px/1.5 'Geist Sans', system-ui, sans-serif; border:none; border-radius:8px; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-primary:hover { background:#e2e8f0; } .ds-btn-primary:focus-visible { outline:2px solid #22d3ee; outline-offset:2px; } .ds-btn-primary:active { background:#cbd5e1; } @media (prefers-reduced-motion: reduce) { .ds-btn-primary { transition:none; } }"
+    },
+    {
+      "name": "Botão fantasma",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Ação reversível: voltar, pular, cancelar, limpar.",
+      "html": "<button class=\"ds-btn-ghost\">Pular</button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:12px 16px; background:transparent; color:#a3adc2; font:500 14px/1.5 'Geist Sans', system-ui, sans-serif; border:none; border-radius:8px; cursor:pointer; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-ghost:hover { background:#0d1424; color:#ffffff; } .ds-btn-ghost:focus-visible { outline:2px solid #22d3ee; outline-offset:2px; }"
+    },
+    {
+      "name": "Linha de tarefa",
+      "kind": "card",
+      "refersTo": "task-row",
+      "description": "O componente central do app: uma coleta da lista. Ícone de tipo, nome ancorado, estado, avanço. Nunca contém outro cartão.",
+      "html": "<a class=\"ds-task-row\" href=\"#\"><span class=\"ds-task-icon\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3l-1.5-2Z\"/><circle cx=\"12\" cy=\"12.5\" r=\"3.5\"/></svg></span><span class=\"ds-task-main\"><span class=\"ds-task-name\">Vazio (Autoclave Gás ETO) #1</span><span class=\"ds-task-meta\">Ciclo · Autoclave a Gás 313</span></span><span class=\"ds-chip-pending\">pendente</span></a>",
+      "css": ".ds-task-row { display:flex; align-items:center; gap:12px; min-height:64px; padding:12px 16px; background:#0a0f1e; border:1px solid #1b2334; border-radius:8px; text-decoration:none; transition:background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-task-row:hover { background:#0d1424; } .ds-task-row:focus-visible { outline:2px solid #22d3ee; outline-offset:2px; } .ds-task-icon { color:#a3adc2; display:flex; } .ds-task-main { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; } .ds-task-name { font:600 16px/1.4 'Geist Sans', system-ui, sans-serif; color:#ffffff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .ds-task-meta { font:400 12px/1.4 'Geist Sans', system-ui, sans-serif; color:#a3adc2; } .ds-chip-pending { flex:none; padding:2px 8px; border-radius:9999px; background:#2b220e; color:#fbbf24; font:500 12px/1.4 'Geist Sans', system-ui, sans-serif; }"
+    },
+    {
+      "name": "Chip de estado",
+      "kind": "chip",
+      "refersTo": "badge-done",
+      "description": "Estado de um item. O texto nomeia o estado; a cor só reforça.",
+      "html": "<span class=\"ds-chip-done\"><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\"><path d=\"M20 6 9 17l-5-5\"/></svg>coletada</span>",
+      "css": ".ds-chip-done { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9999px; background:#0e2b22; color:#34d399; font:500 12px/1.4 'Geist Sans', system-ui, sans-serif; }"
+    },
+    {
+      "name": "Campo de texto",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Rótulo sempre acima; placeholder não é rótulo. Erro em texto abaixo do campo.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Descrição do turno</span><textarea class=\"ds-field-input\" rows=\"3\" placeholder=\"O que foi executado neste turno\"></textarea></label>",
+      "css": ".ds-field { display:flex; flex-direction:column; gap:6px; } .ds-field-label { font:500 14px/1.5 'Geist Sans', system-ui, sans-serif; color:#ffffff; } .ds-field-input { min-height:48px; padding:12px; background:#0d1424; color:#ffffff; font:400 14px/1.5 'Geist Sans', system-ui, sans-serif; border:1px solid #1b2334; border-radius:8px; resize:vertical; } .ds-field-input::placeholder { color:#a3adc2; } .ds-field-input:focus { outline:2px solid #22d3ee; outline-offset:0; border-color:#22d3ee; }"
+    },
+    {
+      "name": "Resumo do turno",
+      "kind": "custom",
+      "refersTo": "task-row",
+      "description": "Bloco de progresso da tela de fechar turno: número do turno como métrica, progresso da OS como contexto.",
+      "html": "<section class=\"ds-shift\"><p class=\"ds-shift-head\"><span class=\"ds-shift-metric\">4</span><span class=\"ds-shift-unit\">coletas neste turno</span></p><div class=\"ds-shift-track\"><div class=\"ds-shift-fill\" style=\"width:55%\"></div></div><p class=\"ds-shift-line\"><strong>6</strong> de <strong>11</strong> coletas da OS concluídas · faltam <strong class=\"ds-shift-left\">5</strong></p></section>",
+      "css": ".ds-shift { padding:16px; background:#0a0f1e; border:1px solid #1b2334; border-radius:8px; } .ds-shift-head { display:flex; align-items:baseline; gap:8px; margin:0; } .ds-shift-metric { font:600 30px/1 'Geist Sans', system-ui, sans-serif; font-variant-numeric:tabular-nums; color:#34d399; } .ds-shift-unit { font:400 14px/1.5 'Geist Sans', system-ui, sans-serif; color:#a3adc2; } .ds-shift-track { margin-top:12px; height:6px; border-radius:9999px; background:#1b2334; overflow:hidden; } .ds-shift-fill { height:100%; border-radius:9999px; background:#34d399; transition:width 500ms cubic-bezier(0.16,1,0.3,1); } .ds-shift-line { margin:8px 0 0; font:400 14px/1.5 'Geist Sans', system-ui, sans-serif; color:#ffffff; font-variant-numeric:tabular-nums; } .ds-shift-left { color:#fbbf24; } @media (prefers-reduced-motion: reduce) { .ds-shift-fill { transition:none; } }"
+    },
+    {
+      "name": "Navegação inferior",
+      "kind": "nav",
+      "refersTo": "task-row",
+      "description": "Três destinos fixos. Ícone SVG de traço — emoji está proibido.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-active\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M9 4h6v3H9zM6 7h12v13H6z\"/><path d=\"M9 12h6M9 16h4\"/></svg>OSs</a><a class=\"ds-nav-item\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M4 19V5M4 19h16M8 16V9M13 16v-4M18 16v-7\"/></svg>Histórico</a><a class=\"ds-nav-item\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><circle cx=\"12\" cy=\"8\" r=\"3.5\"/><path d=\"M5 20a7 7 0 0 1 14 0\"/></svg>Perfil</a></nav>",
+      "css": ".ds-nav { display:flex; height:56px; background:#0a0f1e; border-top:1px solid #1b2334; box-shadow:0 -8px 24px rgba(0,0,0,0.45); } .ds-nav-item { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:44px; color:#a3adc2; font:500 12px/1.4 'Geist Sans', system-ui, sans-serif; text-decoration:none; } .ds-nav-active { color:#ffffff; } .ds-nav-item:focus-visible { outline:2px solid #22d3ee; outline-offset:-2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A Prancheta",
+    "overview": "O app é a prancheta de checklist que o técnico levaria pro CME, se prancheta soubesse a hora certa e não deixasse foto solta. Tudo o que ele precisa saber cabe numa coluna: o que falta fazer, o que já foi feito, e onde ele está no turno. Densidade é a favor da lista: linhas próximas, altura previsível, o nome da coleta como âncora. A cor não decora: ela só diz estado. Isto rejeita a tela de ERP/backoffice Odoo e a landing SaaS genérica, e rejeita o passado do próprio código — o tema cyber/neon com roxo, rosa, gradiente e glow sai de cena; o escuro fica, o brilho não.",
+    "keyCharacteristics": [
+      "Coluna única, sempre; retrato de celular é o caso de projeto.",
+      "Cor exclusivamente semântica (feito / pendente / erro).",
+      "Neutro escuro de base, herdado do código atual.",
+      "Números tabulares em qualquer contagem, progresso ou carimbo de hora.",
+      "Alvo de toque nunca abaixo de 44px.",
+      "Tipografia única (Geist) em pesos; mono só para carimbos."
+    ],
+    "rules": [
+      { "name": "A Regra do Estado", "body": "Cor só entra quando responde 'em que pé está isto?'. Verde, âmbar e vermelho são vocabulário fechado. Roxo, rosa, gradiente de marca e glow estão proibidos.", "section": "colors" },
+      { "name": "A Regra do Par", "body": "Nenhum estado é comunicado só por cor: se apagar a cor, a informação continua lá.", "section": "colors" },
+      { "name": "A Regra do Número Tabular", "body": "Toda contagem, progresso, duração ou horário usa tabular-nums.", "section": "typography" },
+      { "name": "A Regra da Âncora", "body": "Numa lista de 18 coletas, o nome do item é o único elemento em peso 600 na linha.", "section": "typography" },
+      { "name": "A Regra do Fio", "body": "Separação é 1px de #1b2334. border-left colorido acima de 1px como acento está proibido.", "section": "elevation" },
+      { "name": "A Regra do Vidro Aposentado", "body": "glass/backdrop-filter não é mais default de superfície; só onde há conteúdo rolando por baixo.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do usar cor apenas para estado: #34d399 feito, #fbbf24 pendente, #f87171 erro.",
+      "Do manter todo alvo de toque com no mínimo 44px de altura — o técnico usa de luva.",
+      "Do garantir 4.5:1 em qualquer texto que precise ser lido; #a3adc2 é o limite inferior.",
+      "Do usar tabular-nums em contador, progresso, duração e hora.",
+      "Do escrever erro como instrução em pt-BR, dizendo se o trabalho foi perdido.",
+      "Do deixar o servidor carimbar data e hora; a tela exibe, não calcula.",
+      "Do respeitar prefers-reduced-motion: transição vira corte."
+    ],
+    "donts": [
+      "Don't parecer tela de ERP / backoffice Odoo.",
+      "Don't parecer landing SaaS genérica (grade de cartões idênticos).",
+      "Don't usar roxo, rosa, bg-gradient-cyber, shadow-glow-* ou animate-pulse-glow.",
+      "Don't aninhar cartão dentro de cartão.",
+      "Don't usar border-left colorido acima de 1px como acento.",
+      "Don't usar emoji como ícone de interface.",
+      "Don't comunicar estado só por cor.",
+      "Don't usar glass/backdrop-filter como textura de superfície parada.",
+      "Don't escrever classe utilitária que não exista no projeto (bg-primary, bg-card, text-muted-foreground geram zero CSS hoje)."
+    ]
+  }
+}
