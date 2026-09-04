@@ -84,7 +84,7 @@ export default function HistoricoPage() {
   const groups = relatorios.data ? groupByDay(relatorios.data) : []
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-[880px] space-y-5">
       <div>
         <h1 className="text-lg font-semibold text-foreground">Histórico</h1>
         <p className="text-xs text-muted-foreground/80">Resumo do dia e relatórios fechados</p>

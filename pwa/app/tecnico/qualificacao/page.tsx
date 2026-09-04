@@ -31,7 +31,7 @@ export default function HomePage() {
   const draft = filterMine ? (data ?? []).filter((o) => o.state === 'draft') : []
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-[880px] space-y-4">
       {/* A linha inteira é o alvo de toque (≥44px): o técnico usa de luva, e um
           checkbox de 20px é alvo de mouse. O `<label>` embrulha o input, então
           tocar em qualquer ponto da faixa alterna o filtro. */}

@@ -92,7 +92,7 @@ export default function FinalizarPage() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="mx-auto w-full max-w-[880px] space-y-3">
       <Button variant="ghost" size="sm" onClick={() => router.back()}>
         ← Voltar
         <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
