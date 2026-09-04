@@ -76,7 +76,10 @@
   `state='collected'`, mas o front tratava `outro` como anexo opcional — salvar um item "Outro"
   sem foto estourava na cara do técnico, em campo, depois de ele já ter escrito a observação.
   Decisão: alinhar pelo backend (item coletado é item com evidência anexada). `outro` entrou em
-  `FILE_REQUIRED_KINDS`.
+  `FILE_REQUIRED_KINDS`. **Verificado na tela em 2026-09-04** com um item `outro` semeado na OS 4:
+  o campo aparece como "Arquivo *", salvar sem anexo mostra `Anexe arquivo antes de salvar` e não
+  dispara RPC nenhum (contador do proxy: 105 → 105); com anexo, grava `state=collected` com
+  `filename` e `relatorio_id`. Item de teste apagado depois.
 - **"Só minhas" off esconde os rascunhos** (`pwa/app/tecnico/qualificacao/page.tsx:23`:
   `filterMine ? drafts : []`). Desligar o filtro mostra *menos* cards quando as OSs alheias
   estão em `draft` — foi o que travou o H3 até semear uma OS alheia em `scheduled`. Parece
