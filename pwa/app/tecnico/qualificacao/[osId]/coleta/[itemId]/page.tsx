@@ -8,6 +8,8 @@ import { Lightbulb } from 'lucide-react'
 import { CameraInput } from '../../../_components/CameraInput'
 import { FileInput } from '../../../_components/FileInput'
 import { MicButton } from '../../../_components/MicButton'
+import { ColetaList } from '../../../_components/ColetaList'
+import { SplitPane } from '../../../_components/SplitPane'
 import { useCollectItem, useOsDetail } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import odooClient from '@/lib/odoo/client'
@@ -57,17 +59,23 @@ export default function ColetaPage() {
 
   if (!item) return <LoadingState label="Carregando coleta..." />
 
+  const lista = osDetail.data ? (
+    <ColetaList data={osDetail.data} osId={oid} selectedId={iid} />
+  ) : null
+
   if (!relatorioId) {
     return (
-      <div className="space-y-3">
-        <Button variant="ghost" size="sm" onClick={() => router.back()}>
-        ← Voltar
-        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
-      </Button>
-        <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
-          Inicie um relatório do dia antes de coletar.
-        </p>
-      </div>
+      <SplitPane narrow="detail" list={lista}>
+        <div className="space-y-3">
+          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+          ← Voltar
+          <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+        </Button>
+          <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
+            Inicie um relatório do dia antes de coletar.
+          </p>
+        </div>
+      </SplitPane>
     )
   }
 
@@ -106,6 +114,7 @@ export default function ColetaPage() {
   }
 
   return (
+    <SplitPane narrow="detail" list={lista}>
     <div className="space-y-3">
       <Button variant="ghost" size="sm" onClick={() => router.back()}>
         ← Voltar
@@ -188,5 +197,6 @@ export default function ColetaPage() {
         </Button>
       </div>
     </div>
+    </SplitPane>
   )
 }
