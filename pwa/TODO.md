@@ -49,7 +49,7 @@
 - Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
 
 ### Técnico Qualificação
-- **Layout preso em 480px: ruim no notebook.** A casca do app
+- 👉 **PRÓXIMO PASSO (decidido em 2026-09-04).** **Layout preso em 480px: ruim no notebook.** A casca do app
   (`pwa/app/tecnico/qualificacao/layout.tsx`) tem `max-w-[480px]`, então em
   desktop tudo fica espremido numa coluna estreita no meio da tela, com o
   resto vazio. Relatado pelo dono do produto em 2026-09-04: o técnico nem
