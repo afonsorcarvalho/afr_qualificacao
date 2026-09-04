@@ -5,11 +5,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { Lightbulb } from 'lucide-react'
-import { CameraInput } from '../../../_components/CameraInput'
-import { FileInput } from '../../../_components/FileInput'
-import { MicButton } from '../../../_components/MicButton'
-import { ColetaList } from '../../../_components/ColetaList'
-import { SplitPane } from '../../../_components/SplitPane'
+import { CameraInput } from '../../../../_components/CameraInput'
+import { FileInput } from '../../../../_components/FileInput'
+import { MicButton } from '../../../../_components/MicButton'
 import { useCollectItem, useOsDetail } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import odooClient from '@/lib/odoo/client'
@@ -44,6 +42,8 @@ export default function ColetaPage() {
 
   const { lastUserId } = useTecnicoSettings()
   const userId = lastUserId ?? 0
+  // `relatorioId` vem daqui — a coluna esquerda (achados 2 e 3) mudou de dono
+  // para o `(painel)/layout.tsx`, mas esta página ainda precisa da própria OS.
   const osDetail = useOsDetail(oid, userId)
   const relatorioId = osDetail.data?.open_relatorio_id ?? null
 
@@ -57,50 +57,21 @@ export default function ColetaPage() {
 
   const mutation = useCollectItem(oid)
 
-  // Precisa ser calculado antes do `if (!item)` abaixo: a coleta e a OS
-  // carregam por queries separadas, então enquanto o item ainda busca, o
-  // pane da lista já pode ter o que mostrar. Sem isso, cada troca de coleta
-  // apagava e recriava a coluna inteira da esquerda (achado 2 da revisão).
-  const lista = osDetail.data ? (
-    <div className="space-y-4">
-      {/* Identidade da OS: sem isto, a rota da coleta perdia o nome/parceiro
-          que aparece em cima da lista em /[osId] — como o painel esquerdo
-          parece fixo em desktop, o título sumia em silêncio ao trocar de
-          coleta (achado 3 da revisão). Não duplica RelatorioHeader/
-          ReviewPanel/botão de finalizar — só a identidade. */}
-      <div className="rounded-lg bg-muted/30 p-3 shadow-sm border border-border/70">
-        <h1 className="text-lg font-semibold text-foreground">{osDetail.data.os.name}</h1>
-        <p className="text-sm text-muted-foreground/90">{osDetail.data.os.partner_id?.[1]}</p>
-      </div>
-      <ColetaList data={osDetail.data} osId={oid} selectedId={iid} />
-    </div>
-  ) : osDetail.isLoading ? (
-    // Achado 7: sem isto a coluna esquerda ficava em branco (380px vazios)
-    // enquanto a OS ainda carregava.
-    <LoadingState label="Carregando OS..." />
-  ) : null
-
   if (!item) {
-    return (
-      <SplitPane narrow="detail" list={lista}>
-        <LoadingState label="Carregando coleta..." />
-      </SplitPane>
-    )
+    return <LoadingState label="Carregando coleta..." />
   }
 
   if (!relatorioId) {
     return (
-      <SplitPane narrow="detail" list={lista}>
-        <div className="space-y-3">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
+      <div className="space-y-3">
+        <Button variant="ghost" size="sm" onClick={() => router.back()}>
           ← Voltar
           <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
         </Button>
-          <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
-            Inicie um relatório do dia antes de coletar.
-          </p>
-        </div>
-      </SplitPane>
+        <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
+          Inicie um relatório do dia antes de coletar.
+        </p>
+      </div>
     )
   }
 
@@ -146,7 +117,6 @@ export default function ColetaPage() {
   }
 
   return (
-    <SplitPane narrow="detail" list={lista}>
     <div className="space-y-3">
       <Button variant="ghost" size="sm" onClick={() => router.back()}>
         ← Voltar
@@ -229,6 +199,5 @@ export default function ColetaPage() {
         </Button>
       </div>
     </div>
-    </SplitPane>
   )
 }
