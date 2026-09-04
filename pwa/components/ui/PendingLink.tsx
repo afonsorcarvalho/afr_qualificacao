@@ -25,12 +25,16 @@ export function PendingLink({
   className,
   spinnerClassName,
   'aria-label': ariaLabel,
+  'aria-current': ariaCurrent,
 }: {
   href: string
   children: React.ReactNode
   className?: string
   spinnerClassName?: string
   'aria-label'?: string
+  /** Marca a linha aberta no painel de detalhe (DESIGN.md, "A Regra do Par":
+   *  estado nunca é comunicado só por cor). */
+  'aria-current'?: 'page' | 'true'
 }) {
   const router = useRouter()
   const { begin } = useNavProgress()
@@ -40,6 +44,7 @@ export function PendingLink({
     <a
       href={href}
       aria-label={ariaLabel}
+      aria-current={ariaCurrent}
       aria-busy={isPending || undefined}
       onClick={(e) => {
         // Deixa passar o comportamento nativo em nova aba / botão do meio.

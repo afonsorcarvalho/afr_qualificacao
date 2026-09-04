@@ -150,6 +150,15 @@ export async function listOsMine(
   return os.map((o) => ({ ...o, equipment_count: byOs.get(o.id)?.size ?? 0 }))
 }
 
+export interface OsDetailData {
+  os: OsTecnicoSummary
+  collect_items: ColetaItemDetail[]
+  open_relatorio_id: number | null
+  equipments: Record<number, EquipmentInfo>
+  instruments: Record<number, InstrumentInfo>
+  qualifs: Record<number, QualifInfo>
+}
+
 export async function getOsDetail(
   osId: number,
   // Não é mais usado pra achar o relatório do dia (o servidor resolve isso
@@ -159,14 +168,7 @@ export async function getOsDetail(
   // o corpo não o consome — sem ele o `next build` falha no
   // `@typescript-eslint/no-unused-vars`.
   _userId: number,
-): Promise<{
-  os: OsTecnicoSummary
-  collect_items: ColetaItemDetail[]
-  open_relatorio_id: number | null
-  equipments: Record<number, EquipmentInfo>
-  instruments: Record<number, InstrumentInfo>
-  qualifs: Record<number, QualifInfo>
-}> {
+): Promise<OsDetailData> {
   const [os] = await odooClient.searchRead<OsTecnicoSummary>(
     'afr.qualificacao.os',
     [['id', '=', osId]],

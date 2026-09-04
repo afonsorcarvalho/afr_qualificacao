@@ -31,6 +31,7 @@ export function ColetaCard({
   instruments = {},
   qualifs = {},
   mostrarTipo = false,
+  selected = false,
 }: {
   osId: number
   item: ColetaItemDetail
@@ -39,6 +40,8 @@ export function ColetaCard({
   /** Só marca o tipo quando a lista mistura QI/QO/QD — numa OS de um tipo só,
    *  a etiqueta seria a mesma em todas as linhas e viraria ruído. */
   mostrarTipo?: boolean
+  /** Linha aberta no painel de detalhe, em desktop. */
+  selected?: boolean
 }) {
   const Icon = ICONS[item.kind] ?? File
   // Tipo real do item. Antes ia `"installation"` fixo, então a etiqueta dizia
@@ -47,9 +50,12 @@ export function ColetaCard({
     ? qualifs[item.qualif_id[0]]?.qualification_type
     : undefined
   return (
-    <PendingLink href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}>
+    <PendingLink
+      href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}
+      aria-current={selected ? 'true' : undefined}
+    >
       <GlassCard
-        variant="hover"
+        variant={selected ? 'selected' : 'hover'}
         noPadding
         className="cursor-pointer p-3"
       >
