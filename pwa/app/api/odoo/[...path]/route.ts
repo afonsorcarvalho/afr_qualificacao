@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { origemCanonica, resolverAlvoOdoo } from '@/lib/server/odooTarget'
 
-const DEFAULT_ODOO_URL = process.env.ODOO_URL || 'http://localhost:8069'
-
-function normalizeTarget(raw: string | null | undefined): string {
-  if (!raw) return DEFAULT_ODOO_URL
-  let u = raw.trim().replace(/\/+$/, '')
-  if (!/^https?:\/\//i.test(u)) u = 'https://' + u
-  return u
+/** Erro JSON-RPC — é o formato que o `odooClient` já sabe ler. */
+function erro(mensagem: string, status: number) {
+  return NextResponse.json(
+    {
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: status, message: 'Bad Gateway', data: { message: mensagem } },
+    },
+    { status },
+  )
 }
 
 async function handler(
@@ -15,10 +19,21 @@ async function handler(
 ) {
   const { path } = await params
 
-  // URL-alvo vem do header (enviado pelo cliente) ou do cookie (persistido)
+  // URL-alvo vem do header (login) ou do cookie (persistido) — e passa pela
+  // allowlist antes de virar destino de `fetch`. Sem isso, qualquer um que
+  // alcance esta porta faz o servidor buscar host interno e lê a resposta.
   const headerTarget = request.headers.get('x-odoo-target')
   const cookieTarget = request.cookies.get('odoo-target')?.value
-  const base = normalizeTarget(headerTarget ?? cookieTarget)
+  const alvo = resolverAlvoOdoo({
+    header: headerTarget,
+    cookie: cookieTarget,
+    env: process.env as Record<string, string | undefined>,
+  })
+  if (!alvo.ok) {
+    return erro(alvo.motivo, 403)
+  }
+  const base = alvo.base
+  const headerTargetAceito = alvo.veioDoHeader
 
   const targetUrl = `${base}/${path.join('/')}${request.nextUrl.search}`
 
@@ -46,17 +61,19 @@ async function handler(
       redirect: 'follow',
     })
   } catch (err) {
-    return NextResponse.json(
-      {
-        jsonrpc: '2.0',
-        id: null,
-        error: {
-          code: 502,
-          message: 'Bad Gateway',
-          data: { message: `Falha ao conectar em ${base}: ${err instanceof Error ? err.message : 'erro desconhecido'}` },
-        },
-      },
-      { status: 502 }
+    return erro(
+      `Falha ao conectar em ${base}: ${err instanceof Error ? err.message : 'erro desconhecido'}`,
+      502,
+    )
+  }
+
+  // `redirect: 'follow'` acima poderia levar a resposta pra fora da allowlist
+  // (um 302 do Odoo apontando pra outro host). A allowlist vale pro destino
+  // final, não só pro primeiro salto.
+  if (odooResponse.url && origemCanonica(odooResponse.url) !== base) {
+    return erro(
+      `O servidor redirecionou para fora das origens autorizadas (${origemCanonica(odooResponse.url) ?? 'destino ilegível'}).`,
+      502,
     )
   }
 
@@ -83,16 +100,21 @@ async function handler(
 
   if (isLogout) {
     response.headers.append('Set-Cookie', 'session_id=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax')
-    response.headers.append('Set-Cookie', 'odoo-target=; Path=/; Max-Age=0; SameSite=Lax')
+    response.headers.append('Set-Cookie', 'odoo-target=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax')
   } else {
     const setCookieHeader = odooResponse.headers.get('set-cookie')
     if (setCookieHeader) {
       response.headers.set('Set-Cookie', setCookieHeader)
     }
 
-    // Persiste a URL-alvo em cookie para requisições subsequentes
-    if (headerTarget) {
-      response.headers.append('Set-Cookie', `odoo-target=${encodeURIComponent(base)}; Path=/; SameSite=Lax`)
+    // Persiste a URL-alvo em cookie para requisições subsequentes. `HttpOnly`
+    // porque só o servidor lê este cookie — o front guarda a URL escolhida no
+    // próprio authStore. Sem isso, script na página reescreve o alvo do proxy.
+    if (headerTargetAceito) {
+      response.headers.append(
+        'Set-Cookie',
+        `odoo-target=${encodeURIComponent(base)}; Path=/; HttpOnly; SameSite=Lax`,
+      )
     }
   }
 

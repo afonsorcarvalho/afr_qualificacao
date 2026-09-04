@@ -49,6 +49,28 @@
 - Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
 
 ### Técnico Qualificação
+- **Layout preso em 480px: ruim no notebook.** A casca do app
+  (`pwa/app/tecnico/qualificacao/layout.tsx`) tem `max-w-[480px]`, então em
+  desktop tudo fica espremido numa coluna estreita no meio da tela, com o
+  resto vazio. Relatado pelo dono do produto em 2026-09-04: o técnico nem
+  sempre está em campo — às vezes revisa a OS pelo notebook.
+  A decidir antes de mexer:
+  - até onde a coluna cresce (ex.: `max-w-[480px]` no celular, ~720px em
+    tablet, e layout de duas colunas — lista + detalhe da coleta — a partir
+    de ~1024px, aproveitando que o detalhe hoje é uma rota separada);
+  - se a navegação inferior vira barra lateral em desktop (`sticky bottom-0`
+    é padrão de polegar, não de mouse);
+  - assinatura no `SignaturePad` desenhada com mouse/trackpad — hoje só foi
+    testada com toque;
+  - alvos de toque continuam ≥44px (notebook com tela sensível existe), então
+    o ganho de espaço vai para densidade de informação, não para encolher
+    controle.
+  Isto contradiz o que está escrito hoje: `PRODUCT.md` princípio 6 ("Uma mão,
+  retrato, luva") e `DESIGN.md` ("Coluna única, sempre; retrato de celular é o
+  caso de projeto"). Os dois textos precisam ser reescritos na mesma passada,
+  senão a regra volta a proibir o que se quer fazer.
+  Verificação: as telas conferidas até hoje foram todas em 390×844/390×900 —
+  refazer a passada em 1280×800 e 1920×1080.
 - CollectedCard: mostrar campo `description` (observação) nos itens já coletados (OsDetail + RelatorioDetail)
 - ~~"Coletas realizadas" na tela de fechar turno contava a OS inteira.~~ **Resolvido
   em 2026-09-03**: o bloco agora mostra os três escopos — quantas coletas *neste
@@ -163,33 +185,25 @@ alcançáveis de verdade:
 
 Cobertura: `tests/test_authorization_scope.py`, 14 testes.
 
-### Contexto original (auditoria de 2026-07-27)
+### Contexto original (auditoria de 2026-07-27) — histórico
 
-Achados de uma auditoria adversarial que rodou junto da adequação PWA↔backend. **Nenhum é
-explorável hoje**: os 5 usuários do db têm os três grupos (Técnico/Usuário/Gestor) por implicação,
-então não existe conta puramente técnica. Passam a valer quando as contas do PWA forem criadas —
-e por isso essas contas devem receber **só** o grupo Técnico: com o grupo Usuário elas herdam a
-`ir.rule` permissiva e o lockdown inteiro vira enfeite.
+⚠️ **Nada aqui é pendência.** Os cinco achados desta auditoria adversarial
+foram todos fechados em 2026-09-03 (ver a seção acima); o texto fica só como
+registro do que existia e de por que demorou.
 
-- **`afr.qualificacao.cycle` / `.malha` sem `ir.rule`.** O grupo Técnico tem write nos dois
-  (`security/ir.model.access.csv:22,25`) sem escopo nenhum. Provado por sonda: um técnico que
-  **não** é o dono da OS editou o cycle de uma qualificação alheia já aprovada e certificada, e o
-  certificado do cliente passou de `valid` para `tampered`. Fix: espelhar o par de rules
-  (restritiva + permissiva no `group_afr_qualificacao_user`) usando
-  `qualificacao_id.os_id.tecnico_default_user_id`.
-- **`afr.qualificacao.collect.item`: CRUD completo, incluindo unlink, sem `ir.rule`.** Alcance
-  irrestrito em registros-filho de qualquer OS do banco.
-- **Report de certificado sem `groups_id`** (`reports/qualificacao_certificate_report.xml:3`). O
-  gate de `state == 'approved'` que foi adicionado em `action_print_certificate` **não** cobre
-  `/report/pdf/...` nem o menu Imprimir da UI — esses contornam o método. O único controle nesses
-  caminhos é a marca d'água `SEM VALIDADE` do template.
-- **`approver_id` é escrevível pelo técnico** (`models/qualificacao_os.py:96`,
-  `models/qualificacao.py:122`) e entra no `_snapshot_for_hash` como `"approver"` — um certificado
-  pode nomear um gestor que nunca aprovou nada.
-- **Botões do form da qualificação sem `groups=`** (`views/qualificacao_views.xml:43,50,57`):
-  `action_mark_approved`/`_rejected`/`action_cancel` agora sempre levantam `UserError` para
-  não-gestor, mas continuam visíveis. Além disso, o grupo Usuário perdeu a capacidade de aprovar
-  por esse form — mudança de comportamento não documentada, introduzida pelos guards.
+Na época **nenhum era explorável**: os 5 usuários do banco tinham os três
+grupos (Técnico/Usuário/Gestor) por implicação, então não existia conta
+puramente técnica — e com o grupo Usuário a `ir.rule` permissiva anula o
+lockdown inteiro. Os achados só viraram alcançáveis quando o Bloco F do
+checklist criou as contas só-Técnico, e foi aí que foram corrigidos.
+
+Os cinco: `cycle`/`malha` com write sem `ir.rule` (o grave — técnico alheio
+adulterava ciclo de qualificação já certificada e o certificado do cliente
+virava `tampered`); `collect.item` com CRUD irrestrito, unlink incluído;
+report de certificado sem `groups_id`, deixando `/report/pdf/...` e o menu
+Imprimir contornarem o gate de `state == 'approved'`; `approver_id` gravável
+por técnico, permitindo certificado que nomeia gestor que nunca aprovou; e os
+botões Aprovar/Reprovar/Cancelar visíveis para quem só receberia `UserError`.
 
 ### Migração para o addon (Tasks 2 e 4)
 - **Débito de lint herdado da origem.** O `next build` da origem nunca rodou de fato (no worktree
@@ -198,24 +212,32 @@ e por isso essas contas devem receber **só** o grupo Técnico: com o grupo Usu�
   `@typescript-eslint/no-explicit-any` virou `"warn"` em `pwa/.eslintrc.json` — o débito fica
   **visível** em toda build, não escondido. Restam ~30 `any` explícitos como warning; tipá-los é
   trabalho futuro, e a regra volta a `"error"` quando isso for feito.
-- **`/manifest.json` responde 307 sem sessão.** `pwa/middleware.ts` não isenta `.json` do gate de
-  autenticação, então o manifest só é servido depois do login. Comportamento **idêntico à origem**
-  (não é regressão da migração), mas afeta os itens E.1/E.2 do bloco E — PWA — de
-  `pwa/app/tecnico/qualificacao/F7_0_TEST_CHECKLIST.md` (manifest e "Add to Home Screen"). A
-  decidir: isentar `.json` no matcher do middleware, ou aceitar que o A2HS só funcione pós-login.
-- **`POST /api/odoo/.../session/destroy` devolve 502** no carregamento da tela de login (observado
-  na Task 4). **Diagnosticado no final review: benigno.** `AuthGuard.forceLogout()`
+- ~~`/manifest.json` respondia 307 sem sessão.~~ **Resolvido em 2026-09-03**: o bypass de
+  estáticos do `pwa/middleware.ts` não cobria `.json`/`.webmanifest`, então o manifesto só era
+  servido depois do login e o prompt de instalação nunca aparecia. Era comportamento idêntico ao
+  da origem, não regressão da migração. Agora responde 200 sem sessão e as rotas do app continuam
+  protegidas (307). Confirmado em Chrome de verdade em 2026-09-04 (E.1 do checklist).
+- ~~`POST /api/odoo/.../session/destroy` devolve 502 na tela de login.~~ **Benigno, diagnosticado
+  e encerrado.** `AuthGuard.forceLogout()`
   (`pwa/components/providers/AuthGuard.tsx:12-29`) dispara esse POST quando `serverUrl` está vazio
   no `authStore`; sem cookie `odoo-target`, `normalizeTarget(undefined)`
   (`pwa/app/api/odoo/[...path]/route.ts:5-10`) cai no `DEFAULT_ODOO_URL = 'http://localhost:8069'`,
   onde nada escuta nesse ambiente — o `fetch` falha e o `catch` devolve o 502 deliberado
   (`route.ts:48-61`). Não indica problema no proxy; não precisa de ação.
-- **Proxy de encaminhamento aberto em `/api/odoo/[...path]`.** `pwa/middleware.ts:11` isenta todo
-  `/api` do gate de sessão, e `pwa/app/api/odoo/[...path]/route.ts:19-23` honra um header
-  `x-odoo-target` fornecido pelo próprio chamador sem validar contra allowlist. Quem alcançar a
-  porta 3010 pode fazer o servidor Next buscar qualquer URL arbitrária (inclusive hosts internos da
-  rede) e ler a resposta — um SSRF/open proxy clássico. Herdado verbatim da origem
-  (`frontend_odoo`), não introduzido pela migração. **Não corrigido nesta wave** — só registrado
-  aqui porque não estava documentado em lugar nenhum e o README fala em prontidão para produção.
-  A decidir: allowlist de hosts, ou exigir que `x-odoo-target` bata com um valor já gravado em
-  cookie assinado no login.
+- ~~Proxy de encaminhamento aberto em `/api/odoo/[...path]`.~~ **Resolvido em 2026-09-04.**
+  O middleware isenta todo `/api` do gate de sessão e a rota honrava um header `x-odoo-target`
+  vindo do próprio chamador, sem validação: quem alcançasse a porta 3010 fazia o servidor Next
+  buscar qualquer URL — inclusive host interno que só ele enxerga — e lia a resposta (SSRF/open
+  proxy). Herdado verbatim da origem `frontend_odoo`, não introduzido pela migração.
+  Fechado com allowlist de origens (`lib/server/odooTarget.ts`, 17 testes): fixar um host não
+  servia, porque o técnico digita o servidor no login e o mesmo build atende instâncias
+  diferentes. Agora `ODOO_ALLOWED_ORIGINS` declara as origens válidas; `ODOO_URL` sozinho vale
+  como lista de um item; em `NODE_ENV=development` loopback e rede privada entram sem
+  configuração; fora isso **falha fechado** (403 com mensagem dizendo o que configurar).
+  Também fechados no mesmo passo: URL com credenciais embutidas (`http://permitido@evil.tld`),
+  esquema não-http, e redirecionamento que saía da allowlist depois do primeiro salto (a origem
+  final da resposta é reconferida). O cookie `odoo-target` virou `HttpOnly` — só o servidor o lê,
+  então script na página não reescreve mais o destino do proxy.
+  Verificado com o app rodando: `x-odoo-target: http://example.com` → 403,
+  `http://169.254.169.254` (metadata de nuvem) → 403, e o fluxo normal (listar bancos, login,
+  navegação, imagens das coletas) intacto.
