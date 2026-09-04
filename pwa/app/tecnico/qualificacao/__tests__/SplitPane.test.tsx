@@ -72,6 +72,20 @@ describe('SplitPane', () => {
     expect(root.className).not.toContain('lg:items-start')
   })
 
+  // Achado 4 da revisão de branch (2026-09-04): sem isto, um usuário de
+  // teclado precisava passar por ~24 links da lista antes de chegar no
+  // formulário. O link só some visualmente (sr-only), aparece no foco.
+  it('achado 4: tem um link de pular pra #detalhe antes da lista, e o pane de detalhe tem esse id', () => {
+    const { container } = setup('list')
+    const skipLink = screen.getByRole('link', { name: 'Ir para o formulário' })
+    expect(skipLink).toHaveAttribute('href', '#detalhe')
+    expect(skipLink.className).toContain('sr-only')
+    expect(skipLink.className).toContain('focus:not-sr-only')
+
+    const detalhe = container.querySelector('[data-pane="detail"]') as HTMLElement
+    expect(detalhe).toHaveAttribute('id', 'detalhe')
+  })
+
   it('as duas colunas rolam sozinhas em lg (min-h-0 + overflow-y-auto cada uma)', () => {
     const { container } = setup('list')
     const [lista, detalhe] = Array.from(

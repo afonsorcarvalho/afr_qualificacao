@@ -57,11 +57,36 @@ export default function ColetaPage() {
 
   const mutation = useCollectItem(oid)
 
-  if (!item) return <LoadingState label="Carregando coleta..." />
-
+  // Precisa ser calculado antes do `if (!item)` abaixo: a coleta e a OS
+  // carregam por queries separadas, então enquanto o item ainda busca, o
+  // pane da lista já pode ter o que mostrar. Sem isso, cada troca de coleta
+  // apagava e recriava a coluna inteira da esquerda (achado 2 da revisão).
   const lista = osDetail.data ? (
-    <ColetaList data={osDetail.data} osId={oid} selectedId={iid} />
+    <div className="space-y-4">
+      {/* Identidade da OS: sem isto, a rota da coleta perdia o nome/parceiro
+          que aparece em cima da lista em /[osId] — como o painel esquerdo
+          parece fixo em desktop, o título sumia em silêncio ao trocar de
+          coleta (achado 3 da revisão). Não duplica RelatorioHeader/
+          ReviewPanel/botão de finalizar — só a identidade. */}
+      <div className="rounded-lg bg-muted/30 p-3 shadow-sm border border-border/70">
+        <h1 className="text-lg font-semibold text-foreground">{osDetail.data.os.name}</h1>
+        <p className="text-sm text-muted-foreground/90">{osDetail.data.os.partner_id?.[1]}</p>
+      </div>
+      <ColetaList data={osDetail.data} osId={oid} selectedId={iid} />
+    </div>
+  ) : osDetail.isLoading ? (
+    // Achado 7: sem isto a coluna esquerda ficava em branco (380px vazios)
+    // enquanto a OS ainda carregava.
+    <LoadingState label="Carregando OS..." />
   ) : null
+
+  if (!item) {
+    return (
+      <SplitPane narrow="detail" list={lista}>
+        <LoadingState label="Carregando coleta..." />
+      </SplitPane>
+    )
+  }
 
   if (!relatorioId) {
     return (
@@ -106,7 +131,14 @@ export default function ColetaPage() {
       {
         onSuccess: () => {
           toast.success(skip ? 'Item pulado' : 'Coleta salva')
-          router.back()
+          // `router.back()` supunha que a lista era o único jeito de chegar
+          // aqui, então o histórico sempre alternava lista→detalhe. Em
+          // desktop a lista fica visível ao lado do detalhe (SplitPane) e
+          // pular lateralmente entre coletas é o fluxo esperado — "voltar"
+          // levava pra uma coleta já salva, virando um beco sem saída a
+          // cada save (achado 1 da revisão). Navegar pra frente, pra rota
+          // da OS, é sempre seguro nos dois layouts.
+          router.replace(`/tecnico/qualificacao/${oid}`)
         },
         onError: (e: any) => toast.error(e.message),
       },

@@ -43,6 +43,15 @@ export function SplitPane({
 }) {
   return (
     <div className="mx-auto w-full lg:grid lg:h-full lg:max-w-[1440px] lg:grid-cols-[minmax(320px,380px)_1fr] lg:grid-rows-1 lg:items-stretch lg:gap-6">
+      {/* Sem isto, tab a partir do topo passa por ~24 links da lista antes
+          de chegar no formulário — só aparece no foco (sr-only), então não
+          ocupa espaço nem aparece pra quem usa mouse/toque. */}
+      <a
+        href="#detalhe"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-primary-foreground"
+      >
+        Ir para o formulário
+      </a>
       <div
         data-pane="list"
         className={clsx(
@@ -53,6 +62,7 @@ export function SplitPane({
         {list}
       </div>
       <div
+        id="detalhe"
         data-pane="detail"
         className={clsx(
           'min-w-0 lg:block lg:min-h-0 lg:overflow-y-auto',

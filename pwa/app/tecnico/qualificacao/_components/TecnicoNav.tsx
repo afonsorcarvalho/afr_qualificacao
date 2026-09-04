@@ -40,6 +40,7 @@ export function TecnicoNav({ variant }: { variant: 'bottom' | 'side' }) {
   const isSide = variant === 'side'
   return (
     <nav
+      aria-label={isSide ? 'Navegação principal (lateral)' : 'Navegação principal (barra inferior)'}
       className={clsx(
         'bg-card',
         isSide
@@ -80,6 +81,10 @@ function NavItem({
   return (
     <a
       href={href}
+      // "page": este link leva a uma rota-destino de nível de app (OSs,
+      // Histórico, Perfil). Ver ColetaCard: lá a coleta selecionada usa
+      // aria-current="true" porque marca seleção dentro de uma lista, não a
+      // página atual — os dois valores divergem de propósito, não por acaso.
       aria-current={active ? 'page' : undefined}
       aria-busy={isPending || undefined}
       onClick={(e) => {

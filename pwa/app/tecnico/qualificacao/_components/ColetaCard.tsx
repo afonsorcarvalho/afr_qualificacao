@@ -52,6 +52,9 @@ export function ColetaCard({
   return (
     <PendingLink
       href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}
+      // "true": marca a linha selecionada dentro desta lista, não a página
+      // atual — por isso não é "page" aqui. Ver TecnicoNav, onde o mesmo
+      // atributo usa "page" porque lá o destino É a página.
       aria-current={selected ? 'true' : undefined}
     >
       <GlassCard

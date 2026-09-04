@@ -64,6 +64,20 @@ describe('TecnicoNav', () => {
     expect(nav.className).toContain('lg:hidden')
   })
 
+  // Achado 6 da revisão de branch (2026-09-04): as duas variantes ficam
+  // sempre no DOM (uma escondida por CSS conforme o breakpoint), então sem
+  // `aria-label` distinto um leitor de tela via landmarks encontra dois
+  // `<nav>` indistinguíveis.
+  it('achado 6: as duas variantes têm aria-label distinto', () => {
+    const { container: bottom } = render(<TecnicoNav variant="bottom" />)
+    const { container: side } = render(<TecnicoNav variant="side" />)
+    const navBottom = bottom.querySelector('nav') as HTMLElement
+    const navSide = side.querySelector('nav') as HTMLElement
+    expect(navBottom).toHaveAttribute('aria-label')
+    expect(navSide).toHaveAttribute('aria-label')
+    expect(navBottom.getAttribute('aria-label')).not.toBe(navSide.getAttribute('aria-label'))
+  })
+
   it('variante side é coluna vertical, só visível em lg, sem sombra flutuante', () => {
     const { container } = render(<TecnicoNav variant="side" />)
     const nav = container.querySelector('nav') as HTMLElement
