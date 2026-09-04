@@ -33,7 +33,7 @@ export default function OsDetailPage() {
   if (isLoading) return <LoadingState label="Carregando OS..." />
   if (error || !data) return <p className="text-center text-red-400">Erro ao carregar OS</p>
 
-  const { os, collect_items, open_relatorio_id, equipments, instruments } = data
+  const { os, collect_items, open_relatorio_id, equipments, instruments, qualifs } = data
   const pending_items = collect_items.filter((i) => i.state === 'pending')
   const done_items = collect_items.filter((i) => i.state === 'collected' || i.state === 'skipped')
 
@@ -48,6 +48,15 @@ export default function OsDetailPage() {
     }
     return Array.from(groups.values()).sort((a, b) => a.label.localeCompare(b.label))
   }
+  // A etiqueta de tipo (QI/QO/QD) só ganha sentido quando há mais de um tipo
+  // na mesma OS; senão repetiria a mesma sigla em toda linha.
+  const tiposNaOs = new Set(
+    collect_items
+      .map((i) => (i.qualif_id ? qualifs[i.qualif_id[0]]?.qualification_type : null))
+      .filter(Boolean),
+  )
+  const mostrarTipo = tiposNaOs.size > 1
+
   const groupList = groupByEquipment(pending_items)
   const doneGroupList = groupByEquipment(done_items)
 
@@ -148,7 +157,14 @@ export default function OsDetailPage() {
               <div className="space-y-2 pl-2">
                 {g.items.map((item) => (
                   open_relatorio_id ? (
-                    <ColetaCard key={item.id} osId={id} item={item} instruments={instruments} />
+                    <ColetaCard
+                      key={item.id}
+                      osId={id}
+                      item={item}
+                      instruments={instruments}
+                      qualifs={qualifs}
+                      mostrarTipo={mostrarTipo}
+                    />
                   ) : (
                     <div key={item.id} className="rounded-lg bg-muted/20 border border-border/40 p-3 opacity-60">
                       <p className="truncate text-sm text-foreground/90">{item.name}</p>

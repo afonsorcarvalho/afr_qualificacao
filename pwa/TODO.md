@@ -25,9 +25,21 @@
   tonal. O `globals.css` também perdeu ~370 linhas de utilitários herdados do
   app de Equipamentos (`*-glow`, `phase-*`, `ib-*`, `dashboard-mode`) — nenhum
   tinha uso aqui, e vários rodavam animação em loop.
-- **`KindPill` usa violeta/azul/roxo por tipo de qualificação** — cor como
-  categoria, não estado. Revisar contra a Regra do Estado. (Único resquício;
-  o componente só aparece quando o item tem `docx_section`.)
+- ~~`KindPill`: etiqueta mentia e usava cor como categoria.~~ **Resolvido em 2026-09-04
+  (corrigir e neutralizar).** Eram dois defeitos: (a) o chamador passava
+  `qualifType="installation"` fixo, então toda etiqueta saía azul escrita "QI" —
+  inclusive em coleta de QO, onde exibia "QI·QO"; só o sufixo vinha do dado
+  (`docx_section`). (b) As cinco cores codificavam *categoria*, única exceção à
+  Regra do Estado depois da limpeza do neon (verde ali significava QD, não
+  "coletado").
+  Agora `getOsDetail` traz `qualifs` (o `qualification_type` do registro-pai) e a
+  etiqueta exibe o tipo verdadeiro, em cinza neutro com `title`/`sr-only` por
+  extenso ("Qualificação de desempenho"). O gatilho também mudou: era
+  `docx_section` preenchido — campo do template Word, que quase nenhum item tem —
+  e passou a ser "a OS mistura mais de um tipo"; numa OS de tipo único a etiqueta
+  repetiria a mesma sigla em toda linha. Verificado na OS26-06-0002, que mistura
+  QD, Cal e QO. Print antes/depois em
+  https://claude.ai/code/artifact/aca3898d-5a98-4c0e-b93a-5b5446f0cde5
 - ~~Entradas animadas escondiam o conteúdo.~~ **Corrigido**: os `initial` de
   `framer-motion` partiam de `opacity: 0` (e `scale: 0`) no login e no
   visualizador de PDF. Se a animação não roda — aba em segundo plano, PWA
@@ -65,12 +77,12 @@
   sem-conexão, 403, 404 e 5xx, e sempre diz que o que ele preencheu continua ali. Conferido
   derrubando o container do Odoo: "O servidor não respondeu (erro 502). O que você preencheu
   continua aqui — tente de novo em instantes.".
-- **Leitura de OS não é restrita por técnico.** As `ir.rule` do grupo Técnico têm
-  `perm_read = False` (`afr_qualificacao/security/qualificacao_groups.xml:59`) — escopo só de
-  escrita. Um técnico com o toggle "Só minhas" desligado lista as OSs de todos os colegas
-  (verificado com conta só-Técnico em 2026-09-03). Foi deliberado no backend, mas o Bloco F do
-  checklist prometia isolamento de leitura. Decidir se restringe leitura ou se ajusta a
-  expectativa (e o texto do F.1/F.2).
+- ~~Leitura de OS não é restrita por técnico.~~ **Decidido em 2026-09-04: fica global mesmo.**
+  As `ir.rule` do grupo Técnico têm `perm_read = False`
+  (`afr_qualificacao/security/qualificacao_groups.xml:59`) — o escopo é só de escrita, e assim
+  permanece: um técnico enxerga as OSs dos colegas quando desliga "Só minhas". O que muda é a
+  expectativa registrada: o texto de F.1/F.2 do checklist, que prometia isolamento de leitura,
+  precisa ser reescrito para descrever o filtro do cliente, não uma record rule.
 - ~~Item `kind='outro'` sem anexo estourava ValidationError.~~ **Resolvido em 2026-09-03.**
   O backend `_check_required_has_file` sempre exigiu `file` para qualquer item em
   `state='collected'`, mas o front tratava `outro` como anexo opcional — salvar um item "Outro"
@@ -80,11 +92,12 @@
   o campo aparece como "Arquivo *", salvar sem anexo mostra `Anexe arquivo antes de salvar` e não
   dispara RPC nenhum (contador do proxy: 105 → 105); com anexo, grava `state=collected` com
   `filename` e `relatorio_id`. Item de teste apagado depois.
-- **"Só minhas" off esconde os rascunhos** (`pwa/app/tecnico/qualificacao/page.tsx:23`:
-  `filterMine ? drafts : []`). Desligar o filtro mostra *menos* cards quando as OSs alheias
-  estão em `draft` — foi o que travou o H3 até semear uma OS alheia em `scheduled`. Parece
-  deliberado (evitar inundar com rascunho dos outros), mas não está documentado nem comentado.
-  Confirmar a intenção e, se for regra mesmo, comentar no código e ajustar o texto do H3/A.3.
+- ~~"Só minhas" off esconde os rascunhos.~~ **Decidido em 2026-09-04: é regra mesmo.** Rascunho
+  alheio não entra na lista do técnico — desligar o filtro serve para ver as OSs *em andamento e
+  agendadas* dos colegas, não o rascunho de todo mundo. Pendente só a formalização: comentar a
+  intenção em `pwa/app/tecnico/qualificacao/page.tsx:23` (`filterMine ? drafts : []`) e ajustar o
+  texto de H3/A.3 do checklist, que hoje descreve como se desligar o filtro sempre mostrasse
+  *mais* cards.
 - ~~Relógio do dispositivo vs. do servidor no fechamento do relatório.~~ **Resolvido em
   2026-09-03.** Abertura e fechamento do relatório do dia agora são carimbados inteiramente pelo
   servidor: `action_start_daily_relatorio`/`action_get_daily_relatorio` decidem a janela do dia

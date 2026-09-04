@@ -43,6 +43,12 @@ export interface ColetaItemDetail {
   relatorio_id: [number, string] | false
 }
 
+/** Tipo da qualificação a que a coleta pertence — QI/QO/QD/QS/Calibração. */
+export interface QualifInfo {
+  id: number
+  qualification_type: string
+}
+
 export interface InstrumentInfo {
   id: number
   name: string
@@ -159,6 +165,7 @@ export async function getOsDetail(
   open_relatorio_id: number | null
   equipments: Record<number, EquipmentInfo>
   instruments: Record<number, InstrumentInfo>
+  qualifs: Record<number, QualifInfo>
 }> {
   const [os] = await odooClient.searchRead<OsTecnicoSummary>(
     'afr.qualificacao.os',
@@ -199,6 +206,24 @@ export async function getOsDetail(
     )
     equipments = Object.fromEntries(eqRecords.map((e) => [e.id, e]))
   }
+  // O tipo da qualificação vem do registro-pai: a etiqueta da lista exibia
+  // "QI" fixo pra qualquer item, inclusive os de QO.
+  const qualifIds = Array.from(
+    new Set(
+      collect_items
+        .map((i) => (i.qualif_id ? i.qualif_id[0] : null))
+        .filter((v): v is number => v !== null),
+    ),
+  )
+  let qualifs: Record<number, QualifInfo> = {}
+  if (qualifIds.length > 0) {
+    const qualifRecords = await odooClient.searchRead<QualifInfo>(
+      'afr.qualificacao',
+      [['id', 'in', qualifIds]],
+      ['qualification_type'],
+    )
+    qualifs = Object.fromEntries(qualifRecords.map((q) => [q.id, q]))
+  }
   const instrumentIds = Array.from(
     new Set(collect_items.flatMap((i) => i.standard_instrument_ids ?? [])),
   )
@@ -217,6 +242,7 @@ export async function getOsDetail(
     open_relatorio_id: openRelId || null,
     equipments,
     instruments,
+    qualifs,
   }
 }
 

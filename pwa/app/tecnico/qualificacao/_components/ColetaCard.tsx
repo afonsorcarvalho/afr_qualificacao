@@ -4,7 +4,7 @@ import { Camera, FileSpreadsheet, FileText, Database, File, ChevronRight } from 
 import { GlassCard } from '@/components/ui/GlassCard'
 import { KindPill } from './KindPill'
 import { InstrumentBadges } from './InstrumentBadges'
-import type { ColetaItemDetail, InstrumentInfo } from '@/lib/odoo/tecnico'
+import type { ColetaItemDetail, InstrumentInfo, QualifInfo } from '@/lib/odoo/tecnico'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   foto: Camera,
@@ -29,12 +29,23 @@ export function ColetaCard({
   osId,
   item,
   instruments = {},
+  qualifs = {},
+  mostrarTipo = false,
 }: {
   osId: number
   item: ColetaItemDetail
   instruments?: Record<number, InstrumentInfo>
+  qualifs?: Record<number, QualifInfo>
+  /** Só marca o tipo quando a lista mistura QI/QO/QD — numa OS de um tipo só,
+   *  a etiqueta seria a mesma em todas as linhas e viraria ruído. */
+  mostrarTipo?: boolean
 }) {
   const Icon = ICONS[item.kind] ?? File
+  // Tipo real do item. Antes ia `"installation"` fixo, então a etiqueta dizia
+  // "QI" até em coleta de QO.
+  const qualifType = item.qualif_id
+    ? qualifs[item.qualif_id[0]]?.qualification_type
+    : undefined
   return (
     <PendingLink href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}>
       <GlassCard
@@ -47,12 +58,7 @@ export function ColetaCard({
           <div className="flex-1 overflow-hidden">
             <div className="flex items-center justify-between gap-2">
               <strong className="truncate text-sm text-foreground">{item.name}</strong>
-              {item.docx_section && (
-                <KindPill
-                  qualifType="installation"
-                  subLabel={item.docx_section.split('_')[0]?.toUpperCase()}
-                />
-              )}
+              {mostrarTipo && qualifType && <KindPill qualifType={qualifType} />}
             </div>
             <p className="text-xs text-muted-foreground">
               {KIND_LABELS[item.kind] ?? item.kind}
