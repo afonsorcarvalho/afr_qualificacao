@@ -21,6 +21,13 @@ export default function HomePage() {
     ['in_progress', 'in_approved'].includes(o.state),
   )
   const scheduled = (data ?? []).filter((o) => o.state === 'scheduled')
+  // Rascunho só aparece entre as SUAS OSs — decisão do dono do produto
+  // (2026-09-04), não descuido. Desligar "Só minhas" serve pra enxergar o que
+  // os colegas têm em andamento e agendado; rascunho alheio é OS que ninguém
+  // começou a executar e só encheria a lista de quem está em campo.
+  //
+  // Consequência que já confundiu antes: num banco onde as OSs dos outros
+  // estão todas em rascunho, desligar o filtro mostra MENOS cards, não mais.
   const draft = filterMine ? (data ?? []).filter((o) => o.state === 'draft') : []
 
   return (

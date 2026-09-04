@@ -76,11 +76,29 @@ por `node .next/standalone/server.js` pra não perseguir diferença já conhecid
 **Execução de 2026-09-03: E.1 ✅, E.2 parcial, E.3/E.4 não verificáveis no
 headless, E.5 ⚠️.**
 
-- [x] E.1 Chrome DevTools → Application → Manifest carrega corretamente — ✅ **depois do fix**: `/manifest.json` respondia 307 pro `/login` porque o bypass de estáticos do `middleware.ts` não cobria `.json`. Agora responde 200 sem sessão, e as rotas do app continuam protegidas (307).
+- [x] E.1 Chrome DevTools → Application → Manifest carrega corretamente — ✅ **depois do fix**: `/manifest.json` respondia 307 pro `/login` porque o bypass de estáticos do `middleware.ts` não cobria `.json`. Agora responde 200 sem sessão, e as rotas do app continuam protegidas (307). **Confirmado em Chrome de verdade em 2026-09-04**: `manifest.json` aparece no Network com 304 (cacheado), sem erro no painel Application.
 - [~] E.2 "Add to Home Screen" disponível (DevTools Application) — parcial: `<link rel="manifest">` presente, manifesto e `icons/icon-192.png` baixados pelo browser (200). O prompt de instalação em si depende de service worker ativo (E.3) e não é observável no headless.
-- [ ] E.3 Service worker registrado e ativo — **não verificável neste ambiente.** Achado real: o `register: true` do `next-pwa` 5.6 só injeta o script de registro pelo Pages Router; com App Router o `sw.js` era gerado mas **nunca registrado**. Adicionado `components/providers/ServiceWorkerRegister.tsx` (registra `/sw.js` no `load`, só em produção) e montado no `app/layout.tsx`. O Chrome headless do `agent-browser` ignora service workers — mesmo um `navigator.serviceWorker.register()` manual resolve sem `installing`/`waiting`/`active` e sem nenhum GET de `/sw.js` —, então **este item continua pendente de confirmação em Chrome normal ou device real**.
-- [ ] E.4 Offline com cache: navegação para tela já visitada funciona — bloqueado por E.3 (sem SW ativo não há cache de navegação).
-- [~] E.5 Offline + tentar salvar coleta → toast erro claro (sem queue MVP) — ⚠️ o caminho de erro funciona (toast aparece, a página segura a foto anexada e o botão volta ao normal, nada se perde), mas a mensagem é crua: `Erro: Request failed with status code 502`. Falta traduzir/humanizar. Nota: `agent-browser set offline on` **não** serve pra este teste — a emulação de rede é por sessão CDP e evapora quando o comando termina (a coleta salvou "offline"); o teste foi feito derrubando o container do Odoo.
+- [ ] E.3 Service worker registrado e ativo — **ainda não verificado; duas tentativas frustradas por ambiente, nenhuma por defeito do app.**
+
+  1ª tentativa (headless, 2026-09-03): o Chrome do `agent-browser` ignora service
+  workers — nem `navigator.serviceWorker.register()` manual instala.
+
+  2ª tentativa (Chrome real, 2026-09-04): o WSL perdeu a ponte de `localhost`
+  com o Windows depois que a máquina dormiu (`UtilAcceptVsock: accept4 failed
+  110`), então o app foi aberto por `http://172.24.97.65:3010`. **IP em HTTP não
+  é contexto seguro**: o Chrome recusa registrar worker, o painel Service
+  workers fica vazio e o teste offline (E.4) cai em `ERR_INTERNET_DISCONNECTED`.
+  Nenhum dos dois diz nada sobre o código.
+
+  Para a 3ª tentativa, escolher um: restaurar o `localhost` (reiniciar o serviço
+  `LxssManager` no Windows, ou `wsl --shutdown`), ou liberar a origem em
+  `chrome://flags/#unsafely-treat-insecure-origin-as-secure` com
+  `http://172.24.97.65:3010`. O que já se sabe: `/sw.js` responde 200 (gerado
+  pelo Workbox) e o bundle de produção contém `serviceWorker.register('/sw.js')`.
+
+  Achado original: o `register: true` do `next-pwa` 5.6 só injeta o script de registro pelo Pages Router; com App Router o `sw.js` era gerado mas **nunca registrado**. Achado real: o `register: true` do `next-pwa` 5.6 só injeta o script de registro pelo Pages Router; com App Router o `sw.js` era gerado mas **nunca registrado**. Correção: `components/providers/ServiceWorkerRegister.tsx` registra `/sw.js` no `load`, só em produção, montado no `app/layout.tsx`.
+- [ ] E.4 Offline com cache: navegação para tela já visitada funciona — bloqueado por E.3. Tentado em Chrome real (2026-09-04) com Network → Offline: deu `ERR_INTERNET_DISCONNECTED`, como esperado sem worker registrado.
+- [x] E.5 Offline + tentar salvar coleta → toast erro claro (sem queue MVP) — ✅ o caminho de erro funciona (a página segura a foto anexada e o botão volta ao normal, nada se perde) e a mensagem foi humanizada: `O servidor não respondeu (erro 502). O que você preencheu continua aqui — tente de novo em instantes.` Nota: `agent-browser set offline on` **não** serve pra este teste — a emulação de rede é por sessão CDP e evapora quando o comando termina (a coleta salvou "offline"); o teste foi feito derrubando o container do Odoo.
 
 ## Bloco F — Record rules (record-level security)
 
