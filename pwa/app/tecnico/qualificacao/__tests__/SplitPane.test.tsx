@@ -46,10 +46,40 @@ describe('SplitPane', () => {
     expect(root.className).toContain('lg:max-w-[1440px]')
   })
 
-  it('a coluna da lista rola sozinha em lg', () => {
+  // Regressão 2026-09-04: a versão anterior confiava em `lg:sticky` +
+  // `lg:max-h-full`, que nunca chega a rolar sozinho — `max-height:100%`
+  // não resolve contra uma track de grid `auto` (sem altura definida), então
+  // quem rolava era o `<main>` inteiro, arrastando lista E detalhe juntos.
+  // Só um teste de classe não prova rolagem de verdade (jsdom não faz
+  // layout), mas prova que a receita certa está presente: o container tem
+  // altura definida (`lg:h-full` + `lg:grid-rows-1`, o "blowout fix" padrão
+  // de grid — track vira `minmax(0,1fr)` em vez de `auto`) e as DUAS colunas
+  // têm `lg:min-h-0 lg:overflow-y-auto` pra virarem seus próprios
+  // containers de rolagem. A verificação de rolagem de verdade é visual,
+  // num browser (Task 5 do plano de layout desktop).
+  it('o grid tem altura definida e track que não estoura (blowout fix)', () => {
     const { container } = setup('list')
-    const lista = container.querySelector('[data-pane="list"]') as HTMLElement
-    expect(lista.className).toContain('lg:sticky')
+    const root = container.firstElementChild as HTMLElement
+    expect(root.className).toContain('lg:h-full')
+    expect(root.className).toContain('lg:grid-rows-1')
+    // `lg:items-start` (o valor antigo) deixa cada coluna crescer pro seu
+    // próprio content-height, estourando a track de 1fr sem rolar — a mesma
+    // falha de antes com outra roupa. Precisa ser `stretch` (o default do
+    // grid, mas explícito aqui documenta a decisão) pra as colunas
+    // ocuparem exatamente a altura da row e `overflow-y-auto` ter o que
+    // fazer.
+    expect(root.className).toContain('lg:items-stretch')
+    expect(root.className).not.toContain('lg:items-start')
+  })
+
+  it('as duas colunas rolam sozinhas em lg (min-h-0 + overflow-y-auto cada uma)', () => {
+    const { container } = setup('list')
+    const [lista, detalhe] = Array.from(
+      container.querySelectorAll('[data-pane]'),
+    ) as HTMLElement[]
+    expect(lista.className).toContain('lg:min-h-0')
     expect(lista.className).toContain('lg:overflow-y-auto')
+    expect(detalhe.className).toContain('lg:min-h-0')
+    expect(detalhe.className).toContain('lg:overflow-y-auto')
   })
 })

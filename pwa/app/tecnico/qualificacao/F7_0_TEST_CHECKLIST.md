@@ -230,3 +230,83 @@ OS 4832 `OS26-08-0006-1` (`draft`) → uid 8, o par que H2/H3 comparam.
   Histórico falham por motivo alheio ao que testam. Depois de mexer no relógio,
   reiniciar o `npm run dev` com `.next` limpo: o cache gravado com mtime no
   futuro trava toda request (o `curl` no `/login` estourava 90s).
+
+## Layout desktop (2026-09-04)
+
+Verificação visual (Task 5 do plano
+`.superpowers/sdd/2026-09-04-pwa-tecnico-layout-desktop/`) via `agent-browser`
+(Chrome headless), `db qualificacao-dev`, `:8084`/`:3010`. Login como
+`gestor@teste.local` (uid 661), **não** como o `afonso@jgma.com.br` (uid 2)
+que o brief pedia — só havia a senha mestra do db manager em
+`~/.config/engenapp/secrets.md`, sem a senha de nenhum usuário de login.
+Layout é independente de qual usuário está logado, então os vereditos abaixo
+valem; o relato completo, com todas as mutações de dado feitas no ambiente
+pra viabilizar o teste, está no `task-5-report.md` do plano.
+
+**Bug real encontrado e corrigido nesta task:** `SplitPane.tsx` usava
+`lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto` pra fazer a coluna da
+lista rolar sozinha. Não funcionava — `max-height:100%` não resolve contra
+uma track de grid `auto` (sem altura definida), então `overflow-y-auto`
+nunca ativava e quem rolava era o `<main>` do layout inteiro, arrastando a
+lista E o formulário de detalhe juntos (confirmado rolando o `<main>` de
+verdade: o formulário some da tela). Fix: `lg:h-full lg:grid-rows-1`
+(`grid-template-rows: repeat(1, minmax(0,1fr))`, o "blowout fix" padrão de
+CSS Grid) no container + `lg:min-h-0 lg:overflow-y-auto` nas duas colunas +
+`lg:items-stretch` (era `items-start`, que também deixava as colunas
+estourarem a track). Puro Tailwind, sem `matchMedia`/`window.innerWidth`.
+Teste estendido em `SplitPane.test.tsx` (74 testes, 16 arquivos, `tsc`
+limpo).
+
+- [x] **1280×800 — sidebar, sem barra inferior.** `nav` da lateral com
+  `display:flex`; `nav` inferior com `display:none` (checado via
+  `getComputedStyle`, não só ausência na árvore de acessibilidade).
+- [x] **1280×800 — lista e formulário lado a lado.** Confirmado em
+  `/tecnico/qualificacao/4/coleta/211`: lista de coletas à esquerda,
+  formulário ("Malha de Temperatura #1", upload, Observação, Salvar) à
+  direita, os dois visíveis ao mesmo tempo (screenshot).
+- [x] **1280×800 — linha da coleta aberta marcada.** `aria-current="true"`
+  no link da coleta selecionada (checado no snapshot de acessibilidade, não
+  só cor).
+- [x] **1280×800 — coluna da esquerda rola sem levar a direita.** Bug
+  encontrado e corrigido (ver acima). Depois do fix: `[data-pane="list"]` é
+  o container de rolagem (`scrollHeight` 4149 vs `clientHeight` 725);
+  rolando-o via `scrollTop`, o formulário à direita fica parado
+  (screenshot antes/depois). Reverificado também na rota
+  `/tecnico/qualificacao/4` (`narrow="list"`, onde a coluna da esquerda
+  carrega a página toda — cabeçalho, relatório, lista, botão "Finalizar
+  relatório do dia"): rola sozinha até o fim, botão "Finalizar" alcançável,
+  painel direito ("Escolha uma coleta") parado.
+- [x] **1280×800 — sem barra de rolagem horizontal.**
+  `document.documentElement.scrollWidth === clientWidth` (1280 vs 1280).
+- [x] **1920×1080 — mesma navegação (sidebar).** `nav` lateral
+  `display:flex`, inferior `display:none`.
+- [x] **1920×1080 — conteúdo para em 1440px, centralizado.** Grid mede
+  exatamente `width:1440`; margens de 340px (esquerda, incluindo os ~200px
+  da sidebar) e 140px (direita) — centralizado dentro da área de conteúdo
+  (à direita da sidebar), não da janela inteira, como esperado. Sem barra
+  horizontal (1920 vs 1920).
+- [x] **1920×1080 — rolagem independente.** Reverificado explicitamente
+  (não só "deve ser igual ao 1280"): `[data-pane="list"]` como container de
+  rolagem (`scrollHeight` 4087 vs `clientHeight` 1005).
+- [x] **390×844 — regressão mobile, fluxo completo.** Home (cards em coluna
+  única, barra inferior) → OS 4 (coluna única) → coleta pendente (formulário
+  sozinho, **sem** sinal da lista — `[data-pane="list"]` com
+  `display:none` confirmado via `getComputedStyle`, não só screenshot) →
+  upload de planilha de teste + "Salvar coleta" (sucesso, item foi pra
+  "já coletadas", 25/25) → "Finalizar relatório do dia" → tela de fechamento
+  de turno (coluna única, barra inferior presente). Sem barra de rolagem
+  horizontal (390 vs 390) em nenhuma tela do fluxo.
+  ⚠️ O clique final em "Fechar relatório" (submissão de fato) **não
+  completou** — erro de backend não relacionado ao layout, detalhado no
+  `task-5-report.md`. As telas e a navegação até ali (o que este bloco
+  verifica) funcionaram normalmente.
+- [x] **Assinatura com mouse, em 1280×800.** Arrastando o mouse sobre o
+  `SignaturePad` (na tela de fechar turno) o traço aparece (confirmado por
+  pixels pintados no canvas via `getImageData`, não só visual: 1509 pixels
+  com alpha > 0 após o traço). "Limpar" apaga (0 pixels depois). Também
+  visto funcionando em 390×844 (mobile) no mesmo fluxo.
+
+Ferramental: `agent-browser eval` foi essencial pra diagnosticar o bug de
+rolagem (medir `scrollHeight`/`clientHeight` reais e simular `scrollTop`
+diretamente) — o snapshot de acessibilidade sozinho não revela containers de
+rolagem quebrados.

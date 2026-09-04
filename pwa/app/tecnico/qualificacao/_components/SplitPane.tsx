@@ -17,6 +17,20 @@ import { clsx } from 'clsx'
  * Custo aceito: em celular, a rota da coleta monta a lista escondida. Não há
  * requisição extra — as duas rotas já usam `useOsDetail`, então vem do cache
  * do React Query.
+ *
+ * Rolagem independente (fix 2026-09-04): a primeira versão usava
+ * `lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto` na coluna da lista,
+ * apostando que `max-height:100%` resolveria contra a altura do item do
+ * grid. Não resolve — o item do grid não tem altura definida (a track é
+ * `auto`, do tamanho do conteúdo), então `max-height:100%` vira `none` por
+ * spec, `overflow-y-auto` nunca ativa, e quem rola é o `<main>` inteiro lá
+ * de cima do layout — arrastando as duas colunas juntas. Confirmado rolando
+ * o `<main>` de verdade num browser: o formulário à direita sai da tela
+ * junto com a lista. Fix: `lg:grid-rows-1` no container (equivale a
+ * `grid-template-rows: repeat(1, minmax(0,1fr))` no Tailwind, a track
+ * "blowout fix" padrão) + `lg:h-full` pra dar altura definida à track, e
+ * `lg:min-h-0 lg:overflow-y-auto` nas DUAS colunas — cada uma vira seu
+ * próprio container de rolagem, limitado à altura da linha do grid.
  */
 export function SplitPane({
   list,
@@ -28,11 +42,11 @@ export function SplitPane({
   children: React.ReactNode
 }) {
   return (
-    <div className="mx-auto w-full lg:grid lg:max-w-[1440px] lg:grid-cols-[minmax(320px,380px)_1fr] lg:items-start lg:gap-6">
+    <div className="mx-auto w-full lg:grid lg:h-full lg:max-w-[1440px] lg:grid-cols-[minmax(320px,380px)_1fr] lg:grid-rows-1 lg:items-stretch lg:gap-6">
       <div
         data-pane="list"
         className={clsx(
-          'lg:sticky lg:top-0 lg:block lg:max-h-full lg:overflow-y-auto lg:pr-1',
+          'lg:block lg:min-h-0 lg:overflow-y-auto lg:pr-1',
           narrow === 'detail' && 'hidden',
         )}
       >
@@ -40,7 +54,10 @@ export function SplitPane({
       </div>
       <div
         data-pane="detail"
-        className={clsx('min-w-0 lg:block', narrow === 'list' && 'hidden')}
+        className={clsx(
+          'min-w-0 lg:block lg:min-h-0 lg:overflow-y-auto',
+          narrow === 'list' && 'hidden',
+        )}
       >
         {children}
       </div>
