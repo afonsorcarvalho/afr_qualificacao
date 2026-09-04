@@ -135,7 +135,9 @@ código: o tema "cyber/neon" com roxo, rosa, gradiente e glow nasceu como
 enfeite e sai de cena — o escuro fica, o brilho não.
 
 **Key Characteristics:**
-- Coluna única, sempre; retrato de celular é o caso de projeto, não o degradado.
+- A coluna é a unidade de leitura. Retrato de celular é o caso de projeto,
+  não o degradado; a partir de 1024px a tela pode exibir duas colunas — lista
+  e detalhe — e nada além disso.
 - Cor exclusivamente semântica (feito / pendente / erro).
 - Neutro escuro de base, herdado do código atual (#030712 → #0d1424).
 - Números tabulares em qualquer contagem, progresso ou carimbo de hora.
@@ -296,6 +298,13 @@ O componente central não é cartão, é **linha de tarefa** (`task-row`): fundo
 Superfície, 8px de raio, padding 12px 16px, altura mínima 64px, fio de 1px.
 Ícone de tipo à esquerda, nome ancorado, estado à direita, seta de avanço.
 
+**A Regra do Espaço Extra.** A largura ganha no desktop compra **mais linhas
+visíveis e mais meta por linha** — nunca aba, tabela larga ou toolbar. Essas
+três são exatamente a anti-referência "tela de ERP / backoffice Odoo" do
+PRODUCT.md, e uma tela larga é justamente onde a tentação aparece. Layout de
+duas colunas é permitido em um caso só: lista de coletas à esquerda, detalhe
+da coleta à direita, dentro da OS.
+
 - **Cartão aninhado está proibido.** O bloco "Qualificador / padrão cadastrado"
   dentro da linha de coleta vira texto Meta na própria linha; se estiver vazio,
   não é renderizado.
@@ -311,10 +320,19 @@ Superfície, 8px de raio, padding 12px 16px, altura mínima 64px, fio de 1px.
   dizendo o que fazer.
 
 ### Navigation
-Barra fixa inferior com três destinos (OSs, Histórico, Perfil), altura 56px,
-alvo de 44px por item, sombra Sobreposto. Item ativo em Tinta + ícone
-preenchido; inativo em Tinta Fraca. **Ícone é SVG de traço, nunca emoji** — o
-emoji atual (📋 📊 👤) é de app de consumo e sai.
+Três destinos (OSs, Histórico, Perfil), em duas variantes que dividem a mesma
+lógica de ativo e o mesmo tratamento de espera:
+
+- **Barra inferior**, abaixo de 1024px: fixa no rodapé, altura 56px, alvo de
+  44px por item, sombra Sobreposto. É o padrão de polegar.
+- **Coluna lateral**, a partir de 1024px: 200px de largura à esquerda, itens
+  empilhados com ícone + rótulo, alvo de 44px, item ativo com fundo
+  Superfície Elevada. Sem sombra — a coluna não flutua sobre conteúdo
+  rolável, então separa por fio de 1px (A Regra do Fio). Um rodapé fixo a
+  1080px de altura fica longe do olho e do cursor.
+
+Item ativo em Tinta + `aria-current`; inativo em Tinta Fraca. **Ícone é SVG de
+traço, nunca emoji.**
 
 ### Signature Pad (componente de assinatura)
 Área branca de 160px de altura, raio 8px, fio de 1px, com o botão "Limpar" em

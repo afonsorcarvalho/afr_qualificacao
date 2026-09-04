@@ -77,8 +77,15 @@ legítima porque mostra quanto falta; um gradiente decorativo não é.
 5. **Offline é rotina, não exceção.** Sinal cai no meio do turno o tempo todo.
    O app assume isso: nunca descarta o que o técnico já preencheu, e sempre diz
    se o registro chegou no servidor ou não.
-6. **Uma mão, retrato, luva.** Coluna única, alvo de toque grande, pouca
-   digitação. Se algo só funciona em tablet deitado, não funciona.
+6. **Uma mão, retrato, luva — e o notebook quando ele volta.** O caso de
+   projeto é o celular em retrato, numa mão só, de luva: é o piso de
+   qualidade e o que precisa funcionar sempre. Mas o técnico nem sempre está
+   em campo — às vezes revisa a OS pelo notebook, e ali a coluna de 480px no
+   meio de uma tela de 1920px é desperdício. Desktop é **o mesmo app mais
+   largo**, com no máximo um painel de detalhe ao lado da lista; não é uma
+   segunda arquitetura de informação. O espaço extra compra linha e contexto,
+   nunca controle menor: alvo de toque continua ≥44px, porque notebook com
+   tela sensível existe. Se algo só funciona em tela grande, não funciona.
 7. **O servidor é o relógio e a verdade.** Data, hora e janela do dia vêm do
    Odoo, nunca do aparelho — celular com relógio torto já produziu dado no
    futuro aqui. A tela nunca inventa número que o backend pode calcular.

@@ -49,28 +49,22 @@
 - Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
 
 ### Técnico Qualificação
-- 👉 **PRÓXIMO PASSO (decidido em 2026-09-04).** **Layout preso em 480px: ruim no notebook.** A casca do app
-  (`pwa/app/tecnico/qualificacao/layout.tsx`) tem `max-w-[480px]`, então em
-  desktop tudo fica espremido numa coluna estreita no meio da tela, com o
-  resto vazio. Relatado pelo dono do produto em 2026-09-04: o técnico nem
-  sempre está em campo — às vezes revisa a OS pelo notebook.
-  A decidir antes de mexer:
-  - até onde a coluna cresce (ex.: `max-w-[480px]` no celular, ~720px em
-    tablet, e layout de duas colunas — lista + detalhe da coleta — a partir
-    de ~1024px, aproveitando que o detalhe hoje é uma rota separada);
-  - se a navegação inferior vira barra lateral em desktop (`sticky bottom-0`
-    é padrão de polegar, não de mouse);
-  - assinatura no `SignaturePad` desenhada com mouse/trackpad — hoje só foi
-    testada com toque;
-  - alvos de toque continuam ≥44px (notebook com tela sensível existe), então
-    o ganho de espaço vai para densidade de informação, não para encolher
-    controle.
-  Isto contradiz o que está escrito hoje: `PRODUCT.md` princípio 6 ("Uma mão,
-  retrato, luva") e `DESIGN.md` ("Coluna única, sempre; retrato de celular é o
-  caso de projeto"). Os dois textos precisam ser reescritos na mesma passada,
-  senão a regra volta a proibir o que se quer fazer.
-  Verificação: as telas conferidas até hoje foram todas em 390×844/390×900 —
-  refazer a passada em 1280×800 e 1920×1080.
+- ~~**Layout preso em 480px: ruim no notebook.**~~ **Resolvido em 2026-09-04.**
+  A casca do app (`pwa/app/tecnico/qualificacao/layout.tsx`) cresce por
+  breakpoint: `<640px` → `max-w-[480px]`, `640–1023px` → `max-w-[720px]`,
+  `≥1024px` → coluna lateral de 200px + área de conteúdo (grade OS
+  lista/detalhe até `max-w-[1440px]`, demais páginas até `max-w-[880px]`). A
+  navegação vira barra lateral a partir de 1024px; alvos de toque seguem
+  ≥44px em toda largura. `PRODUCT.md` princípio 6 e `DESIGN.md` (Key
+  Characteristics, Navigation, Cards/Containers) foram reescritos na mesma
+  passada para permitir o layout. Spec:
+  `docs/superpowers/specs/2026-09-04-pwa-tecnico-layout-desktop-design.md`.
+- **Bloco de comemoração viola o DESIGN.md.** `[osId]/page.tsx` (~linhas 88-113)
+  tem gradiente esmeralda, `animate-pulse` em loop, blur e 🎉🏆🎊 quando todas as
+  coletas terminam. Isso contraria três Don'ts (gradiente decorativo, emoji como
+  ícone de interface, glow em loop) e o "a tela não comemora, informa" do
+  PRODUCT.md — ou seja, o item "Limpeza de neon. **Feita em 2026-09-03**" acima
+  está incompleto. Trocar por confirmação sóbria com o número de coletas.
 - CollectedCard: mostrar campo `description` (observação) nos itens já coletados (OsDetail + RelatorioDetail)
 - ~~"Coletas realizadas" na tela de fechar turno contava a OS inteira.~~ **Resolvido
   em 2026-09-03**: o bloco agora mostra os três escopos — quantas coletas *neste
