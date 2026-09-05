@@ -45,11 +45,17 @@ export function CollectedCard({
   item,
   canEdit = true,
   instruments = {},
+  selected = false,
 }: {
   osId: number
   item: ColetaItemDetail
   canEdit?: boolean
   instruments?: Record<number, InstrumentInfo>
+  /** Coleta aberta no painel direito, em desktop. O marcador fica no cartão
+   *  (e não num link, como no `ColetaCard`) porque aqui o único link é
+   *  "Recoletar", que some quando não há relatório aberto — e o deep link
+   *  para a coleta continua valendo nesse caso. */
+  selected?: boolean
 }) {
   const [lightbox, setLightbox] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
@@ -61,7 +67,12 @@ export function CollectedCard({
 
   return (
     <>
-      <GlassCard noPadding className="p-3">
+      <GlassCard
+        variant={selected ? 'selected' : 'default'}
+        noPadding
+        className="p-3"
+        aria-current={selected ? 'true' : undefined}
+      >
         <div className="flex items-start gap-3">
           {hasFile && isFoto ? (
             <button

@@ -59,13 +59,22 @@
   Characteristics, Navigation, Cards/Containers) foram reescritos na mesma
   passada para permitir o layout. Spec:
   `docs/superpowers/specs/2026-09-04-pwa-tecnico-layout-desktop-design.md`.
-- **Bloco de comemoração viola o DESIGN.md.** `[osId]/page.tsx` (~linhas 88-113)
-  tem gradiente esmeralda, `animate-pulse` em loop, blur e 🎉🏆🎊 quando todas as
-  coletas terminam. Isso contraria três Don'ts (gradiente decorativo, emoji como
-  ícone de interface, glow em loop) e o "a tela não comemora, informa" do
-  PRODUCT.md — ou seja, o item "Limpeza de neon. **Feita em 2026-09-03**" acima
-  está incompleto. Trocar por confirmação sóbria com o número de coletas.
-- CollectedCard: mostrar campo `description` (observação) nos itens já coletados (OsDetail + RelatorioDetail)
+- ~~**Bloco de comemoração viola o DESIGN.md.**~~ **Resolvido em 2026-09-05.** O bloco
+  tinha migrado de `[osId]/page.tsx` para `[osId]/(painel)/layout.tsx` com o painel
+  persistente, e lá seguia com gradiente esmeralda, dois blocos `animate-pulse` com
+  `blur-3xl`, `animate-bounce` e 🎉🏆🎊 — três Don'ts do DESIGN.md contra o "a tela não
+  comemora, informa" do PRODUCT.md. Virou confirmação sóbria: superfície tonal esmeralda
+  com fio de 1px, ícone `CheckCircle2` do lucide, "Todas as coletas concluídas", contagem
+  em `tabular-nums` e a linha de estado em texto puro (o pill `bg-muted/70 ring-1` dentro
+  do bloco era cartão aninhado, outro Don't). De quebra, a pluralização quebrada
+  ("2 de 2 **items** coletados") saiu junto. 1 teste novo em `PainelLayout.test.tsx`
+  varre o DOM por emoji, `animate-pulse`, `animate-bounce`, `bg-gradient-to-br` e
+  `blur-3xl`. Conferido na tela na OS26-08-0005-1 (tudo coletado, sem relatório aberto).
+- ~~CollectedCard: mostrar campo `description` (observação) nos itens já coletados
+  (OsDetail + RelatorioDetail).~~ **Já estava feito** (constatado em 2026-09-05):
+  `CollectedCard.tsx:95-99` renderiza a observação, `description` está na lista de campos
+  do `getOsDetail`/`getRelatorioDetail` (`lib/odoo/tecnico.ts:181,306`), e os dois
+  consumidores usam o mesmo componente. Item estava vencido no TODO.
 - ~~"Coletas realizadas" na tela de fechar turno contava a OS inteira.~~ **Resolvido
   em 2026-09-03**: o bloco agora mostra os três escopos — quantas coletas *neste
   turno* (número protagonista), o progresso da OS (`7 de 25`) e quantas faltam. Os
@@ -98,15 +107,24 @@
   seguem fora do grupo. Medido no browser: `scrollTop` 2405 antes e 2405 depois
   do clique, no mesmo nó do DOM. Spec em
   `docs/superpowers/specs/2026-09-04-pwa-tecnico-painel-persistente-design.md`.
-- **Item já coletado abre sem marcação no painel.** `ColetaList` passa `selected`
-  para o `ColetaCard` (coleta pendente), mas nunca para o `CollectedCard`. Abrir
-  uma coleta já feita no desktop deixa a lista sem nenhuma linha com
-  `aria-current` — o técnico perde a referência de onde está. Apontado pela
-  revisão do painel persistente (2026-09-04); é anterior àquele branch.
-- **Troca do painel direito não é anunciada.** Em desktop, clicar numa coleta
-  troca o conteúdo do painel da direita sem nada em `aria-live`: quem usa leitor
-  de tela não recebe aviso de que a tela mudou, porque a navegação não move o
-  foco. Apontado pela mesma revisão.
+- ~~**Item já coletado abre sem marcação no painel.**~~ **Resolvido em 2026-09-05.**
+  `ColetaList` agora passa `selected={item.id === selectedId}` também para o
+  `CollectedCard`, que aplica `variant="selected"` e `aria-current="true"` **no cartão** —
+  não num link, como faz o `ColetaCard`: aqui o único link é "Recoletar", que some quando
+  não há relatório aberto, e o deep link para a coleta continua valendo nesse caso.
+  2 testes em `ColetaList.test.tsx`; conferido no browser em 1280px nos dois ramos — com
+  relatório aberto (OS 4, item 213, clicando em "Recoletar") e **sem** relatório aberto
+  (OS 4830, deep link em `/coleta/3519`, onde não existe link nenhum para a coleta): o
+  painel direito diz "Inicie um relatório do dia antes de coletar" e o cartão coletado
+  aparece marcado do mesmo jeito.
+- ~~**Troca do painel direito não é anunciada.**~~ **Resolvido em 2026-09-05.**
+  `(painel)/layout.tsx` ganhou uma região viva (`aria-live="polite"`, `aria-atomic`,
+  `sr-only`) que diz "Coleta aberta: <nome>". Dois cuidados que o teste trava: ela fica
+  **fora** do `SplitPane` (a coluna da lista recebe `hidden` abaixo de 1024px, e conteúdo
+  em `display:none` não é anunciado — ficaria inerte justo no celular) e o nó existe
+  sempre, com o texto vazio quando nada está aberto (inserir região e texto juntos não
+  dispara anúncio na maioria dos leitores). 3 testes em `PainelLayout.test.tsx`;
+  conferido no browser lendo `textContent` da região depois do clique.
 - ~~Erro de rede aparecia cru pro técnico~~ (`Erro: Request failed with status code 502`).
   **Corrigido**: a tradução vive no interceptor do `odooClient`, então toda tela herda. Distingue
   sem-conexão, 403, 404 e 5xx, e sempre diz que o que ele preencheu continua ali. Conferido
@@ -219,6 +237,13 @@ por técnico, permitindo certificado que nomeia gestor que nunca aprovou; e os
 botões Aprovar/Reprovar/Cancelar visíveis para quem só receberia `UserError`.
 
 ### Migração para o addon (Tasks 2 e 4)
+- ~~`next build` quebrado no `main` por binding morto.~~ **Corrigido em 2026-09-05.**
+  `const { data, isLoading, isFetching, ... } = useOsDetail(...)` no `(painel)/layout.tsx`:
+  `isFetching` deixou de ser usado quando `atualizandoManual` entrou, e
+  `@typescript-eslint/no-unused-vars` é **erro** — a build de produção já falhava sem
+  estas mudanças. Verificado com `git stash` (arquivos rastreados de volta ao conteúdo de
+  `20add57`): o mesmo erro aparecia em `33:28`, e o lint só lê o fonte, então nada do
+  working tree entrava na conta. Binding removido.
 - **Débito de lint herdado da origem.** O `next build` da origem nunca rodou de fato (no worktree
   de origem o `next lint` aborta por conflito de plugin com o `.eslintrc.json` do repo pai). Aqui
   ele roda e acusava 41 erros; os 5 defeitos reais (imports/bindings mortos) foram removidos, e

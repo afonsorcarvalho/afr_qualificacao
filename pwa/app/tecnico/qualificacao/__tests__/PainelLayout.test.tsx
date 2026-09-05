@@ -155,4 +155,71 @@ describe('PainelLayout', () => {
       (c2.querySelector('[data-pane="list"]') as HTMLElement).className,
     ).toContain('hidden')
   })
+
+  it('anuncia a troca do painel direito numa região viva sempre presente', () => {
+    // A região precisa existir ANTES da troca: inserir o nó junto com o texto
+    // não é anunciado pela maioria dos leitores de tela. Por isso ela nasce
+    // vazia e só o texto muda.
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: osDetailData, isLoading: false, isFetching: false, error: null,
+      refetch: vi.fn(),
+    } as any)
+    const { unmount } = wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    const regiao = screen.getByTestId('painel-anuncio')
+    expect(regiao).toHaveAttribute('aria-live', 'polite')
+    expect(regiao).toHaveTextContent('')
+    unmount()
+
+    pathname = '/tecnico/qualificacao/4/coleta/7'
+    wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    expect(screen.getByTestId('painel-anuncio')).toHaveTextContent(/Ciclo 7/)
+  })
+
+  it('a região viva fica fora dos branches de carregando e erro', () => {
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: undefined, isLoading: true, isFetching: true, error: null,
+      refetch: vi.fn(),
+    } as any)
+    wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    expect(screen.getByTestId('painel-anuncio')).toBeInTheDocument()
+  })
+
+  it('a região viva não está dentro do painel escondido em tela estreita', () => {
+    // `display:none` não é anunciado: dentro da coluna da lista a região
+    // ficaria inerte justo no celular, onde a rota troca a tela inteira.
+    pathname = '/tecnico/qualificacao/4/coleta/7'
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: osDetailData, isLoading: false, isFetching: false, error: null,
+      refetch: vi.fn(),
+    } as any)
+    const { container } = wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    const lista = container.querySelector('[data-pane="list"]') as HTMLElement
+    expect(lista.className).toContain('hidden')
+    expect(lista.querySelector('[data-testid="painel-anuncio"]')).toBeNull()
+  })
+
+  it('OS concluída informa sem comemorar: sem emoji, gradiente ou pulse', () => {
+    const tudoColetado = {
+      ...osDetailData,
+      collect_items: osDetailData.collect_items.map((i: any) => ({
+        ...i, state: 'collected',
+      })),
+    }
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: tudoColetado, isLoading: false, isFetching: false, error: null,
+      refetch: vi.fn(),
+    } as any)
+    const { container } = wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    expect(screen.getByText(/Todas as coletas concluídas/)).toBeInTheDocument()
+    expect(screen.getByText(/2 de 2/)).toBeInTheDocument()
+    expect(screen.getByText(/Pronto pra finalizar o relatório/)).toBeInTheDocument()
+    const html = container.innerHTML
+    // Sem flag `u`: o alvo do tsconfig é anterior a es6. O par substituto
+    // cobre todo o plano astral, que é onde mora emoji.
+    expect(html).not.toMatch(/[\uD800-\uDBFF][\uDC00-\uDFFF]/)
+    expect(html).not.toContain('animate-pulse')
+    expect(html).not.toContain('animate-bounce')
+    expect(html).not.toContain('bg-gradient-to-br')
+    expect(html).not.toContain('blur-3xl')
+  })
 })

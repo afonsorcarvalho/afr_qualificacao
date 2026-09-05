@@ -128,6 +128,7 @@ export function ColetaList({
                     item={item}
                     canEdit={!!open_relatorio_id}
                     instruments={instruments}
+                    selected={item.id === selectedId}
                   />
                 ))}
               </div>

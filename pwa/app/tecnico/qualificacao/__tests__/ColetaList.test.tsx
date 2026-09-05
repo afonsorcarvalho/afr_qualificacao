@@ -64,4 +64,18 @@ describe('ColetaList', () => {
     expect(screen.getByText(/Inicie o relatório do dia/)).toBeInTheDocument()
     expect(screen.getByText('Prévia das coletas (2)')).toBeInTheDocument()
   })
+
+  it('coleta já feita aberta no painel também recebe aria-current', () => {
+    // `CollectedCard` não é link (o único é "Recoletar", que some sem
+    // relatório aberto), então o marcador vive no cartão.
+    const { container } = render(<ColetaList data={data} osId={4} selectedId={3} />)
+    const marcados = container.querySelectorAll('[aria-current="true"]')
+    expect(marcados).toHaveLength(1)
+    expect(marcados[0]).toHaveTextContent('Ciclo 3')
+  })
+
+  it('sem seleção, nenhuma coleta feita fica marcada', () => {
+    const { container } = render(<ColetaList data={data} osId={4} />)
+    expect(container.querySelectorAll('[aria-current="true"]')).toHaveLength(0)
+  })
 })

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useTransition } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
+import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { useNavProgress } from '@/components/providers/NavProgress'
@@ -30,7 +31,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
   const pathname = usePathname()
   const { lastUserId } = useTecnicoSettings()
   const userId = lastUserId ?? 0
-  const { data, isLoading, isFetching, error, refetch } = useOsDetail(id, userId)
+  const { data, isLoading, error, refetch } = useOsDetail(id, userId)
   const startMutation = useStartDailyRelatorio()
   const { begin } = useNavProgress()
   // A ida pra tela de fechar turno também busca dados: sem `useTransition` o
@@ -128,31 +129,29 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
           )}
 
           {pending_items.length === 0 && done_items.length > 0 && (
-            <div className="relative overflow-hidden rounded-2xl border-2 border-emerald-400/60 bg-gradient-to-br from-emerald-500/30 via-teal-500/20 to-cyan-500/20 p-5 text-center shadow-xl shadow-emerald-500/30">
-              <div className="pointer-events-none absolute -top-10 -left-10 h-40 w-40 animate-pulse rounded-full bg-emerald-400/30 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-10 -right-10 h-40 w-40 animate-pulse rounded-full bg-cyan-400/30 blur-3xl" />
-              <div className="relative">
-                <div className="mb-2 flex justify-center gap-2 text-4xl">
-                  <span className="animate-bounce" style={{ animationDelay: '0ms' }}>🎉</span>
-                  <span className="animate-bounce" style={{ animationDelay: '120ms' }}>🏆</span>
-                  <span className="animate-bounce" style={{ animationDelay: '240ms' }}>🎊</span>
+            // Confirmação, não comemoração: o PRODUCT.md diz que a tela
+            // informa e o DESIGN.md proíbe gradiente decorativo, emoji como
+            // ícone e animação em loop — o bloco anterior tinha os três.
+            <div className="rounded-lg border border-emerald-600/40 bg-emerald-500/10 p-3 dark:border-emerald-500/30">
+              <div className="flex items-start gap-2">
+                <CheckCircle2
+                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400"
+                  aria-hidden
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    Todas as coletas concluídas
+                  </p>
+                  <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                    {done_items.length} de {done_items.length}{' '}
+                    {done_items.length > 1 ? 'itens coletados' : 'item coletado'} nesta OS.
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {open_relatorio_id
+                      ? 'Pronto pra finalizar o relatório do dia.'
+                      : 'Ordem de Serviço concluída.'}
+                  </p>
                 </div>
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200">Parabéns, técnico!</p>
-                <h3 className="mt-1 text-2xl font-extrabold text-foreground drop-shadow">
-                  Todas as coletas concluídas
-                </h3>
-                <p className="mt-2 text-sm text-emerald-100/90">
-                  {done_items.length} de {done_items.length} item{done_items.length > 1 ? 's coletados' : ' coletado'} nesta OS.
-                </p>
-                {open_relatorio_id ? (
-                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-1 text-xs font-semibold text-foreground ring-1 ring-foreground/20">
-                    ✓ Pronto pra finalizar o relatório
-                  </p>
-                ) : (
-                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-1 text-xs font-semibold text-foreground ring-1 ring-foreground/20">
-                    ✓ Ordem de Serviço concluída
-                  </p>
-                )}
               </div>
             </div>
           )}
@@ -181,9 +180,28 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
     </div>
   )
 
+  // Em desktop, clicar numa coleta troca só o painel direito e o foco não
+  // se move — sem isto, quem usa leitor de tela não recebe aviso nenhum de
+  // que a tela mudou. Fica FORA do `SplitPane` de propósito: a coluna da
+  // lista ganha `hidden` em tela estreita, e conteúdo em `display:none` não
+  // é anunciado. O nó existe sempre e só o texto muda; inserir região e
+  // texto juntos não dispara anúncio na maioria dos leitores.
+  const itemAberto = data?.collect_items.find((i) => i.id === selectedId)
+  const anuncio = itemAberto ? `Coleta aberta: ${itemAberto.name}` : ''
+
   return (
-    <SplitPane narrow={emColeta ? 'detail' : 'list'} list={listaEsquerda}>
-      {children}
-    </SplitPane>
+    <>
+      <p
+        data-testid="painel-anuncio"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {anuncio}
+      </p>
+      <SplitPane narrow={emColeta ? 'detail' : 'list'} list={listaEsquerda}>
+        {children}
+      </SplitPane>
+    </>
   )
 }
