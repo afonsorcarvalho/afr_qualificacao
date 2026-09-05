@@ -64,7 +64,11 @@ export default function ColetaPage() {
   if (!relatorioId) {
     return (
       <div className="space-y-3">
-        <Button variant="ghost" size="sm" onClick={() => router.back()}>
+        {/* Em ≥1024px o (painel)/layout.tsx já mostra um "← Voltar" na coluna
+            da lista; sem lg:hidden este teria um segundo botão idêntico ao
+            lado. Abaixo de 1024px a lista fica oculta, então este continua
+            sendo o único caminho de volta. */}
+        <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => router.back()}>
           ← Voltar
           <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
         </Button>
@@ -118,7 +122,11 @@ export default function ColetaPage() {
 
   return (
     <div className="space-y-3">
-      <Button variant="ghost" size="sm" onClick={() => router.back()}>
+      {/* Em ≥1024px o (painel)/layout.tsx já mostra um "← Voltar" na coluna
+          da lista; sem lg:hidden este teria um segundo botão idêntico ao
+          lado. Abaixo de 1024px a lista fica oculta, então este continua
+          sendo o único caminho de volta. */}
+      <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => router.back()}>
         ← Voltar
         <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
       </Button>

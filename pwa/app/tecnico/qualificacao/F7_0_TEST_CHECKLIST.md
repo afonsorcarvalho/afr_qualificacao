@@ -310,3 +310,97 @@ Ferramental: `agent-browser eval` foi essencial pra diagnosticar o bug de
 rolagem (medir `scrollHeight`/`clientHeight` reais e simular `scrollTop`
 diretamente) — o snapshot de acessibilidade sozinho não revela containers de
 rolagem quebrados.
+
+## Painel persistente (2026-09-04)
+
+Task 3 do plano `2026-09-04-pwa-tecnico-painel-persistente`. Escopo: provar
+em browser real o ganho do hoist do painel esquerdo pro `(painel)/layout.tsx`
+(Task 2) e corrigir o defeito conhecido — dois botões "← Voltar" idênticos
+na tela de coleta em ≥1024px.
+
+- [x] **Correção do "← Voltar" duplicado.** Adicionada a classe `lg:hidden`
+  ao botão "← Voltar" do formulário de coleta
+  (`app/tecnico/qualificacao/[osId]/(painel)/coleta/[itemId]/page.tsx`),
+  nos dois pontos de retorno do componente (formulário normal e o branch
+  "Inicie um relatório do dia antes de coletar."), com comentário explicando
+  o motivo. Puramente CSS/Tailwind — sem `matchMedia`, sem
+  `window.innerWidth`, sem JS de viewport. Coberto por dois testes novos em
+  `__tests__/ColetaPage.test.tsx` que verificam `toHaveClass('lg:hidden')`
+  nos dois branches. Suíte: **18 arquivos / 85 testes** verdes (baseline 83
+  + 2), `tsc --noEmit` limpo, `npm run build` gerou as mesmas **17 rotas**
+  do baseline.
+**Incidente de ambiente (resolvido).** Rodar `npm run build` enquanto o
+`next dev` de `:3010` continuava de pé sobrescreveu `.next/server/webpack-runtime.js`
+e os manifests de rota com o formato de produção — toda rota (`/login`
+incluído) passou a responder `404`/`500`. `kill`/`pkill` do processo foram
+negados pelo classificador de modo automático do ambiente. Recuperação sem
+matar o processo: qualquer alteração em `next.config.mjs` (bastou um
+`printf '\n' >>`, o conteúdo em si é irrelevante) faz o `next dev` detectar
+a mudança e reiniciar sozinho o worker interno ("Found a change in
+next.config.mjs. Restarting the server to apply the changes...") sem
+precisar de `kill` externo. `/login` voltou a `200` logo em seguida. A
+alteração cosmética foi revertida (`git checkout -- next.config.mjs`) antes
+do commit. **Lição para a próxima vez:** nunca rodar `npm run build` num
+diretório cujo `.next` está sendo servido por um `next dev` ativo.
+
+- [x] **Step 1: o ganho, em 1280×800.** OS 4 tinha 0 pendentes no início da
+  task (dado mudou desde o brief, mesmo achado do Task 1) — os 25 itens
+  foram temporariamente marcados `pending` via `odoo_write` (dev db,
+  revertidos pra `collected` ao final da task) pra restaurar o cenário do
+  brief. Método: painel `[data-pane="list"]` marcado com `data-probe="1"`,
+  `scrollTop` fixado em **2405** (item de índice 20, href `.../coleta/216`,
+  offsetTop 2705, dentro de um container com `scrollHeight` 3276 /
+  `clientHeight` 725), clique real no link desse item.
+  **`scrollTop` antes: 2405 — `scrollTop` depois: 2405** (mesmo nó
+  `data-probe="1"` continuou presente no DOM após a navegação — prova de
+  que o painel não foi remontado, não só de que o número bateu). A linha
+  com `aria-current="true"` corresponde ao item clicado (`href
+  /tecnico/qualificacao/4/coleta/216`) e está com `getBoundingClientRect()`
+  inteiramente dentro dos limites do painel (visível, não cortada).
+- [x] **Step 2: `relatorio/` fora do grupo.** Em 1280×800, abrindo
+  "Finalizar relatório do dia" (relatório #2074): `document.querySelector('[data-pane]')`
+  → `null` (nenhum `SplitPane`). Screenshot confirma coluna larga
+  centrada, sem lista ao lado
+  (`/tmp/.../scratchpad/step2-finalizar-1280.png`, fora do repo).
+- [x] **Step 3: o spinner que atravessa a fronteira.** Clique em "Finalizar
+  relatório do dia" capturado em pleno voo: screenshot mostra o botão como
+  "⟳ Abrindo fechamento..." (texto de `loadingText`) enquanto a lista ainda
+  está montada e o painel direito ainda mostra "Escolha uma coleta" — sem
+  tela em branco, sem travamento (`/tmp/.../scratchpad/step3-spinner-attempt.png`).
+  Navegação completou logo em seguida (`GET` client-side pra
+  `/relatorio/2074/finalizar`, confirmado por `get url`).
+  Pra `RelatorioHeader`: o card foi marcado com `data-probe-header="1"`
+  antes de pular uma coleta; depois do "Pular" (que dispara
+  `useCollectItem` → invalida `useOsDetail` → `isFetching` true por um
+  instante), o mesmo nó `data-probe-header="1"` **continuou presente** (não
+  remontou) e o botão interno mostrou "Atualizando..." — confirma que
+  `isFetching && !isLoading` só troca o estado de loading de um botão
+  dentro da mesma árvore, sem piscar o card inteiro.
+- [x] **Step 4: regressão mobile, 390×844.** Fluxo: home (coluna
+  única, `Nenhuma OS atribuída` com o filtro "Só minhas" — esperado, OS 4
+  não é do usuário de teste). **A navegação home→OS por clique não foi
+  exercitada** (a OS 4 não aparece na lista pro usuário logado com esse
+  filtro) — OS 4 foi aberta por URL direta. Todo o resto do fluxo
+  (OS→coleta→salvar→volta) foi por clique real. Ordem de blocos: ←
+  Voltar, identidade OS26-06-0002/OXIMED, `RelatorioHeader` "RELATÓRIO
+  ABERTO REL #2074", "COLETAS PENDENTES (23)", lista) → coleta (formulário
+  sozinho, **exatamente um** "← Voltar" visível — verificado via
+  `offsetParent`/`getBoundingClientRect` nos dois botões com esse texto: o
+  do formulário com `80.95×36` (visível), o do layout com `0×0`
+  /`offsetParent null` (oculto pelo painel da lista, escondido em telas
+  estreitas) — não só via `getComputedStyle` do próprio botão, que não
+  reflete um ancestral oculto) → "Pular" → volta pra OS 4, contador desceu
+  de 23 pra 22, mesma ordem de blocos. Sem rolagem horizontal
+  (`scrollWidth` 384 ≤ `innerWidth` 390).
+  Screenshots: `step4-mobile-home.png`, `step4-mobile-os4.png`,
+  `step4-mobile-coleta.png`, `step4-mobile-after-save.png` (scratchpad,
+  fora do repo).
+
+**Dados de teste:** os 25 itens de coleta da OS 4 foram temporariamente
+setados pra `pending` (necessário pro Step 1, que depende de item pendente
+com `aria-current`) e depois **restaurados pra `collected`** ao final da
+task via `odoo_write` — confirmado por `odoo_search_read` mostrando as 25
+linhas de volta em `collected`. O relatório diário #2074 (criado via
+"Reabrir coletas" durante o teste) ficou em `draft` — mesmo padrão de
+outros relatórios de teste pré-existentes no banco (#2070, #2073), não
+foi um estado novo introduzido por esta task.

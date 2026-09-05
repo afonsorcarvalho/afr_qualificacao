@@ -133,4 +133,39 @@ describe('ColetaPage', () => {
   // coluna esquerda) migraram para PainelLayout.test.tsx — contra a página
   // isolada, sem o layout ao redor, essas garantias não têm mais onde
   // asserir: a coluna esquerda não é mais desta página.
+
+  it('Task 3: o "← Voltar" do formulário some em ≥1024px (lg:hidden) — o layout já tem o seu', async () => {
+    vi.mocked(odooClient.searchRead).mockResolvedValue([item])
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: osDetailData,
+      isLoading: false,
+    } as any)
+    vi.mocked(hooks.useCollectItem).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as any)
+
+    renderPage()
+    const voltarBtn = await screen.findByRole('button', { name: /Voltar/ })
+    expect(voltarBtn).toHaveClass('lg:hidden')
+  })
+
+  it('Task 3: o "← Voltar" da tela "inicie um relatório" também tem lg:hidden', async () => {
+    vi.mocked(odooClient.searchRead).mockResolvedValue([item])
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: { ...osDetailData, open_relatorio_id: null },
+      isLoading: false,
+    } as any)
+    vi.mocked(hooks.useCollectItem).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as any)
+
+    renderPage()
+    const voltarBtn = await screen.findByRole('button', { name: /Voltar/ })
+    expect(voltarBtn).toHaveClass('lg:hidden')
+    expect(
+      await screen.findByText('Inicie um relatório do dia antes de coletar.'),
+    ).toBeInTheDocument()
+  })
 })
