@@ -88,18 +88,25 @@
   produção), mas o Chrome headless do `agent-browser` ignora service workers — nem o registro
   manual instala. Validar em navegador normal/device: SW ativo, prompt de instalação e navegação
   offline (E.2/E.3/E.4 do checklist).
-- **Lista volta ao topo a cada clique no desktop.** `SplitPane` e `ColetaList` são
-  renderizados por cada *página* (`[osId]/page.tsx` e `[osId]/coleta/[itemId]/page.tsx`),
-  não por um layout de segmento, então o Next desmonta e remonta a coluna esquerda a
-  cada navegação. Em ≥1024px o painel da lista é o próprio container de rolagem, e ele
-  renasce com `scrollTop 0`: numa OS com 24 coletas, rolar até o item 20 e clicar nele
-  joga a lista pro topo — a linha marcada com `aria-current` some da vista bem na hora
-  em que deveria orientar. Apontado pela revisão final do layout desktop (2026-09-04) e
-  adiado de propósito: a correção é hoistar `SplitPane` + `ColetaList` para um
-  `app/tecnico/qualificacao/[osId]/layout.tsx`, tirando `selectedId` do `usePathname()`.
-  É mudança estrutural (move busca de dados, estado de carregamento e seleção de lugar)
-  e merece task e revisão próprias. Não viola o spec — o que foi descartado lá foram
-  parallel/intercepting routes, não um layout de segmento.
+- ~~Lista voltava ao topo a cada clique no desktop.~~ **Resolvido em 2026-09-04.**
+  `SplitPane` e `ColetaList` eram renderizados por cada página, então o Next
+  desmontava e remontava a coluna esquerda a cada navegação e o painel renascia
+  com `scrollTop 0` — a linha marcada sumia da vista justo quando deveria
+  orientar. As duas rotas passaram para um route group `(painel)` cujo
+  `layout.tsx` é dono do `SplitPane`, do `useOsDetail` e da coluna esquerda
+  inteira; as páginas ficaram só com o painel direito. As rotas de `relatorio/`
+  seguem fora do grupo. Medido no browser: `scrollTop` 2405 antes e 2405 depois
+  do clique, no mesmo nó do DOM. Spec em
+  `docs/superpowers/specs/2026-09-04-pwa-tecnico-painel-persistente-design.md`.
+- **Item já coletado abre sem marcação no painel.** `ColetaList` passa `selected`
+  para o `ColetaCard` (coleta pendente), mas nunca para o `CollectedCard`. Abrir
+  uma coleta já feita no desktop deixa a lista sem nenhuma linha com
+  `aria-current` — o técnico perde a referência de onde está. Apontado pela
+  revisão do painel persistente (2026-09-04); é anterior àquele branch.
+- **Troca do painel direito não é anunciada.** Em desktop, clicar numa coleta
+  troca o conteúdo do painel da direita sem nada em `aria-live`: quem usa leitor
+  de tela não recebe aviso de que a tela mudou, porque a navegação não move o
+  foco. Apontado pela mesma revisão.
 - ~~Erro de rede aparecia cru pro técnico~~ (`Erro: Request failed with status code 502`).
   **Corrigido**: a tradução vive no interceptor do `odooClient`, então toda tela herda. Distingue
   sem-conexão, 403, 404 e 5xx, e sempre diz que o que ele preencheu continua ali. Conferido
