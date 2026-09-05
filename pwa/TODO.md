@@ -191,6 +191,12 @@
   isso só roda em máquina com mic. Retomar quando a chave for reposta.
 - ~~`/manifest.json` respondia 307 sem sessão.~~ **Corrigido em 2026-09-03**: o bypass de estáticos
   do `middleware.ts` não cobria `.json`/`.webmanifest`. Rotas do app seguem protegidas.
+- **Deep link para uma coleta perde o destino no login.** Abrir
+  `/tecnico/qualificacao/<osId>/coleta/<itemId>` sem sessão manda pro login e,
+  depois de autenticar, cai na home em vez da coleta pedida — o middleware não
+  guarda a URL original. Atrapalha suporte ("abre este link") e o retorno do PWA
+  depois de a sessão expirar. Apontado pela bateria de aceitação do painel
+  persistente (2026-09-05); é anterior àquele trabalho.
 
 ### Backend `afr_qualificacao` — autorização
 

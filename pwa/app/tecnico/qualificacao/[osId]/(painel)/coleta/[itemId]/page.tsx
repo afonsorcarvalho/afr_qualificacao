@@ -46,6 +46,11 @@ export default function ColetaPage() {
   // para o `(painel)/layout.tsx`, mas esta página ainda precisa da própria OS.
   const osDetail = useOsDetail(oid, userId)
   const relatorioId = osDetail.data?.open_relatorio_id ?? null
+  // Mesmo raciocínio do `(painel)/layout.tsx`: `enabled: userId > 0` faz uma
+  // query desabilitada reportar `isLoading === false`, então sem este cálculo
+  // a janela antes do `lastUserId` chegar do zustand `persist` cai direto no
+  // branch de "sem relatório aberto" — mesmo quando pode haver um.
+  const carregandoOs = osDetail.isLoading || userId <= 0
 
   const [fileData, setFileData] = useState<{
     base64: string
@@ -59,6 +64,10 @@ export default function ColetaPage() {
 
   if (!item) {
     return <LoadingState label="Carregando coleta..." />
+  }
+
+  if (carregandoOs) {
+    return <LoadingState label="Carregando relatório..." />
   }
 
   if (!relatorioId) {

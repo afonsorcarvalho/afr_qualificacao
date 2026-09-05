@@ -134,6 +134,30 @@ describe('ColetaPage', () => {
   // isolada, sem o layout ao redor, essas garantias não têm mais onde
   // asserir: a coluna esquerda não é mais desta página.
 
+  it('mesmo achado do PainelLayout: enquanto o osDetail ainda não chegou (query desabilitada), mostra loading e não acusa falta de relatório', async () => {
+    vi.mocked(odooClient.searchRead).mockResolvedValue([item])
+    // `enabled: userId > 0` faz uma query React Query v5 desabilitada
+    // reportar `isLoading === false` com `data: undefined` — é exatamente
+    // este retorno que o hook devolve antes do `lastUserId` chegar do
+    // zustand `persist` (storage limpo, primeira abertura, sessão lenta).
+    useTecnicoSettings.setState({ lastUserId: null })
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    } as any)
+    vi.mocked(hooks.useCollectItem).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    } as any)
+
+    renderPage()
+
+    expect(await screen.findByText('Carregando relatório...')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Inicie um relatório do dia antes de coletar.'),
+    ).not.toBeInTheDocument()
+  })
+
   it('Task 3: o "← Voltar" do formulário some em ≥1024px (lg:hidden) — o layout já tem o seu', async () => {
     vi.mocked(odooClient.searchRead).mockResolvedValue([item])
     vi.mocked(hooks.useOsDetail).mockReturnValue({
