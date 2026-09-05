@@ -14,9 +14,13 @@ import { clsx } from 'clsx'
  * estão sempre no DOM. Decidir isso em JS (matchMedia) daria HTML diferente no
  * servidor e no cliente — hidratação quebrada, que já custou caro aqui antes.
  *
- * Custo aceito: em celular, a rota da coleta monta a lista escondida. Não há
- * requisição extra — as duas rotas já usam `useOsDetail`, então vem do cache
- * do React Query.
+ * Custo aceito: em celular, a rota da coleta monta a lista escondida. O
+ * `(painel)/layout.tsx` (dono desta lista) e a página de coleta chamam
+ * `useOsDetail` com a mesma query key, então as duas compartilham UMA
+ * entrada de cache — em regime estável não há requisição extra. Mas a
+ * página de coleta é um SEGUNDO observador dessa key: montar sobre dado
+ * stale pode disparar um refetch de fundo (ver `atualizandoManual` no
+ * layout, que existe pra esse refetch não piscar o botão "Atualizar").
  *
  * Rolagem independente (fix 2026-09-04): a primeira versão usava
  * `lg:sticky lg:top-0 lg:max-h-full lg:overflow-y-auto` na coluna da lista,

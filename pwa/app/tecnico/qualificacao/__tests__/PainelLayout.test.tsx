@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import PainelLayout from '../[osId]/(painel)/layout'
 import * as hooks from '@/lib/hooks/useTecnicoQualif'
+import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 
 let pathname = '/tecnico/qualificacao/4'
 
@@ -55,6 +56,9 @@ beforeEach(() => {
   vi.mocked(hooks.useStartDailyRelatorio).mockReturnValue({
     mutate: vi.fn(), isPending: false,
   } as any)
+  // `userId` real (não mockado) entra na conta do achado 1(a): sem isto,
+  // os testes de sucesso já existentes cairiam no branch de carregando.
+  useTecnicoSettings.setState({ lastUserId: 7 })
 })
 
 describe('PainelLayout', () => {
@@ -87,6 +91,35 @@ describe('PainelLayout', () => {
     wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
     expect(screen.getByText(/Erro ao carregar OS/)).toBeInTheDocument()
     expect(screen.getByText('painel direito')).toBeInTheDocument()
+    // Achado 1(b): o "← Voltar" também aparece no branch de erro, não só no
+    // de sucesso — é o único controle de volta em ≥1024px.
+    expect(screen.getByRole('button', { name: /Voltar/ })).toBeInTheDocument()
+  })
+
+  it('achado 1(a): userId ainda não chegou do store (query desabilitada) mostra carregando, não erro', () => {
+    // Uma query `enabled: false` do React Query v5 reporta isLoading: false
+    // — é exatamente essa forma que o hook mockado devolve aqui, simulando
+    // a janela entre o layout montar e `lastUserId` chegar via zustand
+    // `persist` (storage limpo, sessão lenta/offline).
+    useTecnicoSettings.setState({ lastUserId: null })
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: undefined, isLoading: false, isFetching: false, error: null,
+      refetch: vi.fn(),
+    } as any)
+    wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    expect(screen.getByText('Carregando OS...')).toBeInTheDocument()
+    expect(screen.queryByText(/Erro ao carregar OS/)).not.toBeInTheDocument()
+    expect(screen.getByText('painel direito')).toBeInTheDocument()
+  })
+
+  it('achado 1(b): "← Voltar" aparece também enquanto a OS carrega, não só no sucesso', () => {
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: undefined, isLoading: true, isFetching: true, error: null,
+      refetch: vi.fn(),
+    } as any)
+    wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    expect(screen.getByText('Carregando OS...')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Voltar/ })).toBeInTheDocument()
   })
 
   it('selectedId vem do pathname, não do useParams', () => {

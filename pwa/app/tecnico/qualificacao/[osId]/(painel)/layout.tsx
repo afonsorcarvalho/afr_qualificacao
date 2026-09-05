@@ -1,5 +1,5 @@
 'use client'
-import { useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { LoadingState } from '@/components/ui/LoadingState'
@@ -36,6 +36,18 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
   // A ida pra tela de fechar turno também busca dados: sem `useTransition` o
   // botão ficava mudo entre o toque e a troca de tela.
   const [finalizando, startFinalize] = useTransition()
+  // Só o clique em "Atualizar" liga isto — nunca o refetch automático de
+  // fundo que o segundo observador de `useOsDetail` (a página de coleta,
+  // mesma query key) pode disparar ao montar sobre dado stale. Sem esta
+  // separação, `isFetching` piscava o botão "Atualizando..." a cada clique
+  // numa coleta, mesmo sem o técnico ter pedido nada.
+  const [atualizandoManual, setAtualizandoManual] = useState(false)
+
+  // `enabled: userId > 0` (useTecnicoQualif.ts) faz uma query desabilitada
+  // reportar `isLoading === false` — sem isto, a janela em que `lastUserId`
+  // ainda não chegou do zustand `persist` (primeira abertura, storage limpo,
+  // sessão lenta/offline) caía direto no branch de erro.
+  const carregandoOs = isLoading || userId <= 0
 
   // `narrow` deixa de ser fixo: segue a rota, não a página.
   const emColeta = pathname.includes('/coleta/')
@@ -53,7 +65,8 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
     })
   }
   const handleContinue = () => {
-    refetch()
+    setAtualizandoManual(true)
+    refetch().finally(() => setAtualizandoManual(false))
   }
   const handleFinalize = () => {
     if (!data?.open_relatorio_id || finalizando) return
@@ -63,11 +76,22 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
     )
   }
 
+  // O "← Voltar" fica FORA do ternário abaixo, de propósito: é o único
+  // controle de volta em ≥1024px (o da própria página de coleta virou
+  // `lg:hidden`), então precisa renderizar nos três estados — carregando,
+  // erro e sucesso — não só no de sucesso.
+  const botaoVoltar = (
+    <Button variant="ghost" size="sm" className="min-h-[44px]" onClick={() => router.back()}>
+      ← Voltar
+      <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+    </Button>
+  )
+
   // Carregando e erro NÃO fazem early-return: ocupam só o painel da lista,
   // com `{children}` sempre montado no painel direito. Um early-return aqui
   // apagaria o painel direito junto — foram os achados 2 e 7 da revisão do
   // layout desktop, verificados corrigidos há poucas horas.
-  const listaEsquerda = isLoading ? (
+  const conteudo = carregandoOs ? (
     <LoadingState label="Carregando OS..." />
   ) : error || !data ? (
     <p className="text-center text-red-400">Erro ao carregar OS</p>
@@ -79,12 +103,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
         (i) => i.state === 'collected' || i.state === 'skipped',
       )
       return (
-        <div className="space-y-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            ← Voltar
-            <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
-          </Button>
-
+        <>
           <div className="rounded-lg bg-muted/30 p-3 shadow-sm border border-border/70">
             <h1 className="text-lg font-semibold text-foreground">{os.name}</h1>
             <p className="text-sm text-muted-foreground/90">{os.partner_id?.[1]}</p>
@@ -95,7 +114,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
             onStart={handleStart}
             onContinue={handleContinue}
             starting={startMutation.isPending}
-            refreshing={isFetching && !isLoading}
+            refreshing={atualizandoManual}
             allDone={pending_items.length === 0 && done_items.length > 0}
           />
 
@@ -150,9 +169,16 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
               Finalizar relatório do dia
             </Button>
           )}
-        </div>
+        </>
       )
     })()
+  )
+
+  const listaEsquerda = (
+    <div className="space-y-4">
+      {botaoVoltar}
+      {conteudo}
+    </div>
   )
 
   return (
