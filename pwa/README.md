@@ -34,8 +34,24 @@ Baseline em `docs/BASELINE.md`. Aceitação end-to-end:
 ## Produção
 
 ```bash
+export ODOO_ALLOWED_ORIGINS=https://labquali.afrsistemas.com.br
 docker compose up -d --build   # publica em :3010
 ```
+
+`ODOO_ALLOWED_ORIGINS` é **obrigatória** e o compose recusa subir sem ela.
+É a allowlist de origens que o proxy `/api/odoo` pode alcançar (formato
+`esquema://host[:porta]`, separado por vírgula). Sem ela o proxy falha
+fechado — 403 em tudo, app sem Odoo. Não existe default em produção de
+propósito: encaminhar para endereço arbitrário transformaria o servidor
+Next em open proxy, alcançando hosts internos que o navegador do atacante
+não alcança. Em `NODE_ENV=development` loopback e rede privada entram sem
+configuração; só ali.
+
+O container fala HTTP puro na 3010. Ele **precisa** de um proxy reverso com
+TLS na frente: service worker só registra em contexto seguro, então sem
+HTTPS não há instalação no aparelho nem uso offline — e uma página HTTPS
+não pode chamar uma API HTTP (conteúdo misto). Ver
+`deploy/setup-pwa-proxy.sh`.
 
 Sem `GROQ_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
 sobe o container com a variável vazia: as features de IA (auto-resumo,

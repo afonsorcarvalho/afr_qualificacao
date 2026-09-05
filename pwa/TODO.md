@@ -2,6 +2,44 @@
 
 ## Pendente
 
+### Publicação em produção (labquali) — levantado em 2026-09-05
+
+- ~~`ODOO_ALLOWED_ORIGINS` faltava no `docker-compose.yml` e na seção "Produção" do
+  README.~~ **Resolvido.** A variável é obrigatória (sem ela o proxy `/api/odoo` falha
+  fechado com 403 e o app não fala com Odoo nenhum), mas nem o compose passava, nem o
+  README citava: quem seguisse a documentação ao pé da letra subia um app 100% quebrado.
+  Agora o compose usa `${ODOO_ALLOWED_ORIGINS:?...}` e **recusa subir** sem ela
+  (verificado: `docker compose config` falha), e o README abre a seção com o `export`.
+  Junto: o `ports:` virou `127.0.0.1:3010:3000` — publicar em `0.0.0.0` deixaria o app
+  acessível em HTTP puro por fora, contornando o TLS.
+- **BLOQUEIO: o labquali roda `afr_qualificacao` 16.0.7.0.0; o PWA exige 16.0.7.4.0.**
+  Conferido por RPC no `odoo-labquali` em 2026-09-05 (`installed_version` = `16.0.7.0.0`).
+  Os quatro métodos que o front chama nasceram depois: `action_start_daily_relatorio`,
+  `action_get_daily_relatorio`, `action_finish_daily_relatorio` e `action_historico_hoje`.
+  Contra o backend atual não é degradação, é quebra — iniciar turno falha e o Histórico
+  morre. O delta 7.0.0→7.4.0 traz 3 campos novos, 98 linhas de `ir.rule`/grupos e 1 linha
+  de ACL: são as correções de autorização, **incluindo a grave** (técnico alheio editava
+  ciclo de qualificação aprovada e o certificado do cliente virava `tampered`). Ou seja, o
+  upgrade vale por si. Mas mexe em segurança e schema em produção: backup e ensaio numa
+  cópia antes.
+- **BLOQUEIO: Bloco E do checklist nunca executado** (service worker, instalação, offline).
+  É a parte "PWA" do PWA; só o E.1 (manifest 200) foi conferido. Chrome headless ignora
+  service worker, então precisa de celular de verdade — e só depois do HTTPS de pé.
+- **TLS: script pronto, sem acesso pra rodar.** `deploy/setup-pwa-proxy.sh` publica o
+  container (HTTP puro na 3010) atrás de HTTPS. Escrito **sem acesso ao servidor**: a chave
+  SSH desta máquina é recusada em `191.252.113.190` (labquali resolve para lá; é host
+  distinto do `erp2`). De fora só dá pra ver `Server: Werkzeug/1.0.1` e cert Let's Encrypt,
+  o que não identifica o proxy da frente. Por isso o script **detecta** a pilha (nginx /
+  caddy / traefik / apache), roda em **dry-run por padrão**, e para se achar nenhuma ou mais
+  de uma, em vez de chutar. Já resolve dois detalhes que só aparecem em campo:
+  `client_max_body_size 25m` (foto de celular em base64 estoura o 1MB padrão do nginx e
+  daria 413 no meio da coleta) e `proxy_read/send_timeout 300s` (upload em 4G de hospital
+  passa dos 60s padrão). Falta template de apache — se for essa a pilha, ele para e pede a
+  saída da detecção.
+- **`GROQ_API_KEY` vazada, rotação adiada por decisão de 2026-09-05.** Subir sem chave é
+  degradação limpa e documentada (IA desligada, resto normal). Não subir com a chave antiga.
+
+
 ### Design system (novo em 2026-09-03)
 
 `PRODUCT.md` e `DESIGN.md` agora existem na raiz do PWA, com o sidecar

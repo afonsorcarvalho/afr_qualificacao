@@ -7,9 +7,20 @@ services:
     container_name: afr_qualificacao_pwa
     restart: unless-stopped
     ports:
-      - "3010:3000"
+      # Só loopback: quem fala com o mundo é o proxy reverso com TLS
+      # (`deploy/setup-pwa-proxy.sh`). Publicar 0.0.0.0:3010 deixaria o app
+      # acessível em HTTP puro por fora, contornando o TLS — e sem contexto
+      # seguro não há service worker nem instalação no aparelho.
+      - "127.0.0.1:3010:3000"
     environment:
       NODE_ENV: production
+      # OBRIGATÓRIA. Sem ela o proxy `/api/odoo` recusa tudo com 403 e o app
+      # não fala com Odoo nenhum — em produção a allowlist não tem default,
+      # porque encaminhar para endereço arbitrário transforma este servidor
+      # em open proxy (SSRF: ele enxerga hosts internos que o navegador do
+      # atacante não enxerga). Formato: `esquema://host[:porta]`, separado
+      # por vírgula.
+      ODOO_ALLOWED_ORIGINS: ${ODOO_ALLOWED_ORIGINS:?defina a allowlist de origens Odoo, ex. https://labquali.afrsistemas.com.br}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
