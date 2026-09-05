@@ -334,6 +334,55 @@ lógica de ativo e o mesmo tratamento de espera:
 Item ativo em Tinta + `aria-current`; inativo em Tinta Fraca. **Ícone é SVG de
 traço, nunca emoji.**
 
+### Filtro segmentado (não é aba)
+Dois botões lado a lado num bloco de 1px de fio, grudados no topo da coluna
+que rola (`sticky`, fundo opaco — translúcido deixa o cartão atravessar o
+rótulo). Alvo de 44px, contagem em `tabular-nums` no rótulo, inclusive a do
+segmento inativo: é ela que diz que existe algo do outro lado. Ativo em
+Superfície Elevada com anel de 1px; inativo em Tinta Fraca.
+
+**Quem rola é o `<main>`, não a janela** — em toda largura, desde
+2026-09-05. O invólucro do app tem altura definida (`h-dvh` + `min-h-0`), o
+`main` é o scrollport e o respiro de 12px vive num wrapper **dentro** dele:
+com o padding no próprio scrollport, o conteúdo rolava por dentro da faixa
+acima do primeiro elemento grudado (sticky ancora na borda do padding), e
+cartão passando por trás do filtro é o que ele existe pra impedir. Por isso
+todo `sticky` de tela do técnico usa `top-0` como referência — o cabeçalho do
+app está fora do scrollport.
+
+**A distinção com "aba" é semântica, não cosmética.** O Don't contra aba
+existe porque aba anuncia outro *destino* — é o vocabulário de backoffice de
+ERP, onde cada aba é uma tela. Um filtro segmentado não troca de tela: a
+lista é a mesma, exibida em recorte. Por isso o ARIA é `role="group"` com
+botões `aria-pressed`, **nunca** `tablist`/`tab`/`tabpanel` — usar o ARIA de
+aba aqui faria o leitor de tela anunciar exatamente a mentira que o Don't
+quer evitar.
+
+Em uso: a lista de coletas de dentro da OS (`ColetaFilter`), pendentes de um
+lado e feitas do outro. Antes disso as duas seções eram empilhadas, e ver o
+que já foi feito custava rolar a lista inteira de pendentes.
+
+### Grupo recolhível de equipamento
+Cabeçalho tonal (Ciclo em ciano, Realizadas em esmeralda) que **é** o
+controle: `<button aria-expanded aria-controls>` com chevron que gira, alvo
+de 44px, nunca `<details>` — o grupo precisa abrir por decisão de fora
+(abrir uma coleta expande o grupo dela), e `<details>` só responde a toque.
+
+Três regras que a implementação não pode perder:
+- **Padrão recolhido só quando há mais de um grupo.** Grupo único nasce
+  aberto: recolher esconderia a lista inteira sem ganho de rolagem.
+- **Progresso é do equipamento, não do recorte em exibição** ("3 de 8", em
+  `tabular-nums`). Dentro de "Pendentes" a contagem do segmento seria sempre
+  "quanto falta", que a lista aberta já mostra.
+- **Fundo opaco por baixo do tom.** O tom é translúcido
+  (`bg-cyan-500/15`); grudado sobre a lista rolando, ele deixava os cartões
+  atravessarem o nome do equipamento. A camada de tom vai por cima de
+  `bg-background`, não direto sobre a página.
+
+Grupo fechado não gruda (já ocupa uma linha e nada rola por baixo dele) e
+não monta os cartões — o container do `aria-controls` continua no DOM, só
+vazio.
+
 ### Signature Pad (componente de assinatura)
 Área branca de 160px de altura, raio 8px, fio de 1px, com o botão "Limpar" em
 ghost logo abaixo. É a única superfície branca permitida no tema escuro:
@@ -358,7 +407,9 @@ assinatura é documento, e documento é sobre papel.
 
 ### Don't:
 - **Don't** parecer **tela de ERP / backoffice Odoo**: nada de aba, tabela
-  larga ou formulário de 20 campos numa tela de campo.
+  larga ou formulário de 20 campos numa tela de campo. (Filtro segmentado
+  **não** é aba — ver o componente na seção 5 para a diferença e para o ARIA
+  que a sustenta.)
 - **Don't** parecer **landing SaaS genérica**: grade de cartões idênticos com
   ícone + título + texto é o anti-padrão nomeado no PRODUCT.md.
 - **Don't** usar roxo (#a855f7), rosa (#ec4899), `bg-gradient-cyber`,

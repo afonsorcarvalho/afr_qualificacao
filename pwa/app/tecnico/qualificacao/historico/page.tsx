@@ -144,7 +144,7 @@ export default function HistoricoPage() {
 
         {groups.map((g) => (
           <div key={g.key} className="space-y-2">
-            <div className="sticky top-14 z-[5] -mx-3 bg-background/80 px-3 py-1 backdrop-blur">
+            <div className="sticky top-0 z-[5] -mx-3 bg-background px-3 py-1">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{g.label}</p>
             </div>
             {g.items.map((r) => <RelatorioCard key={r.id} r={r} />)}

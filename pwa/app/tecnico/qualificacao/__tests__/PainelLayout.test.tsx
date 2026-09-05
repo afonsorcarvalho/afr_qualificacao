@@ -211,7 +211,9 @@ describe('PainelLayout', () => {
     } as any)
     const { container } = wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
     expect(screen.getByText(/Todas as coletas concluídas/)).toBeInTheDocument()
-    expect(screen.getByText(/2 de 2/)).toBeInTheDocument()
+    // O cabeçalho do grupo de equipamento também diz "2 de 2" (progresso do
+    // equipamento), então a asserção precisa mirar o bloco de conclusão.
+    expect(screen.getByText(/itens coletados nesta OS/)).toHaveTextContent('2 de 2')
     expect(screen.getByText(/Pronto pra finalizar o relatório/)).toBeInTheDocument()
     const html = container.innerHTML
     // Sem flag `u`: o alvo do tsconfig é anterior a es6. O par substituto

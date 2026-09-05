@@ -49,6 +49,56 @@
 - Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
 
 ### Técnico Qualificação
+- ~~**Rolagem longa pra ver o que já foi coletado.**~~ **Resolvido em 2026-09-05.**
+  As duas seções eram empilhadas, então com 25 itens ver as feitas custava rolar a lista
+  inteira de pendentes. Entrou `ColetaFilter`: filtro segmentado grudado no topo da coluna
+  (`Pendentes N` / `Feitas N`), um toque troca o recorte. **Não é aba** — `role="group"` com
+  `aria-pressed`, nunca `tablist`; o DESIGN.md ganhou a seção que registra a diferença e o
+  porquê do ARIA. Os `<h2>` visíveis viraram `sr-only` (o filtro já mostra rótulo e
+  contagem). Três regras de estado: nasce em `Feitas` se não há pendente ou se o deep link
+  já traz uma coleta feita aberta; abrir coleta do outro segmento troca o segmento sozinho
+  (senão a linha com `aria-current` ficaria escondida — o defeito recém-fechado voltando por
+  outra porta); segmento vazio diz o que houve. 7 testes novos; conferido no browser a
+  1280px: filtro gruda com `scrollTop` 800, troca de segmento, e voltar pelo histórico de
+  uma coleta feita para uma pendente traz o segmento junto. O rótulo do segundo segmento é
+  "Realizadas".
+- ~~**Grupos de equipamento não recolhiam.**~~ **Resolvido em 2026-09-05, na mesma passada.**
+  `EquipmentHeader` virou o próprio controle do grupo: `<button aria-expanded aria-controls>`
+  com chevron, alvo de 44px. Não é `<details>` porque o grupo precisa abrir por decisão de
+  fora (abrir uma coleta expande o grupo dela). Regras: recolhido por padrão só quando há
+  mais de um grupo no segmento; grupo único nasce aberto; o cabeçalho mostra o progresso do
+  **equipamento** ("10 de 23", `tabular-nums`), não a contagem do recorte; grupo fechado não
+  gruda nem monta os cartões (o container do `aria-controls` fica no DOM, vazio). Dois
+  defeitos achados no browser e corrigidos: o cabeçalho grudado subia 2px por baixo do filtro
+  (o filtro tem 54px, não 52 — o fio de 1px conta) e o tom translúcido deixava os cartões
+  atravessarem o nome do equipamento (agora camada de tom sobre `bg-background`). 10 testes
+  novos.
+- ~~**`sticky` não funcionava abaixo de 1024px.**~~ **Resolvido em 2026-09-05**, com o
+  aval do user. O invólucro do `app/tecnico/qualificacao/layout.tsx` usava `min-h-screen`,
+  crescia com o conteúdo, quem rolava era a janela e o scrollport do `<main overflow-auto>`
+  nunca rolava — todo `sticky` lá dentro ficava inerte (medido a 375px: o filtro saía da tela
+  junto com a lista). Agora o invólucro tem `h-dvh min-h-0 overflow-hidden` em toda largura,
+  o `main` ganhou `min-h-0` e a coluna interna também. Dois efeitos que precisaram de
+  conserto próprio, os dois vistos no browser:
+  - O `p-3` saiu do `main` e foi para um wrapper interno: sticky ancora na borda do padding
+    do scrollport, então com o padding no `main` sobrava uma faixa de 12px acima do filtro
+    por onde o conteúdo continuava passando.
+  - Esse wrapper precisou de `h-full`: o `SplitPane` usa `lg:h-full` pra dar altura à linha
+    do grid, e sem altura definida no wrapper a rolagem independente das duas colunas parava
+    de funcionar (medido: `scrollTop` da coluna travado em 0).
+  Os deslocamentos de `sticky` viraram `top-0` (filtro) e `top-[54px]` (cabeçalho de grupo),
+  sem prefixo de breakpoint — o cabeçalho do app está fora do scrollport, então o `top-14`
+  que havia compensava algo que nunca esteve no caminho. O mesmo `top-14` obsoleto do
+  Histórico foi corrigido (e o `bg-background/80 backdrop-blur` virou fundo opaco).
+  Efeito colateral aceito: a barra de navegação inferior não rola mais junto, fica sempre à
+  vista. Medido depois: a 375px o `main` rola (500 de 1261) e a janela não; filtro fixo em
+  51px, grupo em 105px, nav no rodapé. A 1280px a coluna da lista voltou a rolar sozinha
+  (`scrollTop` 504) com filtro em 63px e grupo em 117px. `TecnicoShell.test.tsx` (2 testes)
+  trava a decisão por classe, já que o happy-dom não faz layout.
+  Ressalva: o agrupamento do Histórico não pôde ser visto rolando — a conta de teste não tem
+  relatório fechado; a mudança lá é só o deslocamento do `sticky`.
+- Busca por nome do ciclo na lista de coletas: com 25 itens, achar um ciclo específico ainda
+  é rolagem dentro do segmento. Decidido em 2026-09-05 ficar fora do escopo do filtro.
 - ~~**Layout preso em 480px: ruim no notebook.**~~ **Resolvido em 2026-09-04.**
   A casca do app (`pwa/app/tecnico/qualificacao/layout.tsx`) cresce por
   breakpoint: `<640px` → `max-w-[480px]`, `640–1023px` → `max-w-[720px]`,
