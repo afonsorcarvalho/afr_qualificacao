@@ -89,7 +89,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-foreground" />
     </div>
   )
 }

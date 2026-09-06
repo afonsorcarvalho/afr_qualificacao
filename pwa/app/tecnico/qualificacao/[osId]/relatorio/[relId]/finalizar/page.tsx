@@ -106,7 +106,7 @@ export default function FinalizarPage() {
     <div className="mx-auto w-full max-w-[880px] space-y-3">
       <Button variant="ghost" size="sm" onClick={() => router.back()}>
         ← Voltar
-        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">Esc</kbd>
       </Button>
       <h1 className="text-lg font-semibold">Finalizar relatório #{rid}</h1>
 
@@ -115,7 +115,7 @@ export default function FinalizarPage() {
         aria-label="Resumo das coletas"
       >
         <p className="flex items-baseline gap-2">
-          <span className="text-3xl font-semibold tabular-nums leading-none text-emerald-600 dark:text-emerald-400">
+          <span className="text-3xl font-semibold tabular-nums leading-none text-ok">
             {noTurno}
           </span>
           <span className="text-sm text-muted-foreground">
@@ -134,7 +134,7 @@ export default function FinalizarPage() {
               aria-valuetext={`${collected} de ${totalOs} coletas da OS`}
             >
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-[width] duration-500 ease-out motion-reduce:transition-none"
+                className="h-full rounded-full bg-ok transition-[width] duration-500 ease-out motion-reduce:transition-none"
                 style={{ width: `${pctOs}%` }}
               />
             </div>
@@ -146,7 +146,7 @@ export default function FinalizarPage() {
               {pending > 0 && (
                 <>
                   {' · faltam '}
-                  <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                  <span className="font-semibold tabular-nums text-warn">
                     {pending}
                   </span>
                 </>

@@ -80,7 +80,7 @@ export default function ColetaPage() {
             sendo o único caminho de volta. */}
         <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => router.back()}>
           ← Voltar
-          <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+          <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">Esc</kbd>
         </Button>
         <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
           Inicie um relatório do dia antes de coletar.
@@ -138,15 +138,15 @@ export default function ColetaPage() {
           sendo o único caminho de volta. */}
       <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => router.back()}>
         ← Voltar
-        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+        <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">Esc</kbd>
       </Button>
 
       {item.equipment_id && (
-        <div className="flex items-center gap-2 rounded-md bg-cyan-500/10 px-3 py-2 border border-cyan-500/30">
+        <div className="flex items-center gap-2 rounded-md bg-info-surface px-3 py-2 border border-info/30">
           <span className="text-base">🔧</span>
           <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wider text-cyan-300/60">Equipamento</p>
-            <p className="truncate text-sm font-semibold text-cyan-300">{item.equipment_id[1]}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Equipamento</p>
+            <p className="truncate text-sm font-semibold text-info">{item.equipment_id[1]}</p>
           </div>
         </div>
       )}
@@ -154,8 +154,8 @@ export default function ColetaPage() {
       <h1 className="text-lg font-semibold">{item.name}</h1>
 
       {item.instruction && (
-        <div className="flex gap-2 rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-950">
-          <Lightbulb className="h-4 w-4 shrink-0 text-amber-600" />
+        <div className="flex gap-2 rounded-lg bg-warn-surface p-3 text-sm">
+          <Lightbulb className="h-4 w-4 shrink-0 text-warn" />
           <p>{item.instruction}</p>
         </div>
       )}

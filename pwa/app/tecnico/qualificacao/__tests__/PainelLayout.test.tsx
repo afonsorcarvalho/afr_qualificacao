@@ -224,4 +224,21 @@ describe('PainelLayout', () => {
     expect(html).not.toContain('bg-gradient-to-br')
     expect(html).not.toContain('blur-3xl')
   })
+
+  it('o bloco de conclusão usa o token de estado, não shade crua', () => {
+    const tudoColetado = {
+      ...osDetailData,
+      collect_items: osDetailData.collect_items.map((i: any) => ({
+        ...i, state: 'collected',
+      })),
+    }
+    vi.mocked(hooks.useOsDetail).mockReturnValue({
+      data: tudoColetado, isLoading: false, isFetching: false, error: null,
+      refetch: vi.fn(),
+    } as any)
+    const { container } = wrap(<PainelLayout><p>painel direito</p></PainelLayout>)
+    const html = container.innerHTML
+    expect(html).toContain('ok-surface')
+    expect(html).not.toMatch(/emerald-\d/)
+  })
 })

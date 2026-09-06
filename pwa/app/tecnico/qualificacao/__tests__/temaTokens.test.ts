@@ -72,7 +72,7 @@ const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
  */
 const PERMITIDO_TEMA: Record<string, string> = {
   // --- catraca da migração de 2026-09-06: estas linhas SAEM conforme as tasks avançam ---
-  // Superfície de assinatura (DESIGN.md, "Signature Pad"): a única branca
+  // Superfície de assinatura (DESIGN.md, "Signature Pad"): branca fixa,
   // permitida no tema escuro — assinatura é documento, e documento é sobre
   // papel, então o pad não segue o tema. O traço em si é `penColor="black"`
   // em JS (não classe, o teste-catraca não alcança) e é coberto por um teste
@@ -90,12 +90,12 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // tradução — mesma classe de decisão que o achado do `EquipmentHeader` na
   // Task 3.
   'app/tecnico/qualificacao/perfil/page.tsx :: bg-white': 'permanente — moldura do logotipo da empresa: ativo externo assumido sobre fundo branco, independente do tema (mesmo raciocínio do Signature Pad)',
-  // Task 5 (OS / coleta / relatório)
-  'app/tecnico/qualificacao/[osId]/(painel)/layout.tsx :: *': 'migração pendente (Task 5)',
-  'app/tecnico/qualificacao/[osId]/(painel)/coleta/[itemId]/page.tsx :: *': 'migração pendente (Task 5)',
-  'app/tecnico/qualificacao/[osId]/relatorio/[relId]/page.tsx :: *': 'migração pendente (Task 5)',
-  'app/tecnico/qualificacao/[osId]/relatorio/[relId]/finalizar/page.tsx :: *': 'migração pendente (Task 5)',
-  'components/providers/AuthGuard.tsx :: *': 'migração pendente (Task 5)',
+  // Terceira superfície branca fixa, mesmo raciocínio do Signature Pad: aqui
+  // não é o campo de captura, é a EXIBIÇÃO da assinatura já salva (relatório
+  // fechado, somente leitura). O traço veio gravado com `penColor="black"`
+  // (SignatureCanvas.tsx) — fundo que segue o tema apagaria a assinatura no
+  // escuro (`bg-card` é navy), então o papel também não segue o tema aqui.
+  'app/tecnico/qualificacao/[osId]/relatorio/[relId]/page.tsx :: bg-white': 'permanente — exibição da assinatura já capturada é documento/papel, mesmo raciocínio do Signature Pad (DESIGN.md)',
   // Task 6 (login)
   'app/login/page.tsx :: *': 'migração pendente (Task 6)',
   // Task 7 (visualizador)

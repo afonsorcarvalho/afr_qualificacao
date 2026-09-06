@@ -85,7 +85,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
   const botaoVoltar = (
     <Button variant="ghost" size="sm" className="min-h-[44px]" onClick={() => router.back()}>
       ← Voltar
-      <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/90 sm:inline">Esc</kbd>
+      <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">Esc</kbd>
     </Button>
   )
 
@@ -96,7 +96,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
   const conteudo = carregandoOs ? (
     <LoadingState label="Carregando OS..." />
   ) : error || !data ? (
-    <p className="text-center text-red-400">Erro ao carregar OS</p>
+    <p className="text-center text-danger">Erro ao carregar OS</p>
   ) : (
     (() => {
       const { os, collect_items, open_relatorio_id } = data
@@ -108,7 +108,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
         <>
           <div className="rounded-lg bg-muted/30 p-3 shadow-sm border border-border/70">
             <h1 className="text-lg font-semibold text-foreground">{os.name}</h1>
-            <p className="text-sm text-muted-foreground/90">{os.partner_id?.[1]}</p>
+            <p className="text-sm text-muted-foreground">{os.partner_id?.[1]}</p>
           </div>
 
           <RelatorioHeader
@@ -133,10 +133,10 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
             // Confirmação, não comemoração: o PRODUCT.md diz que a tela
             // informa e o DESIGN.md proíbe gradiente decorativo, emoji como
             // ícone e animação em loop — o bloco anterior tinha os três.
-            <div className="rounded-lg border border-emerald-600/40 bg-emerald-500/10 p-3 dark:border-emerald-500/30">
+            <div className="rounded-lg border border-ok/30 bg-ok-surface p-3">
               <div className="flex items-start gap-2">
                 <CheckCircle2
-                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700 dark:text-emerald-400"
+                  className="mt-0.5 h-5 w-5 shrink-0 text-ok"
                   aria-hidden
                 />
                 <div className="min-w-0">
