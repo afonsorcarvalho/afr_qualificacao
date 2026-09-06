@@ -418,7 +418,7 @@ function ToolBtn({
       className={clsx(
         'p-2 rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed',
         danger
-          ? 'bg-dark-700 border-white/10 text-white'
+          ? 'bg-dark-700 border-white/10 text-white hover:bg-white/10'
           : 'bg-white/5 border-white/10 text-white/70 hover:text-white hover:bg-white/10'
       )}
     >
