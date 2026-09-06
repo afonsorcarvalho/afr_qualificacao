@@ -130,25 +130,25 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    /* Era branco absoluto com baixa opacidade (invisível no tema claro).
+       O token de borda existe nos dois temas. */
+    background: hsl(var(--border));
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 212, 255, 0.3);
+    background: hsl(var(--muted-foreground) / 0.5);
   }
 
   ::selection {
-    background: rgba(0, 212, 255, 0.2);
-    color: white;
+    /* Era ciano a 20% com tinta branca — no tema claro o texto selecionado
+       sumia. Realce pelo token de foco, e a tinta segue o tema. */
+    background: hsl(var(--ring) / 0.25);
+    color: hsl(var(--foreground));
   }
 
-  input[type="date"],
-  input[type="datetime-local"],
-  input[type="time"],
-  input[type="month"],
-  input[type="week"] {
-    color-scheme: dark;
-  }
+  /* REMOVIDO: `input[type="date"] { color-scheme: dark }` e irmãos.
+     O script do next-themes já escreve `colorScheme` no <html>, e os inputs
+     herdam. A regra fixa entregava seletor de data escuro em página clara. */
 }
 
 @layer utilities {

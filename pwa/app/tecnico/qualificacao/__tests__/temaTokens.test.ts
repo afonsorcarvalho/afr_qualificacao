@@ -179,3 +179,24 @@ describe('tema: tokens definidos nos dois temas', () => {
     expect(cfg).toContain(`hsl(var(--${nome}) / <alpha-value>)`)
   })
 })
+
+describe('tema: nada de escuro fixo no @layer base', () => {
+  const css = readFileSync(join(RAIZ, 'app/globals.css'), 'utf8')
+
+  it('color-scheme dos inputs de data segue o tema, não é fixo em dark', () => {
+    // O script do next-themes já escreve `document.documentElement.style.colorScheme`.
+    // Uma regra `color-scheme: dark` incondicional no CSS vence isso para os
+    // inputs e entrega seletor de data escuro em página clara.
+    const base = css.slice(css.indexOf('@layer base'))
+    expect(base).not.toMatch(/color-scheme:\s*dark\s*;/)
+  })
+
+  it('scrollbar e seleção de texto não usam branco absoluto', () => {
+    const base = css.slice(css.indexOf('@layer base'), css.indexOf('@layer utilities'))
+    // `rgba(255,255,255,0.1)` num thumb sobre fundo claro é invisível;
+    // `::selection { color: white }` sobre um realce de 20% de opacidade
+    // apaga o texto selecionado.
+    expect(base).not.toMatch(/rgba\(255,\s*255,\s*255/)
+    expect(base).not.toMatch(/color:\s*white/)
+  })
+})
