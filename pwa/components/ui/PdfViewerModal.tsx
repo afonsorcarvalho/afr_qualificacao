@@ -212,7 +212,7 @@ export function PdfViewerModal({
                 {/* Header */}
                 <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10">
                   <div className="p-2 rounded-lg bg-dark-700 border border-white/10 flex-shrink-0">
-                    <FileText size={16} className="text-white/50" />
+                    <FileText size={16} className="text-white/65" />
                   </div>
                   <div className="flex-1 min-w-0">
                     {title && (
@@ -430,7 +430,7 @@ function ToolBtn({
 function LoadingBlock() {
   return (
     <div className="h-full flex flex-col items-center justify-center gap-3 text-white/50 py-20">
-      <Loader2 size={24} className="animate-spin text-white/50" />
+      <Loader2 size={24} className="animate-spin text-white/65" />
       <span className="text-sm">Carregando PDF...</span>
     </div>
   )

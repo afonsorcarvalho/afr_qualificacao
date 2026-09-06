@@ -115,6 +115,7 @@ const PERMITIDO_TEMA: Record<string, string> = {
   'components/ui/PdfViewerModal.tsx :: text-white': 'Cromo escuro declarado — título e textos principais do visualizador.',
   'components/ui/PdfViewerModal.tsx :: text-white/40': 'Cromo escuro declarado — ícone decorativo de busca (não é texto de conteúdo; piso de contraste de texto não se aplica).',
   'components/ui/PdfViewerModal.tsx :: text-white/50': 'Cromo escuro declarado — textos secundários (nome do arquivo, contagem de páginas, resultado de busca, rodapé, "Carregando PDF..."); medido em ~5.3:1 sobre o fundo escuro fixo, acima do piso de 4.5:1.',
+  'components/ui/PdfViewerModal.tsx :: text-white/65': 'Cromo escuro declarado — ícones decorativos (arquivo no cabeçalho, spinner de carregamento); ~8.2:1, o valor que mais se aproxima de --muted-foreground do tema escuro (221 20% 70% ≈ rgb(163,173,194)), preservando o brilho original desses ícones.',
   'components/ui/PdfViewerModal.tsx :: text-white/70': 'Cromo escuro declarado — texto dos botões de ferramenta.',
   'components/ui/PdfViewerModal.tsx :: text-red-400': 'Cromo escuro declarado — cor de erro fixa (equivalente a --danger do tema escuro); o token semântico text-danger fica vermelho-escuro no tema claro e ficaria ilegível sobre o painel escuro fixo.',
 }
