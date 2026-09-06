@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { PendingLink } from '@/components/ui/PendingLink'
 import { LoadingState } from '@/components/ui/LoadingState'
+import { SummaryCell } from '@/app/tecnico/qualificacao/_components/SummaryCell'
 import { FileText, CheckCircle2, Camera, ClipboardList, Clock, ChevronRight } from 'lucide-react'
 import { useHistoricoSummary, useRelatoriosFechados } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
@@ -155,32 +156,6 @@ export default function HistoricoPage() {
   )
 }
 
-function SummaryCell({
-  icon, value, label, tone,
-}: {
-  icon: React.ReactNode
-  value: number
-  label: string
-  tone: 'info' | 'ok'
-}) {
-  // O número é dado neutro (não estado) — vira `text-foreground`. O ícone
-  // acompanha o token do seu escopo: `info` pras duas contagens sem estado
-  // próprio (fotos/OSs de hoje), `ok` pra "rel. fechados" — mesmo token de
-  // "concluído" usado no card de relatório logo abaixo. O rótulo abaixo do
-  // número já diz o que é ("coletas", "OSs", "rel. fechados") — é texto
-  // secundário, não repete o token do ícone (mesma lição do metadado do
-  // `EquipmentHeader`: secundário vira `text-muted-foreground`, não o peso
-  // do primário).
-  const color = tone === 'info' ? 'text-info' : 'text-ok'
-  return (
-    <div className="rounded-lg bg-muted/30 p-2 text-center">
-      <div className={`mx-auto mb-1 flex h-6 w-6 items-center justify-center ${color}`}>{icon}</div>
-      <p className="text-2xl font-bold text-foreground">{value}</p>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-    </div>
-  )
-}
-
 function RelatorioCard({ r }: { r: RelatorioHistorico }) {
   const itemCount = r.collect_item_ids?.length ?? 0
   const time = r.signature_technician_date || r.data_fim
@@ -218,7 +193,7 @@ function RelatorioCard({ r }: { r: RelatorioHistorico }) {
               )}
             </div>
           </div>
-          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground opacity-60 transition group-hover:opacity-100" />
         </div>
       </div>
     </PendingLink>
