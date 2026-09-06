@@ -498,7 +498,7 @@ function ServerStep({
               </button>
               <button
                 onClick={() => onRemoveHistory(h)}
-                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
+                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-muted-foreground hover:text-muted-foreground transition-all flex-shrink-0"
                 title="Remover"
               >
                 ×
@@ -676,7 +676,7 @@ function CredentialsStep({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
           >
             {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
