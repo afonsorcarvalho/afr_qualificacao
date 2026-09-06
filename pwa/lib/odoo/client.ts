@@ -18,6 +18,29 @@ interface JsonRpcResponse<T = unknown> {
 }
 
 /**
+ * Status HTTP de uma falha do axios, quando houver.
+ *
+ * O interceptor recebe `unknown`: além do `AxiosError`, cai aqui erro de
+ * rede, de serialização e o que mais estourar na cadeia. Por isso a leitura
+ * é passo a passo, em vez de `error?.response?.status` sobre `any`.
+ */
+function ehDemora(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const e = error as { code?: unknown; name?: unknown }
+  // `ECONNABORTED` é o timeout do axios; `AbortError` é o do fetch nativo e
+  // o de quem cancela por AbortController.
+  return e.code === 'ECONNABORTED' || e.name === 'AbortError' || e.name === 'TimeoutError'
+}
+
+function statusHttp(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const resposta = (error as { response?: unknown }).response
+  if (typeof resposta !== 'object' || resposta === null) return undefined
+  const status = (resposta as { status?: unknown }).status
+  return typeof status === 'number' ? status : undefined
+}
+
+/**
  * Converte a falha de transporte do axios numa frase que o técnico entende.
  *
  * O que chegava na tela era `Request failed with status code 502` — texto do
@@ -25,9 +48,16 @@ interface JsonRpcResponse<T = unknown> {
  * saber duas coisas: se o trabalho dele foi perdido (quase nunca é — a foto
  * segue anexada na tela) e o que fazer agora.
  */
-function mensagemDeFalha(error: any): string {
-  const status: number | undefined = error?.response?.status
+export function mensagemDeFalha(error: unknown): string {
+  const status = statusHttp(error)
   const nadaPerdido = 'O que você preencheu continua aqui'
+  // Antes de "sem status": demora tem causa e conselho próprios. O caso
+  // comum é Odoo recém-reiniciado carregando o registry na primeira
+  // requisição que toca o banco — some sozinho na segunda tentativa, e
+  // dizer "sem conexão" mandaria o técnico procurar sinal à toa.
+  if (!status && ehDemora(error)) {
+    return `O servidor demorou demais para responder — ele pode estar iniciando. ${nadaPerdido}; tente de novo em alguns segundos.`
+  }
   if (!status) {
     const offline =
       typeof navigator !== 'undefined' && navigator.onLine === false
@@ -45,6 +75,23 @@ function mensagemDeFalha(error: any): string {
     return `O servidor não respondeu (erro ${status}). ${nadaPerdido} — tente de novo em instantes.`
   }
   return `Falha na comunicação com o servidor (erro ${status}). ${nadaPerdido}.`
+}
+
+/**
+ * Roda uma chamada pré-sessão traduzindo só a falha de TRANSPORTE.
+ *
+ * As chamadas de login não passam pela instância do axios (não há alvo no
+ * store ainda), então não passam pelo interceptor — e o erro cru do axios
+ * chegava à tela: "timeout of 15000ms exceeded", em inglês, na primeira tela
+ * do app. Erro de negócio (credencial errada) não passa por aqui: ele vem
+ * como resposta 200 com `error` no corpo, e continua tratado no chamador.
+ */
+async function traduzTransporte<T>(chamada: () => Promise<T>): Promise<T> {
+  try {
+    return await chamada()
+  } catch (e) {
+    throw new OdooError(mensagemDeFalha(e), statusHttp(e) ?? 0)
+  }
 }
 
 export class OdooError extends Error {
@@ -151,14 +198,19 @@ class OdooClient {
   // Lista bancos de dados disponíveis no servidor (via proxy)
   async getDatabases(serverUrl: string): Promise<string[]> {
     const target = normalizeTarget(serverUrl)
-    const response = await axios.post<JsonRpcResponse<string[]>>(
-      `${PROXY_BASE}/web/database/list`,
-      rpcPayload({}),
-      {
-        timeout: 15000,
-        withCredentials: true,
-        headers: { 'Content-Type': 'application/json', 'X-Odoo-Target': target },
-      }
+    // `axios.post` direto, não `this.http`: aqui ainda não há sessão nem alvo
+    // no store, então o destino vai no header. O preço disso é ficar fora do
+    // interceptor — daí o `traduzTransporte` abaixo.
+    const response = await traduzTransporte(() =>
+      axios.post<JsonRpcResponse<string[]>>(
+        `${PROXY_BASE}/web/database/list`,
+        rpcPayload({}),
+        {
+          timeout: 30000,
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json', 'X-Odoo-Target': target },
+        }
+      )
     )
     if (response.data.error) {
       throw new OdooError(
@@ -176,19 +228,25 @@ class OdooClient {
     password: string
   ): Promise<{ uid: number; name: string; company_id: number | false }> {
     const target = normalizeTarget(serverUrl)
-    const response = await axios.post<JsonRpcResponse<{
-      uid: number
-      name: string
-      session_id: string
-      company_id: number | false
-    }>>(
-      `${PROXY_BASE}/web/session/authenticate`,
-      rpcPayload({ db, login, password }),
-      {
-        withCredentials: true,
-        timeout: 15000,
-        headers: { 'Content-Type': 'application/json', 'X-Odoo-Target': target },
-      }
+    // Mesmo caso do `getDatabases`: pré-sessão, fora do interceptor.
+    const response = await traduzTransporte(() =>
+      axios.post<JsonRpcResponse<{
+        uid: number
+        name: string
+        session_id: string
+        company_id: number | false
+      }>>(
+        `${PROXY_BASE}/web/session/authenticate`,
+        rpcPayload({ db, login, password }),
+        {
+          withCredentials: true,
+          // 30s, não 15: o primeiro login depois de o Odoo subir paga a carga
+          // do registry e passava do limite antigo — foi o que apareceu como
+          // "timeout of 15000ms exceeded" na tela.
+          timeout: 30000,
+          headers: { 'Content-Type': 'application/json', 'X-Odoo-Target': target },
+        }
+      )
     )
 
     const data = response.data

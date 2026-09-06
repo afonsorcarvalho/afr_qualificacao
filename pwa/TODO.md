@@ -87,6 +87,22 @@
 - Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
 
 ### Técnico Qualificação
+- ~~**Voltar depois de fechar o relatório caía no formulário já fechado.**~~ **Resolvido em
+  2026-09-05** (relatado em campo pelo user). Era `router.push` no `onSuccess` do fechamento:
+  a tela concluída ficava no histórico, o botão voltar do navegador levava de volta a ela,
+  tentar fechar de novo dava erro no servidor, e só o segundo "voltar" chegava na OS. Virou
+  `router.replace`. Varrendo o resto apareceram **mais dois do mesmo defeito**, corrigidos
+  junto: o **logout** (voltar trazia a tela autenticada sem sessão, com o `AuthGuard`
+  expulsando depois — origem do POST de logout com 502 que já estava catalogado como benigno)
+  e o **login** (voltar levava o técnico já autenticado de volta ao formulário de
+  credenciais).
+  Cobertura, a pedido do user, pensada para pegar o **próximo**, não só estes três:
+  `FinalizarPage.test.tsx`, `PerfilLogout.test.tsx` e `LoginRedirect.test.tsx` (comportamento,
+  incluindo o caso oposto — falhar ao finalizar não pode navegar) mais
+  `navegacaoHistorico.test.ts`, que lê o código-fonte e **exige que todo `router.push` esteja
+  declarado com justificativa**, recusa entrada morta na lista de permitidos e proíbe
+  `router.push` dentro de `onSuccess`. As quatro guardas foram verificadas por mutação:
+  desfiz cada `replace` e confirmei a falha antes de reverter.
 - ~~**Rolagem longa pra ver o que já foi coletado.**~~ **Resolvido em 2026-09-05.**
   As duas seções eram empilhadas, então com 25 itens ver as feitas custava rolar a lista
   inteira de pendentes. Entrou `ColetaFilter`: filtro segmentado grudado no topo da coluna
@@ -338,12 +354,32 @@ botões Aprovar/Reprovar/Cancelar visíveis para quem só receberia `UserError`.
   estas mudanças. Verificado com `git stash` (arquivos rastreados de volta ao conteúdo de
   `20add57`): o mesmo erro aparecia em `33:28`, e o lint só lê o fonte, então nada do
   working tree entrava na conta. Binding removido.
-- **Débito de lint herdado da origem.** O `next build` da origem nunca rodou de fato (no worktree
-  de origem o `next lint` aborta por conflito de plugin com o `.eslintrc.json` do repo pai). Aqui
-  ele roda e acusava 41 erros; os 5 defeitos reais (imports/bindings mortos) foram removidos, e
-  `@typescript-eslint/no-explicit-any` virou `"warn"` em `pwa/.eslintrc.json` — o débito fica
-  **visível** em toda build, não escondido. Restam ~30 `any` explícitos como warning; tipá-los é
-  trabalho futuro, e a regra volta a `"error"` quando isso for feito.
+- ~~**Débito de lint herdado da origem.**~~ **Fechado em 2026-09-05.** O `next build` da origem
+  nunca rodou de fato (lá o `next lint` aborta por conflito de plugin com o `.eslintrc.json` do
+  repo pai). Aqui ele roda e acusava 41 erros; os 5 defeitos reais (imports/bindings mortos) saíram
+  na migração e `@typescript-eslint/no-explicit-any` virou `"warn"` pra deixar o resto visível.
+  Agora **o código de produção não tem mais nenhum `any` explícito** e a regra voltou a `"error"`.
+  Os dez que restavam eram dois padrões: `catch (e: any)` seguido de `e.message` num toast (seis
+  lugares) e `let json: any` no retorno das rotas de IA (dois). Viraram `lib/utils/erro.ts`
+  (`mensagemDoErro`/`nomeDoErro`, 10 testes) e tipos de resposta declarados. O `any` calava o
+  compilador, não o problema: `e.message` em algo que não é `Error` põe `undefined` no toast, e
+  erro que atravessa realm (worker, iframe, JSON de API) não passa em `instanceof Error` — o
+  helper cobre os dois e nunca devolve string vazia.
+  Junto saiu `error?.response?.status` sobre `any` no interceptor do `odooClient`: virou leitura
+  passo a passo (`statusHttp`), e `mensagemDeFalha` ganhou os 8 testes que nunca teve — as frases
+  em pt-BR que o técnico lê quando a rede cai não tinham nada segurando. Conferido de ponta a
+  ponta parando o container do Odoo: "O servidor não respondeu (erro 502). O que você preencheu
+  continua aqui — tente de novo em instantes." (container religado depois).
+  **Ressalva:** em arquivo de teste a regra fica `off` por `overrides`. Ali `as any` é honesto — o
+  fixture é dublê deliberadamente parcial (`{data, isLoading} as any` no lugar do retorno inteiro
+  do React Query) e escrever o objeto completo afogaria a asserção. São ~52 ocorrências, todas em
+  teste.
+- **5 warnings de `@next/next/no-img-element` continuam.** São `<img>` de foto de coleta e de logo,
+  servidos pelo proxy `/api/odoo` com sessão. Trocar por `next/image` obrigaria a passar pelo
+  otimizador (mais um salto, `remotePatterns`, custo) para imagem autenticada que o app precisa
+  poder mostrar offline — provavelmente a escolha certa é ficar com `<img>` e silenciar com
+  motivo, não migrar. Decidir: hoje são ruído permanente na build, que é justo o padrão que este
+  item acima combateu.
 - ~~`/manifest.json` respondia 307 sem sessão.~~ **Resolvido em 2026-09-03**: o bypass de
   estáticos do `pwa/middleware.ts` não cobria `.json`/`.webmanifest`, então o manifesto só era
   servido depois do login e o prompt de instalação nunca aparecia. Era comportamento idêntico ao

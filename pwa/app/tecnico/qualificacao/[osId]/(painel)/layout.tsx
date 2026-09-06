@@ -16,6 +16,7 @@ import {
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import { buildSummaryContext } from '@/lib/tecnico/buildSummaryContext'
 import toast from 'react-hot-toast'
+import { mensagemDoErro } from '@/lib/utils/erro'
 
 /**
  * Dono da coluna esquerda de `/[osId]` e `/[osId]/coleta/[itemId]`: as duas
@@ -62,7 +63,7 @@ export default function PainelLayout({ children }: { children: React.ReactNode }
 
   const handleStart = () => {
     startMutation.mutate(id, {
-      onError: (e: any) => toast.error(e.message),
+      onError: (e) => toast.error(mensagemDoErro(e)),
     })
   }
   const handleContinue = () => {

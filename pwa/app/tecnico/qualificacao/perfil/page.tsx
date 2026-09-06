@@ -70,7 +70,12 @@ export default function PerfilPage() {
     logout()
     odooClient.reset()
     resetSessionCache(qc)
-    router.push(buildPostLogoutLoginPath(serverUrl, dbName))
+    // `replace`: depois de sair, voltar não pode trazer de volta a tela
+    // autenticada. Com `push` ela reaparecia do histórico sem sessão, e o
+    // `AuthGuard` só então expulsava — piscada feia e um POST de logout
+    // extra. Mesmo defeito do fechamento de relatório, achado junto em
+    // 2026-09-05.
+    router.replace(buildPostLogoutLoginPath(serverUrl, dbName))
   }
 
   const initials = userName

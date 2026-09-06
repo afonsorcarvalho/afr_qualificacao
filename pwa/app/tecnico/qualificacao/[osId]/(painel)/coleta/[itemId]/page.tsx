@@ -12,6 +12,7 @@ import { useCollectItem, useOsDetail } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import odooClient from '@/lib/odoo/client'
 import toast from 'react-hot-toast'
+import { mensagemDoErro } from '@/lib/utils/erro'
 import type { ColetaItemDetail } from '@/lib/odoo/tecnico'
 
 // Todo item coletado precisa de anexo, 'outro' incluído. O backend sempre
@@ -124,7 +125,7 @@ export default function ColetaPage() {
           // da OS, é sempre seguro nos dois layouts.
           router.replace(`/tecnico/qualificacao/${oid}`)
         },
-        onError: (e: any) => toast.error(e.message),
+        onError: (e) => toast.error(mensagemDoErro(e)),
       },
     )
   }

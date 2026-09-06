@@ -7,6 +7,7 @@ import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import { useReviewDismissed } from '@/lib/hooks/useReviewDismissed'
 import { useReviewCache } from '@/lib/hooks/useReviewCache'
 import toast from 'react-hot-toast'
+import { mensagemDoErro } from '@/lib/utils/erro'
 import type { SummaryRequestBody } from '@/app/api/groq/summary/route'
 import type { ReviewIssue, ReviewIssueType, ReviewResponse } from '@/app/api/groq/review/route'
 
@@ -74,8 +75,8 @@ export function ReviewPanel({
       const json = (await res.json()) as ReviewResponse
       setData(json)
       saveCache(json)
-    } catch (e: any) {
-      const m = e?.message || 'indisponível'
+    } catch (e) {
+      const m = mensagemDoErro(e, 'indisponível')
       setErrorMsg(m)
       toast.error(`IA revisão: ${m}`)
     } finally {

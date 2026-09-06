@@ -4,6 +4,7 @@ import { Mic, MicOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import toast from 'react-hot-toast'
+import { mensagemDoErro, nomeDoErro } from '@/lib/utils/erro'
 
 interface MicButtonProps {
   onTranscribe: (text: string) => void
@@ -15,6 +16,10 @@ type State = 'idle' | 'recording' | 'uploading' | 'denied'
 
 const MAX_DURATION_MS = 60_000
 const MIN_BLOB_BYTES = 1024
+
+/** `/api/groq/transcribe` devolve `{text}` no sucesso e `{error}` na falha;
+ *  `null` cobre a resposta sem JSON (proxy, 502, corpo vazio). */
+type RespostaTranscricao = { text?: unknown; error?: string } | null
 
 export function MicButton({ onTranscribe, disabled, className }: MicButtonProps) {
   const { enabled } = useGroqStatus()
@@ -54,7 +59,7 @@ export function MicButton({ onTranscribe, disabled, className }: MicButtonProps)
         const ext = mimeRef.current.includes('mp4') ? 'mp4' : 'webm'
         form.append('audio', blob, `audio.${ext}`)
         const res = await fetch('/api/groq/transcribe', { method: 'POST', body: form })
-        let json: any = null
+        let json: RespostaTranscricao = null
         try { json = await res.json() } catch { /* sem json */ }
         if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
         if (typeof json?.text === 'string' && json.text.trim()) {
@@ -62,8 +67,8 @@ export function MicButton({ onTranscribe, disabled, className }: MicButtonProps)
         } else {
           toast.error('Transcrição vazia')
         }
-      } catch (e: any) {
-        toast.error(`IA: ${e.message || 'indisponível'}`)
+      } catch (e) {
+        toast.error(`IA: ${mensagemDoErro(e, 'indisponível')}`)
       } finally {
         setState('idle')
       }
@@ -123,10 +128,11 @@ export function MicButton({ onTranscribe, disabled, className }: MicButtonProps)
           recorderRef.current.stop()
         }
       }, MAX_DURATION_MS)
-    } catch (e: any) {
+    } catch (e) {
       pressedRef.current = false
       cleanup()
-      if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') {
+      const nome = nomeDoErro(e)
+      if (nome === 'NotAllowedError' || nome === 'SecurityError') {
         setState('denied')
         toast.error('Permita microfone nas configurações do navegador')
       } else {

@@ -11,6 +11,11 @@ import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import { buildSummaryContext } from '@/lib/tecnico/buildSummaryContext'
 import toast from 'react-hot-toast'
+import { mensagemDoErro } from '@/lib/utils/erro'
+
+/** `/api/groq/summary` devolve `{summary}` no sucesso e `{error}` na falha;
+ *  `null` cobre a resposta sem JSON (proxy, 502, corpo vazio). */
+type RespostaResumo = { summary?: unknown; error?: string } | null
 
 export default function FinalizarPage() {
   const { osId, relId } = useParams<{ osId: string; relId: string }>()
@@ -42,7 +47,7 @@ export default function FinalizarPage() {
       body: JSON.stringify(buildSummaryContext(data)),
     })
       .then(async (res) => {
-        let json: any = null
+        let json: RespostaResumo = null
         try { json = await res.json() } catch { /* response sem JSON */ }
         if (res.ok && typeof json?.summary === 'string') {
           setDescricao(json.summary)
@@ -50,7 +55,7 @@ export default function FinalizarPage() {
           toast.error(`IA: ${json?.error || `falha auto-resumo (HTTP ${res.status})`}`)
         }
       })
-      .catch((e) => toast.error(`IA: ${e.message || 'offline'}`))
+      .catch((e) => toast.error(`IA: ${mensagemDoErro(e, 'offline')}`))
       .finally(() => setGenerating(false))
   }, [data, descricao, groqEnabled])
 
@@ -84,9 +89,15 @@ export default function FinalizarPage() {
       {
         onSuccess: () => {
           toast.success('Relatório finalizado')
-          router.push(`/tecnico/qualificacao/${oid}`)
+          // `replace`, não `push`: o formulário do relatório recém-fechado
+          // não pode continuar no histórico. Com `push`, o botão voltar do
+          // navegador trazia o técnico de volta a ele, tentar fechar de novo
+          // dava erro no servidor, e só o segundo "voltar" chegava na OS
+          // (relatado em campo em 2026-09-05). Mesmo beco sem saída que a
+          // tela de coleta já tinha resolvido do mesmo jeito.
+          router.replace(`/tecnico/qualificacao/${oid}`)
         },
-        onError: (e: any) => toast.error(e.message),
+        onError: (e) => toast.error(mensagemDoErro(e)),
       },
     )
   }

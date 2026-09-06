@@ -1,10 +1,24 @@
 {
   "extends": ["next/core-web-vitals", "next/typescript"],
   "rules": {
-    "@typescript-eslint/no-explicit-any": "warn",
+    // Voltou a ser erro em 2026-09-05, quando o último `any` do código de
+    // produção saiu. Ficou como "warn" desde a migração do PWA para o addon,
+    // e o débito só encolhe se a régua barrar o próximo.
+    "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/no-unused-vars": [
       "error",
       { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }
     ]
-  }
+  },
+  "overrides": [
+    {
+      // Teste é o lugar onde `as any` é honesto: o fixture é um dublê
+      // deliberadamente parcial (`{data, isLoading} as any` no lugar do
+      // retorno inteiro do React Query) e escrever o objeto completo só
+      // afogaria a asserção. A garantia que interessa é a do código que
+      // roda no aparelho do técnico.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      "rules": { "@typescript-eslint/no-explicit-any": "off" }
+    }
+  ]
 }

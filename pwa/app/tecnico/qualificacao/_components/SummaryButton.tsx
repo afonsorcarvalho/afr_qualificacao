@@ -4,6 +4,7 @@ import { Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import toast from 'react-hot-toast'
+import { mensagemDoErro } from '@/lib/utils/erro'
 import type { SummaryRequestBody } from '@/app/api/groq/summary/route'
 
 interface SummaryButtonProps {
@@ -50,8 +51,8 @@ export function SummaryButton({
       } else {
         toast.error('Resumo vazio')
       }
-    } catch (e: any) {
-      toast.error(`IA: ${e.message || 'indisponível'}`)
+    } catch (e) {
+      toast.error(`IA: ${mensagemDoErro(e, 'indisponível')}`)
     } finally {
       setLoading(false)
     }
