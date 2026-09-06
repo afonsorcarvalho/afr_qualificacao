@@ -18,6 +18,12 @@ if (typeof window !== 'undefined') {
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 }
 
+/**
+ * Cromo escuro nos dois temas, por decisão: foto de coleta e PDF se leem
+ * melhor sobre fundo escuro, e o overlay já é `bg-black/85`. Por isso este é
+ * o único arquivo que usa a família `dark-*` e tinta branca — e por isso ele
+ * aparece nomeado em PERMITIDO_TEMA no teste do tema.
+ */
 interface PdfViewerModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -200,13 +206,13 @@ export function PdfViewerModal({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.97, y: 10 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 28 }}
-                className="fixed inset-4 md:inset-6 z-50 flex flex-col rounded-lg border border-border bg-card shadow-[0_-8px_24px_rgba(0,0,0,0.45)] overflow-hidden"
+                className="fixed inset-4 md:inset-6 z-50 flex flex-col rounded-lg border border-white/10 bg-dark-800 shadow-[0_-8px_24px_rgba(0,0,0,0.45)] overflow-hidden"
               >
 
                 {/* Header */}
                 <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10">
-                  <div className="p-2 rounded-lg bg-muted border border-border flex-shrink-0">
-                    <FileText size={16} className="text-muted-foreground" />
+                  <div className="p-2 rounded-lg bg-dark-700 border border-white/10 flex-shrink-0">
+                    <FileText size={16} className="text-white/50" />
                   </div>
                   <div className="flex-1 min-w-0">
                     {title && (
@@ -215,7 +221,7 @@ export function PdfViewerModal({
                       </Dialog.Title>
                     )}
                     {filename && (
-                      <Dialog.Description className="text-[11px] text-white/40 font-mono truncate">
+                      <Dialog.Description className="text-[11px] text-white/50 font-mono truncate">
                         {filename}{numPages > 0 && ` · ${numPages} página${numPages !== 1 ? 's' : ''}`}
                       </Dialog.Description>
                     )}
@@ -245,9 +251,9 @@ export function PdfViewerModal({
                         value={pageInputValue}
                         onChange={(e) => setPageInputValue(e.target.value)}
                         onBlur={handlePageInput}
-                        className="w-12 px-2 py-1.5 rounded-lg text-center bg-background border border-input text-foreground font-mono tabular-nums focus:outline-none focus:border-ring"
+                        className="w-12 px-2 py-1.5 rounded-lg text-center bg-dark-900 border border-white/40 text-white font-mono tabular-nums focus:outline-none focus:border-ring"
                       />
-                      <span className="text-white/40 font-mono">/ {numPages || '—'}</span>
+                      <span className="text-white/50 font-mono">/ {numPages || '—'}</span>
                     </form>
                     <ToolBtn
                       icon={<ChevronRight size={15} />}
@@ -305,7 +311,7 @@ export function PdfViewerModal({
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={handleSearchKey}
                         placeholder="Buscar no PDF..."
-                        className="w-full pl-9 pr-4 py-1.5 rounded-lg text-sm bg-background border border-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-ring transition-colors"
+                        className="w-full pl-9 pr-4 py-1.5 rounded-lg text-sm bg-dark-900 border border-white/40 text-white placeholder:text-white/50 focus:outline-none focus:border-ring transition-colors"
                       />
                     </div>
 
@@ -385,7 +391,7 @@ export function PdfViewerModal({
 
                 {/* Footer */}
                 <div className="px-5 py-2 border-t border-white/5 text-center">
-                  <span className="text-[10px] text-white/30 font-mono">
+                  <span className="text-[10px] text-white/50 font-mono">
                     Setas ← → para páginas  ·  Enter/Shift+Enter navegar busca  ·  Esc fechar
                   </span>
                 </div>
@@ -412,7 +418,7 @@ function ToolBtn({
       className={clsx(
         'p-2 rounded-lg border transition-all disabled:opacity-30 disabled:cursor-not-allowed',
         danger
-          ? 'bg-muted border-border text-foreground hover:bg-accent'
+          ? 'bg-dark-700 border-white/10 text-white'
           : 'bg-white/5 border-white/10 text-white/70 hover:text-white hover:bg-white/10'
       )}
     >
@@ -423,8 +429,8 @@ function ToolBtn({
 
 function LoadingBlock() {
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-3 text-white/40 py-20">
-      <Loader2 size={24} className="animate-spin text-muted-foreground" />
+    <div className="h-full flex flex-col items-center justify-center gap-3 text-white/50 py-20">
+      <Loader2 size={24} className="animate-spin text-white/50" />
       <span className="text-sm">Carregando PDF...</span>
     </div>
   )

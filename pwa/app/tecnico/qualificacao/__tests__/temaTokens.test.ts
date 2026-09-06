@@ -96,8 +96,27 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // (SignatureCanvas.tsx) — fundo que segue o tema apagaria a assinatura no
   // escuro (`bg-card` é navy), então o papel também não segue o tema aqui.
   'app/tecnico/qualificacao/[osId]/relatorio/[relId]/page.tsx :: bg-white': 'permanente — exibição da assinatura já capturada é documento/papel, mesmo raciocínio do Signature Pad (DESIGN.md)',
-  // Task 7 (visualizador)
-  'components/ui/PdfViewerModal.tsx :: *': 'migração pendente (Task 7)',
+
+  // --- Task 7: visualizador (PdfViewerModal) — permanente, não é migração ---
+  // Decisão de projeto: o visualizador é cromo escuro nos dois temas (foto de
+  // coleta e PDF se leem melhor sobre fundo escuro; o overlay já é
+  // `bg-black/85`). Cada classe abaixo é a família `dark-*`/tinta branca que
+  // materializa essa decisão — nomeada, não curinga, porque um curinga
+  // deixaria o arquivo livre para receber qualquer classe nova no futuro.
+  'components/ui/PdfViewerModal.tsx :: bg-dark-800': 'Cromo escuro declarado — superfície do painel do visualizador (mesmo valor de --card no tema escuro: 225 50% 8%, aparência preservada).',
+  'components/ui/PdfViewerModal.tsx :: bg-dark-700': 'Cromo escuro declarado — superfície elevada dentro do visualizador (chip do ícone no cabeçalho, botão de fechar).',
+  'components/ui/PdfViewerModal.tsx :: bg-dark-900': 'Cromo escuro declarado — superfície dos campos de entrada (página e busca), mesmo valor de --background no tema escuro (224 71% 4%).',
+  'components/ui/PdfViewerModal.tsx :: bg-white': 'Dois usos, nenhum tematizável: overlay sutil da toolbar (`bg-white/[0.02]`, cromo escuro) e a folha do PDF em si — papel tem fundo próprio, branco fixo, mesmo raciocínio do Signature Pad.',
+  'components/ui/PdfViewerModal.tsx :: bg-white/5': 'Cromo escuro declarado — fundo sutil dos botões de ferramenta.',
+  'components/ui/PdfViewerModal.tsx :: bg-white/10': 'Cromo escuro declarado — divisores e realce de hover do visualizador.',
+  'components/ui/PdfViewerModal.tsx :: border-white/5': 'Cromo escuro declarado — borda decorativa do rodapé.',
+  'components/ui/PdfViewerModal.tsx :: border-white/10': 'Cromo escuro declarado — bordas decorativas do painel, cabeçalho, toolbar e botões.',
+  'components/ui/PdfViewerModal.tsx :: border-white/40': 'Cromo escuro declarado — borda dos campos de entrada; medida em ~3.8:1 sobre o painel escuro, acima do piso de 3:1 para fronteira de controle.',
+  'components/ui/PdfViewerModal.tsx :: text-white': 'Cromo escuro declarado — título e textos principais do visualizador.',
+  'components/ui/PdfViewerModal.tsx :: text-white/40': 'Cromo escuro declarado — ícone decorativo de busca (não é texto de conteúdo; piso de contraste de texto não se aplica).',
+  'components/ui/PdfViewerModal.tsx :: text-white/50': 'Cromo escuro declarado — textos secundários (nome do arquivo, contagem de páginas, resultado de busca, rodapé, "Carregando PDF..."); medido em ~5.3:1 sobre o fundo escuro fixo, acima do piso de 4.5:1.',
+  'components/ui/PdfViewerModal.tsx :: text-white/70': 'Cromo escuro declarado — texto dos botões de ferramenta.',
+  'components/ui/PdfViewerModal.tsx :: text-red-400': 'Cromo escuro declarado — cor de erro fixa (equivalente a --danger do tema escuro); o token semântico text-danger fica vermelho-escuro no tema claro e ficaria ilegível sobre o painel escuro fixo.',
 }
 
 function arquivos(): string[] {
@@ -147,6 +166,21 @@ describe('tema: cor de estado só via token semântico', () => {
 
     expect(violacoes, `Classe de cor sem token semântico:\n  ${violacoes.join('\n  ')}`).toEqual([])
     expect(mortas, `Exceção que não corresponde a nenhum uso — apague:\n  ${mortas.join('\n  ')}`).toEqual([])
+  })
+})
+
+describe('visualizador: superfície escura declarada', () => {
+  const src = readFileSync(join(RAIZ, 'components/ui/PdfViewerModal.tsx'), 'utf8')
+
+  it('o painel não usa superfície temática por baixo de tinta branca', () => {
+    // `bg-card` + `text-white` = branco no branco quando o tema é claro.
+    // Aqui o cromo é escuro DE PROPÓSITO: então a superfície tem que ser
+    // escura de propósito também.
+    expect(src).not.toMatch(/bg-(?:card|muted|background)\b/)
+  })
+
+  it('a decisão está escrita no arquivo', () => {
+    expect(src).toMatch(/cromo escuro/i)
   })
 })
 
