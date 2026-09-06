@@ -3,6 +3,7 @@
   "short_name": "Qualif Técnico",
   "description": "PWA para técnicos executarem coletas de qualificação em campo",
   "start_url": "/tecnico/qualificacao",
+  "scope": "/tecnico/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1f6feb",
