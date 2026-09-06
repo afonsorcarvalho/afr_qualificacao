@@ -22,9 +22,10 @@
   ciclo de qualificação aprovada e o certificado do cliente virava `tampered`). Ou seja, o
   upgrade vale por si. Mas mexe em segurança e schema em produção: backup e ensaio numa
   cópia antes.
-- **BLOQUEIO: Bloco E do checklist nunca executado** (service worker, instalação, offline).
-  É a parte "PWA" do PWA; só o E.1 (manifest 200) foi conferido. Chrome headless ignora
-  service worker, então precisa de celular de verdade — e só depois do HTTPS de pé.
+- ~~**BLOQUEIO: Bloco E do checklist nunca executado**~~ **Fechado em 2026-09-06**, pelo user,
+  depois de o app subir em HTTPS: testado no desktop, no celular e **instalado no Android**,
+  tudo funcionando. Era a parte "PWA" do PWA e o último bloqueio da entrega; até então só o
+  E.1 (manifest 200) tinha sido conferido, porque Chrome headless ignora service worker.
 - **TLS: script pronto, sem acesso pra rodar.** `deploy/setup-pwa-proxy.sh` publica o
   container (HTTP puro na 3010) atrás de HTTPS. Escrito **sem acesso ao servidor**: a chave
   SSH desta máquina é recusada em `191.252.113.190` (labquali resolve para lá; é host
@@ -84,9 +85,28 @@
   retomado do standby, renderizador headless — a tela ficava **em branco**,
   com o conteúdo no DOM e invisível. Foi assim que o print do login saiu preto.
   Agora a entrada é só deslocamento; o conteúdo nasce legível.
-- Auditoria de contraste tela a tela ainda não foi feita (só os tokens base).
+- **Contraste ruim no MODO CLARO — relatado pelo user em 2026-09-06, usando o app publicado.**
+  Botões e informações ficaram difíceis de ler. É achado de uso real, não suspeita: o tema
+  claro nunca passou por revisão de contraste, e todo o trabalho de design foi feito e
+  conferido no escuro (os prints desta sessão inteira saíram no tema escuro). Provável raiz:
+  os tokens têm valor definido para os dois temas, mas só o par do escuro foi medido contra
+  o piso AA de 4.5:1 — no claro, tom sobre tom claro (`text-muted-foreground`,
+  `bg-cyan-500/15` dos cabeçalhos, `text-emerald-300`) tende a cair bem abaixo.
+  Pendente: levantar QUAIS telas e elementos, medir a razão de contraste real de cada um, e
+  corrigir os tokens do tema claro — não os componentes um a um, senão volta.
+- Auditoria de contraste tela a tela ainda não foi feita (só os tokens base). O item acima é
+  a evidência de que ela precisa acontecer, e o tema claro é por onde começar.
 
 ### Técnico Qualificação
+- **Notificação push no celular — levantado em 2026-09-06, NÃO decidido.** É viável: o app já
+  tem service worker registrado e instalável, que é o pré-requisito. Falta, do lado do
+  cliente: pedir permissão, assinar com `PushManager.subscribe` usando uma chave VAPID, e
+  tratar o evento `push` no service worker. Do lado do Odoo: um endpoint para guardar a
+  assinatura por usuário (endpoint + chaves p256dh/auth), e o disparo a partir de algum
+  gatilho de negócio. Custo maior não é o código, é decidir **o que** notifica e manter as
+  assinaturas vivas (elas expiram e precisam ser renovadas/limpas).
+  Ressalvas: no iOS só funciona com o app instalado na tela de início (Safari 16.4+); no
+  Android funciona no Chrome instalado, que é o caso já testado. Nada disso está começado.
 - ~~**Voltar depois de fechar o relatório caía no formulário já fechado.**~~ **Resolvido em
   2026-09-05** (relatado em campo pelo user). Era `router.push` no `onSuccess` do fechamento:
   a tela concluída ficava no histórico, o botão voltar do navegador levava de volta a ela,
