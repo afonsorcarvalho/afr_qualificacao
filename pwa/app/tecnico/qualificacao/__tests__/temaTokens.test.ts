@@ -34,15 +34,24 @@ const PASTAS = ['app', 'components', 'lib']
 
 const FAMILIAS = 'emerald|amber|red|rose|cyan|sky|blue|green|yellow|orange|teal|violet|indigo|fuchsia|pink|lime'
 
+/**
+ * Prefixos de utilitário de cor do Tailwind que carregam cor de estado ou
+ * cor absoluta. As duas regras de `PROIBIDO` abaixo (branco / shade crua)
+ * enxergam o MESMO conjunto — uma cobrindo mais prefixos que a outra é
+ * assimetria, e assimetria é o próximo buraco (achado real: `accent-emerald-500`
+ * em `page.tsx` passava pela Regra 2 porque `accent` não estava na lista).
+ */
+const PREFIXOS = 'text|bg|border|divide|ring|accent|from|via|to|shadow|outline|decoration|caret|fill|stroke'
+
 const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
   {
     nome: 'cor absoluta branca',
-    re: new RegExp(String.raw`\b(?:text|bg|border|divide|ring)-white(?:\/\d{1,3})?\b`, 'g'),
+    re: new RegExp(String.raw`\b(?:${PREFIXOS})-white(?:\/\d{1,3})?\b`, 'g'),
     conserto: 'usar o papel semântico: text-foreground / text-muted-foreground / bg-surface-raised / border-border',
   },
   {
     nome: 'shade crua de cor de estado',
-    re: new RegExp(String.raw`\b(?:text|bg|border|ring)-(?:${FAMILIAS})-\d{2,3}(?:\/\d{1,3})?\b`, 'g'),
+    re: new RegExp(String.raw`\b(?:${PREFIXOS})-(?:${FAMILIAS})-\d{2,3}(?:\/\d{1,3})?\b`, 'g'),
     conserto: 'usar o token de estado: text-ok/warn/danger/info e bg-*-surface',
   },
   {
@@ -78,6 +87,9 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // pasta/natureza dos demais arquivos da Task 3, adicionar ao Modify dela.
   'app/tecnico/qualificacao/_components/MicButton.tsx :: *': 'migração pendente (Task 3) — fora da lista original do plano',
   'components/ui/GlassCard.tsx :: *': 'migração pendente (Task 3) — fora da lista original do plano',
+  // Achado no fix round 1 (regex ampliada p/ `accent-*` e cia.): checkbox "Só
+  // minhas" da lista principal. `accent-emerald-500` vira `accent-ok`.
+  'app/tecnico/qualificacao/page.tsx :: accent-emerald-500': 'migração pendente (Task 3)',
   // Task 4 (histórico + perfil)
   'app/tecnico/qualificacao/historico/page.tsx :: *': 'migração pendente (Task 4)',
   'app/tecnico/qualificacao/perfil/page.tsx :: *': 'migração pendente (Task 4)',
