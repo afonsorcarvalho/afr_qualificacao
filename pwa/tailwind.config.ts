@@ -46,6 +46,25 @@ const config: Config = {
         border: 'hsl(var(--border) / <alpha-value>)',
         input: 'hsl(var(--input) / <alpha-value>)',
         ring: 'hsl(var(--ring) / <alpha-value>)',
+        // Cores de estado. `<alpha-value>` + tripla HSL crua no globals.css
+        // é o que permite `bg-ok/15`; token em hex geraria zero CSS.
+        ok: {
+          DEFAULT: 'hsl(var(--ok) / <alpha-value>)',
+          surface: 'hsl(var(--ok-surface) / <alpha-value>)',
+        },
+        warn: {
+          DEFAULT: 'hsl(var(--warn) / <alpha-value>)',
+          surface: 'hsl(var(--warn-surface) / <alpha-value>)',
+        },
+        danger: {
+          DEFAULT: 'hsl(var(--danger) / <alpha-value>)',
+          surface: 'hsl(var(--danger-surface) / <alpha-value>)',
+        },
+        info: {
+          DEFAULT: 'hsl(var(--info) / <alpha-value>)',
+          surface: 'hsl(var(--info-surface) / <alpha-value>)',
+        },
+        'surface-raised': 'hsl(var(--surface-raised) / <alpha-value>)',
         dark: {
           900: '#030712',
           800: '#0a0f1e',

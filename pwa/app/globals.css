@@ -43,11 +43,32 @@
      invertido no tema claro). */
   --primary:               217 33% 17%;
   --primary-foreground:    210 40% 98%;
-  --destructive:           0 72% 51%;
+  /* Era `0 72% 51%`: passa sobre o fundo puro, mas cai a 3.94:1 em cima da
+     superfície tonal de erro, que é onde ele de fato aparece. */
+  --destructive:           0 74% 42%;
   --destructive-foreground: 210 40% 98%;
   --border:                214 32% 91%;
   --input:                 214 32% 91%;
-  --ring:                  188 86% 42%;
+  /* Era `188 86% 42%`: 2.52:1 sobre o fundo claro, abaixo do piso de 3:1 que
+     WCAG 1.4.11 exige de indicador de foco. */
+  --ring:                  188 86% 34%;
+
+  /* Cores de estado (DESIGN.md §2). Valor CLARO escolhido pelo piso AA:
+     cada um passa 4.5:1 tanto sobre o fundo da página (#f8fafc) quanto
+     sobre a sua própria superfície tonal. As shades cruas do Tailwind que
+     estavam espalhadas pelo código (`text-emerald-300`) saíam a ~1.2:1 aqui
+     — foram escolhidas olhando só o tema escuro. */
+  --ok:               163 94% 24%;   /* emerald-700 · 5.24:1 */
+  --ok-surface:       160 57% 93%;
+  --warn:             23 83% 31%;    /* amber-800   · 6.78:1 */
+  --warn-surface:     36 93% 94%;
+  --danger:           0 74% 42%;     /* red-700     · 6.18:1 */
+  --danger-surface:   0 83% 95%;
+  --info:             193 82% 31%;   /* cyan-700    · 5.12:1 */
+  --info-surface:     190 71% 93%;
+  /* Superfície um degrau acima do cartão — substitui `bg-white/5`, que no
+     tema claro é branco sobre branco. */
+  --surface-raised:   210 14% 97%;
 }
 
 :root.dark {
@@ -80,6 +101,20 @@
   --border:                221 32% 15%;
   --input:                 221 32% 15%;
   --ring:                  188 86% 53%;
+
+  /* Valores do DESIGN.md §2 (Verde Concluído / Âmbar Pendente / Vermelho
+     Falha / Ciano Foco). As superfícies são a composição MEDIDA do que o app
+     renderiza hoje (`bg-emerald-500/15` sobre `--card`) — por isso o matiz
+     sai puxado para o azul do fundo: é fidelidade ao pixel atual. */
+  --ok:               158 64% 52%;   /* #34d399 */
+  --ok-surface:       187 61% 11%;
+  --warn:             43 96% 56%;    /* #fbbf24 */
+  --warn-surface:     30 25% 14%;
+  --danger:           0 91% 71%;     /* #f87171 */
+  --danger-surface:   323 31% 13%;
+  --info:             188 86% 53%;   /* #22d3ee */
+  --info-surface:     201 73% 13%;
+  --surface-raised:   224 30% 12%;
 }
 
 @layer base {
