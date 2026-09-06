@@ -87,34 +87,34 @@ export default function HistoricoPage() {
     <div className="mx-auto w-full max-w-[880px] space-y-5">
       <div>
         <h1 className="text-lg font-semibold text-foreground">Histórico</h1>
-        <p className="text-xs text-muted-foreground/80">Resumo do dia e relatórios fechados</p>
+        <p className="text-xs text-muted-foreground">Resumo do dia e relatórios fechados</p>
       </div>
 
-      <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-cyan-500/15 via-blue-500/10 to-transparent p-4 shadow-lg shadow-cyan-500/10">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300/80">Hoje</p>
+      <div className="rounded-2xl border border-border/70 bg-info-surface p-4">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-info">Hoje</p>
         {summary.isLoading ? (
           <LoadingState label="Carregando resumo..." className="py-3" />
         ) : summary.error ? (
-          <p className="mt-2 text-sm text-red-400">Erro ao carregar resumo</p>
+          <p className="mt-2 text-sm text-danger">Erro ao carregar resumo</p>
         ) : (
           <div className="mt-3 grid grid-cols-3 gap-2">
             <SummaryCell
               icon={<Camera className="h-4 w-4" />}
               value={summary.data?.hoje_coletas ?? 0}
               label="coletas"
-              tone="cyan"
+              tone="info"
             />
             <SummaryCell
               icon={<ClipboardList className="h-4 w-4" />}
               value={summary.data?.hoje_oss ?? 0}
               label="OSs"
-              tone="violet"
+              tone="info"
             />
             <SummaryCell
               icon={<CheckCircle2 className="h-4 w-4" />}
               value={summary.data?.hoje_relatorios_fechados ?? 0}
               label="rel. fechados"
-              tone="emerald"
+              tone="ok"
             />
           </div>
         )}
@@ -122,11 +122,11 @@ export default function HistoricoPage() {
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Relatórios fechados
           </h2>
           {relatorios.data && (
-            <span className="text-xs text-muted-foreground/80">{relatorios.data.length}</span>
+            <span className="text-xs text-muted-foreground">{relatorios.data.length}</span>
           )}
         </div>
 
@@ -134,10 +134,10 @@ export default function HistoricoPage() {
           <LoadingState label="Carregando relatórios..." />
         )}
         {relatorios.error && (
-          <p className="text-center text-sm text-red-400">Erro ao carregar relatórios</p>
+          <p className="text-center text-sm text-danger">Erro ao carregar relatórios</p>
         )}
         {relatorios.data && relatorios.data.length === 0 && (
-          <p className="rounded-lg border border-border/70 bg-muted/20 p-4 text-center text-sm text-muted-foreground/90">
+          <p className="rounded-lg border border-border/70 bg-muted/20 p-4 text-center text-sm text-muted-foreground">
             Nenhum relatório fechado ainda.
           </p>
         )}
@@ -161,14 +161,18 @@ function SummaryCell({
   icon: React.ReactNode
   value: number
   label: string
-  tone: 'cyan' | 'violet' | 'emerald'
+  tone: 'info' | 'ok'
 }) {
-  const color = tone === 'cyan' ? 'text-cyan-300' : tone === 'violet' ? 'text-violet-300' : 'text-emerald-300'
+  // O número é dado neutro (não estado) — vira `text-foreground`. Quem diz o
+  // estado é o rótulo abaixo, junto do ícone: `info` pras duas contagens sem
+  // estado próprio (fotos/OSs de hoje), `ok` pra "rel. fechados" — mesmo
+  // token de "concluído" usado no card de relatório logo abaixo.
+  const color = tone === 'info' ? 'text-info' : 'text-ok'
   return (
     <div className="rounded-lg bg-muted/30 p-2 text-center">
       <div className={`mx-auto mb-1 flex h-6 w-6 items-center justify-center ${color}`}>{icon}</div>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/80">{label}</p>
+      <p className="text-2xl font-bold text-foreground">{value}</p>
+      <p className={`text-[10px] uppercase tracking-wider ${color}`}>{label}</p>
     </div>
   )
 }
@@ -178,22 +182,22 @@ function RelatorioCard({ r }: { r: RelatorioHistorico }) {
   const time = r.signature_technician_date || r.data_fim
   return (
     <PendingLink href={`/tecnico/qualificacao/${r.os_id?.[0]}/relatorio/${r.id}`}>
-      <div className="group rounded-lg border border-border/70 bg-muted/20 p-3 transition hover:border-emerald-400/40 hover:bg-emerald-500/[0.04]">
+      <div className="group rounded-lg border border-border/70 bg-muted/20 p-3 transition hover:border-ok/40 hover:bg-ok/[0.04]">
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-300">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-ok-surface text-ok">
             <FileText className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <strong className="truncate text-sm text-foreground">REL #{r.id}</strong>
-              <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+              <span className="rounded bg-ok-surface px-1.5 py-0.5 text-[10px] font-semibold text-ok">
                 ✓ ASSINADO
               </span>
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {r.os_id?.[1] ?? '—'}
             </p>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground/90">
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1">
                 <Camera className="h-3 w-3" /> {itemCount} item{itemCount !== 1 ? 's' : ''}
               </span>
@@ -206,11 +210,11 @@ function RelatorioCard({ r }: { r: RelatorioHistorico }) {
                 <span>{r.time_execution.toFixed(1)}h</span>
               )}
               {r.pending_collect_count > 0 && (
-                <span className="text-amber-300">{r.pending_collect_count} pend.</span>
+                <span className="text-warn">{r.pending_collect_count} pend.</span>
               )}
             </div>
           </div>
-          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/60 transition group-hover:text-muted-foreground" />
+          <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
         </div>
       </div>
     </PendingLink>

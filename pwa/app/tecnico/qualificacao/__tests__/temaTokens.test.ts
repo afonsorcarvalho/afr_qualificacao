@@ -80,9 +80,16 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // no traço — o risco real (assinatura branca sobre papel branco) está lá,
   // não aqui.
   'app/tecnico/qualificacao/_components/SignatureCanvas.tsx :: bg-white': 'permanente — pad de assinatura é papel branco fixo, independente do tema (DESIGN.md §Signature Pad)',
-  // Task 4 (histórico + perfil)
-  'app/tecnico/qualificacao/historico/page.tsx :: *': 'migração pendente (Task 4)',
-  'app/tecnico/qualificacao/perfil/page.tsx :: *': 'migração pendente (Task 4)',
+  // Segunda (e última) superfície branca fixa do app, pelo mesmo raciocínio
+  // do Signature Pad: o `<img>` do logotipo da empresa é um ativo externo,
+  // muitas vezes PNG com fundo transparente e traços escuros pensados pra
+  // sentar sobre papel branco — não sobre o tema. `bg-card` bateria certo no
+  // claro (que já é branco), mas no escuro é navy (`225 50% 8%`) e apagaria
+  // logo com tinta escura; e o tema escuro não pode mudar de aparência
+  // (Constraint global da Task 4). Fica fora do escopo mecânico da tabela de
+  // tradução — mesma classe de decisão que o achado do `EquipmentHeader` na
+  // Task 3.
+  'app/tecnico/qualificacao/perfil/page.tsx :: bg-white': 'permanente — moldura do logotipo da empresa: ativo externo assumido sobre fundo branco, independente do tema (mesmo raciocínio do Signature Pad)',
   // Task 5 (OS / coleta / relatório)
   'app/tecnico/qualificacao/[osId]/(painel)/layout.tsx :: *': 'migração pendente (Task 5)',
   'app/tecnico/qualificacao/[osId]/(painel)/coleta/[itemId]/page.tsx :: *': 'migração pendente (Task 5)',
