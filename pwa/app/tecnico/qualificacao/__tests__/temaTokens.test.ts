@@ -96,8 +96,6 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // (SignatureCanvas.tsx) — fundo que segue o tema apagaria a assinatura no
   // escuro (`bg-card` é navy), então o papel também não segue o tema aqui.
   'app/tecnico/qualificacao/[osId]/relatorio/[relId]/page.tsx :: bg-white': 'permanente — exibição da assinatura já capturada é documento/papel, mesmo raciocínio do Signature Pad (DESIGN.md)',
-  // Task 6 (login)
-  'app/login/page.tsx :: *': 'migração pendente (Task 6)',
   // Task 7 (visualizador)
   'components/ui/PdfViewerModal.tsx :: *': 'migração pendente (Task 7)',
 }

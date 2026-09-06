@@ -267,9 +267,9 @@ function LoginPageInner() {
           {/* Progress indicator */}
           <div className="flex items-center gap-0 px-6 pt-5 pb-0">
             <StepIndicator active={step === 'server'} done={step === 'credentials'} label="Servidor" icon={<Server size={12} />} />
-            <div className="flex-1 h-px mx-2 bg-white/10 relative overflow-hidden">
+            <div className="flex-1 h-px mx-2 bg-muted relative overflow-hidden">
               <motion.div
-                className="absolute inset-y-0 left-0 bg-foreground/30"
+                className="absolute inset-y-0 left-0 bg-ok"
                 animate={{ width: step === 'credentials' ? '100%' : '0%' }}
                 transition={{ duration: 0.5, ease: 'easeInOut' }}
               />
@@ -329,9 +329,16 @@ function LoginPageInner() {
         </div>
 
         <motion.p
-          className="text-center text-xs text-white/20 mt-6"
+          className="text-center text-xs text-muted-foreground mt-6"
           initial={false}
-          animate={{ opacity: 1 }}
+          // Era branco absoluto a 20% de opacidade: a tabela manda `text-muted-foreground` puro,
+          // mas isso TRIPLICA o brilho no escuro (medido: pico de luminância
+          // salta de rgb(53,56,65) para rgb(163,173,194) — mudança real de
+          // aparência, não só de token). `opacity-60` na classe seria
+          // sobrescrita pelo `animate` do Framer (estilo inline vence
+          // classe) — por isso o peso reduzido entra aqui, no MESMO
+          // mecanismo que já controla a opacidade deste elemento.
+          animate={{ opacity: 0.6 }}
           transition={{ delay: 0.4 }}
         >
           Labquali · Comunicação via JSON-RPC
@@ -345,7 +352,7 @@ export default function LoginPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-white/60" />
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     }>
       <LoginPageInner />
@@ -373,7 +380,7 @@ function ServerStep({
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <Server size={11} className="text-muted-foreground" />
           URL do servidor
         </label>
@@ -382,9 +389,9 @@ function ServerStep({
           <div className={clsx(
             'absolute -inset-0.5 rounded-xl blur transition-all duration-500',
             status.state === 'ok'
-              ? 'bg-emerald-500/20'
+              ? 'bg-ok-surface'
               : status.state === 'error'
-              ? 'bg-red-500/20'
+              ? 'bg-danger-surface'
               : 'bg-transparent group-focus-within:bg-foreground/10'
           )} />
 
@@ -398,12 +405,12 @@ function ServerStep({
               placeholder="https://mb.fitadigital.com.br"
               className={clsx(
                 'w-full pl-4 pr-28 py-3 rounded-xl text-sm',
-                'bg-white/[0.05] border text-white placeholder-white/25',
-                'focus:outline-none focus:bg-white/[0.08] transition-all duration-200',
+                'bg-surface-raised border text-foreground placeholder:text-muted-foreground',
+                'focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-200',
                 status.state === 'ok'
-                  ? 'border-emerald-500/40'
+                  ? 'border-ok/40'
                   : status.state === 'error'
-                  ? 'border-red-500/40'
+                  ? 'border-danger/40'
                   : 'border-input focus:border-ring'
               )}
             />
@@ -418,17 +425,17 @@ function ServerStep({
                 )}
                 {status.state === 'ok' && (
                   <motion.div key="ok" initial={{ scale: 0.6 }} animate={{ scale: 1 }} exit={{ scale: 0.6 }}>
-                    <CheckCircle2 size={14} className="text-emerald-400" />
+                    <CheckCircle2 size={14} className="text-ok" />
                   </motion.div>
                 )}
                 {status.state === 'error' && (
                   <motion.div key="err" initial={{ scale: 0.6 }} animate={{ scale: 1 }} exit={{ scale: 0.6 }}>
-                    <WifiOff size={14} className="text-red-400" />
+                    <WifiOff size={14} className="text-danger" />
                   </motion.div>
                 )}
                 {status.state === 'idle' && (
                   <motion.div key="idle" initial={false} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <Wifi size={14} className="text-white/20" />
+                    <Wifi size={14} className="text-muted-foreground" />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -468,7 +475,7 @@ function ServerStep({
               exit={{ opacity: 0 }}
               className={clsx(
                 'text-xs flex items-center gap-1.5',
-                status.state === 'error' ? 'text-red-400' : 'text-emerald-400'
+                status.state === 'error' ? 'text-danger' : 'text-ok'
               )}
             >
               <AlertCircle size={11} />
@@ -480,18 +487,18 @@ function ServerStep({
 
       {history.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs text-white/30 font-medium">Histórico:</p>
+          <p className="text-xs text-muted-foreground font-medium">Histórico:</p>
           {history.map((h) => (
             <div key={h} className="flex items-center gap-1 group/item">
               <button
                 onClick={() => setUrl(h)}
-                className="flex-1 text-left text-xs text-white/40 hover:text-foreground transition-colors py-0.5 font-mono truncate"
+                className="flex-1 text-left text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5 font-mono truncate"
               >
                 {h}
               </button>
               <button
                 onClick={() => onRemoveHistory(h)}
-                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-white/20 hover:text-white/60 transition-all flex-shrink-0"
+                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
                 title="Remover"
               >
                 ×
@@ -535,14 +542,14 @@ function CredentialsStep({
       <motion.div
         initial={false}
         animate={{ opacity: 1 }}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30"
+        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-ok-surface border border-ok/30"
       >
-        <CheckCircle2 size={13} className="text-emerald-400 flex-shrink-0" />
-        <span className="text-xs text-emerald-400 truncate font-mono">{url}</span>
+        <CheckCircle2 size={13} className="text-ok flex-shrink-0" />
+        <span className="text-xs text-ok truncate font-mono">{url}</span>
         <button
           type="button"
           onClick={onBack}
-          className="ml-auto text-xs text-white/30 hover:text-white transition-colors flex-shrink-0"
+          className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
         >
           Trocar
         </button>
@@ -550,10 +557,14 @@ function CredentialsStep({
 
       {/* Banco de dados */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <Database size={11} className="text-muted-foreground" />
           Banco de dados
-          <span className="ml-auto text-white/25 font-normal">
+          {/* Era branco a 25% de opacidade, mais fraco que o rótulo (branco a
+              60%, migrado para `text-muted-foreground` acima sem opacidade
+              extra): `opacity-60` reabre essa distinção de peso em vez de
+              colapsar dica e rótulo na mesma cor. */}
+          <span className="ml-auto text-muted-foreground opacity-60 font-normal">
             {databases.length > 0
               ? `${databases.length} disponíve${databases.length !== 1 ? 'is' : 'l'}`
               : 'digite o nome'}
@@ -579,8 +590,8 @@ function CredentialsStep({
               spellCheck={false}
               className={clsx(
                 'w-full pl-9 pr-4 py-3 rounded-xl text-sm',
-                'bg-white/[0.05] border border-white/10 text-white placeholder:text-white/25',
-                'focus:outline-none focus:border-ring focus:bg-white/[0.08]',
+                'bg-surface-raised border border-border text-foreground placeholder:text-muted-foreground',
+                'focus:outline-none focus:border-ring',
                 'transition-all duration-200'
               )}
             />
@@ -593,19 +604,19 @@ function CredentialsStep({
             onChange={(e) => setSelectedDb(e.target.value)}
             className={clsx(
               'w-full pl-9 pr-4 py-3 rounded-xl text-sm appearance-none cursor-pointer',
-              'bg-white/[0.05] border border-white/10 text-white',
-              'focus:outline-none focus:border-ring focus:bg-white/[0.08]',
+              'bg-surface-raised border border-border text-foreground',
+              'focus:outline-none focus:border-ring',
               'transition-all duration-200'
             )}
           >
             {databases.map((db) => (
-              <option key={db} value={db} className="bg-dark-800 text-white">
+              <option key={db} value={db}>
                 {db}
               </option>
             ))}
           </select>
           {/* Custom chevron */}
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/30">
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -616,7 +627,7 @@ function CredentialsStep({
 
       {/* Login */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <User size={11} className="text-muted-foreground" />
           Usuário
         </label>
@@ -631,8 +642,8 @@ function CredentialsStep({
             autoComplete="username"
             className={clsx(
               'w-full pl-9 pr-4 py-3 rounded-xl text-sm',
-              'bg-white/[0.05] border border-white/10 text-white placeholder-white/25',
-              'focus:outline-none focus:border-ring focus:bg-white/[0.08]',
+              'bg-surface-raised border border-border text-foreground placeholder:text-muted-foreground',
+              'focus:outline-none focus:border-ring',
               'transition-all duration-200'
             )}
           />
@@ -641,7 +652,7 @@ function CredentialsStep({
 
       {/* Senha */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <Lock size={11} className="text-muted-foreground" />
           Senha
         </label>
@@ -655,17 +666,17 @@ function CredentialsStep({
             autoComplete="current-password"
             className={clsx(
               'w-full pl-9 pr-11 py-3 rounded-xl text-sm',
-              'bg-white/[0.05] border text-white placeholder-white/25',
-              'focus:outline-none focus:bg-white/[0.08] transition-all duration-200',
+              'bg-surface-raised border text-foreground placeholder:text-muted-foreground',
+              'focus:outline-none transition-all duration-200',
               error
-                ? 'border-red-500/40 focus:border-red-500/60'
+                ? 'border-danger/40 focus:border-danger/60'
                 : 'border-input focus:border-ring'
             )}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           >
             {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
@@ -679,10 +690,10 @@ function CredentialsStep({
             initial={false}
             animate={{ opacity: 1, y: 0, height: 'auto' }}
             exit={{ opacity: 0, y: -6, height: 0 }}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/30"
+            className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-danger-surface border border-danger/30"
           >
-            <AlertCircle size={13} className="text-red-400 flex-shrink-0" />
-            <span className="text-xs text-red-400">{error}</span>
+            <AlertCircle size={13} className="text-danger flex-shrink-0" />
+            <span className="text-xs text-danger">{error}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -724,31 +735,40 @@ function StepIndicator({ active, done, label, icon }: {
 }) {
   return (
     <div className="flex items-center gap-1.5">
+      {/* Era `animate={{ backgroundColor, borderColor }}` com `rgba(255,255,255,…)`
+          fixo: branco quase-transparente sobre cartão navy funcionava no
+          escuro, mas sobre cartão branco no claro é o mesmo círculo somando
+          branco com branco — o badge do passo ativo desaparecia por
+          completo. Framer Motion não resolve `hsl(var(--x))` para
+          interpolar cor (perderia a animação), então a troca é por classe:
+          `text-foreground` é a tinta escura no claro e branca no escuro —
+          aplicada como fundo/borda em baixa opacidade, ela clareia sobre
+          navy e escurece sobre branco, nos dois casos ficando visível. */}
       <motion.div
-        animate={{
-          backgroundColor: done
-            ? 'rgba(16,185,129,0.2)'
+        className={clsx(
+          'w-6 h-6 rounded-full border flex items-center justify-center transition-colors duration-300',
+          done
+            ? 'bg-ok-surface border-ok/50'
             : active
-            ? 'rgba(248,250,252,0.15)'
-            : 'rgba(255,255,255,0.04)',
-          borderColor: done
-            ? 'rgba(16,185,129,0.5)'
-            : active
-            ? 'rgba(248,250,252,0.4)'
-            : 'rgba(255,255,255,0.1)',
-        }}
-        transition={{ duration: 0.3 }}
-        className="w-6 h-6 rounded-full border flex items-center justify-center"
+            ? 'bg-foreground/10 border-foreground/30'
+            : 'bg-foreground/5 border-foreground/10'
+        )}
       >
         {done ? (
           <motion.div initial={{ scale: 0.6 }} animate={{ scale: 1 }}>
-            <CheckCircle2 size={12} className="text-emerald-400" />
+            <CheckCircle2 size={12} className="text-ok" />
           </motion.div>
         ) : (
-          <span className={clsx(active ? 'text-foreground' : 'text-white/30')}>{icon}</span>
+          <span className={clsx(active ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
         )}
       </motion.div>
-      <span className={clsx('text-xs font-medium', active ? 'text-white/70' : done ? 'text-emerald-400' : 'text-white/25')}>
+      {/* Era branco a 70% (ativo) / 25% (futuro) de opacidade: a tabela de
+          tradução manda os dois para `text-muted-foreground` (faixa 50..70),
+          mas colapsá-los na MESMA classe apaga a distinção ativo/futuro que
+          o par de opacidades carregava — a `opacity-60` no futuro reabre
+          essa diferença sem reintroduzir opacidade sobre o token (que a
+          catraca proíbe). */}
+      <span className={clsx('text-xs font-medium', active ? 'text-muted-foreground' : done ? 'text-ok' : 'text-muted-foreground opacity-60')}>
         {label}
       </span>
     </div>
