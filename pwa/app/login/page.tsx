@@ -68,12 +68,46 @@ function LoginPageInner() {
     setUrl(normalized)
     setServerStatus({ state: 'checking' })
 
+    // `list_db = False` é a configuração normal de um Odoo de produção: ele
+    // recusa listar bancos. Recusa de listagem não é servidor fora do ar, e
+    // tratá-la como tal foi o que impediu a publicação no labquali em
+    // 2026-09-06. Quando a lista não vem, perguntamos de outro jeito se o
+    // servidor responde e deixamos o técnico digitar o banco — que é como o
+    // próprio Odoo se comporta nesse modo.
+    let dbs: string[] = []
     try {
-      const dbs = await odooClient.getDatabases(normalized)
-      if (dbs.length === 0) {
-        setServerStatus({ state: 'error', message: 'Nenhum banco de dados encontrado neste servidor.' })
+      dbs = await odooClient.getDatabases(normalized)
+    } catch {
+      dbs = []
+    }
+
+    if (dbs.length === 0) {
+      const responde = await odooClient.pingServer(normalized)
+      if (!responde) {
+        setServerStatus({
+          state: 'error',
+          message: 'Não foi possível conectar. Verifique a URL e se o servidor está acessível.',
+        })
         return false
       }
+      setServerStatus({ state: 'ok', databases: [] })
+      // Sem lista, o `?db=` da URL é a única dica automática do nome — e o
+      // caminho manual (clicar em "Conectar") não recebe `preselectDb`, então
+      // ele é lido aqui também. É o que faz o link de suporte
+      // `/login?server=...&db=...` valer alguma coisa nesse modo.
+      const dbDaUrl = parseLoginParams(searchParams).db
+      setSelectedDb(preselectDb || dbDaUrl || savedDb || '')
+      setCompanyLogoFailed(false)
+      setCompanyLogoUrl(null)
+      if (savedUrl && savedUrl !== normalized) resetSessionCache(queryClient)
+      setServerUrl(normalized)
+      addServerUrlToHistory(normalized)
+      odooClient.reset()
+      setTimeout(() => setStep('credentials'), 400)
+      return true
+    }
+
+    try {
       setServerStatus({ state: 'ok', databases: dbs })
       const targetDb = preselectDb && dbs.includes(preselectDb)
         ? preselectDb
@@ -519,9 +553,39 @@ function CredentialsStep({
         <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
           <Database size={11} className="text-muted-foreground" />
           Banco de dados
-          <span className="ml-auto text-white/25 font-normal">{databases.length} disponível{databases.length !== 1 ? 'is' : ''}</span>
+          <span className="ml-auto text-white/25 font-normal">
+            {databases.length > 0
+              ? `${databases.length} disponíve${databases.length !== 1 ? 'is' : 'l'}`
+              : 'digite o nome'}
+          </span>
         </label>
 
+        {/* Servidor com `list_db = False` (o normal em produção) não entrega a
+            lista: o Odoo recusa `/web/database/list`. Aí o banco vira campo
+            digitável, como no próprio Odoo nesse modo — em vez de a tela
+            declarar o servidor inacessível, que foi o que travou a publicação
+            no labquali em 2026-09-06. */}
+        {databases.length === 0 ? (
+          <div className="relative">
+            <Database size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              name="db"
+              value={selectedDb}
+              onChange={(e) => setSelectedDb(e.target.value)}
+              placeholder="nome do banco"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              className={clsx(
+                'w-full pl-9 pr-4 py-3 rounded-xl text-sm',
+                'bg-white/[0.05] border border-white/10 text-white placeholder:text-white/25',
+                'focus:outline-none focus:border-ring focus:bg-white/[0.08]',
+                'transition-all duration-200'
+              )}
+            />
+          </div>
+        ) : (
         <div className="relative">
           <Database size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <select
@@ -547,6 +611,7 @@ function CredentialsStep({
             </svg>
           </div>
         </div>
+        )}
       </div>
 
       {/* Login */}

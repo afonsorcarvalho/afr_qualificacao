@@ -221,6 +221,34 @@ class OdooClient {
     return response.data.result ?? []
   }
 
+  /**
+   * O servidor responde, mesmo que se recuse a listar bancos?
+   *
+   * Odoo de produção normalmente roda com `list_db = False`, e aí
+   * `/web/database/list` devolve AccessDenied. Sem esta segunda pergunta, o
+   * login concluía "servidor inacessível" a partir de uma recusa que não diz
+   * nada sobre alcançabilidade — foi o que travou a publicação no labquali.
+   *
+   * Nunca lança: a resposta é sim ou não.
+   */
+  async pingServer(serverUrl: string): Promise<boolean> {
+    const target = normalizeTarget(serverUrl)
+    try {
+      const r = await axios.get(`${PROXY_BASE}/web/login`, {
+        timeout: 20000,
+        withCredentials: true,
+        headers: { 'X-Odoo-Target': target },
+        // Qualquer status serve como resposta; quem decide é a faixa abaixo.
+        validateStatus: () => true,
+      })
+      // 4xx do NOSSO proxy (403 de allowlist) e 5xx não contam como servidor
+      // no ar; o `/web/login` do Odoo responde 200 ou redireciona.
+      return r.status > 0 && r.status < 400
+    } catch {
+      return false
+    }
+  }
+
   async authenticate(
     serverUrl: string,
     db: string,
