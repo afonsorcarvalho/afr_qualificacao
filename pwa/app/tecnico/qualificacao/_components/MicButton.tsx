@@ -184,7 +184,7 @@ export function MicButton({ onTranscribe, disabled, className }: MicButtonProps)
         )}
       </Button>
       {state === 'recording' && (
-        <span className="text-xs font-mono text-red-500">● {mmss}</span>
+        <span className="text-xs font-mono text-danger">● {mmss}</span>
       )}
       {state === 'uploading' && (
         <span className="text-xs text-muted-foreground">transcrevendo...</span>

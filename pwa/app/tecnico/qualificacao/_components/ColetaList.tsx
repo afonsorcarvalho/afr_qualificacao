@@ -171,7 +171,7 @@ export function ColetaList({
               : `Prévia das coletas (${pending_items.length})`}
           </h2>
           {pending_items.length === 0 ? (
-            <p className="rounded-lg border border-border/70 bg-muted/30 p-3 text-center text-sm text-muted-foreground/90">
+            <p className="rounded-lg border border-border/70 bg-muted/30 p-3 text-center text-sm text-muted-foreground">
               {collect_items.length === 0
                 ? 'Nenhuma coleta cadastrada.'
                 : 'Nenhuma coleta pendente.'}
@@ -198,7 +198,7 @@ export function ColetaList({
                     >
                       <p className="truncate text-sm text-foreground/90">{item.name}</p>
                       {item.instruction && (
-                        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground/80">
+                        <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                           {item.instruction}
                         </p>
                       )}
@@ -209,7 +209,7 @@ export function ColetaList({
             )
           )}
           {!open_relatorio_id && pending_items.length > 0 && (
-            <p className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2 text-center text-xs text-amber-300/80">
+            <p className="rounded-md border border-warn/20 bg-warn-surface p-2 text-center text-xs text-warn">
               Inicie o relatório do dia pra coletar.
             </p>
           )}
@@ -218,7 +218,7 @@ export function ColetaList({
         <div className="space-y-4">
           <h2 className="sr-only">Já coletadas ({done_items.length})</h2>
           {done_items.length === 0 ? (
-            <p className="rounded-lg border border-border/70 bg-muted/30 p-3 text-center text-sm text-muted-foreground/90">
+            <p className="rounded-lg border border-border/70 bg-muted/30 p-3 text-center text-sm text-muted-foreground">
               Nada coletado ainda.
             </p>
           ) : (

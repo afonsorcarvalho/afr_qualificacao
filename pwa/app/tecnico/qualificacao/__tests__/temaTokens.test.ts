@@ -72,24 +72,14 @@ const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
  */
 const PERMITIDO_TEMA: Record<string, string> = {
   // --- catraca da migração de 2026-09-06: estas linhas SAEM conforme as tasks avançam ---
-  // Task 3 (_components/)
-  'app/tecnico/qualificacao/_components/ColetaList.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/CollectedCard.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/EquipmentHeader.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/FileInput.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/InstrumentBadges.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/OsCard.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/RelatorioHeader.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/ReviewPanel.tsx :: *': 'migração pendente (Task 3)',
-  'app/tecnico/qualificacao/_components/SignatureCanvas.tsx :: *': 'migração pendente (Task 3)',
-  'components/ui/StatusBadge.tsx :: *': 'migração pendente (Task 3)',
-  // Achados no pre-flight da Task 1, fora da lista original do plano — mesma
-  // pasta/natureza dos demais arquivos da Task 3, adicionar ao Modify dela.
-  'app/tecnico/qualificacao/_components/MicButton.tsx :: *': 'migração pendente (Task 3) — fora da lista original do plano',
-  'components/ui/GlassCard.tsx :: *': 'migração pendente (Task 3) — fora da lista original do plano',
-  // Achado no fix round 1 (regex ampliada p/ `accent-*` e cia.): checkbox "Só
-  // minhas" da lista principal. `accent-emerald-500` vira `accent-ok`.
-  'app/tecnico/qualificacao/page.tsx :: accent-emerald-500': 'migração pendente (Task 3)',
+  // Superfície de assinatura (DESIGN.md, "Signature Pad"): a única branca
+  // permitida no tema escuro — assinatura é documento, e documento é sobre
+  // papel, então o pad não segue o tema. O traço em si é `penColor="black"`
+  // em JS (não classe, o teste-catraca não alcança) e é coberto por um teste
+  // dedicado em `SignatureCanvas.test.tsx` que proíbe literal de cor branca
+  // no traço — o risco real (assinatura branca sobre papel branco) está lá,
+  // não aqui.
+  'app/tecnico/qualificacao/_components/SignatureCanvas.tsx :: bg-white': 'permanente — pad de assinatura é papel branco fixo, independente do tema (DESIGN.md §Signature Pad)',
   // Task 4 (histórico + perfil)
   'app/tecnico/qualificacao/historico/page.tsx :: *': 'migração pendente (Task 4)',
   'app/tecnico/qualificacao/perfil/page.tsx :: *': 'migração pendente (Task 4)',

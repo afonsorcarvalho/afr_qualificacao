@@ -79,10 +79,10 @@ export function FileInput({
       {picked ? (
         <div className="space-y-2">
           <div className="flex items-center gap-3 rounded-md border border-border/70 bg-muted/30 p-3">
-            <Icon className="h-8 w-8 shrink-0 text-cyan-300" />
+            <Icon className="h-8 w-8 shrink-0 text-info" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-foreground">{picked.filename}</p>
-              <p className="text-xs text-muted-foreground/90">{fmtSize(picked.size)}</p>
+              <p className="text-xs text-muted-foreground">{fmtSize(picked.size)}</p>
             </div>
           </div>
           <Button

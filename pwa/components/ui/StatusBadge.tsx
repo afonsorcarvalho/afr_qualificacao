@@ -18,18 +18,18 @@ import { ReactNode } from 'react'
 export type StatusTone = 'done' | 'progress' | 'waiting' | 'error' | 'neutral'
 
 const TONES: Record<StatusTone, string> = {
-  done: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-600/30',
-  progress: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-600/30',
-  waiting: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-600/30',
-  error: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-600/30',
+  done: 'bg-ok-surface text-ok border-ok/30',
+  progress: 'bg-ok-surface text-ok border-ok/30',
+  waiting: 'bg-warn-surface text-warn border-warn/30',
+  error: 'bg-danger-surface text-danger border-danger/30',
   neutral: 'bg-muted text-muted-foreground border-border',
 }
 
 const DOTS: Record<StatusTone, string> = {
-  done: 'bg-emerald-600 dark:bg-emerald-400',
-  progress: 'bg-emerald-600 dark:bg-emerald-400',
-  waiting: 'bg-amber-600 dark:bg-amber-400',
-  error: 'bg-red-600 dark:bg-red-400',
+  done: 'bg-ok',
+  progress: 'bg-ok',
+  waiting: 'bg-warn',
+  error: 'bg-danger',
   neutral: 'bg-muted-foreground',
 }
 

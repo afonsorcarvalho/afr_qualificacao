@@ -33,7 +33,7 @@ export function GlassCard({
     <div
       className={clsx(
         'relative overflow-hidden rounded-lg border bg-card transition-colors',
-        alert ? 'border-amber-600/50' : 'border-border',
+        alert ? 'border-warn/50' : 'border-border',
         !noPadding && 'p-4',
         variant === 'hover' && 'hover:bg-accent',
         variant === 'selected' && 'border-foreground/30 bg-accent',

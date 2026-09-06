@@ -78,7 +78,7 @@ export function CollectedCard({
             <button
               type="button"
               onClick={() => setLightbox(true)}
-              className="shrink-0 overflow-hidden rounded-md border border-border/70 transition hover:border-cyan-400/60"
+              className="shrink-0 overflow-hidden rounded-md border border-border/70 transition hover:border-info/60"
             >
               <img
                 src={fileUrl(item.id, 'image')}
@@ -88,7 +88,7 @@ export function CollectedCard({
             </button>
           ) : (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-muted/30 border border-border/70">
-              <Icon className="h-6 w-6 text-muted-foreground/80" />
+              <Icon className="h-6 w-6 text-muted-foreground" />
             </div>
           )}
 
@@ -96,11 +96,11 @@ export function CollectedCard({
             <div className="flex items-center gap-2">
               <strong className="truncate text-sm text-foreground">{item.name}</strong>
               {item.state === 'skipped' && (
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300">PULADO</span>
+                <span className="rounded bg-warn-surface px-1.5 py-0.5 text-[10px] text-warn">PULADO</span>
               )}
             </div>
             {item.filename && (
-              <p className="mt-0.5 truncate text-xs text-muted-foreground/80">{item.filename}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.filename}</p>
             )}
 
             {typeof item.description === 'string' && item.description.trim() && (
@@ -112,7 +112,7 @@ export function CollectedCard({
             <InstrumentBadges item={item} instruments={instruments} />
 
             {(item.captured_at || item.captured_by) && (
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground/90">
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                 {item.captured_at && (
                   <span className="inline-flex items-center gap-1">
                     <Clock className="h-3 w-3" /> {fmtCapturedAt(item.captured_at)}
@@ -131,7 +131,7 @@ export function CollectedCard({
                 <button
                   type="button"
                   onClick={() => setLightbox(true)}
-                  className="text-xs text-cyan-300 hover:underline"
+                  className="text-xs text-info hover:underline"
                 >
                   Ver foto
                 </button>
@@ -140,7 +140,7 @@ export function CollectedCard({
                 <button
                   type="button"
                   onClick={() => setPdfOpen(true)}
-                  className="text-xs text-cyan-300 hover:underline"
+                  className="text-xs text-info hover:underline"
                 >
                   Abrir PDF
                 </button>
@@ -148,7 +148,7 @@ export function CollectedCard({
               {hasFile && fileType === 'other' && (
                 <a
                   href={fileUrl(item.id, 'content', true)}
-                  className="inline-flex items-center gap-1 text-xs text-cyan-300 hover:underline"
+                  className="inline-flex items-center gap-1 text-xs text-info hover:underline"
                 >
                   <Download className="h-3 w-3" /> Baixar
                 </a>
@@ -156,7 +156,7 @@ export function CollectedCard({
               {canEdit && (
                 <Link
                   href={`/tecnico/qualificacao/${osId}/coleta/${item.id}`}
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground/90 hover:text-foreground/90"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/90"
                 >
                   <Pencil className="h-3 w-3" /> Recoletar
                 </Link>

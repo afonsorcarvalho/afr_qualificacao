@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render } from '@testing-library/react'
 
 // Mock react-signature-canvas since happy-dom lacks full canvas 2D context
@@ -26,5 +28,20 @@ describe('SignaturePad', () => {
     const { container, getByText } = render(<SignaturePad onChange={() => {}} />)
     expect(container.querySelector('canvas')).toBeTruthy()
     expect(getByText(/Limpar/i)).toBeTruthy()
+  })
+
+  it('traço não usa literal de cor branca (assinatura branca sobre papel branco é invisível)', () => {
+    // A área do pad é `bg-white` fixo de propósito (DESIGN.md "Signature
+    // Pad": única superfície branca permitida no tema escuro, porque
+    // assinatura é documento sobre papel). O risco é o TRAÇO: se algum dia
+    // ele virar branco/`#fff` — por exemplo pra "combinar" com um tema
+    // escuro — o traço some sobre o próprio papel branco do pad. `penColor`
+    // é JS, não classe Tailwind: o teste-catraca não alcança este arquivo.
+    const src = readFileSync(
+      join(__dirname, '..', '_components', 'SignatureCanvas.tsx'),
+      'utf8',
+    )
+    expect(src).not.toMatch(/penColor\s*=\s*["'](?:white|#fff|#ffffff)["']/i)
+    expect(src).not.toMatch(/strokeStyle\s*=\s*["'](?:white|#fff|#ffffff)["']/i)
   })
 })

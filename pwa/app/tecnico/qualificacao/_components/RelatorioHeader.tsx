@@ -46,7 +46,7 @@ export function RelatorioHeader({
       <GlassCard noPadding className="p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <FileText className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+            <FileText className="h-5 w-5 shrink-0 text-ok" aria-hidden />
             <div className="min-w-0">
               <p className="text-xs uppercase text-muted-foreground">Relatório aberto</p>
               <p className="font-semibold tabular-nums">REL #{openRelId}</p>

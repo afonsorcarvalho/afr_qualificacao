@@ -116,40 +116,40 @@ export function ReviewPanel({
         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
       >
         <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-violet-500 dark:text-violet-300" />
+          <Search className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-semibold text-foreground">Revisão automática</span>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
           {!loading && data && (
             verdict === 'ok' || visibleIssues.length === 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
+              <span className="inline-flex items-center gap-1 rounded-full bg-ok-surface px-2 py-0.5 text-[10px] font-semibold text-ok">
                 <CheckCircle2 className="h-2.5 w-2.5" /> OK
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+              <span className="inline-flex items-center gap-1 rounded-full bg-warn-surface px-2 py-0.5 text-[10px] font-semibold text-warn">
                 <AlertTriangle className="h-2.5 w-2.5" /> {warningsBadge}
               </span>
             )
           )}
           {!loading && !data && !errorMsg && (
-            <span className="text-[11px] text-muted-foreground/80">não executada</span>
+            <span className="text-[11px] text-muted-foreground">não executada</span>
           )}
           {errorMsg && (
-            <span className="text-[11px] text-red-500">erro</span>
+            <span className="text-[11px] text-danger">erro</span>
           )}
         </div>
-        <span className="text-[11px] text-muted-foreground/80">{open ? 'recolher' : 'expandir'}</span>
+        <span className="text-[11px] text-muted-foreground">{open ? 'recolher' : 'expandir'}</span>
       </button>
 
       {open && (
         <div className="border-t border-border/50 p-3 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div className="space-y-0.5">
-              <p className="text-[11px] text-muted-foreground/90">
+              <p className="text-[11px] text-muted-foreground">
                 A IA analisa coletas, observações e status e sinaliza inconsistências.
                 Nada disto bloqueia o fechamento.
               </p>
               {fetchedAt && (
-                <p className="text-[10px] text-muted-foreground/70">
+                <p className="text-[10px] text-muted-foreground">
                   Última revisão: {formatFetched(fetchedAt)}
                 </p>
               )}
@@ -177,7 +177,7 @@ export function ReviewPanel({
           )}
 
           {!loading && data && visibleIssues.length === 0 && !hasAny && (
-            <p className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-200">
+            <p className="rounded-md border border-ok/30 bg-ok-surface px-3 py-2 text-xs text-ok">
               ✓ Nenhuma inconsistência detectada.
             </p>
           )}
@@ -260,8 +260,8 @@ function IssueRow({
   onRestore?: () => void
 }) {
   const iconCls = issue.severity === 'warning'
-    ? 'text-amber-600 dark:text-amber-300'
-    : 'text-cyan-600 dark:text-cyan-300'
+    ? 'text-warn'
+    : 'text-info'
   const Icon = issue.severity === 'warning' ? AlertTriangle : Info
   const containerCls = dismissed
     ? 'opacity-60'
@@ -272,12 +272,12 @@ function IssueRow({
       <div className="flex items-start gap-2">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconCls}`} />
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             {TYPE_LABEL[issue.type] ?? issue.type}
           </p>
           <p className="text-xs text-foreground/95">{issue.message}</p>
           {issue.suggestion && (
-            <p className="mt-0.5 text-[11px] italic text-muted-foreground/85">
+            <p className="mt-0.5 text-[11px] italic text-muted-foreground">
               → {issue.suggestion}
             </p>
           )}
@@ -285,7 +285,7 @@ function IssueRow({
             {issue.item_id != null && (
               <Link
                 href={`/tecnico/qualificacao/${osId}/coleta/${issue.item_id}`}
-                className="rounded bg-cyan-600/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-700 hover:bg-cyan-600/20 dark:text-cyan-300"
+                className="rounded bg-info-surface px-2 py-0.5 text-[11px] font-semibold text-info hover:opacity-80"
               >
                 Ir para item
               </Link>

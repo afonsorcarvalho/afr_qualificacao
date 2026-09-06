@@ -50,7 +50,7 @@ export default function HomePage() {
           type="checkbox"
           checked={filterMine}
           onChange={(e) => setFilterMine(e.target.checked)}
-          className="h-6 w-6 shrink-0 cursor-pointer accent-emerald-500"
+          className="h-6 w-6 shrink-0 cursor-pointer accent-ok"
         />
       </label>
 

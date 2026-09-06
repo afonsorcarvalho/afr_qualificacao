@@ -42,20 +42,23 @@ export function EquipmentHeader({
   /** Id do container das coletas deste grupo, para o `aria-controls`. */
   controlsId: string
 }) {
+  // O chip do TAG precisa de uma superfície diferente da do painel por baixo
+  // (`bg.../-surface`), senão ele se funde no fundo e vira só padding sem
+  // contorno nenhum — por isso usa `bg-card`, não o mesmo tom do painel.
   const palette = tone === 'cyan'
     ? {
-        bg: 'bg-cyan-500/15 dark:bg-cyan-500/10',
-        border: 'border-cyan-600/40 dark:border-cyan-500/30',
-        text: 'text-cyan-800 dark:text-cyan-300',
-        muted: 'text-cyan-800/80 dark:text-cyan-300/70',
-        chip: 'bg-cyan-600/20 text-cyan-900 dark:bg-cyan-500/20 dark:text-cyan-200',
+        bg: 'bg-info-surface',
+        border: 'border-info/40',
+        text: 'text-info',
+        muted: 'text-info',
+        chip: 'bg-card text-info',
       }
     : {
-        bg: 'bg-emerald-500/15 dark:bg-emerald-500/10',
-        border: 'border-emerald-600/40 dark:border-emerald-500/30',
-        text: 'text-emerald-800 dark:text-emerald-300',
-        muted: 'text-emerald-800/80 dark:text-emerald-300/70',
-        chip: 'bg-emerald-600/20 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200',
+        bg: 'bg-ok-surface',
+        border: 'border-ok/40',
+        text: 'text-ok',
+        muted: 'text-ok',
+        chip: 'bg-card text-ok',
       }
 
   const title = eq?.name || label
@@ -72,8 +75,8 @@ export function EquipmentHeader({
       aria-controls={controlsId}
       onClick={onToggle}
       className={clsx(
-        // Fundo opaco por baixo do tom: o tom é translúcido
-        // (`bg-cyan-500/15`), e grudado no topo sobre a lista rolando ele
+        // Fundo opaco por baixo do tom: o tom é uma superfície tonal
+        // (`bg-info-surface`), e grudado no topo sobre a lista rolando ele
         // deixava os cartões atravessarem o nome do equipamento. Visto no
         // browser antes de virar `bg-background` + camada de tom por cima.
         'relative block w-full min-h-[44px] rounded-md border bg-background px-3 py-2 text-left',

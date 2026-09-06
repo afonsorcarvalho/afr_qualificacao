@@ -44,12 +44,12 @@ export function OsCard({ os }: { os: OsTecnicoSummary }) {
             {STATE_LABELS[os.state] ?? os.state}
           </StatusBadge>
         </div>
-        <p className="mt-1 truncate text-sm text-muted-foreground/90">
+        <p className="mt-1 truncate text-sm text-muted-foreground">
           {os.partner_id?.[1] ?? '—'}
         </p>
 
         {typeof os.equipment_count === 'number' && os.equipment_count > 0 && (
-          <p className="mt-1 inline-flex items-center gap-1 text-xs text-cyan-700 dark:text-cyan-300">
+          <p className="mt-1 inline-flex items-center gap-1 text-xs text-info">
             <Wrench className="h-3 w-3" />
             <strong>{os.equipment_count}</strong> equipamento{os.equipment_count !== 1 ? 's' : ''} a qualificar
           </p>
@@ -59,23 +59,23 @@ export function OsCard({ os }: { os: OsTecnicoSummary }) {
           <div className="mt-2 space-y-1">
             <div className="flex items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 text-emerald-300">
+                <span className="inline-flex items-center gap-1 text-ok">
                   <CheckCircle2 className="h-3 w-3" />
                   <strong>{os.collect_collected_count}</strong> coletadas
                 </span>
-                <span className="text-muted-foreground/60">·</span>
-                <span className="inline-flex items-center gap-1 text-amber-300">
+                <span className="text-muted-foreground">·</span>
+                <span className="inline-flex items-center gap-1 text-warn">
                   <Clock className="h-3 w-3" />
                   <strong>{os.collect_pending_count}</strong> pendentes
                 </span>
               </div>
-              <span className="font-mono text-muted-foreground/80">
+              <span className="font-mono text-muted-foreground">
                 {os.collect_collected_count}/{os.collect_total_count}
               </span>
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-muted/40">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+                className="h-full bg-ok transition-all"
                 style={{ width: `${(os.collect_collected_count / os.collect_total_count) * 100}%` }}
               />
             </div>
@@ -83,7 +83,7 @@ export function OsCard({ os }: { os: OsTecnicoSummary }) {
         )}
 
         {os.date_planned_start && (
-          <div className="mt-1 text-xs text-muted-foreground/80">
+          <div className="mt-1 text-xs text-muted-foreground">
             {new Date(os.date_planned_start).toLocaleString('pt-BR')}
           </div>
         )}

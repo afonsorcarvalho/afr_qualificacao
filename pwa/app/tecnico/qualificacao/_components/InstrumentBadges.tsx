@@ -35,7 +35,7 @@ export function InstrumentBadges({
       {/* Sem instrumento cadastrado: uma linha de aviso, não um cartão dentro
           do cartão da coleta (cartão aninhado é proibido no DESIGN.md). */}
       {(item.requires_instrument || item.kind === 'qualificador_data') && linked.length === 0 && (
-        <p className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+        <p className="flex items-center gap-1.5 text-[11px] text-warn">
           <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Sem qualificador/padrão cadastrado
         </p>
@@ -46,8 +46,8 @@ export function InstrumentBadges({
           {linked.map((inst) => (
             <li key={inst.id} className="flex items-start gap-1.5 text-[11px] text-foreground">
               {inst.has_valid_certificate
-                ? <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                : <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+                ? <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-ok" aria-hidden />
+                : <ShieldAlert className="mt-0.5 h-3 w-3 shrink-0 text-warn" aria-hidden />
               }
               <span className="min-w-0">
                 <span className="sr-only">
