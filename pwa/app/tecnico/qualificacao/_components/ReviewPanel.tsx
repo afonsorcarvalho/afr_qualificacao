@@ -285,7 +285,7 @@ function IssueRow({
             {issue.item_id != null && (
               <Link
                 href={`/tecnico/qualificacao/${osId}/coleta/${issue.item_id}`}
-                className="rounded bg-info-surface px-2 py-0.5 text-[11px] font-semibold text-info hover:opacity-80"
+                className="rounded bg-info-surface px-2 py-0.5 text-[11px] font-semibold text-info hover:bg-info/20"
               >
                 Ir para item
               </Link>

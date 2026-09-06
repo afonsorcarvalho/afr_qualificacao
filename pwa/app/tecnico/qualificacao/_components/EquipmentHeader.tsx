@@ -45,19 +45,28 @@ export function EquipmentHeader({
   // O chip do TAG precisa de uma superfície diferente da do painel por baixo
   // (`bg.../-surface`), senão ele se funde no fundo e vira só padding sem
   // contorno nenhum — por isso usa `bg-card`, não o mesmo tom do painel.
+  //
+  // `text` (título do equipamento) e `muted` (metadado secundário — contador
+  // "N de M", apelido, marca/modelo/serial) não podem apontar pra mesma cor:
+  // antes carregavam papéis diferentes via um shade escuro cheio para o
+  // título e o mesmo shade a 80% de opacidade para o metadado. Colapsar os
+  // dois no token de estado fundia título e metadado no mesmo peso visual.
+  // `muted` usa a tinta secundária neutra — medido ≥6.6:1 sobre as duas
+  // superfícies tonais, nos dois temas, folga confortável acima do piso de
+  // 4.5:1.
   const palette = tone === 'cyan'
     ? {
         bg: 'bg-info-surface',
         border: 'border-info/40',
         text: 'text-info',
-        muted: 'text-info',
+        muted: 'text-muted-foreground',
         chip: 'bg-card text-info',
       }
     : {
         bg: 'bg-ok-surface',
         border: 'border-ok/40',
         text: 'text-ok',
-        muted: 'text-ok',
+        muted: 'text-muted-foreground',
         chip: 'bg-card text-ok',
       }
 
