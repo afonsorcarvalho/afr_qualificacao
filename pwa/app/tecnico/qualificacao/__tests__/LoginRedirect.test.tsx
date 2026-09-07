@@ -308,6 +308,17 @@ describe('destinoSeguro: só caminho interno vale', () => {
       '/.//interno.invalid',
       './/interno.invalid/x?u=1#f',
       './/outra.invalid',
+      // ESQUEMA, não host (rodada 4): a origem de `blob:` deriva da URL
+      // interna, então o gate de entrada passa; e `url.pathname` de um
+      // `blob:` é a URL interna INTEIRA, então a saída seria
+      // `http://interno.invalid/x` — URL absoluta cuja origem é
+      // exatamente ORIGEM_INTERNA, logo a checagem contra a base interna
+      // também passa. Na v2 isso teria virado alvo de redirect. É a única
+      // entrada alcançável conhecida que vence o gate 0 E a base interna,
+      // e é uma forma de escape que nenhum raciocínio sobre a família `//`
+      // teria previsto.
+      'blob:http://interno.invalid/x',
+      'blob:http://interno.invalid',
       // host estrangeiro (rodada 1)
       'https://evil.example',
       '//evil.example',
@@ -331,19 +342,33 @@ describe('destinoSeguro: só caminho interno vale', () => {
     })
 
     /**
-     * As duas defesas são REDUNDANTES por construção: provado por mutação
-     * que, sozinha, cada uma já recusa todos os payloads conhecidos (tirar
-     * só a base testemunha, ou só a invariante de forma, deixa a suíte
-     * inteira verde; tirar as duas quebra 6 testes). Isso é o desenho
-     * pretendido — a função já falhou três vezes nesta família — mas
-     * significa que NENHUM teste de comportamento consegue notar a remoção
-     * de UMA delas. Daí esta guarda de fonte, no espírito do
-     * `temaTokens.test.ts`: ela é a única coisa que impede alguém de
-     * "simplificar" a função de volta para uma base só, que é exatamente o
-     * estado explorável da versão 2.
+     * As três checagens se sobrepõem, mas NÃO são intercambiáveis — e a
+     * medição por porta desmente a glosa fácil de que "cada uma basta
+     * sozinha" (que esta função chegou a carregar escrita, e é o mesmo
+     * defeito das rodadas anteriores: invariante mais forte que a verdade):
+     *
+     *   só a invariante de FORMA .... 0 vazamentos  (esta sim basta sozinha)
+     *   só a base TESTEMUNHA ........ 499           (`.//outra.invalid`)
+     *   só a base INTERNA (= v2) .... 767           (`.//interno.invalid`, `blob:`)
+     *   interna + testemunha ........ 0             (é o PAR que fecha)
+     *
+     * Como qualquer PAR já dá zero, nenhum teste de comportamento consegue
+     * notar a remoção de UMA das três. Daí esta guarda de fonte, no espírito
+     * do `temaTokens.test.ts`: ela é a única coisa que impede alguém de
+     * "simplificar" a função para uma base só — que é exatamente o estado
+     * explorável da versão 2.
      */
-    it('as duas defesas continuam no código (a mutação de uma só é invisível para os testes)', () => {
+    it('as três checagens continuam no código (a mutação de uma só é invisível para os testes)', () => {
       const fonte = readFileSync(join(__dirname, '..', '..', '..', '..', 'lib/navegacao.ts'), 'utf8')
+      // As DUAS bases são pinadas, não só a testemunha. Medido: só a interna
+      // deixa vazar 767 payloads (é a v2), só a testemunha deixa vazar 499
+      // (`.//outra.invalid` -> `//outra.invalid`). Quem basta sozinha é a
+      // FORMA. Uma versão anterior desta guarda pinava só a testemunha,
+      // apoiada na glosa errada de que "cada defesa basta sozinha" — alguém
+      // podia apagar a base interna achando que a testemunha era a rede.
+      expect(fonte, 'a base interna sumiu — reabre ?next=.//outra.invalid').toMatch(
+        /new URL\(destino, ORIGEM_INTERNA\)\.origin !== ORIGEM_INTERNA/,
+      )
       expect(fonte, 'a base testemunha sumiu — reabre ?next=.//interno.invalid').toMatch(
         /ORIGEM_TESTEMUNHA\).origin !== ORIGEM_TESTEMUNHA/,
       )
@@ -356,6 +381,17 @@ describe('destinoSeguro: só caminho interno vale', () => {
       // Âncoras de parse, nunca destinos: TLD inexistente (RFC 2606) e hosts
       // distintos entre si. Trocar por `localhost` ou pela origem real do app
       // converteria isto num open redirect, com os testes verdes.
+      //
+      // O ESQUEMA é pinado junto, e não é detalhe: a invariante de forma
+      // `/^\/(?!\/)/` ADMITE `/\` (o lookahead só exclui a segunda barra), e
+      // `\` no índice 1 é o único caractere que ainda escalaria para
+      // autoridade — `new URL('/\\evil.example', 'https://app.real/')` dá
+      // `https://evil.example/`. O que torna isso inalcançável é que, para
+      // esquema ESPECIAL (http/https/ws/ftp), o path state do WHATWG
+      // normaliza contrabarra crua para `/`, então `url.pathname` nunca
+      // contém `\` cru. Com um esquema NÃO-especial a normalização some e o
+      // `/\` admitido pela regex vira alcançável — daí pinar `http://` e
+      // `https://`, não só o `.invalid`.
       expect(fonte).toMatch(/ORIGEM_INTERNA = 'http:\/\/[a-z-]+\.invalid'/)
       expect(fonte).toMatch(/ORIGEM_TESTEMUNHA = 'https:\/\/[a-z-]+\.invalid'/)
     })

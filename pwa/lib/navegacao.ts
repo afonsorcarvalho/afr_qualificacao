@@ -85,17 +85,48 @@ const ORIGEM_TESTEMUNHA = 'https://outra.invalid'
  * três vezes na mesma família; redundância aqui é barata, e nenhuma das duas
  * deve ser "simplificada" para fora:
  *
- * 1. **Segunda base testemunha, com host diferente de propósito.** O
- *    argumento que sustenta isso, e que precisa sobreviver a quem for
- *    encurtar o código: *a saída pode nomear no máximo UM host, então uma
- *    segunda base com host distinto sempre pega a saída que nomeia a
- *    primeira.* `//interno.invalid` é ponto fixo de `ORIGEM_INTERNA` mas
- *    resolve para `https://interno.invalid` contra `ORIGEM_TESTEMUNHA` — e
- *    vice-versa. Não existe string que nomeie as duas ao mesmo tempo.
+ * 1. **O PAR de bases — interna e testemunha, com hosts diferentes de
+ *    propósito.** É o par, não a testemunha: `//interno.invalid` é ponto
+ *    fixo da base interna mas resolve para `https://interno.invalid` contra
+ *    a testemunha; `//outra.invalid` faz o simétrico. **Nenhuma das duas
+ *    sozinha basta** — medido: só a interna deixa vazar 767 payloads (é a
+ *    v2), só a testemunha deixa vazar 499 (`.//outra.invalid`). Juntas, 0.
+ *    Por isso as duas linhas são pinadas pela guarda de fonte em
+ *    `LoginRedirect.test.tsx`: apagar QUALQUER uma reabre o buraco.
+ *
+ *    O argumento que sustenta o par, agora com a ressalva que faltava: a
+ *    saída pode nomear no máximo um host **— mas pode também nomear um
+ *    ESQUEMA**, e isso é uma forma de escape diferente, que nenhum
+ *    raciocínio sobre a família `//` prevê. Contraexemplo alcançável:
+ *
+ *        next = 'blob:http://interno.invalid/x'
+ *
+ *    A origem de `blob:` deriva da URL interna, então o gate de entrada
+ *    passa; e `url.pathname` de um `blob:` é a URL interna inteira, então
+ *    `destino` sai `'http://interno.invalid/x'` — URL ABSOLUTA, cuja origem
+ *    é exatamente `ORIGEM_INTERNA`, portanto a checagem contra a base
+ *    interna também passa. Na v2 isso teria virado alvo de redirect. Hoje
+ *    é pego pela testemunha e pela forma.
  * 2. **Invariante explícita de FORMA:** a saída começa com exatamente uma
  *    barra (`/^\/(?!\/)/`). É a mesma propriedade dita de um jeito que um
- *    humano confere lendo, sem simular parser na cabeça — e é a defesa que
- *    continua valendo se algum dia o WHATWG mudar de comportamento.
+ *    humano confere lendo, sem simular parser na cabeça, e — medido — é a
+ *    única das três que basta SOZINHA (0 vazamentos isolada).
+ *
+ *    ⚠️ Mas ela só é segura por causa de uma TERCEIRA propriedade, que não é
+ *    óbvia e por isso fica escrita aqui: a regex **admite `/\`** de
+ *    propósito (o lookahead só exclui a segunda BARRA), e `\` no índice 1 é
+ *    o único caractere que ainda escalaria para autoridade —
+ *    `new URL('/\evil.example', 'https://app.real/')` dá
+ *    `https://evil.example/`. O que torna isso inalcançável é que, para
+ *    esquema **especial** (`http`/`https`/`ws`/`ftp`), o *path state* do
+ *    WHATWG normaliza contrabarra crua para `/`, então `url.pathname` NUNCA
+ *    contém `\` cru (`%5C` fica literal e é inofensivo). Verificado:
+ *    `new URL('/\x','http://h').pathname === '/'`, mas
+ *    `new URL('/\x','foo://h').pathname === '/\x'`.
+ *    **Consequência prática:** se alguém trocar as sentinelas por um esquema
+ *    NÃO-especial, essa normalização some e o `/\` admitido pela regex vira
+ *    alcançável. É por isso que a guarda de fonte pina os esquemas
+ *    `http://` e `https://`, e não só o TLD `.invalid`.
  *
  * ⚠️ `ORIGEM_INTERNA` e `ORIGEM_TESTEMUNHA` TÊM que continuar em TLDs
  * inexistentes (`.invalid`, reservado pela RFC 2606) e diferentes entre si.
@@ -122,10 +153,11 @@ export function destinoSeguro(next: string | null): string {
     // `url.href` reabriria o open redirect, já que `url.origin` bateria
     // com `ORIGEM_INTERNA` (sentinela opaca) e não com um host real.
     const destino = url.pathname + url.search + url.hash
-    // Defesa 1a e 1b — DUAS bases, hosts diferentes de propósito. Ver o
-    // comentário acima: a saída pode nomear no máximo um host, então a base
-    // testemunha sempre pega a saída que nomeia a interna (e vice-versa).
-    // Reduzir isto a uma base só reabre `?next=.//interno.invalid`.
+    // Defesa 1 — o PAR de bases, hosts diferentes de propósito. Ver o
+    // comentário acima: cada uma pega a saída que nomeia a OUTRA. Nenhuma
+    // das duas é dispensável — reduzir à interna reabre
+    // `?next=.//interno.invalid` (767 payloads), reduzir à testemunha reabre
+    // `?next=.//outra.invalid` (499). As duas linhas são pinadas por teste.
     if (new URL(destino, ORIGEM_INTERNA).origin !== ORIGEM_INTERNA) return DESTINO_PADRAO
     if (new URL(destino, ORIGEM_TESTEMUNHA).origin !== ORIGEM_TESTEMUNHA) return DESTINO_PADRAO
     // Defesa 2 — forma: exatamente uma barra inicial. Redundante com as duas
