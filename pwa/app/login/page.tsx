@@ -735,15 +735,17 @@ function StepIndicator({ active, done, label, icon }: {
 }) {
   return (
     <div className="flex items-center gap-1.5">
-      {/* Era `animate={{ backgroundColor, borderColor }}` com `rgba(255,255,255,…)`
-          fixo: branco quase-transparente sobre cartão navy funcionava no
-          escuro, mas sobre cartão branco no claro é o mesmo círculo somando
-          branco com branco — o badge do passo ativo desaparecia por
-          completo. Framer Motion não resolve `hsl(var(--x))` para
-          interpolar cor (perderia a animação), então a troca é por classe:
-          `text-foreground` é a tinta escura no claro e branca no escuro —
-          aplicada como fundo/borda em baixa opacidade, ela clareia sobre
-          navy e escurece sobre branco, nos dois casos ficando visível. */}
+      {/* Era `animate={{ backgroundColor, borderColor }}` com branco
+          translúcido em RGB literal fixo (valor exato documentado em
+          temaTokens.test.ts): branco quase-transparente sobre cartão navy
+          funcionava no escuro, mas sobre cartão branco no claro é o mesmo
+          círculo somando branco com branco — o badge do passo ativo
+          desaparecia por completo. Framer Motion não resolve
+          `hsl(var(--x))` para interpolar cor (perderia a animação), então a
+          troca é por classe: `text-foreground` é a tinta escura no claro e
+          branca no escuro — aplicada como fundo/borda em baixa opacidade,
+          ela clareia sobre navy e escurece sobre branco, nos dois casos
+          ficando visível. */}
       <motion.div
         className={clsx(
           'w-6 h-6 rounded-full border flex items-center justify-center transition-colors duration-300',

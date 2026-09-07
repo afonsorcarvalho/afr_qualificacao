@@ -32,32 +32,39 @@ import { join, relative } from 'node:path'
  * escrita que sobreviva a revisão, nunca com "task pendente" como motivo.
  * Entrada morta continua sendo erro, para a lista não virar depósito.
  *
- * LIMITAÇÃO CONHECIDA — o que esta guarda NÃO cobre:
+ * LIMITAÇÃO CONHECIDA — o que esta guarda cobre por texto, e o que não dá:
  *
- * A varredura abaixo só lê `className` (texto estático em arquivo-fonte).
- * Ela não alcança:
- *   - cor em atributo `style={{ ... }}` (objeto JS, não string de classe);
- *   - cor em prop de animação de biblioteca (ex.: Framer Motion
- *     `animate={{ backgroundColor: 'rgba(255,255,255,…)' }}`) — mesmo caso
- *     do anterior, e sem saída fácil: Framer Motion interpola cor numérica
- *     para animar suavemente, e não resolve `hsl(var(--token))` nessa
- *     interpolação (perderia a transição). Achado real: o indicador de
- *     passo do login (`StepIndicator` em `app/login/page.tsx`) media a cor
- *     do badge com `rgba(255,255,255,…)` fixo — branco quase-transparente
- *     que funciona sobre cartão navy (escuro) e desaparece sobre cartão
- *     branco (claro). Nenhum grep de `className` vê isso: a cor nunca é uma
- *     classe.
- *   - cor montada por concatenação/interpolação de string (`` `bg-${cor}` ``,
- *     `'text-' + variante`) — a regex casa contra o texto-fonte, não contra
- *     o valor em runtime, então a classe final nunca aparece literalmente
- *     no arquivo.
+ * A regra "cor absoluta branca"/"shade crua" só lê `className` (texto
+ * estático em arquivo-fonte) — cor em atributo `style={{ ... }}` ou em prop
+ * de animação de biblioteca (ex.: Framer Motion
+ * `animate={{ backgroundColor: '...' }}`) não é uma string de classe, então
+ * nenhuma das duas primeiras regras a alcança. Achado real: o indicador de
+ * passo do login (`StepIndicator` em `app/login/page.tsx`) media a cor do
+ * badge com branco translúcido em RGB literal fixo — funcionava sobre
+ * cartão navy (escuro) e desaparecia sobre cartão branco (claro).
  *
- * O que fazer no lugar, quando o caso for um destes: não anime a COR — anime
- * opacidade/transform/scale sobre um elemento que já carrega a classe de
- * token semântico (`bg-foreground/10`, `border-foreground/30`, etc.). A cor
- * fica fixa via Tailwind (e portanto tematizada e coberta por esta guarda);
- * só o que muda com a animação (opacidade, escala, posição) fica na prop do
- * Framer. Foi a saída aplicada em `StepIndicator`.
+ * Detectar o LITERAL ainda é possível mesmo fora de `className` — é
+ * texto-fonte de qualquer forma — e é o que a regra "branco literal em
+ * RGB/hex" abaixo faz (mesmo padrão já usado no describe de `globals.css`
+ * mais abaixo neste arquivo, agora espelhado para `app/components/lib`).
+ * O que a guarda genuinamente NÃO alcança, porque não é literal:
+ *   - cor montada por concatenação/interpolação de string em runtime
+ *     (`` `bg-${cor}` ``, `'text-' + variante`, ou uma cor calculada e
+ *     passada para `style`/`animate`) — a regex casa contra o texto-fonte,
+ *     não contra o valor em runtime, então o resultado final nunca aparece
+ *     literalmente no arquivo;
+ *   - qualquer cor não-branca em `style`/prop de animação (a regra literal
+ *     acima só cobre branco, o padrão do achado real — outra cor fixa ali
+ *     dentro escaparia até ela virar um achado novo e ganhar sua própria
+ *     regra, mesmo raciocínio do buraco de `accent`/`placeholder` acima).
+ *
+ * O que fazer no lugar, quando o caso for cor em prop de animação: não
+ * anime a COR — anime opacidade/transform/scale sobre um elemento que já
+ * carrega a classe de token semântico (`bg-foreground/10`,
+ * `border-foreground/30`, etc.). A cor fica fixa via Tailwind (e portanto
+ * tematizada e coberta por esta guarda); só o que muda com a animação
+ * (opacidade, escala, posição) fica na prop do Framer. Foi a saída aplicada
+ * em `StepIndicator`.
  */
 
 const RAIZ = join(__dirname, '..', '..', '..', '..')
@@ -97,6 +104,18 @@ const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
     nome: 'família dark-* (fundo fixo escuro)',
     re: /\bbg-dark-\d{3}\b/g,
     conserto: 'usar bg-card / bg-muted / bg-surface-raised, ou declarar a superfície como cromo escuro em PERMITIDO_TEMA',
+  },
+  {
+    nome: 'branco literal em RGB/hex (fora de className)',
+    // Não é uma classe Tailwind — é o padrão que apareceu dentro de uma prop
+    // de animação do Framer Motion (`animate={{ backgroundColor: 'rgba(255,
+    // 255, 255, …)' }}`), onde nenhuma regra de `className` acima alcança.
+    // Detectar o literal no texto-fonte É possível (é isto aqui); resolver
+    // sozinho não é — Framer não interpola `hsl(var(--token))`, então a
+    // correção continua sendo trocar a prop de cor por uma classe de token
+    // fixo (ver LIMITAÇÃO CONHECIDA no topo do arquivo).
+    re: /rgba?\(\s*255,\s*255,\s*255|#fff\b|#ffffff\b/gi,
+    conserto: 'não anime a cor — classe de token no elemento (ex.: bg-foreground/10), animando só opacidade/transform/scale',
   },
 ]
 
