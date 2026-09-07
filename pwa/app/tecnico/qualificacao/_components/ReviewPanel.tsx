@@ -171,7 +171,11 @@ export function ReviewPanel({
           </div>
 
           {errorMsg && (
-            <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+            /* `danger`, não `destructive`: isto é ESTADO ("falhou"), não ação
+               irreversível (DESIGN.md §"--danger e --destructive"). O chip
+               `text-danger` 44 linhas abaixo, no mesmo componente, já usava a
+               família certa. */
+            <p className="rounded-md bg-danger/10 px-2 py-1 text-xs text-danger">
               {errorMsg}
             </p>
           )}
@@ -263,8 +267,15 @@ function IssueRow({
     ? 'text-warn'
     : 'text-info'
   const Icon = issue.severity === 'warning' ? AlertTriangle : Info
+  // Ignorado NÃO é componente inativo: a linha continua com "Ir para item" e
+  // "Restaurar" clicáveis dentro dela, então a isenção do WCAG para controle
+  // desabilitado não vale aqui. A 60% de opacidade o rótulo do próprio botão
+  // "Restaurar" ficava a 2,85:1 no claro (3,74:1 no escuro) — controle vivo
+  // abaixo do piso. O estado passa a ser dito por borda tracejada e pela
+  // ausência do fundo preenchido (mais o próprio botão "Restaurar", que já
+  // nomeia o estado em texto — a Regra do Par), sem reduzir tinta.
   const containerCls = dismissed
-    ? 'opacity-60'
+    ? 'border-dashed'
     : 'bg-muted/30 dark:bg-muted/40'
 
   return (

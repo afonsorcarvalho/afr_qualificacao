@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { hsl2rgb, contraste, sobre, tokenDe } from '@/tests/contraste'
 
 /**
  * Guarda do tema claro.
@@ -76,6 +77,18 @@ import { join, relative } from 'node:path'
  */
 
 const RAIZ = join(__dirname, '..', '..', '..', '..')
+/**
+ * TRÊS FRONTEIRAS CONHECIDAS desta varredura, registradas para quem for
+ * confiar nela: (a) só estas pastas são varridas — `.ts`/`.tsx` na raiz do
+ * projeto (`middleware.ts`, `tailwind.config.ts`) fica de fora; (b) valor
+ * arbitrário não-branco (`bg-[#0a0f1e]`, `text-[rgb(10,15,30)]`) escapa de
+ * todas as regras, que casam nome de família/token, não hex solto; (c) a
+ * regra de opacidade nua só morde quando um token de TEXTO está na mesma
+ * linha — texto que herda a cor do pai, ou cuja classe carrega só tamanho
+ * (`text-[11px] ... opacity-70`), passa batido (achados reais em
+ * `RelatorioHeader.tsx` e `KindPill.tsx`, corrigidos à mão na revisão final
+ * de 2026-09-06).
+ */
 const PASTAS = ['app', 'components', 'lib']
 
 const FAMILIAS = 'emerald|amber|red|rose|cyan|sky|blue|green|yellow|orange|teal|violet|indigo|fuchsia|pink|lime|gray|slate|zinc|neutral|stone'
@@ -92,7 +105,13 @@ const FAMILIAS = 'emerald|amber|red|rose|cyan|sky|blue|green|yellow|orange|teal|
  */
 const PREFIXOS = 'text|bg|border|divide|ring|accent|from|via|to|shadow|outline|decoration|caret|fill|stroke|placeholder'
 
-const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
+/**
+ * Tokens que pintam TEXTO. Enumerados literalmente, não por prefixo `text-`:
+ * `text-[11px]` e `text-xs` também começam com `text-` e não são cor nenhuma.
+ */
+const TOKEN_TEXTO = String.raw`text-(?:muted-foreground|foreground|ok|warn|danger|info)\b`
+
+const PROIBIDO: { nome: string; re: RegExp; conserto: string; exigeNaLinha?: RegExp }[] = [
   {
     // `black` entrou junto com as famílias neutras logo abaixo (Task 13,
     // Step 2-A): mesma assimetria de `accent`/`placeholder` — a Regra 2
@@ -111,6 +130,35 @@ const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
     nome: 'opacidade sobre tinta secundária',
     re: /\btext-muted-foreground\/\d{1,3}\b/g,
     conserto: 'usar text-muted-foreground puro — a opacidade derruba abaixo de 4.5:1',
+  },
+  {
+    // ACHADO DA REVISÃO FINAL (2026-09-06), e o erro estava no PLANO:
+    // a tabela de tradução mandava trocar `text-muted-foreground/60` (que a
+    // regra acima proíbe) por `text-muted-foreground opacity-60`, com o
+    // argumento de que "o mecanismo proibido é a opacidade embutida na
+    // classe de COR". Isso confunde MECANISMO com EFEITO: os dois compõem
+    // pixel idêntico — 2,80:1 no claro, 3,74:1 no escuro — e a saída
+    // sancionada reproduzia o defeito no mesmo valor, agora invisível para
+    // a guarda. A regra acima virava teatro.
+    //
+    // A decisão: para TEXTO não existe terceiro nível de tinta (DESIGN.md,
+    // "Tinta Apagada" é proibida em texto que o técnico precisa ler). Se a
+    // hierarquia ficar chapada, ela volta por TAMANHO ou PESO de fonte.
+    // `opacity-N` continua permitido em ÍCONE e DECORAÇÃO, onde não há piso
+    // — por isso a regra pega a CO-OCORRÊNCIA (opacidade nua + token de
+    // texto na mesma linha) e os ícones entram nomeados em PERMITIDO_TEMA,
+    // não por curinga.
+    //
+    // Só opacidade NUA conta. `opacity-0`/`opacity-100` (extremos de
+    // animação) e qualquer variante prefixada (`hover:`, `group-hover/x:`,
+    // `disabled:`, `focus:`, `peer-*:`) ficam de fora de propósito: são
+    // interação e estado desabilitado, não redução permanente de tinta —
+    // incluí-las obrigaria a cadastrar exceção para cada revelação em hover
+    // do app, que é exatamente o tipo de exceção que ninguém entende depois.
+    nome: 'opacidade nua sobre token de texto (mesmo efeito de text-X/60)',
+    re: /(?<![\w:/-])opacity-(?:[1-9]\d?|\[[^\]\s]*\])(?![\w-])/g,
+    exigeNaLinha: new RegExp(TOKEN_TEXTO),
+    conserto: 'texto não leva opacidade — usar o token puro e diferenciar por tamanho/peso de fonte; se for ícone ou decoração, declarar exceção nomeada em PERMITIDO_TEMA',
   },
   {
     nome: 'família dark-* (fundo fixo escuro)',
@@ -218,6 +266,15 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // pra foto em tela cheia se ler, nos dois temas. Não é superfície do app,
   // é camada de foco sobre o conteúdo por trás.
   'app/tecnico/qualificacao/_components/CollectedCard.tsx :: bg-black/90': 'Overlay preto do lightbox de foto em tela cheia — legítimo nos dois temas, escurece a página atrás pra foto se ler (mesmo raciocínio do overlay do PdfViewerModal).',
+
+  // --- revisão final de 2026-09-06: regra "opacidade nua sobre token de texto" ---
+  // Único uso legítimo hoje: o `ChevronRight` do item de histórico. É ÍCONE
+  // (affordance de "abre"), não texto — não responde a piso de contraste — e
+  // a opacidade é metade de um par apaga/acende (`group-hover:opacity-100`)
+  // que carrega a interação. O token de texto na mesma linha
+  // (`text-muted-foreground`) é o que pinta o traço do ícone, e é só a
+  // co-ocorrência com ele que traz a linha para a regra.
+  'app/tecnico/qualificacao/historico/page.tsx :: opacity-60': 'ícone (ChevronRight) em par apaga/acende com group-hover:opacity-100 — decoração/affordance, sem piso de contraste de texto.',
 }
 
 function arquivos(): string[] {
@@ -252,13 +309,21 @@ describe('tema: cor de estado só via token semântico', () => {
     for (const abs of arquivos()) {
       const rel = relative(RAIZ, abs).split('\\').join('/')
       const src = readFileSync(abs, 'utf8')
-      for (const regra of PROIBIDO) {
-        for (const m of src.match(regra.re) ?? []) {
-          const chaveCuringa = `${rel} :: *`
-          const chaveExata = `${rel} :: ${m}`
-          if (chaveCuringa in PERMITIDO_TEMA) { usadas.add(chaveCuringa); continue }
-          if (chaveExata in PERMITIDO_TEMA) { usadas.add(chaveExata); continue }
-          violacoes.push(`${rel}: \`${m}\` (${regra.nome}) — ${regra.conserto}`)
+      // Varredura por LINHA, não pelo arquivo inteiro. Para as regras de
+      // token único o resultado é idêntico (a regex casa um pedaço só); o
+      // que a linha habilita é `exigeNaLinha`, que só faz sentido com uma
+      // noção de vizinhança — e a linha é a mesma noção de localidade que o
+      // `scripts/contrast-audit.mjs` já usa para inferir fundo.
+      for (const linha of src.split('\n')) {
+        for (const regra of PROIBIDO) {
+          if (regra.exigeNaLinha && !regra.exigeNaLinha.test(linha)) continue
+          for (const m of linha.match(regra.re) ?? []) {
+            const chaveCuringa = `${rel} :: *`
+            const chaveExata = `${rel} :: ${m}`
+            if (chaveCuringa in PERMITIDO_TEMA) { usadas.add(chaveCuringa); continue }
+            if (chaveExata in PERMITIDO_TEMA) { usadas.add(chaveExata); continue }
+            violacoes.push(`${rel}: \`${m}\` (${regra.nome}) — ${regra.conserto}`)
+          }
         }
       }
     }
@@ -358,68 +423,22 @@ describe('tema: token de estado tem folga para o hover do próprio matiz', () =>
   // ReviewPanel.tsx:288 (3.66:1), achado pela auditoria de 2026-09-06.
   const css = readFileSync(join(RAIZ, 'app/globals.css'), 'utf8')
 
-  const bloco = (sel: string) => {
-    const i = css.indexOf(`${sel} {`)
-    expect(i, `bloco ${sel} não encontrado em globals.css`).toBeGreaterThan(-1)
-    return css.slice(i, css.indexOf('\n}', i))
+  // `hsl2rgb`/`luminancia`/`contraste`/`sobre` moram em `tests/contraste.ts`
+  // desde a revisão final: `StatusBadge.test.tsx` precisa da MESMA medição, e
+  // duas cópias da matemática de contraste é como a deriva de 8,72 -> 7,99
+  // passou sem ninguém ver.
+  const token = (tema: string, papel: string): string => {
+    const v = tokenDe(css, tema, papel)
+    expect(v, `--${papel} ausente em ${tema}`).not.toBeNull()
+    return v!
   }
-
-  const tokenDe = (tema: string, papel: string): string => {
-    const m = bloco(tema).match(new RegExp(String.raw`--${papel}:\s*([^;]+);`))
-    expect(m, `--${papel} ausente em ${tema}`).not.toBeNull()
-    return m![1].trim()
-  }
-
-  // HSL (graus, %, %) -> RGB (0-255). Implementação direta da conversão
-  // padrão (setor de matiz -> componente maior/médio/intermediário + ajuste
-  // de luminosidade), sem depender de nenhuma lib de cor.
-  const hsl2rgb = (triple: string): number[] => {
-    const [hStr, sStr, lStr] = triple.split(/\s+/)
-    const h = parseFloat(hStr)
-    const s = parseFloat(sStr) / 100
-    const l = parseFloat(lStr) / 100
-    const c = (1 - Math.abs(2 * l - 1)) * s
-    const hp = h / 60
-    const x = c * (1 - Math.abs((hp % 2) - 1))
-    let r1 = 0
-    let g1 = 0
-    let b1 = 0
-    if (hp >= 0 && hp < 1) [r1, g1, b1] = [c, x, 0]
-    else if (hp < 2) [r1, g1, b1] = [x, c, 0]
-    else if (hp < 3) [r1, g1, b1] = [0, c, x]
-    else if (hp < 4) [r1, g1, b1] = [0, x, c]
-    else if (hp < 5) [r1, g1, b1] = [x, 0, c]
-    else [r1, g1, b1] = [c, 0, x]
-    const m = l - c / 2
-    return [r1, g1, b1].map((v) => Math.round((v + m) * 255))
-  }
-
-  // Luminância relativa WCAG (fórmula 1.4.3) e razão de contraste a partir dela.
-  const luminancia = ([r, g, b]: number[]): number => {
-    const canal = (v: number) => {
-      const s = v / 255
-      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
-    }
-    return 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b)
-  }
-
-  const contraste = (a: number[], b: number[]): number => {
-    const la = luminancia(a) + 0.05
-    const lb = luminancia(b) + 0.05
-    return la > lb ? la / lb : lb / la
-  }
-
-  // Composição alpha simples: `fg` a `alpha` de opacidade sobre `bg` opaco —
-  // é o que `hover:bg-info/20` faz visualmente em cima de `bg-info-surface`.
-  const sobre = (fg: number[], alpha: number, bg: number[]): number[] =>
-    fg.map((c, i) => Math.round(c * alpha + bg[i] * (1 - alpha)))
 
   it.each(['ok', 'warn', 'danger', 'info'])(
     '--%s legível sobre a própria superfície, inclusive com hover a 20%%',
     (papel) => {
       for (const tema of [':root', ':root.dark']) {
-        const fg = hsl2rgb(tokenDe(tema, papel))
-        const bg = hsl2rgb(tokenDe(tema, `${papel}-surface`))
+        const fg = hsl2rgb(token(tema, papel))
+        const bg = hsl2rgb(token(tema, `${papel}-surface`))
         expect(contraste(fg, bg)).toBeGreaterThanOrEqual(4.5)
 
         const comHover = contraste(fg, sobre(fg, 0.2, bg))

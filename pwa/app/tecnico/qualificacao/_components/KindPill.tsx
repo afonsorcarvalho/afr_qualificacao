@@ -52,7 +52,10 @@ export function KindPill({
     >
       <span className="sr-only">{titulo}: </span>
       {label}
-      {subLabel ? <span className="ml-1 opacity-70">·{subLabel}</span> : null}
+      {/* Sem `opacity-70`: era texto real a 3,47:1. O sub-rótulo já se
+          distingue do rótulo pelo separador `·` e pelo peso normal contra o
+          `font-medium` da pílula. */}
+      {subLabel ? <span className="ml-1 font-normal">·{subLabel}</span> : null}
     </span>
   )
 }

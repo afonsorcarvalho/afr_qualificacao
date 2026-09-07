@@ -334,14 +334,18 @@ function LoginPageInner() {
         <motion.p
           className="text-center text-xs text-muted-foreground mt-6"
           initial={false}
-          // Era branco absoluto a 20% de opacidade: a tabela manda `text-muted-foreground` puro,
-          // mas isso TRIPLICA o brilho no escuro (medido: pico de luminância
-          // salta de rgb(53,56,65) para rgb(163,173,194) — mudança real de
-          // aparência, não só de token). `opacity-60` na classe seria
-          // sobrescrita pelo `animate` do Framer (estilo inline vence
-          // classe) — por isso o peso reduzido entra aqui, no MESMO
-          // mecanismo que já controla a opacidade deste elemento.
-          animate={{ opacity: 0.6 }}
+          // Era branco absoluto a 20% de opacidade e passou por um estágio
+          // intermediário de `animate={{ opacity: 0.6 }}` — reduzir a tinta
+          // pelo Framer em vez de pela classe, para escapar da catraca sem
+          // mudar o brilho no escuro. A revisão final derrubou a saída
+          // inteira: a tinta secundária a 60% de opacidade compõe IDÊNTICO
+          // à mesma tinta com a opacidade embutida na cor (2,80:1 no claro,
+          // 3,74:1 no escuro), então trocar o mecanismo só escondia o
+          // defeito da guarda. Para TEXTO não existe terceiro nível de
+          // tinta (DESIGN.md, "Tinta Apagada" proibida em texto legível):
+          // fica `text-muted-foreground` cheio, e o Framer volta a animar
+          // só o que é animação (opacidade de entrada 0 -> 1).
+          animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
           Labquali · Comunicação via JSON-RPC
@@ -501,7 +505,13 @@ function ServerStep({
               </button>
               <button
                 onClick={() => onRemoveHistory(h)}
-                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-muted-foreground hover:text-muted-foreground transition-all flex-shrink-0"
+                // `hover:text-foreground`, não `hover:text-muted-foreground`:
+                // um fix round anterior igualou repouso e hover para matar um
+                // "hover mais claro que o baseline" no escuro, e o preço foi a
+                // affordance inteira (o botão não responde ao ponteiro). Hover
+                // marginalmente mais claro que o baseline escuro não é
+                // regressão que valha trocar por affordance perdida.
+                className="opacity-0 group-hover/item:opacity-100 p-0.5 text-muted-foreground hover:text-foreground transition-all flex-shrink-0"
                 title="Remover"
               >
                 ×
@@ -563,11 +573,13 @@ function CredentialsStep({
         <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <Database size={11} className="text-muted-foreground" />
           Banco de dados
-          {/* Era branco a 25% de opacidade, mais fraco que o rótulo (branco a
-              60%, migrado para `text-muted-foreground` acima sem opacidade
-              extra): `opacity-60` reabre essa distinção de peso em vez de
-              colapsar dica e rótulo na mesma cor. */}
-          <span className="ml-auto text-muted-foreground opacity-60 font-normal">
+          {/* Era branco a 25% de opacidade, e por um tempo tinta secundária
+              reduzida a 60% pelo elemento — que compõe idêntico à mesma
+              tinta com a opacidade embutida na cor (2,80:1 no claro), o
+              padrão que a catraca proíbe. Texto não ganha terceiro nível: a
+              distinção de peso contra o rótulo fica por conta de
+              `font-normal` (o rótulo é `font-medium`), não da opacidade. */}
+          <span className="ml-auto text-muted-foreground font-normal">
             {databases.length > 0
               ? `${databases.length} disponíve${databases.length !== 1 ? 'is' : 'l'}`
               : 'digite o nome'}
@@ -679,7 +691,9 @@ function CredentialsStep({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground transition-colors"
+            // Mesmo raciocínio do botão de remover histórico acima: repouso e
+            // hover na mesma cor é affordance morta no botão de mostrar senha.
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
           >
             {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
           </button>
@@ -767,13 +781,17 @@ function StepIndicator({ active, done, label, icon }: {
           <span className={clsx(active ? 'text-foreground' : 'text-muted-foreground')}>{icon}</span>
         )}
       </motion.div>
-      {/* Era branco a 70% (ativo) / 25% (futuro) de opacidade: a tabela de
-          tradução manda os dois para `text-muted-foreground` (faixa 50..70),
-          mas colapsá-los na MESMA classe apaga a distinção ativo/futuro que
-          o par de opacidades carregava — a `opacity-60` no futuro reabre
-          essa diferença sem reintroduzir opacidade sobre o token (que a
-          catraca proíbe). */}
-      <span className={clsx('text-xs font-medium', active ? 'text-muted-foreground' : done ? 'text-ok' : 'text-muted-foreground opacity-60')}>
+      {/* Esta é a tela do bug original (o modo claro perdia o texto do
+          login). Era branco a 70% (ativo) / 25% (futuro) de opacidade; a
+          tradução mecânica mandou os dois para a tinta secundária e a
+          distinção ativo/futuro foi reaberta reduzindo o futuro a 60% de
+          opacidade — que compõe idêntico à mesma tinta com a opacidade
+          embutida na cor (2,80:1 no claro), exatamente o que a catraca
+          proíbe. A distinção volta por PESO de
+          fonte (`font-medium` no ativo/concluído, `font-normal` no futuro),
+          não por tinta: o rótulo do passo futuro é informação que o técnico
+          precisa ler para saber o que vem depois. */}
+      <span className={clsx('text-xs', active ? 'font-medium text-muted-foreground' : done ? 'font-medium text-ok' : 'font-normal text-muted-foreground')}>
         {label}
       </span>
     </div>

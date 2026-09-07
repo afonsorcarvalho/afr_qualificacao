@@ -192,9 +192,18 @@ export function ColetaList({
                       selected={item.id === selectedId}
                     />
                   ) : (
+                    /* Sem opacidade no container: isto é a "Prévia das
+                       coletas" (ver o `sr-only` acima) — o técnico LÊ estes
+                       nomes pra saber o que o turno vai pedir. A 60% o nome
+                       media 3,39:1 e a instrução 2,82:1 no tema claro (6,01 e
+                       3,71 no escuro): abaixo do piso, e exatamente a classe
+                       de defeito que abriu esta branch. O "ainda não dá pra
+                       coletar" continua dito por três coisas que não são
+                       tinta — borda tracejada, ausência das affordances do
+                       ColetaCard, e o aviso âmbar logo abaixo. */
                     <div
                       key={item.id}
-                      className="rounded-lg border border-border/40 bg-muted/20 p-3 opacity-60"
+                      className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-3"
                     >
                       <p className="truncate text-sm text-foreground/90">{item.name}</p>
                       {item.instruction && (
@@ -209,7 +218,15 @@ export function ColetaList({
             )
           )}
           {!open_relatorio_id && pending_items.length > 0 && (
-            <p className="rounded-md border border-warn/20 bg-warn-surface p-2 text-center text-xs text-warn">
+            /* `bg-warn/5`, não `bg-warn-surface`: aqui havia a shade crua de
+               âmbar a 5%, um tinte quase invisível, e a tradução o mandou para a
+               superfície de estado — que foi calibrada a 15%. No escuro isso
+               levou rgb(15,15,17) para rgb(45,36,27): marrom nítido onde havia
+               um véu. `/5` nem estava na faixa `/10..15` que a tabela cobria.
+               Token bruto com opacidade é o mecanismo certo para TINGIMENTO de
+               fundo (não é tinta de texto, não responde a piso de contraste);
+               `-surface` fica para o chip que precisa de fundo de verdade. */
+            <p className="rounded-md border border-warn/20 bg-warn/5 p-2 text-center text-xs text-warn">
               Inicie o relatório do dia pra coletar.
             </p>
           )}

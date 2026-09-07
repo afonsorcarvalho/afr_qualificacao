@@ -76,7 +76,11 @@ export function RelatorioHeader({
     >
       <Play className="h-5 w-5 shrink-0" aria-hidden />
       <span className="flex flex-col items-start leading-tight">
-        <span className="text-[11px] font-medium uppercase tracking-wider opacity-70">
+        {/* Sem `opacity-70`: era texto real a 3,47:1 sobre o preenchimento do
+            botão. A hierarquia contra a linha de baixo já vem de tamanho
+            (11px vs base), caixa alta e `tracking-wider` — não precisa de
+            tinta reduzida, que é o que derrubava o contraste. */}
+        <span className="text-[11px] font-medium uppercase tracking-wider">
           Comece o turno
         </span>
         <span className="font-semibold">Iniciar relatório do dia</span>
