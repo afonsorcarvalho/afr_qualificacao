@@ -209,10 +209,15 @@ temas, com a razão de contraste medida (auditoria em
 | `--ring` | Anel de foco | `188 86% 34%` | 3.76 / — | `188 86% 53%` | 11.14 / — |
 
 `--ok`, `--warn`, `--danger` e `--info` carregam ainda uma folga acima do
-piso: cada um também passa 3:1 quando ganha `hover:bg-X/20` sobre a própria
-superfície `-surface` (a razão mais apertada é `--info`, a 4.75:1 no claro —
-ver `temaTokens.test.ts`, describe "token de estado tem folga para o hover do
-próprio matiz"). `--border` e o fio geral são decorativos e **não têm piso**
+piso: cada um continua passando o piso de **4.5:1 de texto** (o token pinta o
+próprio texto do chip, ex. `text-info` sobre `hover:bg-info/20`) mesmo quando
+ganha `hover:bg-X/20` sobre a própria superfície `-surface` (a razão mais
+apertada é `--info`, a 4.75:1 no claro — ver `temaTokens.test.ts`, describe
+"token de estado tem folga para o hover do próprio matiz",
+`expect(comHover).toBeGreaterThanOrEqual(4.5)`). Foi exatamente a folga que
+faltou em `--info` antes da Task 13 (`ReviewPanel.tsx:288`, caía a 3.66:1 —
+abaixo de 4.5, não de 3). `--border` e o fio geral são decorativos e **não
+têm piso**
 (ver "Herdado de julgamentos" do plano de contraste); `--ring` e qualquer
 borda que funcione como indicador de foco ou fronteira de controle
 respondem ao piso de 3:1.

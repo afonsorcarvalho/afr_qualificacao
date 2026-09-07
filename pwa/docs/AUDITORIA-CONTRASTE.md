@@ -43,10 +43,19 @@ rodar de fora do projeto; **não portar esse import de volta**.
   `border-*`/`ring-*` abaixo de 3:1 é reportado, inclusive fio de 1px
   puramente decorativo (`border-border`, `border-border/60`) que WCAG não
   exige que passe piso nenhum — só borda que funciona como indicador de foco
-  ou fronteira de controle interativo precisa dos 3:1. A maioria dos
-  achados de borda em ambos os temas é desse tipo; cada um foi olhado à mão
-  neste ciclo e nenhum é fronteira de controle real (ver tabela por
-  arquivo abaixo).
+  ou fronteira de controle interativo precisa dos 3:1. Os achados de borda
+  foram triados por **classe** (qual token, não ocorrência a ocorrência) —
+  a maioria (`border-border*`, `border-ok/30`, `border-danger/40`, ...) é
+  fio decorativo puro. Duas classes ficam **em aberto, não decididas nesta
+  task**: `border-input` (7 ocorrências, 1.14–1.24:1, em
+  `components/ui/button.tsx` e nos campos de login/coleta/finalizar) é
+  literalmente a borda de um campo/botão, então pode contar como fronteira
+  de controle; `ring-foreground/20` (`ColetaFilter.tsx:61`, 1.47:1) marca o
+  segmento ativo do filtro segmentado (`DESIGN.md`, "anel de 1px" no ativo),
+  então também pode ser estado de controle, não decoração pura. Nenhum dos
+  dois tem urgência — ambos os elementos têm preenchimento/texto próprio que
+  já sinaliza o estado — mas ficam registrados para quem decidir se merecem
+  correção de token dedicada.
 - **`PdfViewerModal.tsx` é falso positivo por construção.** O visualizador
   declara cromo escuro fixo nos dois temas (decisão de projeto, registrada
   em `PERMITIDO_TEMA` — foto e PDF se leem melhor sobre fundo escuro). O
@@ -71,15 +80,21 @@ rodar de fora do projeto; **não portar esse import de volta**.
 | Depois da Task 13 (correção do `text-info` em `ReviewPanel.tsx:288`) | **140**\* | **112**\* | 25 |
 
 \* Medido nesta task (Task 9), rodando `npm run audit:contrast` e
-`THEME=dark npm run audit:contrast` na branch `feat/tema-claro-contraste`.
+`THEME=dark npm run audit:contrast` na branch `feat/tema-claro-contraste`. O
+397 original (medido antes da migração começar) não foi decomposto por
+categoria na hora — não dá pra dizer quanto dele já era borda decorativa
+antes de qualquer mudança de token.
 
-Da leitura de "142 → 140": as duas ocorrências fechadas são exatamente as
-duas composições (`sobre background` / `sobre card`) do `text-info` em
-`ReviewPanel.tsx:288`, que a Task 13 levou de 3.66:1 (abaixo do piso de
-4.5:1) para o valor do token `--info` recalculado (6.86:1 na página). Não
-sobrou nenhum achado real de **texto** em nenhum dos dois temas — os que
-restam (tabela abaixo) são o falso positivo estrutural do `PdfViewerModal`
-e bordas decorativas.
+"142 → 140" é o delta **líquido**, não decomposto ocorrência a ocorrência: a
+Task 13 não só corrigiu o `text-info` de `ReviewPanel.tsx:288` (3.66:1,
+abaixo do piso de 4.5:1, para o valor recalculado do token — 6.86:1 na
+página), como também mudou os valores HSL de `--ok`/`--danger`/`--info`, o
+que desloca a razão de toda classe que os usa (`border-ok/30`,
+`border-danger/40`, etc.), para cima ou para baixo. O que dá para afirmar
+com confiança, porque foi revisado ocorrência a ocorrência (tabela abaixo):
+**não sobrou nenhum achado real de texto** em nenhum dos dois temas — os 140
+que restam no claro são o falso positivo estrutural do `PdfViewerModal` e
+bordas decorativas.
 
 **Checagem de cegueira do script** (a mesma armadilha que gerou "zero
 achados" numa versão anterior): confirmado manualmente que `--ok` e
@@ -126,8 +141,12 @@ tema **claro** (o que esta task auditou):
 
 `--ok`/`--warn`/`--danger`/`--info` também foram checados com
 `hover:bg-X/20` sobre a própria superfície `-surface` (o caso que a Task 13
-corrigiu): pior caso é `--info` a 4.75:1, ainda acima do piso de 3:1 exigido
-de fronteira de controle (o hover não é texto).
+corrigiu): o token pinta o próprio TEXTO do chip nesse hover (ex. `text-info`
+sobre `hover:bg-info/20`), então o piso que vale é o de texto, 4.5:1 — não
+3:1. Pior caso é `--info` a 4.75:1, ainda acima. Foi essa folga que faltou
+antes da Task 13: `--info` caía a 3.66:1 em `ReviewPanel.tsx:288`, abaixo de
+4.5 (`temaTokens.test.ts`, describe "token de estado tem folga para o hover
+do próprio matiz", `expect(comHover).toBeGreaterThanOrEqual(4.5)`).
 
 ## Como rodar de novo
 

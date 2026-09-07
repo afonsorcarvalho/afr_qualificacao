@@ -94,11 +94,13 @@
   `--info` + `-surface`, mais os papéis `--background`/`--card`/
   `--muted-foreground`) nos dois temas, com o valor do **claro** escolhido pelo
   piso 4.5:1 (texto) / 3:1 (foco e fronteira de controle) — não só copiado do
-  escuro. Medido antes/depois com o script de auditoria (ver item abaixo): 397 →
-  0 ocorrências reais de texto abaixo do piso no claro (os ~140 que sobram no
-  script são falso positivo de borda decorativa, sem piso, e do cromo escuro
-  fixo do `PdfViewerModal`, ver `docs/AUDITORIA-CONTRASTE.md`). O que trava a
-  volta: `temaTokens.test.ts` recusa shade cru de cor de estado fora de
+  escuro. Medido antes/depois com o script de auditoria (ver item abaixo):
+  397 → 140 ocorrências totais no claro (o 397 original não foi decomposto
+  por categoria; o 140 de hoje foi — 106 são borda/anel decorativo, sem piso,
+  34 são o cromo escuro fixo do `PdfViewerModal`, falso positivo por
+  construção, e **0 são texto real abaixo do piso**, ver
+  `docs/AUDITORIA-CONTRASTE.md`). O que trava a volta: `temaTokens.test.ts`
+  recusa shade cru de cor de estado fora de
   `PERMITIDO_TEMA` (exceções nomeadas e justificadas), e `npm run
   audit:contrast` mede a razão real dos dois temas a qualquer momento — sem
   browser, em segundos.
