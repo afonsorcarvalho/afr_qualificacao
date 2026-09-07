@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { NextRequest } from 'next/server'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import LoginPage from '../../../login/page'
 import { destinoSeguro } from '@/lib/navegacao'
 import { middleware } from '@/middleware'
@@ -260,12 +262,111 @@ describe('destinoSeguro: só caminho interno vale', () => {
     expect(destinoSeguro('http://interno.invalid/\\evil.example')).toBe(PADRAO)
   })
 
-  it('recusa outras formas de nomear a sentinela (barra tripla, contrabarra, tab, esquema)', () => {
+  it('recusa outras formas de nomear a sentinela (barra tripla, contrabarra, tab, esquema, ponto inicial)', () => {
     expect(destinoSeguro('///interno.invalid//evil.example')).toBe(PADRAO)
     expect(destinoSeguro('//interno.invalid/\\evil.example')).toBe(PADRAO)
     expect(destinoSeguro('//interno.invalid/\t//evil.example')).toBe(PADRAO)
     expect(destinoSeguro('https://interno.invalid//evil.example')).toBe(PADRAO)
     expect(destinoSeguro('//interno.invalid//evil.example/x?y=1#z')).toBe(PADRAO)
+    // TERCEIRA rodada da mesma família: `.` inicial faz o WHATWG tratar a
+    // string como caminho relativo, o origin do primeiro parse bate, e o
+    // pathname resolvido sai `//interno.invalid` — protocol-relative de novo.
+    // Link de ataque, sem encoding nenhum: `/login?next=.//interno.invalid`.
+    expect(destinoSeguro('.//interno.invalid')).toBe(PADRAO)
+    expect(destinoSeguro('..//interno.invalid')).toBe(PADRAO)
+    expect(destinoSeguro('/.//interno.invalid')).toBe(PADRAO)
+    expect(destinoSeguro('.//interno.invalid/x?u=1#f')).toBe(PADRAO)
+    expect(destinoSeguro('.//outra.invalid')).toBe(PADRAO)
+  })
+
+  /**
+   * A asserção que faltou nas TRÊS rodadas, e é por isso que nenhuma delas
+   * podia ter pego o buraco: todo teste acima compara a saída com
+   * `DESTINO_PADRAO`. Isso só verifica que a função recusou o que ELA já
+   * sabia recusar. O que o atacante explora é o que o CONSUMIDOR faz com a
+   * saída — `router.replace` resolve contra a `location.href` REAL do app,
+   * que não é nenhuma das sentinelas.
+   *
+   * Então a propriedade certa não é "devolveu o padrão", é: **resolvida
+   * contra a origem real do app, a saída continua naquela origem** — para
+   * QUALQUER entrada, aceita ou recusada.
+   */
+  describe('a saída nunca sai da origem real do app (a propriedade que importa)', () => {
+    const BASES_REAIS = [
+      'https://pwa.real.app/login',
+      'http://localhost:3010/login',
+      'https://qualif.empresa.com.br/a/b?q=1',
+    ]
+
+    const PAYLOADS = [
+      // nomeiam a sentinela (rodadas 2 e 3)
+      '//interno.invalid//evil.example',
+      'http://interno.invalid//evil.example/x',
+      'http://interno.invalid/\\evil.example',
+      './/interno.invalid',
+      '..//interno.invalid',
+      '/.//interno.invalid',
+      './/interno.invalid/x?u=1#f',
+      './/outra.invalid',
+      // host estrangeiro (rodada 1)
+      'https://evil.example',
+      '//evil.example',
+      '///evil.example',
+      '/\\evil.example',
+      '/\t/evil.example',
+      'javascript:alert(1)',
+      // e as entradas LEGÍTIMAS, que também têm que satisfazer a propriedade
+      '/tecnico/qualificacao/4/coleta/213?x=1#top',
+      '//interno.invalid/ok',
+      '/tecnico/../../evil',
+    ]
+
+    it.each(PAYLOADS)('next=%j não escapa da origem do app', (payload) => {
+      const saida = destinoSeguro(payload)
+      for (const base of BASES_REAIS) {
+        expect(new URL(saida, base).origin, `saída ${JSON.stringify(saida)} sobre ${base}`).toBe(
+          new URL(base).origin,
+        )
+      }
+    })
+
+    /**
+     * As duas defesas são REDUNDANTES por construção: provado por mutação
+     * que, sozinha, cada uma já recusa todos os payloads conhecidos (tirar
+     * só a base testemunha, ou só a invariante de forma, deixa a suíte
+     * inteira verde; tirar as duas quebra 6 testes). Isso é o desenho
+     * pretendido — a função já falhou três vezes nesta família — mas
+     * significa que NENHUM teste de comportamento consegue notar a remoção
+     * de UMA delas. Daí esta guarda de fonte, no espírito do
+     * `temaTokens.test.ts`: ela é a única coisa que impede alguém de
+     * "simplificar" a função de volta para uma base só, que é exatamente o
+     * estado explorável da versão 2.
+     */
+    it('as duas defesas continuam no código (a mutação de uma só é invisível para os testes)', () => {
+      const fonte = readFileSync(join(__dirname, '..', '..', '..', '..', 'lib/navegacao.ts'), 'utf8')
+      expect(fonte, 'a base testemunha sumiu — reabre ?next=.//interno.invalid').toMatch(
+        /ORIGEM_TESTEMUNHA\).origin !== ORIGEM_TESTEMUNHA/,
+      )
+      // Casa o ESTATUTO executável, não a regex citada no comentário logo
+      // acima dela — a primeira versão desta asserção passava verde com a
+      // linha de código apagada, porque o JSDoc ainda mencionava o padrão.
+      expect(fonte, 'a invariante de forma sumiu').toMatch(
+        /if \(!\/\^\\\/\(\?!\\\/\)\/\.test\(destino\)\) return DESTINO_PADRAO/,
+      )
+      // Âncoras de parse, nunca destinos: TLD inexistente (RFC 2606) e hosts
+      // distintos entre si. Trocar por `localhost` ou pela origem real do app
+      // converteria isto num open redirect, com os testes verdes.
+      expect(fonte).toMatch(/ORIGEM_INTERNA = 'http:\/\/[a-z-]+\.invalid'/)
+      expect(fonte).toMatch(/ORIGEM_TESTEMUNHA = 'https:\/\/[a-z-]+\.invalid'/)
+    })
+
+    it('a saída sempre tem exatamente uma barra inicial (invariante de forma)', () => {
+      // Mesma propriedade, conferível de olho: é a defesa que continua
+      // valendo se o comportamento do parser mudar debaixo dos pés.
+      for (const payload of [...PAYLOADS, null, '', 'http://']) {
+        expect(destinoSeguro(payload), `payload ${JSON.stringify(payload)}`).toMatch(/^\/(?!\/)/)
+      }
+    })
   })
 
   // A prova de que a correção NÃO é uma recusa geral: nomear a sentinela
