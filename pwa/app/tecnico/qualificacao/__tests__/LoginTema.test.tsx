@@ -6,7 +6,6 @@ import { join } from 'node:path'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import LoginPage from '../../../login/page'
-import { odooClient } from '@/lib/odoo/client'
 
 /**
  * É a tela mais quebrada do app: no tema claro `text-white/60` sobre
