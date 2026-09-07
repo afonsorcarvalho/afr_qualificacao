@@ -167,8 +167,10 @@ describe('middleware: expulsão guarda o destino original', () => {
 })
 
 describe('destinoSeguro: só caminho interno vale', () => {
+  const PADRAO = '/tecnico/qualificacao'
+
   it('usa destino padrão quando não há next', () => {
-    expect(destinoSeguro(null)).toBe('/tecnico/qualificacao')
+    expect(destinoSeguro(null)).toBe(PADRAO)
   })
 
   it('aceita caminho interno', () => {
@@ -177,22 +179,69 @@ describe('destinoSeguro: só caminho interno vale', () => {
     )
   })
 
+  it('preserva query string e fragmento do destino — o recurso que a task existe para entregar', () => {
+    // Se a correção do bypass quebrar isto, ela quebrou o próprio objetivo
+    // da task: devolver o técnico ao link exato que ele abriu.
+    expect(destinoSeguro('/tecnico/qualificacao/4/coleta/213?x=1#top')).toBe(
+      '/tecnico/qualificacao/4/coleta/213?x=1#top',
+    )
+  })
+
   it('recusa destino externo (open redirect)', () => {
     // `?next=https://evil.example` faria o login mandar o técnico para
     // fora. Só caminho absoluto interno vale.
     const req = new NextRequest('http://localhost:3010/login?next=https://evil.example')
-    expect(destinoSeguro(req.nextUrl.searchParams.get('next'))).toBe('/tecnico/qualificacao')
+    expect(destinoSeguro(req.nextUrl.searchParams.get('next'))).toBe(PADRAO)
   })
 
   it('recusa protocolo relativo (barra dupla) — URL absoluta para o navegador', () => {
-    expect(destinoSeguro('//evil.example')).toBe('/tecnico/qualificacao')
+    expect(destinoSeguro('//evil.example')).toBe(PADRAO)
   })
 
-  it('recusa contrabarra, que alguns navegadores normalizam para barra', () => {
-    expect(destinoSeguro('/\\evil.example')).toBe('/tecnico/qualificacao')
+  it('recusa barra tripla e variantes barra/contrabarra que colapsam para host externo', () => {
+    expect(destinoSeguro('///evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('/\\evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('\\/evil.example')).toBe(PADRAO)
   })
 
-  it('recusa esquema absoluto sem barra dupla (https:/evil)', () => {
-    expect(destinoSeguro('https:/evil')).toBe('/tecnico/qualificacao')
+  it('recusa esquema absoluto, com ou sem barra dupla (https:/evil, http://evil)', () => {
+    expect(destinoSeguro('https:/evil')).toBe(PADRAO)
+    expect(destinoSeguro('http://evil')).toBe(PADRAO)
+  })
+
+  it('recusa esquema não-http (javascript:, data:) — origin opaco não bate com o interno', () => {
+    expect(destinoSeguro('javascript:alert(1)')).toBe(PADRAO)
+    expect(destinoSeguro('data:text/html,x')).toBe(PADRAO)
+  })
+
+  // Achado da revisão adversarial (fix round 1): a primeira versão desta
+  // função checava a string CRUA (`startsWith`, `includes('\\')`), mas quem
+  // consome o retorno (`router.replace` do Next) resolve com `new URL`, cujo
+  // parser remove todo tab/LF/CR da string ANTES de resolver — colapsando
+  // `/\t/evil.example` em `//evil.example` por baixo do bloqueio de `\`.
+  // Exploração real: autentica com `?next=%2F%09%2Fevil.example` e o técnico
+  // sai do host. Cobre literal e percent-encoded — o encoded não deve
+  // decodificar para o caractere de controle nesta camada (permanece
+  // caminho interno literal, inofensivo).
+  it('recusa tab/LF/CR (literal) que o parser da URL colapsa para host externo', () => {
+    expect(destinoSeguro('/\t/evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('/\n/evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('/\r/evil.example')).toBe(PADRAO)
+  })
+
+  it('percent-encoded (%09/%0A/%0D) não decodifica para controle nesta camada — path interno literal', () => {
+    expect(destinoSeguro('/%09/evil.example')).toBe('/%09/evil.example')
+    expect(destinoSeguro('/%0A/evil.example')).toBe('/%0A/evil.example')
+    expect(destinoSeguro('/%0D/evil.example')).toBe('/%0D/evil.example')
+  })
+
+  it('normaliza travessia de diretório (..) em vez de devolver literal', () => {
+    // Bônus da correção por `new URL`: o parser resolve `..` antes de
+    // comparar origin, então não sobra `..` no destino final.
+    expect(destinoSeguro('/tecnico/../../evil')).toBe('/evil')
+  })
+
+  it('destino malformado (URL lança) cai no padrão', () => {
+    expect(destinoSeguro('http://')).toBe(PADRAO)
   })
 })
