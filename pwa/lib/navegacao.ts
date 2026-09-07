@@ -48,6 +48,10 @@ export function destinoSeguro(next: string | null): string {
   try {
     const url = new URL(next, ORIGEM_INTERNA)
     if (url.origin !== ORIGEM_INTERNA) return DESTINO_PADRAO
+    // A checagem de origem acima só protege porque devolvemos só
+    // pathname+search+hash: um refactor que trocasse esta linha por
+    // `url.href` reabriria o open redirect, já que `url.origin` bateria
+    // com `ORIGEM_INTERNA` (sentinela opaca) e não com um host real.
     return url.pathname + url.search + url.hash
   } catch {
     return DESTINO_PADRAO

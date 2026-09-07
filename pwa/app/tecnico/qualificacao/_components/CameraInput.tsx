@@ -84,6 +84,9 @@ export function CameraInput({
       />
       {preview ? (
         <div className="space-y-2">
+          {/* data URL gerada localmente pelo canvas.toDataURL — preview
+              efêmero, já em memória; next/image não tem o que otimizar. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={preview} alt="Coleta" className="w-full rounded border" />
           <Button
             variant="outline"

@@ -92,6 +92,9 @@ export default function PerfilPage() {
       <section className="rounded-2xl border border-border/70 bg-muted p-5">
         <div className="flex items-center gap-3">
           {companyLogo ? (
+            // data URL (base64) vinda do Odoo já está inteira em memória —
+            // next/image não tem o que otimizar aqui, só acrescentaria custo.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={`data:image/png;base64,${companyLogo}`}
               alt={companyName ?? ''}

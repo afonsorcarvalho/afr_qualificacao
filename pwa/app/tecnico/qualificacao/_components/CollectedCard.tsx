@@ -80,6 +80,15 @@ export function CollectedCard({
               onClick={() => setLightbox(true)}
               className="shrink-0 overflow-hidden rounded-md border border-border/70 transition hover:border-info/60"
             >
+              {/* Tentado next/image aqui (56x56 fixo, URL real — parecia
+                  candidato óbvio) e revertido: `fileUrl` é uma rota própria
+                  que exige cookie de sessão pra falar com o Odoo, e o
+                  otimizador embutido do next/image busca a imagem
+                  server-to-server SEM repassar os cookies do navegador —
+                  todo pedido volta 403 do proxy e a miniatura quebra
+                  (confirmado em tela, /_next/image respondendo 400).
+                  Verificado nesta sessão em 2026-09-06. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={fileUrl(item.id, 'image')}
                 alt={item.name}
@@ -190,6 +199,13 @@ export function CollectedCard({
           >
             <X className="h-5 w-5" />
           </button>
+          {/* Mesma rota autenticada por cookie de `fileUrl` acima — o
+              otimizador do next/image não repassa cookie no fetch
+              server-to-server, então next/image nunca funcionaria aqui
+              (ver nota na miniatura). Fora isso, a caixa do lightbox segue
+              o aspect ratio natural da foto (max-h/max-w + object-contain),
+              sem dimensão fixa pra declarar. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={fileUrl(item.id, 'image')}
             alt={item.name}
