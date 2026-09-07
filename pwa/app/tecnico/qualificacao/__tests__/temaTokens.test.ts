@@ -78,7 +78,7 @@ import { join, relative } from 'node:path'
 const RAIZ = join(__dirname, '..', '..', '..', '..')
 const PASTAS = ['app', 'components', 'lib']
 
-const FAMILIAS = 'emerald|amber|red|rose|cyan|sky|blue|green|yellow|orange|teal|violet|indigo|fuchsia|pink|lime'
+const FAMILIAS = 'emerald|amber|red|rose|cyan|sky|blue|green|yellow|orange|teal|violet|indigo|fuchsia|pink|lime|gray|slate|zinc|neutral|stone'
 
 /**
  * Prefixos de utilitário de cor do Tailwind que carregam cor de estado ou
@@ -94,9 +94,13 @@ const PREFIXOS = 'text|bg|border|divide|ring|accent|from|via|to|shadow|outline|d
 
 const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
   {
-    nome: 'cor absoluta branca',
-    re: new RegExp(String.raw`\b(?:${PREFIXOS})-white(?:\/\d{1,3})?\b`, 'g'),
-    conserto: 'usar o papel semântico: text-foreground / text-muted-foreground / bg-surface-raised / border-border',
+    // `black` entrou junto com as famílias neutras logo abaixo (Task 13,
+    // Step 2-A): mesma assimetria de `accent`/`placeholder` — a Regra 2
+    // (shade crua) exige sufixo numérico (`-gray-500`), que `black`/`white`
+    // não têm, então os dois só podem ser pegos aqui.
+    nome: 'cor absoluta branca ou preta',
+    re: new RegExp(String.raw`\b(?:${PREFIXOS})-(?:white|black)(?:\/\d{1,3})?\b`, 'g'),
+    conserto: 'usar o papel semântico: text-foreground / text-muted-foreground / bg-surface-raised / border-border, ou declarar cromo escuro/overlay em PERMITIDO_TEMA quando for decisão de projeto',
   },
   {
     nome: 'shade crua de cor de estado',
@@ -187,6 +191,15 @@ const PERMITIDO_TEMA: Record<string, string> = {
   'components/ui/PdfViewerModal.tsx :: text-white/65': 'Cromo escuro declarado — ícones decorativos (arquivo no cabeçalho, spinner de carregamento); ~8.2:1, o valor que mais se aproxima de --muted-foreground do tema escuro (221 20% 70% ≈ rgb(163,173,194)), preservando o brilho original desses ícones.',
   'components/ui/PdfViewerModal.tsx :: text-white/70': 'Cromo escuro declarado — texto dos botões de ferramenta.',
   'components/ui/PdfViewerModal.tsx :: text-red-400': 'Cromo escuro declarado — cor de erro fixa (equivalente a --danger do tema escuro); o token semântico text-danger fica vermelho-escuro no tema claro e ficaria ilegível sobre o painel escuro fixo.',
+  // Overlay que escurece o conteúdo por trás do modal — não é fundo de
+  // painel (esses já são `bg-dark-*` acima), é a camada que separa o
+  // visualizador do resto da página. Preto puro com opacidade funciona
+  // igual nos dois temas porque a função é achatar tudo atrás, não seguir
+  // paleta: overlay claro deixaria o PDF/foto competindo com o conteúdo por
+  // baixo. Task 13, Step 2-A (família `black` fechando o buraco de `gray|
+  // slate|zinc|neutral|stone` que a Task 8 tinha deixado sem regra).
+  'components/ui/PdfViewerModal.tsx :: bg-black/85': 'Overlay preto sobre o conteúdo por trás do modal — legítimo nos dois temas, é o que faz o visualizador (foto/PDF) se ler sem competir com a página atrás.',
+  'components/ui/PdfViewerModal.tsx :: bg-black/60': 'Overlay preto do fundo da área de página do visualizador — mesmo raciocínio do bg-black/85: escurece atrás do PDF nos dois temas, não é superfície temática.',
 
   // --- achado da Regra 5 (palavra-chave `white`), fixado na revisão adversarial da Task 8 ---
   // `<Toaster iconTheme>` (react-hot-toast) do layout raiz: `primary` é o
@@ -198,6 +211,13 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // não é o app" das outras exceções permanentes, aplicado a um traço em vez
   // de a um fundo.
   'app/layout.tsx :: white': 'permanente — cor do traço do ícone de sucesso/erro do Toaster (react-hot-toast), sempre sobre o próprio círculo colorido do ícone (#10b981/#ec4899), nunca sobre o fundo do app.',
+
+  // --- Task 13, Step 2-A: terceiro uso real de `black`, fora do PdfViewerModal ---
+  // Lightbox de foto coletada (`CollectedCard.tsx`): mesmo raciocínio do
+  // overlay do PdfViewerModal — preto translúcido escurece a página atrás
+  // pra foto em tela cheia se ler, nos dois temas. Não é superfície do app,
+  // é camada de foco sobre o conteúdo por trás.
+  'app/tecnico/qualificacao/_components/CollectedCard.tsx :: bg-black/90': 'Overlay preto do lightbox de foto em tela cheia — legítimo nos dois temas, escurece a página atrás pra foto se ler (mesmo raciocínio do overlay do PdfViewerModal).',
 }
 
 function arquivos(): string[] {
@@ -309,4 +329,109 @@ describe('tema: nada de escuro fixo no @layer base', () => {
     expect(base).not.toMatch(/rgba\(255,\s*255,\s*255/)
     expect(base).not.toMatch(/color:\s*white/)
   })
+})
+
+/**
+ * Exceção nomeada e VIVA (Task 13): `--danger`/`--danger-surface` no
+ * `:root.dark` passam a asserção "sem hover" (6.11:1) mas não a de "com
+ * hover a 20% do próprio matiz" (4.38:1, abaixo do piso de 4.5). Nenhum chip
+ * `danger` carrega hoje `hover:bg-danger/20` no escuro — confirmado por
+ * grep em 2026-09-06 (`hover:bg-(ok|warn|danger|info)\b` só aparece em
+ * `hover:bg-danger/10` num botão de borda, `hover:bg-ok/[0.04]` e o
+ * `hover:bg-info/20` do ReviewPanel que motivou esta task) — é risco
+ * preventivo, não bug ativo hoje.
+ *
+ * Corrigir exigiria mudar `--danger-surface` dentro de `:root.dark`, e a
+ * Constraint global desta task proíbe tocar no escuro (está em produção).
+ * Fica registrado aqui, não varrido para debaixo do tapete: a segunda
+ * asserção do teste abaixo AFIRMA que a exceção CONTINUA necessária (valor
+ * < 4.5). Se algum dia alguém escurecer `--danger-surface` no dark o
+ * suficiente pra essa asserção passar sozinha, o teste quebra — mesmo
+ * espírito da "exceção morta" que `PERMITIDO_TEMA` já aplica a classes.
+ */
+const EXCECAO_HOVER_CONTRASTE = new Set<string>([':root.dark::danger'])
+
+describe('tema: token de estado tem folga para o hover do próprio matiz', () => {
+  // Um chip `text-info` sobre `bg-info-surface` que ganha `hover:bg-info/20`
+  // fica com texto e fundo do MESMO matiz se aproximando. Se o token não tiver
+  // margem, o hover derruba abaixo do piso — foi o que aconteceu em
+  // ReviewPanel.tsx:288 (3.66:1), achado pela auditoria de 2026-09-06.
+  const css = readFileSync(join(RAIZ, 'app/globals.css'), 'utf8')
+
+  const bloco = (sel: string) => {
+    const i = css.indexOf(`${sel} {`)
+    expect(i, `bloco ${sel} não encontrado em globals.css`).toBeGreaterThan(-1)
+    return css.slice(i, css.indexOf('\n}', i))
+  }
+
+  const tokenDe = (tema: string, papel: string): string => {
+    const m = bloco(tema).match(new RegExp(String.raw`--${papel}:\s*([^;]+);`))
+    expect(m, `--${papel} ausente em ${tema}`).not.toBeNull()
+    return m![1].trim()
+  }
+
+  // HSL (graus, %, %) -> RGB (0-255). Implementação direta da conversão
+  // padrão (setor de matiz -> componente maior/médio/intermediário + ajuste
+  // de luminosidade), sem depender de nenhuma lib de cor.
+  const hsl2rgb = (triple: string): number[] => {
+    const [hStr, sStr, lStr] = triple.split(/\s+/)
+    const h = parseFloat(hStr)
+    const s = parseFloat(sStr) / 100
+    const l = parseFloat(lStr) / 100
+    const c = (1 - Math.abs(2 * l - 1)) * s
+    const hp = h / 60
+    const x = c * (1 - Math.abs((hp % 2) - 1))
+    let r1 = 0
+    let g1 = 0
+    let b1 = 0
+    if (hp >= 0 && hp < 1) [r1, g1, b1] = [c, x, 0]
+    else if (hp < 2) [r1, g1, b1] = [x, c, 0]
+    else if (hp < 3) [r1, g1, b1] = [0, c, x]
+    else if (hp < 4) [r1, g1, b1] = [0, x, c]
+    else if (hp < 5) [r1, g1, b1] = [x, 0, c]
+    else [r1, g1, b1] = [c, 0, x]
+    const m = l - c / 2
+    return [r1, g1, b1].map((v) => Math.round((v + m) * 255))
+  }
+
+  // Luminância relativa WCAG (fórmula 1.4.3) e razão de contraste a partir dela.
+  const luminancia = ([r, g, b]: number[]): number => {
+    const canal = (v: number) => {
+      const s = v / 255
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b)
+  }
+
+  const contraste = (a: number[], b: number[]): number => {
+    const la = luminancia(a) + 0.05
+    const lb = luminancia(b) + 0.05
+    return la > lb ? la / lb : lb / la
+  }
+
+  // Composição alpha simples: `fg` a `alpha` de opacidade sobre `bg` opaco —
+  // é o que `hover:bg-info/20` faz visualmente em cima de `bg-info-surface`.
+  const sobre = (fg: number[], alpha: number, bg: number[]): number[] =>
+    fg.map((c, i) => Math.round(c * alpha + bg[i] * (1 - alpha)))
+
+  it.each(['ok', 'warn', 'danger', 'info'])(
+    '--%s legível sobre a própria superfície, inclusive com hover a 20%%',
+    (papel) => {
+      for (const tema of [':root', ':root.dark']) {
+        const fg = hsl2rgb(tokenDe(tema, papel))
+        const bg = hsl2rgb(tokenDe(tema, `${papel}-surface`))
+        expect(contraste(fg, bg)).toBeGreaterThanOrEqual(4.5)
+
+        const comHover = contraste(fg, sobre(fg, 0.2, bg))
+        const chave = `${tema}::${papel}`
+        if (EXCECAO_HOVER_CONTRASTE.has(chave)) {
+          // Exceção viva: se isto passar a ser >= 4.5 sozinho, a linha em
+          // EXCECAO_HOVER_CONTRASTE ficou morta — apagar.
+          expect(comHover).toBeLessThan(4.5)
+        } else {
+          expect(comHover).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    },
+  )
 })

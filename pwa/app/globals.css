@@ -58,13 +58,18 @@
      sobre a sua própria superfície tonal. As shades cruas do Tailwind que
      estavam espalhadas pelo código (`text-emerald-300`) saíam a ~1.2:1 aqui
      — foram escolhidas olhando só o tema escuro. */
-  --ok:               163 94% 24%;   /* emerald-700 · 5.24:1 */
+  /* ok/danger/info escurecidos na Task 13: os valores anteriores passavam
+     4.5:1 puro mas comiam a folga inteira quando um chip do mesmo matiz
+     ganhava `hover:bg-X/20` sobre a própria superfície — caiu a 3.66:1 em
+     ReviewPanel.tsx:288 (--info). Ver temaTokens.test.ts, describe "token de
+     estado tem folga para o hover do próprio matiz". */
+  --ok:               163 88% 20%;   /* emerald-800 · 7.25:1 na página, 5.00:1 c/ hover 20% */
   --ok-surface:       160 57% 93%;
-  --warn:             23 83% 31%;    /* amber-800   · 6.78:1 */
+  --warn:             23 83% 31%;    /* amber-800   · 6.78:1 — já tinha folga, inalterado */
   --warn-surface:     36 93% 94%;
-  --danger:           0 74% 42%;     /* red-700     · 6.18:1 */
+  --danger:           0 70% 35%;     /* red-800     · 7.94:1 na página, 5.09:1 c/ hover 20% */
   --danger-surface:   0 83% 95%;
-  --info:             193 82% 31%;   /* cyan-700    · 5.12:1 */
+  --info:             194 70% 27%;   /* cyan-800    · 6.86:1 na página, 4.75:1 c/ hover 20% */
   --info-surface:     190 71% 93%;
   /* Superfície um degrau acima do cartão — substitui `bg-white/5`, que no
      tema claro é branco sobre branco. */
