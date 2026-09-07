@@ -85,17 +85,36 @@
   retomado do standby, renderizador headless — a tela ficava **em branco**,
   com o conteúdo no DOM e invisível. Foi assim que o print do login saiu preto.
   Agora a entrada é só deslocamento; o conteúdo nasce legível.
-- **Contraste ruim no MODO CLARO — relatado pelo user em 2026-09-06, usando o app publicado.**
-  Botões e informações ficaram difíceis de ler. É achado de uso real, não suspeita: o tema
-  claro nunca passou por revisão de contraste, e todo o trabalho de design foi feito e
-  conferido no escuro (os prints desta sessão inteira saíram no tema escuro). Provável raiz:
-  os tokens têm valor definido para os dois temas, mas só o par do escuro foi medido contra
-  o piso AA de 4.5:1 — no claro, tom sobre tom claro (`text-muted-foreground`,
-  `bg-cyan-500/15` dos cabeçalhos, `text-emerald-300`) tende a cair bem abaixo.
-  Pendente: levantar QUAIS telas e elementos, medir a razão de contraste real de cada um, e
-  corrigir os tokens do tema claro — não os componentes um a um, senão volta.
-- Auditoria de contraste tela a tela ainda não foi feita (só os tokens base). O item acima é
-  a evidência de que ela precisa acontecer, e o tema claro é por onde começar.
+- ~~Contraste ruim no MODO CLARO — relatado pelo user em 2026-09-06, usando o app
+  publicado.~~ **Resolvido em 2026-09-06.** Era exatamente a suspeita registrada
+  abaixo: o tema claro nunca tinha sido medido contra o piso AA, porque todo shade
+  cru do Tailwind espalhado pelos componentes (`text-emerald-300`,
+  `bg-cyan-500/15`, `text-violet-300`, ...) foi escolhido olhando só o escuro.
+  Migração trocou shade cru por token semântico (`--ok`/`--warn`/`--danger`/
+  `--info` + `-surface`, mais os papéis `--background`/`--card`/
+  `--muted-foreground`) nos dois temas, com o valor do **claro** escolhido pelo
+  piso 4.5:1 (texto) / 3:1 (foco e fronteira de controle) — não só copiado do
+  escuro. Medido antes/depois com o script de auditoria (ver item abaixo): 397 →
+  0 ocorrências reais de texto abaixo do piso no claro (os ~140 que sobram no
+  script são falso positivo de borda decorativa, sem piso, e do cromo escuro
+  fixo do `PdfViewerModal`, ver `docs/AUDITORIA-CONTRASTE.md`). O que trava a
+  volta: `temaTokens.test.ts` recusa shade cru de cor de estado fora de
+  `PERMITIDO_TEMA` (exceções nomeadas e justificadas), e `npm run
+  audit:contrast` mede a razão real dos dois temas a qualquer momento — sem
+  browser, em segundos.
+- ~~Auditoria de contraste tela a tela ainda não foi feita (só os tokens
+  base).~~ **Resolvido em 2026-09-06.** Auditoria estática versionada em
+  `scripts/contrast-audit.mjs` (`npm run audit:contrast`, aceita `THEME=dark`)
+  — varre `app/**/*.tsx` + `components/**/*.tsx`, resolve token/paleta real e
+  calcula a razão WCAG composta sobre o fundo. Método, limitações conhecidas e
+  tabela de valores em `docs/AUDITORIA-CONTRASTE.md`. Verificação visual
+  complementar (os dois temas, rota a rota, com o app rodando) capturada em
+  `docs/baseline-escuro/` (referência do escuro **antes** de qualquer mudança:
+  `login-1.png`, `login-2.png`, `lista.png`, `historico.png`, `perfil.png`,
+  `os-4.png`) — usada para confirmar que o escuro não mudou de aparência além
+  do que foi explicitamente autorizado ao longo do plano (ver
+  `docs/superpowers/sdd/2026-09-06-pwa-tema-claro-contraste/task-9-report.md`
+  para o que foi comparado e o que ficou de fora).
 
 ### Técnico Qualificação
 - **Notificação push no celular — levantado em 2026-09-06, NÃO decidido.** É viável: o app já

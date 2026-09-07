@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "audit:contrast": "node scripts/contrast-audit.mjs .",
     "postinstall": "node -e \"const fs=require('fs'),p=require('path');const candidates=[p.join('node_modules','react-pdf','node_modules','pdfjs-dist','build','pdf.worker.min.mjs'),p.join('node_modules','pdfjs-dist','build','pdf.worker.min.mjs')];try{fs.mkdirSync('public',{recursive:true});const src=candidates.find(c=>fs.existsSync(c));if(!src)throw new Error('worker não encontrado');fs.copyFileSync(src,p.join('public','pdf.worker.min.mjs'));console.log('pdfjs worker copiado de',src)}catch(e){console.error('postinstall pdfjs worker:',e.message)}\""
   },
   "dependencies": {

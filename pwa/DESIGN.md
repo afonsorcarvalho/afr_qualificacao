@@ -183,6 +183,73 @@ O tema claro espelha os mesmos papéis (#f8fafc base, #ffffff superfície,
 #1e293b tinta, #475569 tinta fraca, #e2e8f0 fio) e existe pro dia em que o
 técnico trabalhar sob luz forte; hoje o escuro é o default.
 
+### A fonte da verdade é o token, não o hex
+
+Os parágrafos acima nomeiam cores pelo hex do tema **escuro** porque foi nele
+que o design nasceu — mas o hex não é o que o código consome. O código
+consome os tokens HSL de `app/globals.css` (`--ok`, `--warn`, `--danger`,
+`--info`, mais a superfície `-surface` de cada um), redeclarados em
+`:root` (claro) e `:root.dark` (escuro). Até 2026-09-06 só o valor escuro
+tinha sido revisado; o claro ficou de fora da auditoria de contraste — e foi
+essa lacuna, não um bug de código, que deixou 397 ocorrências abaixo do piso
+AA passarem sem ninguém notar. A tabela abaixo é a fonte da verdade dos dois
+temas, com a razão de contraste medida (auditoria em
+`docs/AUDITORIA-CONTRASTE.md`, script `npm run audit:contrast`):
+
+| Token | Papel | Claro (HSL) | Claro sobre fundo/cartão | Escuro (HSL) | Escuro sobre fundo/cartão |
+|---|---|---|---|---|---|
+| `--foreground` | Tinta primária | `217 33% 17%` | 14.17 / 14.82 | `0 0% 100%` | 20.15 / 19.07 |
+| `--muted-foreground` | Tinta Fraca | `215 19% 35%` | 7.13 / 7.46 | `221 20% 70%` | 8.94 / 8.46 |
+| `--ok` | Verde Concluído | `163 88% 20%` | 7.25 / 7.58 | `158 64% 52%` | 10.49 / 9.93 |
+| `--warn` | Âmbar Pendente | `23 83% 31%` | 6.82 / 7.14 | `43 96% 56%` | 11.90 / 11.27 |
+| `--danger` | Vermelho Falha (estado) | `0 70% 35%` | 8.00 / 8.37 | `0 91% 71%` | 7.33 / 6.94 |
+| `--info` | Ciano Foco (texto/ícone) | `194 70% 27%` | 6.86 / 7.18 | `188 86% 53%` | 11.14 / 10.55 |
+| `--destructive` | Vermelho de ação irreversível | `0 74% 42%` | 6.14 / 6.42 | `0 91% 71%` | 7.33 / 6.94 |
+| `--border` | Fio (decorativo) | `214 32% 91%` | 1.19 / — | `221 32% 15%` | 1.27 / — |
+| `--ring` | Anel de foco | `188 86% 34%` | 3.76 / — | `188 86% 53%` | 11.14 / — |
+
+`--ok`, `--warn`, `--danger` e `--info` carregam ainda uma folga acima do
+piso: cada um também passa 3:1 quando ganha `hover:bg-X/20` sobre a própria
+superfície `-surface` (a razão mais apertada é `--info`, a 4.75:1 no claro —
+ver `temaTokens.test.ts`, describe "token de estado tem folga para o hover do
+próprio matiz"). `--border` e o fio geral são decorativos e **não têm piso**
+(ver "Herdado de julgamentos" do plano de contraste); `--ring` e qualquer
+borda que funcione como indicador de foco ou fronteira de controle
+respondem ao piso de 3:1.
+
+`--danger` (estado "falhou") e `--destructive` (ação irreversível: apagar,
+descartar) são dois vermelhos, de propósito — não é duplicação a corrigir.
+`--danger` pinta chip/badge de estado; `--destructive` pinta o botão que
+apaga ou descarta trabalho, com `--destructive-foreground` por cima do
+próprio fundo (não é texto sobre a página). Os dois passam o piso com folga
+nos dois temas, nunca aparecem lado a lado na mesma tela hoje, e a diferença
+de tom entre eles é sutil o bastante para não ler como inconsistência —
+convergiram só a intenção (vermelho = erro/perigo), não o valor.
+
+**A Regra do Token.** Cor de estado só entra por classe de token
+(`text-ok`, `bg-danger-surface`, `border-info/40`, ...), nunca por shade cru
+do Tailwind (`text-emerald-300`, `bg-red-500/15`) direto num componente. O
+teste `app/tecnico/qualificacao/__tests__/temaTokens.test.ts` recusa shade
+cru fora da lista de exceções nomeadas (`PERMITIDO_TEMA`) — ele é a guarda
+mecânica desta regra, não um substituto pra revisão visual dos dois temas.
+
+**Duas coisas que a guarda mecânica não pega:**
+- **Opacidade numa classe de cor às vezes é papel, não ruído.** `text-X/80`
+  ao lado de `text-X` costuma marcar hierarquia (título vs. metadado);
+  `text-X/60` com `group-hover:text-X` é interação. Apagar a opacidade apaga
+  o papel — não é limpeza, é perda de informação. O mecanismo proibido é a
+  opacidade **embutida na cor** (`text-danger/60`, que muda o RGB efetivo);
+  `opacity-N` solto no elemento é permitido e preserva os dois papéis porque
+  não mexe na cor resolvida. Este erro apareceu **seis vezes** na migração de
+  2026-09-06, em quatro telas diferentes, e nenhuma vez foi pego por teste —
+  só por leitura de código.
+- **Cor fora de `className` é invisível pra guarda.** Cor em `style`, em
+  prop de animação do Framer Motion, ou montada por concatenação de string
+  não é alcançada por nenhuma varredura estática — e o Framer nem resolve
+  variável CSS na interpolação (anima o valor resolvido no primeiro frame,
+  não o token). A saída é sempre classe de token no elemento, animando só
+  `opacity`/`transform`/`scale`.
+
 ### Named Rules
 
 **A Regra do Estado.** Cor só entra quando responde "em que pé está isto?".
@@ -385,8 +452,50 @@ vazio.
 
 ### Signature Pad (componente de assinatura)
 Área branca de 160px de altura, raio 8px, fio de 1px, com o botão "Limpar" em
-ghost logo abaixo. É a única superfície branca permitida no tema escuro:
-assinatura é documento, e documento é sobre papel.
+ghost logo abaixo. Assinatura é documento, e documento é sobre papel — por
+isso não segue o tema.
+
+O pad é uma de **três** superfícies brancas fixas permitidas no tema escuro,
+todas pelo mesmo raciocínio ("papel", não "tela"), registradas como exceção
+permanente em `PERMITIDO_TEMA` (`temaTokens.test.ts`):
+1. **Este Signature Pad** — a área de captura do traço.
+2. **Logotipo da empresa no Perfil** (`perfil/page.tsx`) — ativo externo,
+   traço escuro pensado sobre fundo branco; sem o branco fixo, some no
+   escuro.
+3. **Assinatura já capturada** no detalhe do relatório fechado
+   (`relatorio/[relId]/page.tsx`) — mesma lógica de "documento", agora em
+   modo leitura: o traço foi gravado em preto (`penColor="black"`), e um
+   fundo que seguisse o tema (`bg-card` é navy no escuro) apagaria a
+   assinatura.
+
+### Visualizadores de anexo (foto / PDF) — dois cromos, de propósito
+
+O app tem dois visualizadores de anexo, e eles não compartilham chrome:
+
+- **"Ver foto"** (`CollectedCard.tsx`): lightbox próprio, `bg-black/90` de
+  overlay, botão de fechar que **segue o tema**
+  (`bg-muted/60 text-foreground` — círculo claro com X escuro no tema
+  claro, claro sobre escuro no tema escuro).
+- **`PdfViewerModal`**: cromo escuro **fixo nos dois temas**
+  (`bg-dark-800`/`bg-dark-900`, texto `text-white*`), decisão de projeto
+  registrada em `PERMITIDO_TEMA` — foto e PDF se leem melhor sobre fundo
+  escuro, e o overlay já é preto.
+
+**Veredito (Task 9):** no tema claro os dois continuam cada um legível por
+si só, mas ficam **esteticamente incoerentes entre si** — o botão de fechar
+da foto vira claro (segue o tema), enquanto o do PDF permanece escuro fixo.
+Antes da migração de tokens essa diferença já existia (o PDF sempre foi
+cromo escuro) e não incomodava porque **tudo** era escuro; agora que só um
+dos dois clareia, a divergência fica mais visível. Ainda assim: os dois
+nunca aparecem abertos ao mesmo tempo, cada um é legível isoladamente, e o
+cromo escuro do PDF é decisão de projeto documentada (não acidente) — não é
+prioridade de correção agora. Se algum dia incomodar de verdade, a saída é
+uma de duas: (a) o lightbox de foto adotar o mesmo cromo escuro fixo do
+`PdfViewerModal` (perde a coerência com o resto do app claro, ganha
+coerência entre os dois visualizadores), ou (b) o `PdfViewerModal` passar a
+seguir o tema (mexe numa decisão de projeto já tomada e testada). Nenhuma
+das duas é óbvia o bastante para decidir sem o usuário — fica registrado
+como débito, não como bug.
 
 ## 6. Do's and Don'ts
 
