@@ -24,9 +24,40 @@ import { join, relative } from 'node:path'
  *   - `text-muted-foreground/80` — "Tinta Apagada", que o DESIGN.md proíbe
  *     em texto que o técnico precisa ler (a /80 dá 4.35:1, abaixo do piso).
  *
- * `PERMITIDO_TEMA` nasceu enumerando os infratores de 2026-09-06 e só pode
- * ENCOLHER: cada task da migração apaga as suas linhas. Entrada morta é
- * erro, para a lista não virar depósito.
+ * `PERMITIDO_TEMA` nasceu enumerando os infratores de 2026-09-06 e encolheu
+ * conforme cada task da migração apagava as suas linhas (Tasks 3-7). A
+ * migração está FECHADA (Task 8): o que resta na lista é permanente e
+ * nomeado — cromo escuro declarado do visualizador e as três superfícies de
+ * papel/assinatura branco fixo. Uma entrada nova só entra com justificativa
+ * escrita que sobreviva a revisão, nunca com "task pendente" como motivo.
+ * Entrada morta continua sendo erro, para a lista não virar depósito.
+ *
+ * LIMITAÇÃO CONHECIDA — o que esta guarda NÃO cobre:
+ *
+ * A varredura abaixo só lê `className` (texto estático em arquivo-fonte).
+ * Ela não alcança:
+ *   - cor em atributo `style={{ ... }}` (objeto JS, não string de classe);
+ *   - cor em prop de animação de biblioteca (ex.: Framer Motion
+ *     `animate={{ backgroundColor: 'rgba(255,255,255,…)' }}`) — mesmo caso
+ *     do anterior, e sem saída fácil: Framer Motion interpola cor numérica
+ *     para animar suavemente, e não resolve `hsl(var(--token))` nessa
+ *     interpolação (perderia a transição). Achado real: o indicador de
+ *     passo do login (`StepIndicator` em `app/login/page.tsx`) media a cor
+ *     do badge com `rgba(255,255,255,…)` fixo — branco quase-transparente
+ *     que funciona sobre cartão navy (escuro) e desaparece sobre cartão
+ *     branco (claro). Nenhum grep de `className` vê isso: a cor nunca é uma
+ *     classe.
+ *   - cor montada por concatenação/interpolação de string (`` `bg-${cor}` ``,
+ *     `'text-' + variante`) — a regex casa contra o texto-fonte, não contra
+ *     o valor em runtime, então a classe final nunca aparece literalmente
+ *     no arquivo.
+ *
+ * O que fazer no lugar, quando o caso for um destes: não anime a COR — anime
+ * opacidade/transform/scale sobre um elemento que já carrega a classe de
+ * token semântico (`bg-foreground/10`, `border-foreground/30`, etc.). A cor
+ * fica fixa via Tailwind (e portanto tematizada e coberta por esta guarda);
+ * só o que muda com a animação (opacidade, escala, posição) fica na prop do
+ * Framer. Foi a saída aplicada em `StepIndicator`.
  */
 
 const RAIZ = join(__dirname, '..', '..', '..', '..')
@@ -39,9 +70,12 @@ const FAMILIAS = 'emerald|amber|red|rose|cyan|sky|blue|green|yellow|orange|teal|
  * cor absoluta. As duas regras de `PROIBIDO` abaixo (branco / shade crua)
  * enxergam o MESMO conjunto — uma cobrindo mais prefixos que a outra é
  * assimetria, e assimetria é o próximo buraco (achado real: `accent-emerald-500`
- * em `page.tsx` passava pela Regra 2 porque `accent` não estava na lista).
+ * em `page.tsx` passava pela Regra 2 porque `accent` não estava na lista;
+ * segundo achado: `placeholder-white/40` no login escapava das duas regras
+ * porque `placeholder` também não estava na lista — só apareceu por grep
+ * manual, não pela guarda).
  */
-const PREFIXOS = 'text|bg|border|divide|ring|accent|from|via|to|shadow|outline|decoration|caret|fill|stroke'
+const PREFIXOS = 'text|bg|border|divide|ring|accent|from|via|to|shadow|outline|decoration|caret|fill|stroke|placeholder'
 
 const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
   {
@@ -71,7 +105,7 @@ const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
  * NÃO acrescentar linha sem justificativa que sobreviva a uma revisão.
  */
 const PERMITIDO_TEMA: Record<string, string> = {
-  // --- catraca da migração de 2026-09-06: estas linhas SAEM conforme as tasks avançam ---
+  // --- migração de 2026-09-06, FECHADA na Task 8: as linhas abaixo são permanentes ---
   // Superfície de assinatura (DESIGN.md, "Signature Pad"): branca fixa,
   // permitida no tema escuro — assinatura é documento, e documento é sobre
   // papel, então o pad não segue o tema. O traço em si é `penColor="black"`
