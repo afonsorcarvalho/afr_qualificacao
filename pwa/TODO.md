@@ -4,6 +4,12 @@
 
 ### Publicação em produção (labquali) — levantado em 2026-09-05
 
+> **2026-09-07: o tema claro foi para produção.** 35 commits (`a9abbc1` → `a48d216`),
+> container do PWA reconstruído, backup `odoo-labquali_pre-tema-claro_20260907_1554.dump`
+> antes. Verificado no ar: zero `text-white/N` no HTML servido do login (era o defeito de
+> branco-sobre-branco) e o deep link preservando destino
+> (`/login?next=%2Ftecnico%2Fqualificacao%2F4%2Fcoleta%2F213`).
+
 - ~~`ODOO_ALLOWED_ORIGINS` faltava no `docker-compose.yml` e na seção "Produção" do
   README.~~ **Resolvido.** A variável é obrigatória (sem ela o proxy `/api/odoo` falha
   fechado com 403 e o app não fala com Odoo nenhum), mas nem o compose passava, nem o
@@ -12,31 +18,41 @@
   (verificado: `docker compose config` falha), e o README abre a seção com o `export`.
   Junto: o `ports:` virou `127.0.0.1:3010:3000` — publicar em `0.0.0.0` deixaria o app
   acessível em HTTP puro por fora, contornando o TLS.
-- **BLOQUEIO: o labquali roda `afr_qualificacao` 16.0.7.0.0; o PWA exige 16.0.7.4.0.**
-  Conferido por RPC no `odoo-labquali` em 2026-09-05 (`installed_version` = `16.0.7.0.0`).
-  Os quatro métodos que o front chama nasceram depois: `action_start_daily_relatorio`,
-  `action_get_daily_relatorio`, `action_finish_daily_relatorio` e `action_historico_hoje`.
-  Contra o backend atual não é degradação, é quebra — iniciar turno falha e o Histórico
-  morre. O delta 7.0.0→7.4.0 traz 3 campos novos, 98 linhas de `ir.rule`/grupos e 1 linha
-  de ACL: são as correções de autorização, **incluindo a grave** (técnico alheio editava
-  ciclo de qualificação aprovada e o certificado do cliente virava `tampered`). Ou seja, o
-  upgrade vale por si. Mas mexe em segurança e schema em produção: backup e ensaio numa
-  cópia antes.
+- ~~**BLOQUEIO: o labquali roda `afr_qualificacao` 16.0.7.0.0; o PWA exige 16.0.7.4.0.**~~
+  **Falso desde antes de 2026-09-07.** Conferido por RPC nessa data: o `odoo-labquali`
+  está com `installed_version` = `16.0.7.4.0`, e o código em `/home/labquali` também.
+  O upgrade aconteceu em algum momento entre 05/09 e 07/09 e este item ficou velho —
+  **cuidado com bloqueio registrado: confira antes de acreditar.** Junto vieram as
+  correções de autorização, incluindo a grave (técnico alheio editava ciclo de
+  qualificação aprovada).
+
 - ~~**BLOQUEIO: Bloco E do checklist nunca executado**~~ **Fechado em 2026-09-06**, pelo user,
   depois de o app subir em HTTPS: testado no desktop, no celular e **instalado no Android**,
   tudo funcionando. Era a parte "PWA" do PWA e o último bloqueio da entrega; até então só o
   E.1 (manifest 200) tinha sido conferido, porque Chrome headless ignora service worker.
-- **TLS: script pronto, sem acesso pra rodar.** `deploy/setup-pwa-proxy.sh` publica o
-  container (HTTP puro na 3010) atrás de HTTPS. Escrito **sem acesso ao servidor**: a chave
-  SSH desta máquina é recusada em `191.252.113.190` (labquali resolve para lá; é host
-  distinto do `erp2`). De fora só dá pra ver `Server: Werkzeug/1.0.1` e cert Let's Encrypt,
-  o que não identifica o proxy da frente. Por isso o script **detecta** a pilha (nginx /
-  caddy / traefik / apache), roda em **dry-run por padrão**, e para se achar nenhuma ou mais
-  de uma, em vez de chutar. Já resolve dois detalhes que só aparecem em campo:
-  `client_max_body_size 25m` (foto de celular em base64 estoura o 1MB padrão do nginx e
-  daria 413 no meio da coleta) e `proxy_read/send_timeout 300s` (upload em 4G de hospital
-  passa dos 60s padrão). Falta template de apache — se for essa a pilha, ele para e pede a
-  saída da detecção.
+- ~~**TLS: script pronto, sem acesso pra rodar.**~~ **Duas coisas erradas aqui, as duas
+  corrigidas em 2026-09-07.**
+  (a) *"A chave SSH desta máquina é recusada em `191.252.113.190`"* — o que é recusado é
+  `root@191.252.113.190`. O acesso funciona pelo **alias `fitadigital`** do
+  `~/.ssh/config` (user `fitadigital`, key `id_ed25519_fitadigital`), que já estava
+  documentado na memória do projeto. Ninguém tinha tentado o alias.
+  (b) O TLS **já está no ar**: o PWA é publicado em
+  `https://labquali.afrsistemas.com.br/login` e `/tecnico` por **Apache + Let's Encrypt**
+  (`/etc/apache2/sites-enabled/012-labquali-le-ssl.conf`), com `ProxyPass` de `/tecnico`,
+  `/login`, `/_next` e `/api/odoo` para `127.0.0.1:3010`, declarados **antes** do
+  `ProxyPass /` do Odoo. O `deploy/setup-pwa-proxy.sh` nunca precisou rodar.
+
+  **Receita de deploy do PWA no servidor** (mapeada 2026-09-07):
+  ```bash
+  ssh fitadigital
+  # backup antes de qualquer upgrade de módulo:
+  docker exec odoo_qualif_db pg_dump -U odoo -Fc odoo-labquali > /home/labquali/data/backups/<nome>.dump
+  cd /home/labquali && git merge --ff-only origin/main        # clone do afr_qualificacao
+  cd /home/labquali/pwa && docker compose build && docker compose up -d
+  ```
+  O container é `afr_qualificacao_pwa` (compose em `/home/labquali/pwa`, serviço `pwa`,
+  bind `127.0.0.1:3010`, healthcheck próprio). O `.env` de lá já tem `ODOO_ALLOWED_ORIGINS`.
+
 - **`GROQ_API_KEY` vazada, rotação adiada por decisão de 2026-09-05.** Subir sem chave é
   degradação limpa e documentada (IA desligada, resto normal). Não subir com a chave antiga.
 
