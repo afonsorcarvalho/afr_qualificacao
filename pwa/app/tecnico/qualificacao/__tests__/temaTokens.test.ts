@@ -27,10 +27,12 @@ import { join, relative } from 'node:path'
  * `PERMITIDO_TEMA` nasceu enumerando os infratores de 2026-09-06 e encolheu
  * conforme cada task da migração apagava as suas linhas (Tasks 3-7). A
  * migração está FECHADA (Task 8): o que resta na lista é permanente e
- * nomeado — cromo escuro declarado do visualizador e as três superfícies de
- * papel/assinatura branco fixo. Uma entrada nova só entra com justificativa
- * escrita que sobreviva a revisão, nunca com "task pendente" como motivo.
- * Entrada morta continua sendo erro, para a lista não virar depósito.
+ * nomeado — cromo escuro declarado do visualizador, as três superfícies de
+ * papel/assinatura branco fixo, e o traço branco do ícone do Toaster (sobre
+ * o próprio círculo colorido do ícone, não sobre o fundo do app). Uma
+ * entrada nova só entra com justificativa escrita que sobreviva a revisão,
+ * nunca com "task pendente" como motivo. Entrada morta continua sendo erro,
+ * para a lista não virar depósito.
  *
  * LIMITAÇÃO CONHECIDA — o que esta guarda cobre por texto, e o que não dá:
  *
@@ -45,18 +47,24 @@ import { join, relative } from 'node:path'
  *
  * Detectar o LITERAL ainda é possível mesmo fora de `className` — é
  * texto-fonte de qualquer forma — e é o que a regra "branco literal em
- * RGB/hex" abaixo faz (mesmo padrão já usado no describe de `globals.css`
- * mais abaixo neste arquivo, agora espelhado para `app/components/lib`).
+ * RGB/hex/palavra-chave" abaixo faz, nas três formas em que branco fixo
+ * aparece em JS: `rgba(255,255,255,…)`, `#fff`/`#ffffff` e a palavra-chave
+ * CSS `white` (ex.: `backgroundColor: 'white'`). O describe de
+ * `globals.css` mais abaixo neste arquivo cobre só DUAS dessas formas
+ * (`rgba(255,255,255` e `color:\s*white`, em CSS puro) — não é o mesmo
+ * conjunto: a regra daqui é mais ampla (as três formas, em qualquer
+ * contexto JS/TSX, não só `color:`) porque o achado real que a motivou
+ * (revisão adversarial da Task 8) era exatamente a palavra-chave sozinha
+ * escapando por uma regra que só pegava as duas primeiras formas.
  * O que a guarda genuinamente NÃO alcança, porque não é literal:
  *   - cor montada por concatenação/interpolação de string em runtime
  *     (`` `bg-${cor}` ``, `'text-' + variante`, ou uma cor calculada e
  *     passada para `style`/`animate`) — a regex casa contra o texto-fonte,
  *     não contra o valor em runtime, então o resultado final nunca aparece
- *     literalmente no arquivo;
- *   - qualquer cor não-branca em `style`/prop de animação (a regra literal
- *     acima só cobre branco, o padrão do achado real — outra cor fixa ali
- *     dentro escaparia até ela virar um achado novo e ganhar sua própria
- *     regra, mesmo raciocínio do buraco de `accent`/`placeholder` acima).
+ *     literalmente no arquivo. Nenhuma outra cor fixa (que não seja branco)
+ *     em `style`/prop de animação também escapa até virar um achado novo e
+ *     ganhar sua própria regra — mesmo raciocínio do buraco de
+ *     `accent`/`placeholder` acima.
  *
  * O que fazer no lugar, quando o caso for cor em prop de animação: não
  * anime a COR — anime opacidade/transform/scale sobre um elemento que já
@@ -106,16 +114,24 @@ const PROIBIDO: { nome: string; re: RegExp; conserto: string }[] = [
     conserto: 'usar bg-card / bg-muted / bg-surface-raised, ou declarar a superfície como cromo escuro em PERMITIDO_TEMA',
   },
   {
-    nome: 'branco literal em RGB/hex (fora de className)',
+    nome: 'branco literal em RGB/hex/palavra-chave (fora de className)',
     // Não é uma classe Tailwind — é o padrão que apareceu dentro de uma prop
     // de animação do Framer Motion (`animate={{ backgroundColor: 'rgba(255,
-    // 255, 255, …)' }}`), onde nenhuma regra de `className` acima alcança.
-    // Detectar o literal no texto-fonte É possível (é isto aqui); resolver
-    // sozinho não é — Framer não interpola `hsl(var(--token))`, então a
-    // correção continua sendo trocar a prop de cor por uma classe de token
-    // fixo (ver LIMITAÇÃO CONHECIDA no topo do arquivo).
-    re: /rgba?\(\s*255,\s*255,\s*255|#fff\b|#ffffff\b/gi,
-    conserto: 'não anime a cor — classe de token no elemento (ex.: bg-foreground/10), animando só opacidade/transform/scale',
+    // 255, 255, …)' }}` ou, forma mais curta, `backgroundColor: 'white'`),
+    // onde nenhuma regra de `className` acima alcança. Detectar o literal no
+    // texto-fonte É possível (é isto aqui); resolver sozinho não é — Framer
+    // não interpola `hsl(var(--token))`, então a correção continua sendo
+    // trocar a prop de cor por uma classe de token fixo (ver LIMITAÇÃO
+    // CONHECIDA no topo do arquivo). As três formas do literal contam:
+    // `rgba(255,255,255,…)`, `#fff`/`#ffffff` e a palavra-chave CSS `white`
+    // (revisão adversarial: `backgroundColor: 'white'` no `StepIndicator`
+    // passava batido com só as duas primeiras formas). O look-behind
+    // `(?<!-)` na palavra-chave existe para NÃO recair sobre o sufixo de
+    // classes Tailwind já cobertas pela Regra 1 (`text-white`, `bg-white/40`,
+    // `border-white/10`, …) — sem ele, cada ocorrência dessas classes vira
+    // uma SEGUNDA violação (mesma linha, chave de exceção diferente).
+    re: /(?<!-)\bwhite\b|rgba?\(\s*255,\s*255,\s*255|#fff\b|#ffffff\b/gi,
+    conserto: 'não anime a cor — classe de token no elemento (ex.: bg-foreground/10), animando só opacidade/transform/scale; se for cor fixa sobre uma superfície que não é o fundo do app (ex.: ícone sobre círculo colorido próprio), declarar exceção nomeada em PERMITIDO_TEMA',
   },
 ]
 
@@ -171,6 +187,17 @@ const PERMITIDO_TEMA: Record<string, string> = {
   'components/ui/PdfViewerModal.tsx :: text-white/65': 'Cromo escuro declarado — ícones decorativos (arquivo no cabeçalho, spinner de carregamento); ~8.2:1, o valor que mais se aproxima de --muted-foreground do tema escuro (221 20% 70% ≈ rgb(163,173,194)), preservando o brilho original desses ícones.',
   'components/ui/PdfViewerModal.tsx :: text-white/70': 'Cromo escuro declarado — texto dos botões de ferramenta.',
   'components/ui/PdfViewerModal.tsx :: text-red-400': 'Cromo escuro declarado — cor de erro fixa (equivalente a --danger do tema escuro); o token semântico text-danger fica vermelho-escuro no tema claro e ficaria ilegível sobre o painel escuro fixo.',
+
+  // --- achado da Regra 5 (palavra-chave `white`), fixado na revisão adversarial da Task 8 ---
+  // `<Toaster iconTheme>` (react-hot-toast) do layout raiz: `primary` é o
+  // preenchimento do círculo do ícone (emerald/pink), `secondary` é o traço
+  // do check/x por cima. O branco nunca senta sobre o fundo do app — senta
+  // sobre o próprio círculo colorido, que é opaco e fixo nos dois temas — e
+  // por isso não segue o token semântico (que mudaria de tom sem mudar o
+  // círculo, quebrando o desenho do ícone). Mesmo raciocínio de "superfície
+  // não é o app" das outras exceções permanentes, aplicado a um traço em vez
+  // de a um fundo.
+  'app/layout.tsx :: white': 'permanente — cor do traço do ícone de sucesso/erro do Toaster (react-hot-toast), sempre sobre o próprio círculo colorido do ícone (#10b981/#ec4899), nunca sobre o fundo do app.',
 }
 
 function arquivos(): string[] {
