@@ -227,9 +227,13 @@ descartar) são dois vermelhos, de propósito — não é duplicação a corrigi
 `--danger` pinta chip/badge de estado; `--destructive` pinta o botão que
 apaga ou descarta trabalho, com `--destructive-foreground` por cima do
 próprio fundo (não é texto sobre a página). Os dois passam o piso com folga
-nos dois temas, nunca aparecem lado a lado na mesma tela hoje, e a diferença
-de tom entre eles é sutil o bastante para não ler como inconsistência —
-convergiram só a intenção (vermelho = erro/perigo), não o valor.
+nos dois temas. Como não aparecem lado a lado em tela nenhuma do app hoje, a
+comparação foi feita fora do app — um swatch isolado com o HSL real de cada
+token (`0 70% 35%` / `0 74% 42%`, ambos sobre `--background`) — e a
+diferença de tom entre eles é sutil o bastante para não ler como
+inconsistência quando vistos separadamente, no contexto onde cada um
+realmente aparece. Convergiram só a intenção (vermelho = erro/perigo), não
+o valor.
 
 **A Regra do Token.** Cor de estado só entra por classe de token
 (`text-ok`, `bg-danger-surface`, `border-info/40`, ...), nunca por shade cru

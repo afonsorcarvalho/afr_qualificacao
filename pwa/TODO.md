@@ -114,9 +114,9 @@
   `docs/baseline-escuro/` (referência do escuro **antes** de qualquer mudança:
   `login-1.png`, `login-2.png`, `lista.png`, `historico.png`, `perfil.png`,
   `os-4.png`) — usada para confirmar que o escuro não mudou de aparência além
-  do que foi explicitamente autorizado ao longo do plano (ver
-  `docs/superpowers/sdd/2026-09-06-pwa-tema-claro-contraste/task-9-report.md`
-  para o que foi comparado e o que ficou de fora).
+  do que foi explicitamente autorizado ao longo do plano. Comparação
+  pixel-a-pixel contra a baseline, o que foi coberto e o que ficou de fora
+  estão em `docs/AUDITORIA-CONTRASTE.md`.
 
 ### Técnico Qualificação
 - **Notificação push no celular — levantado em 2026-09-06, NÃO decidido.** É viável: o app já

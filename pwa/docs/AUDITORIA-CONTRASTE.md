@@ -148,6 +148,122 @@ antes da Task 13: `--info` caía a 3.66:1 em `ReviewPanel.tsx:288`, abaixo de
 4.5 (`temaTokens.test.ts`, describe "token de estado tem folga para o hover
 do próprio matiz", `expect(comHover).toBeGreaterThanOrEqual(4.5)`).
 
+## Verificação visual dos dois temas (Task 9)
+
+Com o dev server de pé, os dois temas foram percorridos via `agent-browser`
+(`localStorage.setItem('theme', 'light'|'dark')` + reload) nas rotas de
+login (passos 1 e 2), lista de OSs, detalhe da OS 4, lightbox de foto,
+Histórico, detalhe de relatório fechado e Perfil.
+
+**Escuro, comparado pixel a pixel** (Python/PIL) contra
+`docs/baseline-escuro/` (captura de referência de **antes** de qualquer
+mudança do plano):
+
+- `os-4.png`: 58.333 px diferentes de 1.152.000 — **100% explicados** pela
+  mudança autorizada do fundo do `EquipmentHeader`
+  (`rgb(4,25,28)→rgb(11,41,45)`, amostrado manualmente em várias
+  coordenadas) mais ruído de anti-aliasing de texto isolado.
+- `login-1.png`: 22.224 px diferentes, concentrados no campo de URL/botão
+  Conectar — é estado transitório de foco/cursor piscando entre as duas
+  capturas, não mudança de token; cor e layout batem.
+- `lista.png`/`historico.png`: conteúdo difere porque os dados do banco
+  mudaram desde a baseline (mais OSs, relatório fechado semeado) — não é
+  regressão visual; paleta idêntica a olho.
+- `perfil.png`: achado — ver "Achados fora do escopo mecânico" abaixo.
+
+**Claro** (nunca auditado visualmente antes desta task): nenhuma rota
+capturada mostrou texto sumindo ou exigindo esforço, incluindo o cabeçalho
+de grupo do `EquipmentHeader` (título + metadado lado a lado) e o
+`ReviewPanel` com veredito renderizado (ver seção própria abaixo).
+
+**Não coberto por captura, com o motivo:** seletor "Empresa ativa" no Perfil
+(a conta de teste só tem uma empresa, sem permissão de escrita para semear
+uma segunda), `PdfViewerModal` no claro com PDF real (banco de dev sem item
+`kind='pdf'`, técnico sem permissão de escrita em `collect.item` para forçar
+um), formulário de coleta aberto (as três OSs do técnico estão com 0
+pendentes; reabrir uma na OS 4 desfaria o estado usado pelas outras
+verificações desta task).
+
+### `ReviewPanel` com veredito renderizado
+
+O gate de `/api/groq/status` é só `!!process.env.GROQ_API_KEY` (não valida a
+chave), e o veredito vem inteiramente de `useReviewCache`
+(`localStorage.getItem('groq-review-result-<relId>')`, sem chamada de rede).
+Verificado subindo o dev server com uma env var **dummy** (não a chave real,
+que segue vazada/pendente de rotação) e semeando
+`localStorage['groq-review-result-2077']` com um `ReviewResponse` sintético
+(2 `warning` + 1 `info`) via `agent-browser eval`. Capturado nos dois temas:
+badge "⚠ 2" (`bg-warn-surface`/`text-warn`), ícones `text-warn`/`text-info`
+por severidade, pílula "Ir para item" (`bg-info-surface`/`text-info`) — só
+tokens semânticos, nenhum shade cru `-200`/`-300`. Dev server religado sem a
+env var dummy depois (`enabled: false` de novo), sem tocar em `.env.local`
+nem na chave real.
+
+### Minors diferidos — triagem (Task 9, item 7 do "herdado")
+
+Três minors foram listados no brief como "diferidos a triar":
+
+1. **Item `kind='pdf'` permanente no banco de dev.** Não é um débito de
+   design, é uma lacuna de dado de teste — ver "não coberto" acima.
+2. **Badge "concluído" do `StepIndicator` do login usa `bg-ok-surface`
+   (calibrado a 15%) onde o original era `rgba(emerald, 0.20)`.**
+   Recalculado: `--ok-surface` escuro (`187 61% 11%`) resolve a
+   `rgb(11,41,45)`; o original a 20% sobre o cartão dava `rgb(11,49,51)`; a
+   15% (a calibração que o resto do app usa, documentada no comentário de
+   `--ok-surface` em `globals.css`) dá `rgb(11,40,46)` — o token bate quase
+   exato com o 15%, não com o 20% que este componente específico usava
+   sozinho. Distância end a end (Euclidiana em RGB) ≈ 10 — perceptível só em
+   comparação lado a lado, não isoladamente. **Decisão: não corrigir.** É
+   uma superfície decorativa atrás de um ícone de check (não há piso de
+   contraste em jogo — o ícone `text-ok` por cima segue passando o piso nos
+   dois casos), o papel semântico (verde = concluído) não muda, e o 20%
+   original já era a exceção (o resto do app mede 15%) — manter o token
+   compartilhado é mais consistente do que reintroduzir um valor
+   hard-coded só para este badge.
+3. **Anel estático do spinner do `AuthGuard` ficou mais escuro/azulado no
+   escuro.** `border-border` (`221 32% 15%` → `rgb(26,34,50)`) contra o
+   `border-white/20` original sobre `--background`
+   (`rgb(53,57,65)`) — distância Euclidiana ≈ 38, bem mais perceptível que o
+   item 2. **Decisão: registrar como débito, não corrigir agora.** É
+   puramente decorativo (o aro girante `border-t-foreground` por cima é
+   quem comunica progresso; o aro estático é só o "trilho"), sem piso de
+   contraste aplicável, e aparece só durante o carregamento inicial — mas o
+   salto de ~38 unidades é grande o bastante pra não descartar sem registro.
+   Se algum dia incomodar: `border-border/40` ou similar aproximaria mais
+   do neutro claro original sem reintroduzir branco absoluto.
+
+### Achados fora do escopo mecânico
+
+Dois achados que apareceram durante a verificação visual, fora do que esta
+task se propôs a mexer:
+
+1. **Bug de backend bloqueia o fechamento real de relatório no PWA.** Ao
+   clicar "Fechar relatório" pela UI (fluxo real de técnico), o servidor
+   Odoo estoura `ValueError: Invalid field 'request_service_scope' on model
+   'hr.employee.public'`, dentro de `mail.thread._track_prepare()` ao ler
+   `tecnico_ids` (proxy de segurança `hr.employee` → `hr.employee.public`
+   para usuário sem acesso de RH). Reproduzido duas vezes; não é causado por
+   nada deste plano (`hr.employee.public` é de fora do módulo
+   `afr_qualificacao`) — parece mismatch de versão de módulo no ambiente
+   `qualificacao-dev` (porta 8084). O relatório usado nesta auditoria
+   (`RQOS00033`/#2077, OS 4) foi fechado contornando o bug via `write` direto
+   por ORM (`context={tracking_disable: true}`), só para semear o dado — o
+   bug em si não foi investigado nem corrigido, e nenhum técnico consegue
+   fechar relatório do dia neste ambiente até alguém resolver isso.
+2. **Ícones do Perfil convergiram para `text-muted-foreground` no escuro.**
+   O diff pixel a pixel de `perfil.png` contra a baseline mostrou os ícones
+   de identidade (Nome/Email/Empresa/Servidor/Database), o header com
+   gradiente violeta→ciano e o ícone Lua/Sol do toggle de tema saindo de
+   cores decorativas (`violet-300`/`cyan-300`/`emerald-300`/`amber-300`)
+   para `text-muted-foreground` uniforme. `git diff main -- app/tecnico/qualificacao/perfil/page.tsx`
+   confirma que essa mudança já está commitada em task anterior deste mesmo
+   plano — não foi introduzida aqui. É consistente com a "Regra do Estado"
+   do `DESIGN.md` (cores decorativas sem significado de estado) e com a
+   limpeza de neon já registrada no `TODO.md`; as cores de origem eram todas
+   shade `-300`, a mesma família que a mudança autorizada #1 do plano já
+   cobre em termos gerais. Registrado por precaução, não por suspeita de
+   regressão real.
+
 ## Como rodar de novo
 
 ```bash
