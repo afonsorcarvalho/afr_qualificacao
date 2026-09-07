@@ -56,7 +56,9 @@ export default function HomePage() {
 
       {isLoading && <LoadingState label="Carregando suas OSs..." />}
       {error && (
-        <p className="text-center text-destructive">
+        /* Mensagem de erro é ESTADO: `danger`. `destructive` fica para o
+           botão que apaga/descarta (DESIGN.md §"--danger e --destructive"). */
+        <p className="text-center text-danger">
           Erro ao carregar OSs. Verifique conexão.
         </p>
       )}

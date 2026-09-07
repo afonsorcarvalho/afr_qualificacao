@@ -66,6 +66,21 @@ rodar de fora do projeto; **não portar esse import de volta**.
   correção certa é ensinar o script a pular arquivos com cromo declarado, ou
   ler caso a caso — optou-se por anotar aqui em vez de mudar o script nesta
   rodada, para não arriscar mascarar um achado real em outro arquivo.
+- **O script é CEGO a `opacity-N` no elemento.** Ele lê a opacidade embutida
+  na classe de cor (`text-muted-foreground/60`, `bg-warn/5`) e compõe; não lê
+  `opacity-60` como utilitário separado, e portanto não vê a redução de tinta
+  que ele aplica ao texto de dentro. Confirmado por `grep -i opacity
+  scripts/contrast-audit.mjs`: zero ocorrências. Isto importa porque os dois
+  mecanismos compõem **pixel idêntico** — `text-muted-foreground/60` e
+  `text-muted-foreground` + `opacity-60` dão os mesmos 2,80:1 no claro e
+  3,74:1 no escuro. Enquanto o script não olhar `opacity`, "zero achados de
+  texto" dele significa "zero achados **da forma que ele enxerga**". É o
+  mesmo modo de falha que já aconteceu uma vez nesta migração (a versão do
+  script cega a token novo, que devolvia `null` em silêncio e reportava
+  contagem artificialmente baixa) — repetido num eixo diferente. A guarda
+  contra ele hoje não é o script, é a regra "opacidade nua sobre token de
+  texto" em `temaTokens.test.ts`, que também não é completa (ver as três
+  fronteiras conhecidas anotadas naquele arquivo).
 - **Opacidade de fundo em `bg-X/N` é composta sobre a superfície base, não
   sobre o pixel real por trás.** Se duas camadas translúcidas se empilham
   (ex.: tom sobre `bg-background` que por sua vez fica sobre um cartão), o
@@ -92,9 +107,36 @@ página), como também mudou os valores HSL de `--ok`/`--danger`/`--info`, o
 que desloca a razão de toda classe que os usa (`border-ok/30`,
 `border-danger/40`, etc.), para cima ou para baixo. O que dá para afirmar
 com confiança, porque foi revisado ocorrência a ocorrência (tabela abaixo):
-**não sobrou nenhum achado real de texto** em nenhum dos dois temas — os 140
-que restam no claro são o falso positivo estrutural do `PdfViewerModal` e
-bordas decorativas.
+**dos achados que o script reporta, nenhum é texto real** — os 140 que restam
+no claro são o falso positivo estrutural do `PdfViewerModal` e bordas
+decorativas.
+
+> **Correção de 2026-09-06 (revisão final da branch).** A redação anterior
+> desta frase dizia "não sobrou nenhum achado real de texto em nenhum dos
+> dois temas", sem a ressalva. **Era falsa**, e da pior maneira: confundia o
+> que o script mede com o que existe. O script é cego a `opacity-N` (ver
+> Limitações conhecidas), e a revisão final encontrou **sete** sites de texto
+> real abaixo do piso que ele não reportou, todos com tinta reduzida pelo
+> elemento em vez de pela classe de cor:
+>
+> | Site | Medido (claro / escuro) | Desfecho |
+> |---|---|---|
+> | `app/login/page.tsx` — dica "N disponíveis" | 2,80 / 3,74 | corrigido (token puro, hierarquia por `font-normal`) |
+> | `app/login/page.tsx` — rótulo do passo futuro do `StepIndicator` | 2,80 / 3,74 | corrigido (hierarquia por peso de fonte) |
+> | `app/login/page.tsx` — rodapé (`animate={{ opacity: 0.6 }}` do Framer) | 2,80 / 3,74 | corrigido (opacidade volta a 1) |
+> | `_components/RelatorioHeader.tsx:79` — "Comece o turno" | 3,47 / 3,47 | corrigido (hierarquia por tamanho/caixa alta) |
+> | `_components/KindPill.tsx:55` — sub-rótulo | 3,47 / 3,47 | corrigido (hierarquia por peso) |
+> | `_components/ColetaList.tsx` — prévia das coletas (opacidade no container) | 3,39 nome / 2,82 instrução — 6,01 / 3,71 no escuro | corrigido (borda tracejada no lugar da tinta reduzida) |
+> | `_components/ReviewPanel.tsx` — linha de achado ignorado (opacidade no container) | 2,85 rótulo do botão "Restaurar" / 3,74 | corrigido (borda tracejada; a linha tem controles VIVOS dentro, então a isenção do WCAG para componente inativo não valia) |
+>
+> `historico/page.tsx:196` (`ChevronRight` a 60%) foi mantido: é ícone, não
+> texto, e não responde a piso.
+>
+> Os números 140/112 abaixo foram **re-medidos** depois desta rodada de
+> correções e não mudaram — nenhuma das mudanças moveu ocorrência através do
+> piso pela ótica do script (os sites de `opacity` ele nunca contou, e
+> `destructive` -> `danger` só troca um vermelho que já passava por outro que
+> passa com mais folga).
 
 **Checagem de cegueira do script** (a mesma armadilha que gerou "zero
 achados" numa versão anterior): confirmado manualmente que `--ok` e
@@ -111,7 +153,8 @@ código já esperava (só borda decorativa + `PdfViewerModal`).
 |---|---|---|
 | `border-*`/`ring-*` decorativo (fio de 1px, tom de superfície) | 106 | Não — decorativo, sem piso |
 | `text-*`/`border-*` do `PdfViewerModal.tsx` (cromo escuro declarado) | 34 | Não — falso positivo por composição sobre o tema errado; o painel real é escuro fixo nos dois temas |
-| Texto real abaixo do piso fora do `PdfViewerModal` | **0** | — |
+| Texto real abaixo do piso fora do `PdfViewerModal`, **pela ótica do script** | **0** | — |
+| Texto real abaixo do piso **invisível para o script** (`opacity-N` no elemento) — **fora dos 140**, por isso a coluna soma mais que o total | 7, achados por leitura de código na revisão final — **todos corrigidos** | Sim — ver quadro de correção acima |
 
 ### Composição dos 112 achados do tema escuro
 
@@ -263,6 +306,43 @@ task se propôs a mexer:
    shade `-300`, a mesma família que a mudança autorizada #1 do plano já
    cobre em termos gerais. Registrado por precaução, não por suspeita de
    regressão real.
+
+## Deriva de superfície aceita no tema escuro (revisão final, 2026-09-06)
+
+Os tokens `--*-surface` foram calibrados a **15%** do próprio matiz, mas a
+migração os aplicou onde havia 5%, 10%, 15% e 20%. Onde o valor de origem
+estava na faixa `/10..15`, a troca é imperceptível; fora dela, a superfície
+muda de aparência no escuro — que está em produção. O levantamento completo:
+
+| Site | Opacidade de origem | Desfecho |
+|---|---|---|
+| `_components/ColetaList.tsx` — aviso "Inicie o relatório do dia pra coletar" | `/5` | **Corrigido.** `bg-warn-surface` levava rgb(15,15,17) para rgb(45,36,27) no escuro: marrom nítido onde havia um véu quase invisível. Restaurado com token bruto (`bg-warn/5`), que é o mecanismo certo para **tingimento** de fundo — `-surface` fica para o chip que precisa de fundo de verdade. |
+| `_components/ColetaList.tsx` — prévia das coletas | — | Registrado **por completude**, não é deriva de `-surface`: ao trocar a opacidade de container por borda tracejada, o fio passou de `border-border/40` para `/70`. Borda é decorativa e não tem piso; o ajuste existe só para a tracejada continuar visível sem a opacidade que antes a envolvia. |
+| `components/ui/StatusBadge.tsx` | `/10` | **Aceito, não corrigido.** Chip fica levemente mais forte; texto sobre fundo caiu de 8,72:1 para 7,99:1, ainda com folga larga sobre o piso. |
+| `_components/ReviewPanel.tsx` — badges | `/20` | **Aceito, não corrigido.** Badges ficaram mais escuros (20% -> 15%). |
+| `_components/ReviewPanel.tsx` — `IssueRow` (`bg-cyan-600/10`) | `/10` | **Aceito, não corrigido.** Dentro da faixa. |
+| `_components/EquipmentHeader.tsx` | — | **Já aceito em task anterior**, mesma classe de decisão. |
+
+O critério que separa as duas colunas: `-surface` é **fundo de elemento**
+(chip, badge, cartão de estado) e pode absorver alguns pontos de opacidade
+sem mudar o que a superfície comunica; `bg-X/5` é **tingimento** de um bloco
+que continua lendo como parte da página, e trocá-lo por uma superfície de
+verdade muda o desenho, não só o tom.
+
+## `focus:border-ring` dentro do `PdfViewerModal` — incoerência aceita
+
+O visualizador é cromo escuro fixo nos dois temas (decisão de projeto), mas
+os campos de página e de busca usam `focus:border-ring`, e `--ring` segue o
+tema do **app**. Resultado: a borda de foco muda de tom num painel que não
+muda.
+
+**Decisão: fica como está**, e o motivo está escrito no próprio
+`PdfViewerModal.tsx`, ao lado do primeiro uso. Anel de foco é vocabulário do
+app inteiro; fixar um valor só aqui faria a navegação por teclado divergir
+do resto — que é a incoerência que o técnico percebe de verdade. Os dois
+valores passam o piso de 3:1 de fronteira de controle sobre o campo escuro
+fixo (`#030712`): **5,12:1** com `--ring` do tema claro e **11,13:1** com o
+do escuro.
 
 ## Como rodar de novo
 

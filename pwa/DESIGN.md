@@ -216,7 +216,14 @@ apertada é `--info`, a 4.75:1 no claro — ver `temaTokens.test.ts`, describe
 "token de estado tem folga para o hover do próprio matiz",
 `expect(comHover).toBeGreaterThanOrEqual(4.5)`). Foi exatamente a folga que
 faltou em `--info` antes da Task 13 (`ReviewPanel.tsx:288`, caía a 3.66:1 —
-abaixo de 4.5, não de 3). `--border` e o fio geral são decorativos e **não
+abaixo de 4.5, não de 3). `focus:border-ring` dentro do `PdfViewerModal` (cromo escuro fixo) faz o
+anel de foco mudar de tom com o tema do app num painel que não muda:
+incoerência **conhecida e aceita** — anel de foco é vocabulário do app
+inteiro, e os dois valores passam o piso de 3:1 sobre o campo escuro fixo
+(5,12:1 no claro, 11,13:1 no escuro). Registrada em
+`docs/AUDITORIA-CONTRASTE.md`.
+
+`--border` e o fio geral são decorativos e **não
 têm piso**
 (ver "Herdado de julgamentos" do plano de contraste); `--ring` e qualquer
 borda que funcione como indicador de foco ou fronteira de controle
@@ -246,12 +253,19 @@ mecânica desta regra, não um substituto pra revisão visual dos dois temas.
 - **Opacidade numa classe de cor às vezes é papel, não ruído.** `text-X/80`
   ao lado de `text-X` costuma marcar hierarquia (título vs. metadado);
   `text-X/60` com `group-hover:text-X` é interação. Apagar a opacidade apaga
-  o papel — não é limpeza, é perda de informação. O mecanismo proibido é a
-  opacidade **embutida na cor** (`text-danger/60`, que muda o RGB efetivo);
-  `opacity-N` solto no elemento é permitido e preserva os dois papéis porque
-  não mexe na cor resolvida. Este erro apareceu **seis vezes** na migração de
-  2026-09-06, em quatro telas diferentes, e nenhuma vez foi pego por teste —
-  só por leitura de código.
+  o papel — não é limpeza, é perda de informação. Este erro apareceu **seis
+  vezes** na migração de 2026-09-06, em quatro telas diferentes, e nenhuma
+  vez foi pego por teste — só por leitura de código.
+
+  **Mas o papel só justifica opacidade onde não há piso de contraste.** Uma
+  redação anterior deste parágrafo dizia que "o mecanismo proibido é a
+  opacidade embutida na cor; `opacity-N` solto no elemento é permitido" —
+  e isso estava **errado**, do jeito mais caro: confunde mecanismo com
+  efeito. `text-muted-foreground/60` e `text-muted-foreground` +
+  `opacity-60` compõem **pixel idêntico** (2,80:1 no claro, 3,74:1 no
+  escuro). Trocar um pelo outro não conserta nada — só tira o defeito do
+  campo de visão da guarda, que casa string de classe. Ver "A Regra da
+  Tinta Única", logo abaixo.
 - **Cor fora de `className` é invisível pra guarda.** Cor em `style`, em
   prop de animação do Framer Motion, ou montada por concatenação de string
   não é alcançada por nenhuma varredura estática — e o Framer nem resolve
@@ -264,6 +278,30 @@ mecânica desta regra, não um substituto pra revisão visual dos dois temas.
 **A Regra do Estado.** Cor só entra quando responde "em que pé está isto?".
 Verde, âmbar e vermelho são vocabulário fechado. Roxo, rosa, gradiente de
 marca e glow estão **proibidos** — não existe estado que eles nomeiem.
+
+**A Regra da Tinta Única.** Para TEXTO existem dois níveis de tinta e só
+dois: `--foreground` e `--muted-foreground`. Não há terceiro. "Tinta
+Apagada" (#6b7689) é proibida em texto que o técnico precisa ler, e chegar
+nela por opacidade — `text-muted-foreground/60`, `text-muted-foreground` +
+`opacity-60`, ou `animate={{ opacity: 0.6 }}` no Framer sobre um elemento de
+texto — é a mesma proibição, porque o pixel é o mesmo. **Quando a hierarquia
+ficar chapada, ela volta por TAMANHO ou por PESO de fonte**, nunca por tinta.
+
+`opacity-N` continua legítimo em três lugares, todos sem piso de contraste:
+**ícone e decoração** (o `ChevronRight` do histórico); **extremos de
+animação** (`opacity-0` / `opacity-100`, incluindo pares apaga-acende de
+hover); e **estado desabilitado de controle** (`disabled:opacity-*`, isento
+pelo WCAG). Repare no que NÃO está na lista: um bloco cujo conteúdo continua
+clicável não é "desabilitado" — a linha de achado ignorado do `ReviewPanel`
+tinha o botão "Restaurar" vivo dentro dela a 2,85:1, e por isso perdeu a
+opacidade de container em favor de borda tracejada.
+
+A guarda mecânica é a regra "opacidade nua sobre token de texto" em
+`temaTokens.test.ts` (co-ocorrência de `opacity-N` sem variante com um token
+de texto na mesma linha). Ela tem três fronteiras conhecidas, anotadas no
+próprio arquivo — a mais importante: texto que **herda** a cor do pai, ou
+cuja classe carrega só tamanho (`text-[11px] ... opacity-70`), passa batido.
+Nesses casos a regra é sua, não do teste.
 
 **A Regra do Par.** Nenhum estado é comunicado só por cor: verde vem com
 "coletada" ou ícone de check, âmbar com "pendente", vermelho com a frase do

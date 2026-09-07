@@ -82,7 +82,7 @@ export default function ColetaPage() {
           ← Voltar
           <kbd className="ml-2 hidden rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">Esc</kbd>
         </Button>
-        <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
+        <p className="rounded-lg bg-danger/10 p-3 text-center text-sm text-danger">
           Inicie um relatório do dia antes de coletar.
         </p>
       </div>

@@ -251,6 +251,17 @@ export function PdfViewerModal({
                         value={pageInputValue}
                         onChange={(e) => setPageInputValue(e.target.value)}
                         onBlur={handlePageInput}
+                        /* `focus:border-ring` DENTRO do cromo escuro fixo é
+                           incoerência conhecida e ACEITA (revisão final,
+                           2026-09-06): `--ring` segue o tema do app, então a
+                           borda de foco muda de tom num painel que não muda.
+                           Fica assim de propósito — anel de foco é vocabulário
+                           do app inteiro, e um valor fixo aqui divergiria do
+                           resto da navegação por teclado, que é a incoerência
+                           que o técnico realmente percebe. Os dois valores
+                           passam o piso de 3:1 de fronteira de controle sobre
+                           o campo escuro: 5,12:1 (tema claro) e 11,13:1
+                           (escuro). Registrado também no DESIGN.md. */
                         className="w-12 px-2 py-1.5 rounded-lg text-center bg-dark-900 border border-white/40 text-white font-mono tabular-nums focus:outline-none focus:border-ring"
                       />
                       <span className="text-white/50 font-mono">/ {numPages || '—'}</span>

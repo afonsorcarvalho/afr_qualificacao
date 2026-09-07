@@ -40,7 +40,7 @@ export default function RelatorioDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => router.back()}>
           <ArrowLeft className="mr-1 h-4 w-4" /> Voltar
         </Button>
-        <p className="rounded-lg bg-destructive/10 p-3 text-center text-sm text-destructive">
+        <p className="rounded-lg bg-danger/10 p-3 text-center text-sm text-danger">
           Erro ao carregar relatório
         </p>
       </div>
