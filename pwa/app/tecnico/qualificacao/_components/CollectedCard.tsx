@@ -87,7 +87,16 @@ export function CollectedCard({
                   server-to-server SEM repassar os cookies do navegador —
                   todo pedido volta 403 do proxy e a miniatura quebra
                   (confirmado em tela, /_next/image respondendo 400).
-                  Verificado nesta sessão em 2026-09-06. */}
+                  Verificado nesta sessão em 2026-09-06.
+
+                  Alternativas descartadas, não só a conversão direta:
+                  `unoptimized` tira o otimizador do caminho, mas aí é o
+                  `<img>` de volta com mais cerimônia (perde o próprio motivo
+                  de usar next/image); `images.remotePatterns` não se aplica
+                  porque o caminho é local (`/api/...`), não uma origem
+                  remota; um `loader` customizado só devolve a STRING da URL
+                  final pro `<img>` que o next/image renderiza por baixo —
+                  não intercepta o fetch nem consegue injetar cookie nele. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={fileUrl(item.id, 'image')}

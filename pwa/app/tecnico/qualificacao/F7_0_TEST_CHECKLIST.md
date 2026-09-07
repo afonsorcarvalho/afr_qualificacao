@@ -19,7 +19,7 @@
 - [x] A.1 GET / → redireciona /login — ✅ e ainda preserva `?server=…&db=…`.
 - [x] A.2 Login com user técnico → http://localhost:3010/tecnico/qualificacao ✅
 - [x] A.3 Lista mostra OSs agrupadas (Em andamento / Agendadas / Rascunhos) — ✅ as 3 seções ao mesmo tempo, com o filtro "Só minhas" **on**. **Decidido em 2026-09-04** (ver `TODO.md`): "Só minhas" **on** é o único modo em que a seção Rascunhos aparece — rascunho alheio nunca entra na lista, ligado ou desligado; ver A.4.
-- [x] A.4 Toggle "Só minhas" off → mais OSs aparecem (se user em grupos maiores) — ✅ "Agendadas" foi de 1 pra 2. A seção "Rascunhos" **some** ao desligar o filtro (`page.tsx:23`): num banco onde as OSs alheias são rascunho, desligar mostra *menos* cards — comportamento decidido, não bug (ver A.3 e `TODO.md`): desligar serve pra ver o que os colegas têm **em andamento e agendado**, não a fila de rascunho de todo mundo.
+- [x] A.4 Toggle "Só minhas" off → aparecem as OSs **em andamento e agendadas** dos colegas; rascunho alheio nunca entra (decidido em 2026-09-04, ver `TODO.md`) — ✅ "Agendadas" foi de 1 pra 2. A seção "Rascunhos" **some** ao desligar o filtro (`page.tsx:23`): num banco onde as OSs alheias são rascunho, desligar mostra *menos* cards — comportamento decidido, não bug (ver A.3): desligar serve pra ver o que os colegas têm em andamento/agendado, não a fila de rascunho de todo mundo.
 - [x] A.5 OS sem coletas pendentes mostra "0 coletas pendentes" — ✅ com itens todos coletados o card mostra "1 coletadas · 0 pendentes · 1/1". ⚠️ OS com **zero** itens não mostra bloco nenhum (guard `collect_total_count > 0`, senão a barra de progresso dividiria por zero) — é o comportamento correto, o texto do item é que induz ao erro.
 - [x] A.6 Empty state visível quando lista vazia — ✅ "Nenhuma OS atribuída." (verificado com o Técnico Teste B sem nenhuma OS atribuída).
 
@@ -117,10 +117,14 @@ Quem restringe a lista é o filtro "Só minhas" no cliente (domínio
 não testam isolamento de leitura — não existe, por decisão — e sim (a) o
 filtro do cliente e (b) que a **escrita** numa OS alheia é recusada pelo
 servidor via `rule_qualificacao_os_technician_write_own` (domínio
-`tecnico_default_user_id = user.id`, `perm_write=True`/`perm_read=False`).
+`tecnico_default_user_id = user.id`, `perm_write=True`/`perm_read=False`). (a)
+está verificado por execução; (b) ainda não — os sub-itens `[ ]` abaixo de
+F.1/F.2 marcam isso explicitamente.
 
-- [x] F.1 Login como Técnico A → com "Só minhas" ligado, a lista mostra só as OSs de Técnico A; desligado, mostra também as dos colegas (leitura é global, por decisão — ver acima). — ✅ ligado: só QOS00004. ✅ desligado: também a OS do Afonso e as demais. ⚠️ Restrição de **escrita** (coletar numa OS alheia deve ser recusado pelo servidor) segue garantida pela `ir.rule` acima por inspeção de código; não foi exercitada nesta rodada via tentativa real de RPC — fica como acompanhamento.
-- [x] F.2 Login como Técnico B → mesma verificação do F.1. — ✅ ligado: só OS26-08-0005-2 (mesma ressalva de escrita do F.1).
+- [x] F.1 Login como Técnico A — filtro de cliente: com "Só minhas" ligado, a lista mostra só as OSs de Técnico A; desligado, mostra também as dos colegas (leitura é global, por decisão — ver acima). — ✅ **verificado por execução**: ligado, só QOS00004; desligado, também a OS do Afonso e as demais.
+  - [ ] Restrição de **escrita**: coletar numa OS alheia deve ser recusado pelo servidor. **Não verificado por execução** — garantia vem só de inspeção de código (`rule_qualificacao_os_technician_write_own` acima). Falta tentar via RPC real e confirmar a rejeição numa próxima rodada do Bloco F.
+- [x] F.2 Login como Técnico B — filtro de cliente: mesma verificação do F.1. — ✅ **verificado por execução**: ligado, só OS26-08-0005-2; desligado, também as demais.
+  - [ ] Restrição de escrita — mesma pendência do F.1: **não verificado por execução**, só por inspeção de código.
 - [x] F.3 Login como Gerente → vê todas OSs (rule não aplica) ✅ com o filtro desligado, as 3 OSs não-rascunho.
 
 ## Reportar
