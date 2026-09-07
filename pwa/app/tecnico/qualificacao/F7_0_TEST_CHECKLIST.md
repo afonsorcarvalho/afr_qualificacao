@@ -18,8 +18,8 @@
 
 - [x] A.1 GET / → redireciona /login — ✅ e ainda preserva `?server=…&db=…`.
 - [x] A.2 Login com user técnico → http://localhost:3010/tecnico/qualificacao ✅
-- [x] A.3 Lista mostra OSs agrupadas (Em andamento / Agendadas / Rascunhos) — ✅ as 3 seções ao mesmo tempo, com o filtro "Só minhas" **on** (é o único modo em que rascunho aparece; ver A.4).
-- [x] A.4 Toggle "Só minhas" off → mais OSs aparecem (se user em grupos maiores) — ✅ "Agendadas" foi de 1 pra 2. ⚠️ Mas a seção "Rascunhos" **some** ao desligar o filtro (`page.tsx:23`): num banco onde as OSs alheias são rascunho, desligar mostra *menos* cards. Ver pendência no `TODO.md`.
+- [x] A.3 Lista mostra OSs agrupadas (Em andamento / Agendadas / Rascunhos) — ✅ as 3 seções ao mesmo tempo, com o filtro "Só minhas" **on**. **Decidido em 2026-09-04** (ver `TODO.md`): "Só minhas" **on** é o único modo em que a seção Rascunhos aparece — rascunho alheio nunca entra na lista, ligado ou desligado; ver A.4.
+- [x] A.4 Toggle "Só minhas" off → mais OSs aparecem (se user em grupos maiores) — ✅ "Agendadas" foi de 1 pra 2. A seção "Rascunhos" **some** ao desligar o filtro (`page.tsx:23`): num banco onde as OSs alheias são rascunho, desligar mostra *menos* cards — comportamento decidido, não bug (ver A.3 e `TODO.md`): desligar serve pra ver o que os colegas têm **em andamento e agendado**, não a fila de rascunho de todo mundo.
 - [x] A.5 OS sem coletas pendentes mostra "0 coletas pendentes" — ✅ com itens todos coletados o card mostra "1 coletadas · 0 pendentes · 1/1". ⚠️ OS com **zero** itens não mostra bloco nenhum (guard `collect_total_count > 0`, senão a barra de progresso dividiria por zero) — é o comportamento correto, o texto do item é que induz ao erro.
 - [x] A.6 Empty state visível quando lista vazia — ✅ "Nenhuma OS atribuída." (verificado com o Técnico Teste B sem nenhuma OS atribuída).
 
@@ -108,17 +108,19 @@ headless, E.5 ⚠️.**
 Técnico das qualificações (mais os grupos internos padrão, sem o grupo
 "Usuário") — e `gestor@teste.local` (uid 661, grupo Gestor).
 
-⚠️ **O enunciado dos itens F.1/F.2 não corresponde à implementação.** As
-`ir.rule` do Técnico têm `perm_read = False`
-(`security/qualificacao_groups.xml:59`): elas restringem **escrita**, não
-leitura. Um técnico lê qualquer OS do banco. Quem limita a lista é o filtro
-"Só minhas" no cliente (domínio `tecnico_default_user_id = uid`), que o
-próprio usuário pode desligar. Isso foi deliberado no backend (os comentários
-das rules falam só de write), mas o checklist prometia isolamento de leitura.
-**Decisão de produto pendente:** leitura deve ser restrita também?
+**Decidido em 2026-09-04** (ver `TODO.md`): o escopo das `ir.rule` do grupo
+Técnico é só de **escrita**, e assim permanece — não é lacuna, é decisão de
+produto. As rules têm `perm_read = False`
+(`security/qualificacao_groups.xml:59`): um técnico lê qualquer OS do banco.
+Quem restringe a lista é o filtro "Só minhas" no cliente (domínio
+`tecnico_default_user_id = uid`), que o próprio usuário pode desligar. F.1/F.2
+não testam isolamento de leitura — não existe, por decisão — e sim (a) o
+filtro do cliente e (b) que a **escrita** numa OS alheia é recusada pelo
+servidor via `rule_qualificacao_os_technician_write_own` (domínio
+`tecnico_default_user_id = user.id`, `perm_write=True`/`perm_read=False`).
 
-- [x] F.1 Login como Técnico A → vê só OSs onde tecnico_default_id = Técnico A — ✅ **com "Só minhas" ligado** (só QOS00004). ❌ Com o filtro desligado ele vê a OS do Afonso e as demais — leitura não é restrita.
-- [x] F.2 Login como Técnico B → vê só OSs onde tecnico_default_id = Técnico B — ✅ mesma ressalva do F.1 (só OS26-08-0005-2 com o filtro ligado).
+- [x] F.1 Login como Técnico A → com "Só minhas" ligado, a lista mostra só as OSs de Técnico A; desligado, mostra também as dos colegas (leitura é global, por decisão — ver acima). — ✅ ligado: só QOS00004. ✅ desligado: também a OS do Afonso e as demais. ⚠️ Restrição de **escrita** (coletar numa OS alheia deve ser recusado pelo servidor) segue garantida pela `ir.rule` acima por inspeção de código; não foi exercitada nesta rodada via tentativa real de RPC — fica como acompanhamento.
+- [x] F.2 Login como Técnico B → mesma verificação do F.1. — ✅ ligado: só OS26-08-0005-2 (mesma ressalva de escrita do F.1).
 - [x] F.3 Login como Gerente → vê todas OSs (rule não aplica) ✅ com o filtro desligado, as 3 OSs não-rascunho.
 
 ## Reportar
@@ -181,14 +183,18 @@ OS 4832 `OS26-08-0006-1` (`draft`) → uid 8, o par que H2/H3 comparam.
 
 - [x] **H1** — Login como técnico (user com `hr.employee` vinculado e grupo Técnico) → home lista OSs. ✅ redirecionou pra `/tecnico/qualificacao` com OS26-06-0002 listada.
 - [x] **H2** — Toggle "Só minhas" **on**: só aparecem OSs com `tecnico_default_user_id` = user logado (espelho stored de `tecnico_default_id.user_id`). Era o gap da ACL de hr — antes vinha vazio. ✅ só OS 4 (uid 2); OS 4832 (uid 8) e OS 4831 (sem técnico) fora.
-- [x] **H3** — Toggle "Só minhas" **off**: aparecem as demais OSs do grupo. ✅ aparece OS26-08-0005-2 (alheia) em "Agendadas".
+- [x] **H3** — Toggle "Só minhas" **off**: aparecem as demais OSs do grupo **em
+  andamento e agendadas** — rascunho alheio não entra, ligado ou desligado
+  (decidido em 2026-09-04, ver `TODO.md`). ✅ aparece OS26-08-0005-2 (alheia)
+  em "Agendadas".
   ⚠️ Pra este item o dado precisou ser semeado: o front só renderiza a seção
   "Rascunhos" quando o filtro está **on** (`page.tsx:23`,
   `filterMine ? drafts : []`), então com as 3 OSs alheias em `draft` desligar o
   toggle mostrava *menos* cards, não mais. OS 4831 `OS26-08-0005-2` foi movida
   pra `scheduled` (e continua assim) só pra dar um caso alheio visível com o
-  filtro off. A regra "rascunho só aparece se for minha" parece deliberada mas
-  não está documentada — confirmar com o dono do produto.
+  filtro off. **Decidido em 2026-09-04:** "rascunho só aparece se for minha" é
+  regra deliberada, não bug — desligar o filtro serve pra ver o que os colegas
+  têm em andamento/agendado, não a fila de rascunho de todo mundo.
 - [x] **H4** — "Iniciar relatório do dia" → card "REL #N" aparece, sem erro de RPC. ✅ criou REL #1972 (`RQOS00021`).
 - [x] **H5** — Reload da mesma tela → **mesmo** REL #N (o reload lê por `action_get_daily_relatorio`, que reusa a mesma janela do dia do servidor). ✅ #1972 de novo.
 - [x] **H6** — Tocar "Iniciar" 2× seguidas → não cria segundo relatório (idempotência de `action_start_daily_relatorio`; conferir no backoffice `8084` a lista de relatórios da OS). ✅ duas chamadas em paralelo devolveram `[1972, 1972]`; a OS continuou com 3 relatórios (os 2 antigos + o novo).
