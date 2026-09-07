@@ -84,10 +84,21 @@ const RAIZ = join(__dirname, '..', '..', '..', '..')
  * arbitrário não-branco (`bg-[#0a0f1e]`, `text-[rgb(10,15,30)]`) escapa de
  * todas as regras, que casam nome de família/token, não hex solto; (c) a
  * regra de opacidade nua só morde quando um token de TEXTO está na mesma
- * linha — texto que herda a cor do pai, ou cuja classe carrega só tamanho
- * (`text-[11px] ... opacity-70`), passa batido (achados reais em
- * `RelatorioHeader.tsx` e `KindPill.tsx`, corrigidos à mão na revisão final
- * de 2026-09-06).
+ * linha. Escapam dela DUAS formas, as duas com achado real: texto que herda
+ * a cor do pai, ou cuja classe carrega só tamanho (`text-[11px] ...
+ * opacity-70` — `RelatorioHeader.tsx` e `KindPill.tsx`, corrigidos à mão na
+ * revisão final de 2026-09-06); e `className` quebrado em VÁRIAS LINHAS, que
+ * é justamente o estilo dominante no `login/page.tsx`:
+ *
+ *     clsx(                       // <- passa verde: as duas metades da
+ *       'text-muted-foreground',  //    co-ocorrência caem em linhas
+ *       'opacity-60',             //    diferentes
+ *     )
+ *
+ * Varrer por bloco em vez de por linha trocaria esse furo por falso positivo
+ * (uma `opacity-0` de animação a vinte linhas de um token de texto viraria
+ * violação), então a escolha é deliberada — mas o furo é real, e `clsx`
+ * multilinha continua dependendo de revisão humana.
  */
 const PASTAS = ['app', 'components', 'lib']
 

@@ -127,7 +127,7 @@ decorativas.
 > | `_components/RelatorioHeader.tsx:79` — "Comece o turno" | 3,47 / 3,47 | corrigido (hierarquia por tamanho/caixa alta) |
 > | `_components/KindPill.tsx:55` — sub-rótulo | 3,47 / 3,47 | corrigido (hierarquia por peso) |
 > | `_components/ColetaList.tsx` — prévia das coletas (opacidade no container) | 3,39 nome / 2,82 instrução — 6,01 / 3,71 no escuro | corrigido (borda tracejada no lugar da tinta reduzida) |
-> | `_components/ReviewPanel.tsx` — linha de achado ignorado (opacidade no container) | 2,85 rótulo do botão "Restaurar" / 3,74 | corrigido (borda tracejada; a linha tem controles VIVOS dentro, então a isenção do WCAG para componente inativo não valia) |
+> | `_components/ReviewPanel.tsx` — linha de achado ignorado (opacidade no container) | 2,85 rótulo do botão "Restaurar" / 3,74 | corrigido — a linha tem controles VIVOS dentro ("Ir para item", "Restaurar"), então a isenção do WCAG para componente inativo não valia. O par de sinais mudou por inteiro: o estado ignorado era `opacity-60` **sem fundo**, contra `bg-muted/30 dark:bg-muted/40` no estado normal; passou a ser **borda tracejada sem fundo** contra borda sólida com fundo. Ou seja, o fundo preenchido continua sendo o sinal do estado normal, e o que saiu foi só a redução de tinta, trocada pela tracejada. |
 >
 > `historico/page.tsx:196` (`ChevronRight` a 60%) foi mantido: é ícone, não
 > texto, e não responde a piso.

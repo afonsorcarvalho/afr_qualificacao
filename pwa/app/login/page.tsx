@@ -343,8 +343,14 @@ function LoginPageInner() {
           // 3,74:1 no escuro), então trocar o mecanismo só escondia o
           // defeito da guarda. Para TEXTO não existe terceiro nível de
           // tinta (DESIGN.md, "Tinta Apagada" proibida em texto legível):
-          // fica `text-muted-foreground` cheio, e o Framer volta a animar
-          // só o que é animação (opacidade de entrada 0 -> 1).
+          // fica `text-muted-foreground` cheio. O `animate` continua aqui só
+          // porque estilo inline vence classe — com `initial={false}` logo
+          // acima NÃO há animação de entrada nenhuma (o Framer parte do
+          // estado final), então isto é um valor fixo de opacidade 1, não um
+          // fade. Apagar as duas linhas daria o mesmo resultado visual;
+          // ficam para deixar explícito que a opacidade deste elemento é
+          // deliberadamente cheia, e que reduzi-la aqui volta a burlar a
+          // catraca (que só lê `className`).
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
