@@ -244,4 +244,38 @@ describe('destinoSeguro: só caminho interno vale', () => {
   it('destino malformado (URL lança) cai no padrão', () => {
     expect(destinoSeguro('http://')).toBe(PADRAO)
   })
+
+  // Achado da revisão final: as duas revisões anteriores atacaram só com
+  // HOST ESTRANGEIRO (`evil.example` como autoridade), e a função passava.
+  // Ninguém tentou nomear a PRÓPRIA SENTINELA — que é constante pública no
+  // código-fonte, portanto legível pelo atacante. Nomeada, ela é consumida
+  // como autoridade no primeiro parse (origin bate, checagem de entrada
+  // passa) e o que sobra de caminho começa com `//`, que no SEGUNDO parse
+  // (o `router.replace`, contra a `location.href` real) volta a ser
+  // autoridade — agora a do atacante. Link real: `/login?next=//interno
+  // .invalid//evil.example`.
+  it('recusa next que nomeia a própria sentinela para vazar host no re-parse', () => {
+    expect(destinoSeguro('//interno.invalid//evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('http://interno.invalid//evil.example/x')).toBe(PADRAO)
+    expect(destinoSeguro('http://interno.invalid/\\evil.example')).toBe(PADRAO)
+  })
+
+  it('recusa outras formas de nomear a sentinela (barra tripla, contrabarra, tab, esquema)', () => {
+    expect(destinoSeguro('///interno.invalid//evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('//interno.invalid/\\evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('//interno.invalid/\t//evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('https://interno.invalid//evil.example')).toBe(PADRAO)
+    expect(destinoSeguro('//interno.invalid//evil.example/x?y=1#z')).toBe(PADRAO)
+  })
+
+  // A prova de que a correção NÃO é uma recusa geral: nomear a sentinela
+  // sem o `//` extra continua sendo um caminho interno legítimo, e query e
+  // fragmento chegam intactos. Sem estes dois casos, quem ler depois não
+  // distingue a invariante de um `return PADRAO` cego.
+  it('aceita a sentinela quando o resto é caminho interno de verdade, com query e fragmento', () => {
+    expect(destinoSeguro('//interno.invalid/ok')).toBe('/ok')
+    expect(destinoSeguro('http://interno.invalid/tecnico/qualificacao/4?x=1#top')).toBe(
+      '/tecnico/qualificacao/4?x=1#top',
+    )
+  })
 })
