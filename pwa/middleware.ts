@@ -26,6 +26,12 @@ export function middleware(request: NextRequest) {
 
   if (!sessionId && !isPublic) {
     const loginUrl = new URL('/login', request.url)
+    // Guarda o destino original para o login devolver o técnico direto à
+    // coleta pedida em vez de cair na home — o valor sai do próprio
+    // `nextUrl` da requisição (interno por construção), então não passa por
+    // `destinoSeguro` aqui. A validação entra do lado que LÊ `next`
+    // (`app/login/page.tsx`), que é o ponto de risco de open redirect.
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
     return NextResponse.redirect(loginUrl)
   }
 

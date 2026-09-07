@@ -15,6 +15,7 @@ import { useAuthStore } from '@/lib/store/authStore'
 import { useSchemaStore } from '@/lib/store/schemaStore'
 import { resetSessionCache } from '@/lib/store/resetSessionCache'
 import { parseLoginParams, normalizeServerUrl } from '@/lib/utils/loginUrlParams'
+import { destinoSeguro } from '@/lib/navegacao'
 import { getCompanyLogoUrl } from '@/lib/odoo/publicCompany'
 import { clsx } from 'clsx'
 
@@ -210,7 +211,9 @@ function LoginPageInner() {
       // `replace`: entrar não deixa o formulário de login no histórico.
       // Com `push`, o botão voltar levava o técnico já autenticado de volta
       // à tela de credenciais. Mesmo defeito do fechamento de relatório.
-      router.replace('/tecnico/qualificacao')
+      // `destinoSeguro` devolve o técnico ao deep link que o trouxe ao login
+      // (?next=...), recusando qualquer destino que não seja caminho interno.
+      router.replace(destinoSeguro(searchParams.get('next')))
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Erro ao autenticar')
     } finally {
