@@ -12,7 +12,9 @@ import { clsx } from 'clsx'
 import { agruparPorDia, deslocarJanela } from './janela'
 import { FaixaDias } from './_FaixaDias'
 import { PainelRecursos, type Dimensao } from './_PainelRecursos'
+import { VistaMes } from './_VistaMes'
 import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
+import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia } from './mes'
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -25,19 +27,34 @@ export default function AgendaPage() {
   const disponivel = useAgendaDisponivel()
   const { filterMine, setFilterMine, modoAgenda, setModoAgenda } = useTecnicoSettings()
   const semana = modoAgenda === 'semana'
+  const mes = modoAgenda === 'mes'
+  // Semana e Mês são as duas visões de EQUIPE — "Só minhas" desligado e
+  // desabilitado, `onlyMine=false` no fetch, roster carregado pra
+  // legenda/painel. Usar esta flag em todos esses pontos (em vez de
+  // acrescentar `|| mes` em cada `semana ? ... : ...` já existente) evita
+  // que um dos sítios fique para trás — foi exatamente esse o risco
+  // apontado no brief.
+  const visaoEquipe = modoAgenda !== 'lista'
   // `null` na primeira carga: o servidor decide a janela e devolve
   // `date_from`, que passa a ancorar a navegação.
   const [inicio, setInicio] = useState<string | null>(null)
   const janelaDias = semana ? 7 : 14
   const fim = inicio ? deslocarJanela(inicio, janelaDias - 1) : null
+  // `ancoraMes` é o 1º dia do mês visível — estado SEPARADO de `inicio`,
+  // que ancora lista/semana. Misturar as duas semânticas no mesmo estado
+  // faria o mês virar "14 dias a partir de", não um mês de calendário.
+  const [ancoraMes, setAncoraMes] = useState<string | null>(null)
+  const gradeMes = ancoraMes ? gradeDoMes(ancoraMes) : []
+  const dateFrom = mes ? (gradeMes[0] ?? null) : inicio
+  const dateTo = mes ? (gradeMes[41] ?? null) : fim
   // `disponivel.data` é `undefined` enquanto a query de disponibilidade
   // carrega (não `false`) — só o `false` explícito (módulo ausente) deve
   // segurar o `pwa_agenda_fetch`. Enquanto carrega, a busca segue normal.
-  // No modo Semana o filtro "Só minhas" fica sempre desligado (ver o
+  // Em Semana/Mês o filtro "Só minhas" fica sempre desligado (ver o
   // checkbox desabilitado abaixo): a carga é da equipe, não de uma pessoa —
   // passar `filterMine` aqui mostraria uma faixa de dias que contradiz o
-  // painel logo abaixo.
-  const { data, isLoading, error } = useAgenda(inicio, fim, semana ? false : filterMine, disponivel.data !== false)
+  // painel/grade logo abaixo.
+  const { data, isLoading, error } = useAgenda(dateFrom, dateTo, visaoEquipe ? false : filterMine, disponivel.data !== false)
   const [selecionada, setSelecionada] = useState<VisitaAgenda | null>(null)
   const [criando, setCriando] = useState(false)
   // Muda a cada abertura: sem isto, os `useState` internos da folha em modo
@@ -48,7 +65,9 @@ export default function AgendaPage() {
   const [emAjuste, setEmAjuste] = useState<VisitaAgenda | null>(null)
   const [erroAjuste, setErroAjuste] = useState('')
   const update = useUpdateVisita()
-  const tecnicos = useTecnicoOptions(semana)
+  // O painel de instrumentos só existe na Semana — o mês não tem painel de
+  // recursos, só a legenda de técnicos.
+  const tecnicos = useTecnicoOptions(visaoEquipe)
   const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
 
   // Rede de segurança: se a visita em ajuste sumir do payload (apagada em
@@ -79,6 +98,20 @@ export default function AgendaPage() {
     }
   }, [semana, inicio, data?.date_from])
 
+  // Modo Mês na primeiríssima carga: `ancoraMes` nasce `null`, e sem ele
+  // não há faixa (`grade[0]`..`grade[41]`) para pedir — a primeira busca
+  // sai sem datas, o servidor aplica a janela padrão e devolve
+  // `server_today` (nunca o relógio do aparelho). Assim que o payload
+  // chega, ancora `ancoraMes` no 1º dia do mês de `server_today`, e a
+  // segunda busca já traz a grade completa. Duas buscas na primeira
+  // abertura é o preço aceito (brief 3c) — enquanto isso, `mesCarregando`
+  // mais abaixo mantém o `LoadingState` em vez de uma grade meio vazia.
+  useEffect(() => {
+    if (mes && ancoraMes === null && data?.server_today) {
+      setAncoraMes(primeiroDiaDoMes(data.server_today))
+    }
+  }, [mes, ancoraMes, data?.server_today])
+
   if (disponivel.data === false) {
     return (
       <p className="mx-auto max-w-[880px] p-4 text-center text-muted-foreground">
@@ -98,8 +131,21 @@ export default function AgendaPage() {
   // `pwa_tecnico_options` filtra por `is_tecnico=True`, mas `tecnico_id` na
   // visita não é restrito a isso — um painel de capacidade que só mostra o
   // roster oficial esconderia carga real de quem tem visita mas não a flag.
-  // União com quem aparece nas visitas da janela, sem duplicar por id.
+  // União com quem aparece nas visitas da janela, sem duplicar por id. Este
+  // roster já unificado é o que `tecnicosPorDia` (mês) e `cargaPorTecnico`
+  // (semana) exigem — passar o retorno cru de `useTecnicoOptions` faria uma
+  // visita de técnico sem a flag `is_tecnico` contar no `total` do dia sem
+  // gerar pontinho, silenciosamente.
   const roster = rosterTecnicos(tecnicos.data ?? [], visitas)
+  // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês), não há
+  // grade nem dia selecionado válido — `mesCarregando` segura o
+  // `LoadingState` mais abaixo em vez de uma grade meio vazia.
+  const mesCarregando = mes && ancoraMes === null
+  const pontosDia = mes ? tecnicosPorDia(visitas, gradeMes, roster) : []
+  // O 1º dia do mês (`ancoraMes`) está sempre dentro da própria grade — é
+  // um fallback seguro quando `diaSel` aponta pra fora do mês visível
+  // (troca de mês, ou vindo de outro modo).
+  const diaSelMes = diaSel && gradeMes.includes(diaSel) ? diaSel : (ancoraMes ?? '')
   // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
   // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
   // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
@@ -132,6 +178,15 @@ export default function AgendaPage() {
       // desselecionar sem sair do modo Semana.
       if (typeof vals.date === 'string') {
         setDiaSel(vals.date)
+        // Mês: mover a visita pra fora do mês visível tira o card da
+        // grade (ela mudou de mês), mas a âncora sozinha não segue — sem
+        // isto a seleção fica presa olhando pro mês errado. É estado da
+        // PÁGINA (`ancoraMes`), não da `_VistaMes`: passar a âncora pra
+        // baixo só pro filho escrever de volta inverteria o fluxo de dados
+        // dos outros modos (ruling do controlador, brief 3d).
+        if (mes && ancoraMes && !noMes(vals.date, ancoraMes)) {
+          setAncoraMes(primeiroDiaDoMes(vals.date))
+        }
       }
     } catch (e) {
       setErroAjuste(e instanceof Error && e.message ? e.message : mensagemDeFalha(e))
@@ -141,7 +196,7 @@ export default function AgendaPage() {
   return (
     <div className="mx-auto w-full max-w-[880px] space-y-4">
       <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
-        {(['lista', 'semana'] as const).map((m) => (
+        {(['lista', 'semana', 'mes'] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -152,7 +207,7 @@ export default function AgendaPage() {
               modoAgenda === m ? 'bg-accent font-semibold' : 'text-muted-foreground',
             )}
           >
-            {m === 'lista' ? 'Lista' : 'Semana'}
+            {m === 'lista' ? 'Lista' : m === 'semana' ? 'Semana' : 'Mês'}
           </button>
         ))}
       </div>
@@ -162,18 +217,38 @@ export default function AgendaPage() {
           type="button"
           aria-label="Período anterior"
           className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
-          onClick={() => ancora && setInicio(deslocarJanela(ancora, -janelaDias))}
+          onClick={() => {
+            // Mês navega de calendário (±1 mês), não ±N dias — misturar as
+            // duas aritméticas aqui é o mesmo erro que motivou `ancoraMes`
+            // ser um estado à parte de `inicio`.
+            if (mes) {
+              if (ancoraMes) setAncoraMes(deslocarMes(ancoraMes, -1))
+            } else if (ancora) {
+              setInicio(deslocarJanela(ancora, -janelaDias))
+            }
+          }}
         >
           <ChevronLeft className="h-5 w-5" aria-hidden />
         </button>
         <span className="text-sm font-medium">
-          {data ? `${rotuloDia(data.date_from)} – ${rotuloDia(data.date_to)}` : '—'}
+          {mes
+            // "setembro de 2026", não `date_from`–`date_to` do payload — a
+            // grade de 42 dias transborda pro mês vizinho nas duas pontas, e
+            // "dom 30 ago – sáb 10 out" mentiria sobre qual mês está aberto.
+            ? (ancoraMes ? rotuloMes(ancoraMes) : '—')
+            : (data ? `${rotuloDia(data.date_from)} – ${rotuloDia(data.date_to)}` : '—')}
         </span>
         <button
           type="button"
           aria-label="Próximo período"
           className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
-          onClick={() => ancora && setInicio(deslocarJanela(ancora, janelaDias))}
+          onClick={() => {
+            if (mes) {
+              if (ancoraMes) setAncoraMes(deslocarMes(ancoraMes, 1))
+            } else if (ancora) {
+              setInicio(deslocarJanela(ancora, janelaDias))
+            }
+          }}
         >
           <ChevronRight className="h-5 w-5" aria-hidden />
         </button>
@@ -186,8 +261,8 @@ export default function AgendaPage() {
         <span className="text-sm font-medium">
           Só minhas
           <span className="block text-xs font-normal text-muted-foreground">
-            {semana
-              ? 'Desligado na semana: a carga é da equipe'
+            {visaoEquipe
+              ? (mes ? 'Desligado no mês: a carga é da equipe' : 'Desligado na semana: a carga é da equipe')
               : semEmpregado
                 ? 'Seu usuário não tem técnico vinculado'
                 : filterMine
@@ -198,26 +273,26 @@ export default function AgendaPage() {
         <input
           id="agenda-filter-mine"
           type="checkbox"
-          checked={semana ? false : filterMine && !semEmpregado}
-          disabled={semana || semEmpregado}
+          checked={visaoEquipe ? false : filterMine && !semEmpregado}
+          disabled={visaoEquipe || semEmpregado}
           onChange={(e) => setFilterMine(e.target.checked)}
           className="h-6 w-6 shrink-0 cursor-pointer accent-ok disabled:opacity-40"
         />
       </label>
 
-      {isLoading && <LoadingState label="Carregando sua agenda..." />}
+      {(isLoading || mesCarregando) && <LoadingState label="Carregando sua agenda..." />}
       {error && (
         <p className="text-center text-danger">
           Erro ao carregar a agenda. Verifique conexão.
         </p>
       )}
-      {!isLoading && !error && !semana && grupos.length === 0 && (
+      {!isLoading && !error && modoAgenda === 'lista' && grupos.length === 0 && (
         <p className="py-8 text-center text-muted-foreground">
           Nenhuma visita neste período.
         </p>
       )}
 
-      {!semana && grupos.map((g) => (
+      {modoAgenda === 'lista' && grupos.map((g) => (
         <section key={g.date} className="space-y-2">
           <h2 className="sticky top-0 z-10 bg-background py-1 text-sm font-semibold uppercase text-muted-foreground">
             {rotuloDia(g.date)}
@@ -268,6 +343,24 @@ export default function AgendaPage() {
             <p className="py-6 text-center text-muted-foreground">Nenhuma visita neste dia.</p>
           )}
         </>
+      )}
+
+      {mes && !mesCarregando && (
+        <VistaMes
+          visitas={visitas}
+          dias={pontosDia}
+          ancora={ancoraMes ?? ''}
+          hoje={data?.server_today ?? null}
+          diaSel={diaSelMes}
+          onSelecionarDia={setDiaSel}
+          roster={roster}
+          podeAjustar={!!data?.can_manage}
+          emAjuste={emAjusteAtual}
+          onAjustar={ajustar}
+          onAlternarAjuste={(x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x))}
+          erroAjuste={erroAjuste}
+          onSelecionarVisita={setSelecionada}
+        />
       )}
 
       {data?.can_manage && (
