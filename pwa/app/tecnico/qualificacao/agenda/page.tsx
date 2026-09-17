@@ -1,7 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
+import { VisitaSheet } from '../_components/VisitaSheet'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { useAgenda, useAgendaDisponivel } from '@/lib/hooks/useAgenda'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
@@ -50,7 +51,12 @@ export default function AgendaPage() {
   // `date_from`, que passa a ancorar a navegação.
   const [inicio, setInicio] = useState<string | null>(null)
   const fim = inicio ? deslocarJanela(inicio, JANELA_DIAS - 1) : null
-  const { data, isLoading, error } = useAgenda(inicio, fim, filterMine)
+  // `disponivel.data` é `undefined` enquanto a query de disponibilidade
+  // carrega (não `false`) — só o `false` explícito (módulo ausente) deve
+  // segurar o `pwa_agenda_fetch`. Enquanto carrega, a busca segue normal.
+  const { data, isLoading, error } = useAgenda(inicio, fim, filterMine, disponivel.data !== false)
+  const [selecionada, setSelecionada] = useState<VisitaAgenda | null>(null)
+  const [criando, setCriando] = useState(false)
 
   if (disponivel.data === false) {
     return (
@@ -131,10 +137,35 @@ export default function AgendaPage() {
             {rotuloDia(g.date)}
           </h2>
           {g.visitas.map((v) => (
-            <VisitaCard key={v.id} visita={v} onSelect={() => undefined} />
+            <VisitaCard key={v.id} visita={v} onSelect={setSelecionada} />
           ))}
         </section>
       ))}
+
+      {data?.can_manage && (
+        <button
+          type="button"
+          onClick={() => setCriando(true)}
+          className="fixed bottom-20 right-4 z-40 flex h-14 items-center gap-2 rounded-full bg-primary px-5 font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] lg:bottom-6"
+        >
+          <Plus className="h-5 w-5" aria-hidden />
+          Nova visita
+        </button>
+      )}
+
+      <VisitaSheet
+        key={selecionada?.id ?? 'nenhuma'}
+        open={!!selecionada}
+        modo="editar"
+        visita={selecionada}
+        onClose={() => setSelecionada(null)}
+      />
+      <VisitaSheet
+        open={criando}
+        modo="criar"
+        visita={null}
+        onClose={() => setCriando(false)}
+      />
     </div>
   )
 }

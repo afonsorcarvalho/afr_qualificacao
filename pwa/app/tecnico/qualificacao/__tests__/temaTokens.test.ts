@@ -286,6 +286,12 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // (`text-muted-foreground`) é o que pinta o traço do ícone, e é só a
   // co-ocorrência com ele que traz a linha para a regra.
   'app/tecnico/qualificacao/historico/page.tsx :: opacity-60': 'ícone (ChevronRight) em par apaga/acende com group-hover:opacity-100 — decoração/affordance, sem piso de contraste de texto.',
+
+  // --- Task 7 (Agenda técnico): BottomSheet, folha de edição/criação de visita ---
+  // Mesmo raciocínio do overlay do PdfViewerModal e do lightbox do
+  // CollectedCard: escurece a página atrás da folha nos dois temas — não é
+  // superfície do app, é camada de foco sobre o conteúdo por trás.
+  'components/ui/BottomSheet.tsx :: bg-black/60': 'Overlay preto por trás da folha — legítimo nos dois temas, escurece a página atrás pra folha se ler (mesmo raciocínio do overlay do PdfViewerModal e do lightbox do CollectedCard).',
 }
 
 function arquivos(): string[] {

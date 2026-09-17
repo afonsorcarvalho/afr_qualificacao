@@ -3,6 +3,7 @@ import { ReactNode, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Wrench } from 'lucide-react'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
+import { useAgendaDisponivel } from '@/lib/hooks/useAgenda'
 import {
   NavProgressBar,
   NavProgressProvider,
@@ -15,6 +16,10 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const setLastUserId = useTecnicoSettings((s) => s.setLastUserId)
+  // `undefined` enquanto carrega: mostra a aba e evita o piscar de um item
+  // que aparece depois. Só `false` (modelo ausente) esconde.
+  const { data: temAgenda } = useAgendaDisponivel()
+  const agendaDisponivel = temAgenda !== false
 
   // Refresca `lastUserId` uma vez por montagem do layout (todo entra em
   // /tecnico/qualificacao/*, este layout persiste por baixo). Sem isso, só a
@@ -55,7 +60,7 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
           visível. Efeito colateral aceito: a barra de navegação inferior
           deixa de rolar junto e fica sempre à vista. */}
       <div className="mx-auto flex h-dvh min-h-0 w-full max-w-[480px] flex-col overflow-hidden bg-background sm:max-w-[720px] lg:max-w-none lg:flex-row">
-        <TecnicoNav variant="side" />
+        <TecnicoNav variant="side" agendaDisponivel={agendaDisponivel} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-10 border-b border-border bg-card shadow-md lg:static lg:shadow-none">
             <div className="flex items-center justify-between px-4 py-3">
@@ -79,7 +84,7 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
                 ser o `main` inteiro, arrastando as duas colunas juntas. */}
             <div className="h-full p-3">{children}</div>
           </main>
-          <TecnicoNav variant="bottom" />
+          <TecnicoNav variant="bottom" agendaDisponivel={agendaDisponivel} />
         </div>
       </div>
     </NavProgressProvider>

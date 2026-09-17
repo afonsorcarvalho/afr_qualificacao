@@ -24,12 +24,14 @@ export function useAgenda(
   dateFrom: string | null,
   dateTo: string | null,
   onlyMine: boolean,
+  enabled: boolean,
 ) {
   return useQuery<AgendaPayload>({
     queryKey: ['agenda', dateFrom, dateTo, onlyMine],
     queryFn: () => fetchAgenda(dateFrom, dateTo, onlyMine),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
+    enabled,
   })
 }
 

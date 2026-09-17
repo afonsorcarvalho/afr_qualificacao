@@ -9,6 +9,14 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/tecnico/qualificacao',
 }))
 
+// O layout agora consulta `useAgendaDisponivel` (Task 7, esconder a aba
+// Agenda sem o módulo de agendamento). Este teste é sobre a casca de
+// layout (altura, rolagem), não sobre essa consulta — mockar evita bater
+// numa rede inexistente neste ambiente e mantém as asserções focadas.
+vi.mock('@/lib/hooks/useAgenda', () => ({
+  useAgendaDisponivel: () => ({ data: true }),
+}))
+
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
