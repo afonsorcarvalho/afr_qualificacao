@@ -27,6 +27,12 @@ describe('FaixaDias', () => {
     expect(screen.queryByText('0h')).toBeNull()
   })
 
+  it('dia vazio não anuncia "0h" no aria-label (só no texto visível havia guarda)', () => {
+    render(<FaixaDias dias={dias} selecionado="2026-09-14" onSelecionar={vi.fn()} />)
+    const vazio = screen.getAllByRole('button')[1]
+    expect(vazio.getAttribute('aria-label')).not.toMatch(/0h/)
+  })
+
   it('dia com conflito recebe rótulo acessível', () => {
     render(<FaixaDias dias={dias} selecionado="2026-09-14" onSelecionar={vi.fn()} />)
     expect(screen.getAllByRole('button')[2].getAttribute('aria-label')).toMatch(/conflito/i)
@@ -92,6 +98,12 @@ describe('PainelRecursos — técnico', () => {
     fireEvent.click(screen.getByRole('button', { name: /Bruno/ }))
     expect(onTocarTecnico).toHaveBeenCalledWith(9)
   })
+
+  it('marca o técnico dono da visita em ajuste', () => {
+    render(painel({ alvoAtivo: true, tecnicoIdDaVisita: 441 }))
+    expect(screen.getByRole('button', { name: /Afonso/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Bruno/ })).toHaveAttribute('aria-pressed', 'false')
+  })
 })
 
 describe('PainelRecursos — instrumento', () => {
@@ -129,5 +141,17 @@ describe('PainelRecursos — instrumento', () => {
     render(painel({ onTrocarDimensao }))
     fireEvent.click(screen.getByRole('button', { name: /Instrumento/ }))
     expect(onTrocarDimensao).toHaveBeenCalledWith('instrumento')
+  })
+
+  it('dois usos no mesmo dia: as duas faixas de horário ficam visíveis, nenhuma escondida em reticências', () => {
+    const doisUsos = [
+      { id: 1, name: 'Q001', vencido: false, usos: [
+        { visitaId: 7, osName: 'OS26-02', tecnicoName: 'Afonso', faixa: '08:00–12:00' },
+        { visitaId: 8, osName: 'OS26-05', tecnicoName: 'Bruno', faixa: '13:00–17:00' },
+      ] },
+    ]
+    render(painel({ dimensao: 'instrumento', instrumentos: doisUsos }))
+    expect(screen.getByText(/08:00–12:00/)).toBeInTheDocument()
+    expect(screen.getByText(/13:00–17:00/)).toBeInTheDocument()
   })
 })

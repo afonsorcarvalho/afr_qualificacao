@@ -40,6 +40,7 @@ export function PainelRecursos({
   tecnicos,
   instrumentos,
   instrumentoIdsDaVisita,
+  tecnicoIdDaVisita,
   alvoAtivo,
   onTocarTecnico,
   onTocarInstrumento,
@@ -49,6 +50,8 @@ export function PainelRecursos({
   tecnicos: CargaTecnico[]
   instrumentos: UsoInstrumento[]
   instrumentoIdsDaVisita: number[]
+  /** Dono atual da visita em ajuste — marca a linha do técnico correspondente. */
+  tecnicoIdDaVisita?: number
   alvoAtivo: boolean
   onTocarTecnico: (id: number) => void
   onTocarInstrumento: (id: number) => void
@@ -77,7 +80,12 @@ export function PainelRecursos({
 
       <div className="p-1">
         {dimensao === 'tecnico' && tecnicos.map((t) => (
-          <Linha key={t.id} ativo={alvoAtivo} aoTocar={() => onTocarTecnico(t.id)}>
+          <Linha
+            key={t.id}
+            ativo={alvoAtivo}
+            pressionado={t.id === tecnicoIdDaVisita}
+            aoTocar={() => onTocarTecnico(t.id)}
+          >
             <span className="w-28 shrink-0 truncate">{t.name}</span>
             <span className="h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
               <span
@@ -99,11 +107,23 @@ export function PainelRecursos({
             aoTocar={() => onTocarInstrumento(i.id)}
           >
             <span className="w-20 shrink-0 truncate">{i.name}</span>
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {i.usos.length === 0
-                ? 'livre'
-                : i.usos.map((u) => `${u.faixa} · ${u.osName}/${u.tecnicoName}`).join(' | ')}
-            </span>
+            {i.usos.length === 0 ? (
+              <span className="min-w-0 flex-1 text-xs text-muted-foreground">livre</span>
+            ) : (
+              // Uma linha por uso, nunca uma string concatenada: o horário é o
+              // que prova que o instrumento não está livre naquela faixa, e
+              // truncar a linha inteira (Fix round 1, item 2) podia esconder
+              // um turno inteiro atrás de "…". A faixa fica sempre visível;
+              // só o nome da OS/técnico trunca por linha.
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-xs text-muted-foreground">
+                {i.usos.map((u) => (
+                  <span key={u.visitaId} className="flex min-w-0 items-baseline gap-1">
+                    <span className="shrink-0">{u.faixa}</span>
+                    <span className="min-w-0 truncate">· {u.osName}/{u.tecnicoName}</span>
+                  </span>
+                ))}
+              </span>
+            )}
             {/* O aviso é dito em texto, não só em cor: cor sozinha não chega a
                 quem não a distingue, e o card fica em tela pequena ao sol. */}
             {i.vencido && (

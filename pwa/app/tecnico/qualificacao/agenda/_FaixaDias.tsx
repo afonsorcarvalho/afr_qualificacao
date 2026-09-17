@@ -37,7 +37,7 @@ export function FaixaDias({
             key={d.date}
             type="button"
             aria-pressed={ativo}
-            aria-label={`${sigla} ${num}, ${horasCurtas(d.horas)}${d.conflito ? ', com conflito' : ''}`}
+            aria-label={`${sigla} ${num}, ${d.horas > 0 ? horasCurtas(d.horas) : 'sem horas'}${d.conflito ? ', com conflito' : ''}`}
             onClick={() => onSelecionar(d.date)}
             className={clsx(
               'flex min-h-[44px] flex-1 flex-col items-center justify-center rounded-md px-0.5 py-1',
