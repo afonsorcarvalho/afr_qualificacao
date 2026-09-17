@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes,
   corDoTecnico, tecnicosPorDia, PALETA, COR_SEM_TECNICO,
+  corDoInstrumento, instrumentosPorDia,
 } from '../agenda/mes'
-import type { VisitaAgenda, Opcao } from '@/lib/odoo/agenda'
+import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -188,6 +189,85 @@ describe('tecnicosPorDia', () => {
     )
     const dia = r.find((d) => d.date === '2026-09-17')!
     expect(dia.pontos.map((p) => p.id)).toEqual([441, 9, false])
+  })
+})
+
+describe('corDoInstrumento', () => {
+  it('é estável entre chamadas para o mesmo id', () => {
+    expect(corDoInstrumento(7)).toBe(corDoInstrumento(7))
+  })
+
+  it('vem da mesma PALETA usada por corDoTecnico', () => {
+    expect(PALETA).toContain(corDoInstrumento(3))
+  })
+})
+
+describe('instrumentosPorDia', () => {
+  const opcoes: InstrumentoOpcao[] = [
+    { id: 5, name: 'Multímetro', validade: '2027-01-01' },
+    { id: 8, name: 'Termômetro', validade: false },
+  ]
+  const dias = ['2026-09-17', '2026-09-18']
+
+  it('duas visitas usando o mesmo instrumento no dia rendem um único item com visitas: 2', () => {
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [5], instrument_list: ['Multímetro'] }),
+       v({ id: 2, date: '2026-09-17', instrument_ids: [5], instrument_list: ['Multímetro'] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos).toEqual([
+      { id: 5, name: 'Multímetro', cor: corDoInstrumento(5), visitas: 2 },
+    ])
+  })
+
+  it('instrumento fora de `opcoes` vira "Instrumento #<id>", sem parear por índice com instrument_list', () => {
+    // `instrument_list` é filtrada de nomes vazios no servidor, então pode
+    // ficar mais curta que `instrument_ids` — aqui ela traz só o nome de UM
+    // instrumento (o 5) enquanto `instrument_ids` também usa o 99, que não
+    // está em `opcoes`. Se o código pareasse por posição, o 99 roubaria o
+    // nome "Multímetro" do índice 0.
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [99], instrument_list: ['Multímetro'] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos).toEqual([
+      { id: 99, name: 'Instrumento #99', cor: corDoInstrumento(99), visitas: 1 },
+    ])
+  })
+
+  it('dia sem visita rende instrumentos: []', () => {
+    const r = instrumentosPorDia([], dias, opcoes)
+    expect(r).toEqual([
+      { date: '2026-09-17', instrumentos: [] },
+      { date: '2026-09-18', instrumentos: [] },
+    ])
+  })
+
+  it('instrumento das opções não usado no dia não vira item', () => {
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [5], instrument_list: ['Multímetro'] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos.map((i) => i.id)).toEqual([5])
+  })
+
+  it('ordem segue `opcoes`, com desconhecidos no fim por id crescente', () => {
+    // `opcoes` aqui está em ordem DECRESCENTE de id (8 antes de 5) de
+    // propósito: se o código ignorasse a ordem de `opcoes` e só ordenasse
+    // tudo por id crescente, este teste pegaria a diferença.
+    const opcoesInvertidas: InstrumentoOpcao[] = [
+      { id: 8, name: 'Termômetro', validade: false },
+      { id: 5, name: 'Multímetro', validade: '2027-01-01' },
+    ]
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [8, 5, 99, 50] })],
+      dias, opcoesInvertidas,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos.map((i) => i.id)).toEqual([8, 5, 50, 99])
   })
 })
 

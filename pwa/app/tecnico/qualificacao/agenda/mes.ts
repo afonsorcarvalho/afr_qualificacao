@@ -7,7 +7,7 @@
  * `janela.ts` — quem decide "hoje" é o servidor, o front só soma dias sobre
  * uma data que já veio pronta.
  */
-import type { VisitaAgenda, Opcao } from '@/lib/odoo/agenda'
+import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
 
 export interface PontoTecnico {
   /** `false` = visita sem técnico atribuído. */
@@ -178,5 +178,91 @@ export function tecnicosPorDia(
       total: doDia.length,
       conflito: doDia.some((v) => v.conflict),
     }
+  })
+}
+
+export interface PontoInstrumento {
+  id: number
+  /** Nome de `pwa_instrumento_options`; `Instrumento #<id>` quando o id não
+   *  está nas opções — NUNCA pareado com `instrument_list`, que pode estar
+   *  desalinhado com `instrument_ids` (ver cabeçalho de `instrumentosPorDia`). */
+  name: string
+  cor: string
+  /** Quantas visitas do dia usam este instrumento. */
+  visitas: number
+}
+
+export interface PontosInstrumentoDia {
+  date: string
+  instrumentos: PontoInstrumento[]
+}
+
+/**
+ * Cor estável por id de instrumento, da mesma `PALETA` de `corDoTecnico`.
+ * Técnico e instrumento podem cair na mesma cor — o que separa os dois
+ * domínios na grade é a FORMA (bolinha x triângulo), não o matiz.
+ */
+export function corDoInstrumento(id: number): string {
+  return PALETA[id % PALETA.length]
+}
+
+/**
+ * Um item por instrumento distinto usado no dia, na ordem de `opcoes` (que já
+ * vem ordenada do servidor), seguido dos ids que não estão em `opcoes`, em
+ * ordem crescente de id.
+ *
+ * A contagem e o nome vêm de fontes diferentes de propósito: no servidor,
+ * `instrument_list` é `list(filter(None, ...mapped('name')))`, então um
+ * instrumento sem nome cadastrado some da lista mas permanece em
+ * `instrument_ids` — os dois arrays podem ficar DESALINHADOS em tamanho e
+ * posição. Pareando por índice, um instrumento roubaria o nome do outro.
+ * Por isso o nome vem sempre de `opcoes` (o parâmetro `pwa_instrumento_options`),
+ * nunca de `instrument_list`.
+ */
+export function instrumentosPorDia(
+  visitas: VisitaAgenda[],
+  dias: string[],
+  opcoes: InstrumentoOpcao[],
+): PontosInstrumentoDia[] {
+  return dias.map((date) => {
+    const doDia = visitas.filter((v) => v.date === date)
+
+    // Conta visitas por id de instrumento, direto de `instrument_ids` — nunca
+    // de `instrument_list`, que pode estar desalinhada (ver comentário acima).
+    const contagem = new Map<number, number>()
+    for (const v of doDia) {
+      for (const id of v.instrument_ids) {
+        contagem.set(id, (contagem.get(id) ?? 0) + 1)
+      }
+    }
+
+    const instrumentos: PontoInstrumento[] = []
+
+    // Primeiro os instrumentos conhecidos, na ordem que `opcoes` já traz.
+    for (const o of opcoes) {
+      const visitasCount = contagem.get(o.id)
+      if (!visitasCount) continue
+      instrumentos.push({
+        id: o.id,
+        name: o.name,
+        cor: corDoInstrumento(o.id),
+        visitas: visitasCount,
+      })
+      contagem.delete(o.id)
+    }
+
+    // Sobrou no mapa só quem usou instrumento fora de `opcoes` — ordem
+    // crescente de id, já que não há nome de cadastro pra ordenar por ele.
+    const desconhecidos = Array.from(contagem.keys()).sort((a, b) => a - b)
+    for (const id of desconhecidos) {
+      instrumentos.push({
+        id,
+        name: `Instrumento #${id}`,
+        cor: corDoInstrumento(id),
+        visitas: contagem.get(id)!,
+      })
+    }
+
+    return { date, instrumentos }
   })
 }
