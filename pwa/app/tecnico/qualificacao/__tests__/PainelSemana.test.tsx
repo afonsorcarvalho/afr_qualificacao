@@ -143,15 +143,40 @@ describe('PainelRecursos — instrumento', () => {
     expect(onTrocarDimensao).toHaveBeenCalledWith('instrumento')
   })
 
-  it('dois usos no mesmo dia: as duas faixas de horário ficam visíveis, nenhuma escondida em reticências', () => {
+  it('dois usos no mesmo dia: cada faixa vive em seu próprio nó, não numa string concatenada', () => {
+    // Fix round 2: a versão anterior deste teste (`getByText(/08:00–12:00/)`)
+    // passava mesmo contra o `join(' | ')` de antes do fix round 1, porque
+    // happy-dom/jsdom não aplica layout nem `text-overflow: ellipsis` — o
+    // texto truncado nunca some do DOM, só do olho. A asserção "está no
+    // documento" era verdadeira nos dois casos; não discriminava o defeito.
+    // Este teste afirma ESTRUTURA, não presença de texto.
     const doisUsos = [
       { id: 1, name: 'Q001', vencido: false, usos: [
         { visitaId: 7, osName: 'OS26-02', tecnicoName: 'Afonso', faixa: '08:00–12:00' },
         { visitaId: 8, osName: 'OS26-05', tecnicoName: 'Bruno', faixa: '13:00–17:00' },
       ] },
     ]
-    render(painel({ dimensao: 'instrumento', instrumentos: doisUsos }))
-    expect(screen.getByText(/08:00–12:00/)).toBeInTheDocument()
-    expect(screen.getByText(/13:00–17:00/)).toBeInTheDocument()
+    const { container } = render(painel({ dimensao: 'instrumento', instrumentos: doisUsos }))
+
+    // Match EXATO (sem regex): só existe um elemento cujo texto INTEIRO é
+    // "08:00–12:00" quando cada uso tem seu próprio nó-folha. Se as duas
+    // faixas estivessem concatenadas num span só (`join(' | ')`), nenhum
+    // elemento teria texto exatamente igual a uma faixa isolada — o texto
+    // do único nó seria a string inteira concatenada — e `getByText` com
+    // match exato lançaria "elemento não encontrado".
+    const faixa1 = screen.getByText('08:00–12:00')
+    const faixa2 = screen.getByText('13:00–17:00')
+    expect(faixa1).not.toBe(faixa2)
+
+    // Segunda rede, mais direta: nenhum nó-folha (sem filhos elemento) do
+    // DOM contém as duas faixas ao mesmo tempo — é exatamente a assinatura
+    // do `join(' | ')` que o fix round 1 removeu.
+    const algumNoFolhaTemAsDuas = Array.from(container.querySelectorAll('*')).some(
+      (el) =>
+        el.children.length === 0 &&
+        (el.textContent ?? '').includes('08:00–12:00') &&
+        (el.textContent ?? '').includes('13:00–17:00'),
+    )
+    expect(algumNoFolhaTemAsDuas).toBe(false)
   })
 })
