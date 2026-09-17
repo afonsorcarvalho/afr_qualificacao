@@ -7,7 +7,14 @@ vi.mock('../client', () => ({
   default: { callKw: (...a: unknown[]) => callKw(...a), searchCount: (...a: unknown[]) => searchCount(...a) },
 }))
 
-import { fetchAgenda, agendaDisponivel, updateVisita, createVisita, deleteVisita } from '../agenda'
+import {
+  fetchAgenda,
+  agendaDisponivel,
+  updateVisita,
+  createVisita,
+  deleteVisita,
+  listTecnicoOptions,
+} from '../agenda'
 
 const MODEL = 'afr.qualificacao.os.visita'
 
@@ -64,5 +71,11 @@ describe('agenda RPC', () => {
     callKw.mockResolvedValue(true)
     await deleteVisita(9)
     expect(callKw).toHaveBeenCalledWith(MODEL, 'pwa_visita_delete', [9])
+  })
+
+  it('listTecnicoOptions chama pwa_tecnico_options, não board_technician_options', async () => {
+    callKw.mockResolvedValue([{ id: 441, name: 'Afonso' }])
+    await listTecnicoOptions()
+    expect(callKw).toHaveBeenCalledWith(MODEL, 'pwa_tecnico_options', [])
   })
 })

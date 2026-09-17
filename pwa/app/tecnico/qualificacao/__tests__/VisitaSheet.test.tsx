@@ -77,6 +77,15 @@ describe('VisitaSheet', () => {
     )
   })
 
+  it('modo criar valida obrigatórios antes de chamar a mutação', async () => {
+    render(<VisitaSheet open modo="criar" visita={null} onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /Criar/ }))
+    await waitFor(() =>
+      expect(screen.getByText(/Preencha OS, técnico e data/)).toBeInTheDocument(),
+    )
+    expect(mutateCreate).not.toHaveBeenCalled()
+  })
+
   it('modo criar não oferece apagar', () => {
     render(<VisitaSheet open modo="criar" visita={null} onClose={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /Apagar/ })).toBeNull()

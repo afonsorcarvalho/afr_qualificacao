@@ -7,35 +7,9 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { useAgenda, useAgendaDisponivel } from '@/lib/hooks/useAgenda'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
+import { agruparPorDia, deslocarJanela } from './janela'
 
 const JANELA_DIAS = 14
-
-export interface GrupoDia {
-  date: string
-  visitas: VisitaAgenda[]
-}
-
-/** Agrupa preservando a ordem em que o servidor mandou. */
-export function agruparPorDia(visitas: VisitaAgenda[]): GrupoDia[] {
-  const grupos: GrupoDia[] = []
-  for (const v of visitas) {
-    const ultimo = grupos[grupos.length - 1]
-    if (ultimo && ultimo.date === v.date) ultimo.visitas.push(v)
-    else grupos.push({ date: v.date, visitas: [v] })
-  }
-  return grupos
-}
-
-/**
- * Soma dias a uma data ISO sem tocar no relógio do aparelho. `Date.UTC` evita
- * que o fuso local mude o dia — o servidor é quem diz que dia é hoje.
- */
-export function deslocarJanela(dateFrom: string, dias: number): string {
-  const [a, m, d] = dateFrom.split('-').map(Number)
-  const base = new Date(Date.UTC(a, m - 1, d))
-  base.setUTCDate(base.getUTCDate() + dias)
-  return base.toISOString().slice(0, 10)
-}
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -57,6 +31,9 @@ export default function AgendaPage() {
   const { data, isLoading, error } = useAgenda(inicio, fim, filterMine, disponivel.data !== false)
   const [selecionada, setSelecionada] = useState<VisitaAgenda | null>(null)
   const [criando, setCriando] = useState(false)
+  // Muda a cada abertura: sem isto, os `useState` internos da folha em modo
+  // criar sobrevivem a fechar/reabrir e o FAB reabre com OS/data anteriores.
+  const [criarSeq, setCriarSeq] = useState(0)
 
   if (disponivel.data === false) {
     return (
@@ -145,7 +122,10 @@ export default function AgendaPage() {
       {data?.can_manage && (
         <button
           type="button"
-          onClick={() => setCriando(true)}
+          onClick={() => {
+            setCriarSeq((s) => s + 1)
+            setCriando(true)
+          }}
           className="fixed bottom-20 right-4 z-40 flex h-14 items-center gap-2 rounded-full bg-primary px-5 font-semibold text-primary-foreground shadow-[0_8px_24px_rgba(0,0,0,0.45)] lg:bottom-6"
         >
           <Plus className="h-5 w-5" aria-hidden />
@@ -161,6 +141,7 @@ export default function AgendaPage() {
         onClose={() => setSelecionada(null)}
       />
       <VisitaSheet
+        key={`criar-${criarSeq}`}
         open={criando}
         modo="criar"
         visita={null}

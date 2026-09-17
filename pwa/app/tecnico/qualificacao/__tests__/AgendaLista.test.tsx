@@ -3,7 +3,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { VisitaCard } from '../_components/VisitaCard'
-import { agruparPorDia, deslocarJanela } from '../agenda/page'
+import { agruparPorDia, deslocarJanela } from '../agenda/janela'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
 
 function visita(over: Partial<VisitaAgenda> = {}): VisitaAgenda {

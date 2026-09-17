@@ -98,8 +98,14 @@ export async function deleteVisita(id: number): Promise<boolean> {
   return odooClient.callKw<boolean>(VISITA_MODEL, 'pwa_visita_delete', [id])
 }
 
+/**
+ * `board_technician_options` exige leitura de `hr.employee` sem `sudo`, que
+ * o Gestor só tem hoje porque os Gestores existentes têm a caixa de HR
+ * marcada à mão. `pwa_tecnico_options` espelha o mesmo resultado em `sudo()`
+ * no servidor — um Gestor novo sem essa caixa não toma `AccessError` aqui.
+ */
 export async function listTecnicoOptions(): Promise<Opcao[]> {
-  return odooClient.callKw<Opcao[]>(VISITA_MODEL, 'board_technician_options', [])
+  return odooClient.callKw<Opcao[]>(VISITA_MODEL, 'pwa_tecnico_options', [])
 }
 
 export async function listOsOptions(): Promise<Opcao[]> {

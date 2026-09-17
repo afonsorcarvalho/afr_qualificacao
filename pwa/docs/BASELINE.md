@@ -52,3 +52,20 @@ novo contrato de 1 RPC só — contagem de testes não muda (2 → 2).
 | Comando | `npm test` (vitest run) |
 | `npx tsc --noEmit` | limpo |
 | `npm run build` | não rodado (dev server em uso na porta 3010) |
+
+## Atualização — 2026-09-16 (onda de correções do review final — agenda do técnico)
+
+Fixes pontuais do review final da feature "Agenda" (`app/tecnico/qualificacao/agenda`):
+`listTecnicoOptions()` passou a chamar `pwa_tecnico_options` (novo teste em
+`lib/odoo/__tests__/agenda.test.ts`); `VisitaSheet` ganhou validação de
+obrigatórios no modo criar antes do `mutateAsync` (novo teste em
+`__tests__/VisitaSheet.test.tsx`). Delta: +2 testes; contagem de arquivos
+não muda (39).
+
+| Métrica | Valor |
+|---|---|
+| Arquivos de teste | 39 |
+| Testes | 268 pass / 0 skip / 0 fail |
+| Comando | `npx vitest run` |
+| `npx tsc --noEmit` | **1 erro pré-existente, não introduzido por esta onda** — `.next/types/app/tecnico/qualificacao/agenda/page.ts` acusa `agruparPorDia`/`GrupoDia` como export não-padrão de um `page.tsx` (Next.js só aceita `default`/`metadata`/etc. como export nomeado de uma rota). Confirmado via `git stash` do arquivo: o erro persiste com o `page.tsx` original, sem a mudança desta onda (que só adicionou um `useState`). Fora do escopo desta onda corrigir (exigiria mover os helpers para um módulo à parte). |
+| `npm run build` | não rodado (dev server ativo na porta 3012, sessão `agenda16`) |

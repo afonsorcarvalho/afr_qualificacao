@@ -50,6 +50,10 @@ export function VisitaSheet({
 
   async function salvar() {
     setErro('')
+    if (modo === 'criar' && (!osId || !tecnicoId || !data)) {
+      setErro('Preencha OS, técnico e data antes de criar a visita.')
+      return
+    }
     try {
       if (modo === 'criar') {
         await criar.mutateAsync({
