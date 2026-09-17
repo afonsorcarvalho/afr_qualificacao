@@ -83,19 +83,37 @@ export function rotuloMes(iso: string): string {
   }).format(dt)
 }
 
-// Tons saturados de faixa média (equivalentes a tailwind `*-500`) — legíveis
-// tanto no `--card` quase branco do tema claro quanto no quase preto do
-// escuro. Cinza fica de fora da paleta de propósito: é a cor reservada pro
-// balde "sem técnico", nunca sorteada pra um técnico real.
+// Paleta de 12 tons — cresceu de 8 no fix round 2 (achado 5): `corDoTecnico`
+// indexa por `id % PALETA.length` com id de BANCO, então com 8 cores nove
+// técnicos já colidiam garantido, e ids arbitrários colidiam bem antes (3 e
+// 11 caíam na mesma). Dois chips iguais na legenda e dois pontinhos
+// indistinguíveis na célula derrubam a única coisa que o modo Mês entrega:
+// ver de relance DE QUEM é a visita.
+//
+// Nenhuma cor é livre: cada uma passa 3:1 (piso da WCAG 1.4.11 para
+// elemento gráfico que carrega informação) sobre o `--card` dos DOIS temas —
+// quase branco no claro, quase preto no escuro —, o que descarta metade do
+// catálogo do Tailwind (os amarelos claros somem no claro, os tons 800+
+// somem no escuro). Medido em `mes.test.ts`, que quebra se alguém trocar um
+// tom por um mais bonito e menos legível.
+//
+// A ORDEM também é escolhida: os matizes não entram em roda-cromática, e sim
+// intercalados (passo 5 sobre a roda), porque ids consecutivos são o caso
+// comum num cadastro — e matizes vizinhos em índices vizinhos seriam
+// justamente as duas cores parecidas na mesma célula.
 export const PALETA: string[] = [
-  '#0ea5e9', // sky-500
-  '#10b981', // emerald-500
-  '#f59e0b', // amber-500
-  '#8b5cf6', // violet-500
-  '#f43f5e', // rose-500
-  '#14b8a6', // teal-500
-  '#f97316', // orange-500
-  '#d946ef', // fuchsia-500
+  '#db2777', // pink-600
+  '#16a34a', // green-600
+  '#7c3aed', // violet-600
+  '#a16207', // yellow-700
+  '#0369a1', // sky-700
+  '#e11d48', // rose-600
+  '#0d9488', // teal-600
+  '#c026d3', // fuchsia-600
+  '#4d7c0f', // lime-700
+  '#6366f1', // indigo-500
+  '#ea580c', // orange-600
+  '#0891b2', // cyan-600
 ]
 
 export const COR_SEM_TECNICO = '#6b7280' // gray-500

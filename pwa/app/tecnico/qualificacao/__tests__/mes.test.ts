@@ -5,6 +5,9 @@ import {
 } from '../agenda/mes'
 import type { VisitaAgenda, Opcao } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { contraste, hex2rgb, hsl2rgb, tokenDe } from '@/tests/contraste'
 
 function v(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
   return {
@@ -185,5 +188,44 @@ describe('tecnicosPorDia', () => {
     )
     const dia = r.find((d) => d.date === '2026-09-17')!
     expect(dia.pontos.map((p) => p.id)).toEqual([441, 9, false])
+  })
+})
+
+/**
+ * Guarda da paleta (fix round 2, achado 5). A paleta original tinha 8 tons e
+ * `corDoTecnico` indexa por `id % PALETA.length` com id de BANCO: com 9
+ * técnicos a colisão era garantida, e com ids arbitrários acontecia bem
+ * antes (3 e 11 caíam na mesma cor). Dois chips idênticos na legenda e dois
+ * pontinhos indistinguíveis na célula é exatamente o que o modo Mês existe
+ * para evitar.
+ */
+describe('PALETA', () => {
+  it('tem pelo menos 12 tons, todos distintos', () => {
+    expect(PALETA.length).toBeGreaterThanOrEqual(12)
+    expect(new Set(PALETA).size).toBe(PALETA.length)
+  })
+
+  it('ids que colidiam na paleta de 8 (3 e 11) recebem cores diferentes', () => {
+    expect(corDoTecnico(3)).not.toBe(corDoTecnico(11))
+  })
+
+  it('cada cor da paleta, e o cinza de "sem técnico", passa 3:1 sobre --card nos DOIS temas', () => {
+    // Crescer a paleta não pode ser feito pegando qualquer shade: metade do
+    // catálogo do Tailwind (amarelo/âmbar claro) some sobre o `--card` quase
+    // branco do tema claro, e os tons escuros somem sobre o quase preto do
+    // escuro. 3:1 é o piso da WCAG 1.4.11 para elemento gráfico portador de
+    // informação — que é o que o pontinho é.
+    const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
+    for (const tema of [':root', ':root.dark']) {
+      const card = tokenDe(css, tema, 'card')
+      expect(card, `--card ausente em ${tema}`).not.toBeNull()
+      const bg = hsl2rgb(card!)
+      for (const cor of [...PALETA, COR_SEM_TECNICO]) {
+        expect(
+          contraste(hex2rgb(cor), bg),
+          `${cor} sobre --card de ${tema}`,
+        ).toBeGreaterThanOrEqual(3)
+      }
+    }
   })
 })
