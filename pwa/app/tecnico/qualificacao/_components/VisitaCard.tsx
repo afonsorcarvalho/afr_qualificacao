@@ -28,9 +28,18 @@ function Corpo({ visita }: { visita: VisitaAgenda }) {
       {!visita.is_mine && (
         <p className="text-xs text-muted-foreground">Técnico: {visita.tecnico_name}</p>
       )}
+      {/* Rótulo curto (não ícone): o card já usa 4 ícones (Clock, MapPin, Lock,
+          AlertTriangle) com sentidos fixos — outro ícone aqui confundiria. Texto
+          curto segue o padrão de metadado secundário do InstrumentBadges vizinho
+          ("Ciclo:", "Malha:"). */}
       {visita.equipment_list.length > 0 && (
         <p className="truncate text-xs text-muted-foreground">
-          {visita.equipment_list.join(', ')}
+          Equip.: {visita.equipment_list.join(', ')}
+        </p>
+      )}
+      {visita.instrument_list.length > 0 && (
+        <p className="truncate text-xs text-muted-foreground">
+          Instr.: {visita.instrument_list.join(', ')}
         </p>
       )}
       {visita.conflict && visita.conflict_msg && (
