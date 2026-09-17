@@ -47,10 +47,12 @@ export function VistaMes({
   onSelecionarVisita: (visita: VisitaAgenda) => void
 }) {
   // Legenda: só técnico com visita na janela visível (os 42 dias da
-  // grade) — o roster inteiro pode ter gente sem nenhuma visita no mês, e
+  // grade) — o roster inteiro pode ter gente sem nenhuma visita na janela, e
   // um chip por cada um deles é ruído puro, não informação (brief 3d).
-  // "Sem técnico" entra à parte, no fim, só quando alguma visita do mês não
-  // tem `tecnico_id`.
+  // "Sem técnico" entra à parte, no fim, só quando alguma visita DA JANELA
+  // (os 42 dias, inclusive o transbordo esmaecido pros meses vizinhos que a
+  // própria grade desenha) não tem `tecnico_id` — mesmo escopo dos chips
+  // de técnico acima, não só o mês estrito.
   const idsNaJanela = new Set(dias.flatMap((d) => d.pontos.map((p) => p.id)))
   const legenda = roster.filter((t) => idsNaJanela.has(t.id))
   const temSemTecnico = idsNaJanela.has(false)

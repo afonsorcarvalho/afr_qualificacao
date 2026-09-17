@@ -65,9 +65,9 @@ export default function AgendaPage() {
   const [emAjuste, setEmAjuste] = useState<VisitaAgenda | null>(null)
   const [erroAjuste, setErroAjuste] = useState('')
   const update = useUpdateVisita()
+  const tecnicos = useTecnicoOptions(visaoEquipe)
   // O painel de instrumentos só existe na Semana — o mês não tem painel de
   // recursos, só a legenda de técnicos.
-  const tecnicos = useTecnicoOptions(visaoEquipe)
   const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
 
   // Rede de segurança: se a visita em ajuste sumir do payload (apagada em
@@ -137,15 +137,27 @@ export default function AgendaPage() {
   // visita de técnico sem a flag `is_tecnico` contar no `total` do dia sem
   // gerar pontinho, silenciosamente.
   const roster = rosterTecnicos(tecnicos.data ?? [], visitas)
-  // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês), não há
-  // grade nem dia selecionado válido — `mesCarregando` segura o
-  // `LoadingState` mais abaixo em vez de uma grade meio vazia.
-  const mesCarregando = mes && ancoraMes === null
+  const hoje = data?.server_today ?? null
+  // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês) OU a
+  // busca da faixa completa ainda está em voo (2ª busca, cada toque em
+  // ◀ ▶ com `queryKey` novo), não há grade utilizável pra mostrar —
+  // `mesCarregando` segura o `LoadingState` mais abaixo em vez de uma
+  // grade meio vazia (42 células sem pontinho, sem anel de "hoje", sob o
+  // spinner). Fix round 1 (achado 1): o gate original só cobria a 1ª
+  // busca; `isLoading` sozinho já cobre as duas, porque também é `true`
+  // durante a 1ª.
+  const mesCarregando = mes && (ancoraMes === null || isLoading)
   const pontosDia = mes ? tecnicosPorDia(visitas, gradeMes, roster) : []
-  // O 1º dia do mês (`ancoraMes`) está sempre dentro da própria grade — é
-  // um fallback seguro quando `diaSel` aponta pra fora do mês visível
-  // (troca de mês, ou vindo de outro modo).
-  const diaSelMes = diaSel && gradeMes.includes(diaSel) ? diaSel : (ancoraMes ?? '')
+  // Dia default quando não há seleção válida na grade: primeiro tenta
+  // `hoje` (server_today) — mesmo critério da Semana, que nasce ancorada
+  // em `data.date_from` = hoje — e só cai no 1º dia do mês quando "hoje"
+  // está fora da grade visível (mês diferente do atual). Cair direto no
+  // dia 1 (fix round 1, achado 4) marcava dois dias ao mesmo tempo na
+  // primeira abertura: o anel de "hoje" no dia certo e o fundo de seleção
+  // no dia 1, com a lista de cards dizendo "Nenhuma visita neste dia."
+  const diaSelMes = diaSel && gradeMes.includes(diaSel)
+    ? diaSel
+    : (hoje && gradeMes.includes(hoje) ? hoje : (ancoraMes ?? ''))
   // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
   // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
   // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
@@ -350,7 +362,7 @@ export default function AgendaPage() {
           visitas={visitas}
           dias={pontosDia}
           ancora={ancoraMes ?? ''}
-          hoje={data?.server_today ?? null}
+          hoje={hoje}
           diaSel={diaSelMes}
           onSelecionarDia={setDiaSel}
           roster={roster}
