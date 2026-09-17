@@ -1,7 +1,7 @@
 'use client'
 import { clsx } from 'clsx'
 import { noMes } from './mes'
-import type { PontosDia } from './mes'
+import type { PontosDia, PontosInstrumentoDia, PontoInstrumento } from './mes'
 
 // Não é a semana de "hoje" — é só uma âncora fixa (domingo conhecido) pra
 // derivar as siglas D S T Q Q S S via `Intl`, em vez de hardcoded num array
@@ -35,8 +35,23 @@ function rotuloDia(date: string): string {
  * com menos nomes que o total ("3 visitas: Ana Silva, João Lima"), sem nada
  * dizendo de quem era a terceira. Só aparece quando `visitas > 1` — pendurar
  * "(1)" em todo mundo é ruído e ainda quebraria os labels exatos.
+ *
+ * Instrumentos entram como segundo grupo, separado por "; ", DEPOIS do
+ * sufixo de conflito — não antes: ", com conflito" qualifica as visitas
+ * (`corpo`), então tem que ficar colado nelas; se viesse depois de
+ * "instrumentos: ...", um leitor de tela ouviria o conflito como se fosse
+ * dos instrumentos, e não é. Sem contagem por item (diferente dos nomes de
+ * técnico): a granularidade que importa pro leitor de tela é "quais
+ * instrumentos", a contagem de uso por instrumento não muda a ação do
+ * técnico no dia. Dia sem instrumento não escreve a parte — não existe
+ * "instrumentos: " pendurado vazio.
  */
-function labelCelula(dia: PontosDia, dentro: boolean, ehHoje: boolean): string {
+function labelCelula(
+  dia: PontosDia,
+  instrumentos: PontoInstrumento[],
+  dentro: boolean,
+  ehHoje: boolean,
+): string {
   const prefixo = dentro ? '' : 'fora do mês, '
   const marca = ehHoje ? ', hoje' : ''
   const nomes = dia.pontos
@@ -45,29 +60,79 @@ function labelCelula(dia: PontosDia, dentro: boolean, ehHoje: boolean): string {
   const corpo = dia.total === 0
     ? 'sem visitas'
     : `${dia.total} ${dia.total === 1 ? 'visita' : 'visitas'}: ${nomes}`
+  const parteInstrumentos =
+    instrumentos.length > 0 ? `; instrumentos: ${instrumentos.map((i) => i.name).join(', ')}` : ''
   const sufixo = dia.conflito ? ', com conflito' : ''
-  return `${prefixo}${rotuloDia(dia.date)}${marca}, ${corpo}${sufixo}`
+  return `${prefixo}${rotuloDia(dia.date)}${marca}, ${corpo}${sufixo}${parteInstrumentos}`
 }
 
-// Até 4 pontinhos cabem soltos na célula; a partir do 5º técnico distinto,
-// mostra só 3 + rótulo textual "+N" — 4 pontinhos disputando espaço com um
-// "+1" ficariam ambíguos, e o aria-label já carrega a lista completa.
+// Até 4 marcas (técnico + instrumento juntos) cabem soltas na célula; a
+// partir da 5ª, mostra só 3 + rótulo textual "+N" — 4 marcas disputando
+// espaço com um "+1" ficariam ambíguas, e o aria-label já carrega a lista
+// completa dos dois grupos.
 const MAX_PONTOS_SOLTOS = 4
 const PONTOS_COM_MAIS = 3
 
+/**
+ * Reparte as `PONTOS_COM_MAIS` (3) marcas visíveis entre técnicos e
+ * instrumentos quando a célula excede `MAX_PONTOS_SOLTOS`.
+ *
+ * Se só um dos dois grupos tem item, ele leva as 3. Se os dois têm, cada um
+ * recebe 1 slot GARANTIDO e o slot restante vai para o grupo com mais itens
+ * (empate → técnicos) — sem essa garantia, um dia com poucos técnicos e
+ * muitos instrumentos (ou o inverso) escondia um grupo inteiro atrás do
+ * "+N", que é justamente o que a marca de instrumento existe para evitar.
+ */
+function repartirMarcas(
+  nTecnicos: number,
+  nInstrumentos: number,
+): { slotsTecnicos: number; slotsInstrumentos: number; restantes: number } {
+  const total = nTecnicos + nInstrumentos
+  if (total <= MAX_PONTOS_SOLTOS) {
+    return { slotsTecnicos: nTecnicos, slotsInstrumentos: nInstrumentos, restantes: 0 }
+  }
+  const restantes = total - PONTOS_COM_MAIS
+  if (nTecnicos > 0 && nInstrumentos > 0) {
+    let slotsTecnicos = 1
+    let slotsInstrumentos = 1
+    // O slot restante (o 3º) vai para quem tem mais itens; empate → técnicos.
+    if (nTecnicos >= nInstrumentos) {
+      slotsTecnicos += 1
+    } else {
+      slotsInstrumentos += 1
+    }
+    return { slotsTecnicos, slotsInstrumentos, restantes }
+  }
+  if (nTecnicos > 0) {
+    return { slotsTecnicos: PONTOS_COM_MAIS, slotsInstrumentos: 0, restantes }
+  }
+  return { slotsTecnicos: 0, slotsInstrumentos: PONTOS_COM_MAIS, restantes }
+}
+
 export function GradeMes({
   dias,
+  instrumentos,
   ancora,
   hoje,
   selecionado,
   onSelecionar,
 }: {
   dias: PontosDia[]
+  /**
+   * Na MESMA ordem de `dias` (as duas listas vêm de `gradeDoMes`), mas o
+   * casamento aqui dentro é por `date`, nunca por posição — a ordem do
+   * chamador nunca é uma dependência real.
+   */
+  instrumentos: PontosInstrumentoDia[]
   ancora: string
   hoje: string | null
   selecionado: string
   onSelecionar: (date: string) => void
 }) {
+  // Casado por `date`, nunca por posição: as duas listas hoje vêm de
+  // `gradeDoMes` na mesma ordem, mas nada nesta função pode depender disso.
+  const instrumentosPorData = new Map(instrumentos.map((i) => [i.date, i.instrumentos]))
+
   return (
     <div className="rounded-lg border border-border bg-card p-1">
       <div
@@ -88,16 +153,20 @@ export function GradeMes({
           const dentro = noMes(dia.date, ancora)
           const ehSelecionado = dia.date === selecionado
           const ehHoje = hoje !== null && dia.date === hoje
-          const excedeu = dia.pontos.length > MAX_PONTOS_SOLTOS
-          const pontosVisiveis = excedeu ? dia.pontos.slice(0, PONTOS_COM_MAIS) : dia.pontos
-          const restantes = excedeu ? dia.pontos.length - PONTOS_COM_MAIS : 0
+          const instrumentosDoDia = instrumentosPorData.get(dia.date) ?? []
+          const { slotsTecnicos, slotsInstrumentos, restantes } = repartirMarcas(
+            dia.pontos.length,
+            instrumentosDoDia.length,
+          )
+          const pontosVisiveis = dia.pontos.slice(0, slotsTecnicos)
+          const instrumentosVisiveis = instrumentosDoDia.slice(0, slotsInstrumentos)
 
           return (
             <button
               key={dia.date}
               type="button"
               aria-pressed={ehSelecionado}
-              aria-label={labelCelula(dia, dentro, ehHoje)}
+              aria-label={labelCelula(dia, instrumentosDoDia, dentro, ehHoje)}
               onClick={() => onSelecionar(dia.date)}
               className={clsx(
                 'flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-md p-1',
@@ -159,6 +228,27 @@ export function GradeMes({
                     )}
                     style={{ backgroundColor: p.cor }}
                   />
+                ))}
+                {instrumentosVisiveis.map((inst, i) => (
+                  // Triângulo em SVG inline com `fill` (não borda CSS) —
+                  // FORMA distingue instrumento de técnico, cor sozinha não
+                  // (Global Constraint de a11y: cor E forma nunca são o
+                  // único portador). Tamanho equivalente ao `h-1.5 w-1.5`
+                  // das bolinhas. Sem o `ring-1 ring-danger` de conflito que
+                  // as bolinhas ganham: conflito é propriedade da VISITA
+                  // (technico x horário), não do instrumento, e o
+                  // `aria-label` já carrega ", com conflito" independente de
+                  // quem está com anel — um anel quadrado atrás de um
+                  // triângulo também leria mal visualmente.
+                  <svg
+                    key={`t-${i}`}
+                    data-testid="triangulo"
+                    aria-hidden
+                    className="h-1.5 w-1.5 shrink-0"
+                    viewBox="0 0 10 10"
+                  >
+                    <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={inst.cor} />
+                  </svg>
                 ))}
                 {restantes > 0 && (
                   <span data-testid="mais" className="text-[9px] font-medium leading-none">

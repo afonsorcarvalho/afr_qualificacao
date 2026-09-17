@@ -72,6 +72,11 @@ export function VistaMes({
     <>
       <GradeMes
         dias={dias}
+        // Task 3 substitui por `instrumentosPorDia(...)`, calculado na
+        // page.tsx a partir de `pwa_instrumento_options` — este componente
+        // ainda não recebe essa fonte, então nenhum triângulo aparece por
+        // ora.
+        instrumentos={[]}
         ancora={ancora}
         hoje={hoje}
         selecionado={diaSel}
