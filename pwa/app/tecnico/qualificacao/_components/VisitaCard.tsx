@@ -55,9 +55,14 @@ function Corpo({ visita }: { visita: VisitaAgenda }) {
 export function VisitaCard({
   visita,
   onSelect,
+  onAjustar,
+  emAjuste = false,
 }: {
   visita: VisitaAgenda
   onSelect: (visita: VisitaAgenda) => void
+  /** Só o modo Semana passa isto; sem ele, não há botão. */
+  onAjustar?: (visita: VisitaAgenda) => void
+  emAjuste?: boolean
 }) {
   const base = 'flex w-full min-h-[44px] flex-col gap-1 rounded-lg border border-border bg-card p-3 text-left'
   // `lock_reason` é frase pronta do servidor. O front não decide nada aqui —
@@ -74,8 +79,19 @@ export function VisitaCard({
     )
   }
   return (
-    <button type="button" onClick={() => onSelect(visita)} className={clsx(base, 'hover:bg-accent')}>
-      <Corpo visita={visita} />
-    </button>
+    <div className={clsx('flex flex-col gap-1', emAjuste && 'rounded-lg ring-2 ring-primary')}>
+      <button type="button" onClick={() => onSelect(visita)} className={clsx(base, 'hover:bg-accent')}>
+        <Corpo visita={visita} />
+      </button>
+      {onAjustar && (
+        <button
+          type="button"
+          onClick={() => onAjustar(visita)}
+          className="min-h-[44px] rounded-md border border-border px-3 text-sm font-medium"
+        >
+          {emAjuste ? 'Concluir' : 'Ajustar'}
+        </button>
+      )}
+    </div>
   )
 }

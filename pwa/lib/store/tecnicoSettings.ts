@@ -6,11 +6,15 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export type ModoAgenda = 'lista' | 'semana'
+
 interface TecnicoSettings {
   filterMine: boolean
   lastUserId: number | null
+  modoAgenda: ModoAgenda
   setFilterMine: (v: boolean) => void
   setLastUserId: (id: number | null) => void
+  setModoAgenda: (m: ModoAgenda) => void
 }
 
 export const useTecnicoSettings = create<TecnicoSettings>()(
@@ -18,8 +22,10 @@ export const useTecnicoSettings = create<TecnicoSettings>()(
     (set) => ({
       filterMine: true,
       lastUserId: null,
+      modoAgenda: 'lista',
       setFilterMine: (filterMine) => set({ filterMine }),
       setLastUserId: (lastUserId) => set({ lastUserId }),
+      setModoAgenda: (modoAgenda) => set({ modoAgenda }),
     }),
     { name: 'tecnico-settings' },
   ),

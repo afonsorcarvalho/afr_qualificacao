@@ -4,12 +4,15 @@ import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
 import { LoadingState } from '@/components/ui/LoadingState'
-import { useAgenda, useAgendaDisponivel } from '@/lib/hooks/useAgenda'
+import { useAgenda, useAgendaDisponivel, useTecnicoOptions, useInstrumentoOptions, useUpdateVisita } from '@/lib/hooks/useAgenda'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
-import type { VisitaAgenda } from '@/lib/odoo/agenda'
+import type { VisitaAgenda, VisitaVals } from '@/lib/odoo/agenda'
+import { mensagemDeFalha } from '@/lib/odoo/client'
+import { clsx } from 'clsx'
 import { agruparPorDia, deslocarJanela } from './janela'
-
-const JANELA_DIAS = 14
+import { FaixaDias } from './_FaixaDias'
+import { PainelRecursos, type Dimensao } from './_PainelRecursos'
+import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana } from './carga'
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -20,11 +23,13 @@ function rotuloDia(iso: string): string {
 
 export default function AgendaPage() {
   const disponivel = useAgendaDisponivel()
-  const { filterMine, setFilterMine } = useTecnicoSettings()
+  const { filterMine, setFilterMine, modoAgenda, setModoAgenda } = useTecnicoSettings()
+  const semana = modoAgenda === 'semana'
   // `null` na primeira carga: o servidor decide a janela e devolve
   // `date_from`, que passa a ancorar a navegação.
   const [inicio, setInicio] = useState<string | null>(null)
-  const fim = inicio ? deslocarJanela(inicio, JANELA_DIAS - 1) : null
+  const janelaDias = semana ? 7 : 14
+  const fim = inicio ? deslocarJanela(inicio, janelaDias - 1) : null
   // `disponivel.data` é `undefined` enquanto a query de disponibilidade
   // carrega (não `false`) — só o `false` explícito (módulo ausente) deve
   // segurar o `pwa_agenda_fetch`. Enquanto carrega, a busca segue normal.
@@ -34,6 +39,13 @@ export default function AgendaPage() {
   // Muda a cada abertura: sem isto, os `useState` internos da folha em modo
   // criar sobrevivem a fechar/reabrir e o FAB reabre com OS/data anteriores.
   const [criarSeq, setCriarSeq] = useState(0)
+  const [diaSel, setDiaSel] = useState<string | null>(null)
+  const [dimensao, setDimensao] = useState<Dimensao>('tecnico')
+  const [emAjuste, setEmAjuste] = useState<VisitaAgenda | null>(null)
+  const [erroAjuste, setErroAjuste] = useState('')
+  const update = useUpdateVisita()
+  const tecnicos = useTecnicoOptions(semana)
+  const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
 
   if (disponivel.data === false) {
     return (
@@ -47,15 +59,59 @@ export default function AgendaPage() {
   const ancora = inicio ?? data?.date_from ?? null
   const semEmpregado = data ? !data.my_employee_id : false
   const grupos = agruparPorDia(data?.visitas ?? [])
+  const dias = ancora ? diasDaSemana(ancora) : []
+  const diaAtual = diaSel && dias.includes(diaSel) ? diaSel : dias[0] ?? ''
+  const visitas = data?.visitas ?? []
+  const doDia = visitas.filter((v) => v.date === diaAtual)
+  // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
+  // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
+  // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
+  // velha. Ressincronizar a partir do payload evita que ligar dois
+  // instrumentos em sequência desligue o primeiro.
+  const emAjusteAtual = emAjuste
+    ? visitas.find((v) => v.id === emAjuste.id) ?? emAjuste
+    : null
+
+  /**
+   * Cada toque no painel grava UM campo. A visita em ajuste continua
+   * selecionada depois do erro: o Gestor precisa poder tentar outro alvo sem
+   * recomeçar.
+   */
+  async function ajustar(vals: VisitaVals) {
+    if (!emAjuste) return
+    setErroAjuste('')
+    try {
+      await update.mutateAsync({ id: emAjuste.id, vals })
+    } catch (e) {
+      setErroAjuste(e instanceof Error && e.message ? e.message : mensagemDeFalha(e))
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-[880px] space-y-4">
+      <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
+        {(['lista', 'semana'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={modoAgenda === m}
+            onClick={() => setModoAgenda(m)}
+            className={clsx(
+              'min-h-[44px] flex-1 rounded-md text-sm',
+              modoAgenda === m ? 'bg-accent font-semibold' : 'text-muted-foreground',
+            )}
+          >
+            {m === 'lista' ? 'Lista' : 'Semana'}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2 py-1">
         <button
           type="button"
-          aria-label="Semanas anteriores"
+          aria-label="Período anterior"
           className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
-          onClick={() => ancora && setInicio(deslocarJanela(ancora, -JANELA_DIAS))}
+          onClick={() => ancora && setInicio(deslocarJanela(ancora, -janelaDias))}
         >
           <ChevronLeft className="h-5 w-5" aria-hidden />
         </button>
@@ -64,9 +120,9 @@ export default function AgendaPage() {
         </span>
         <button
           type="button"
-          aria-label="Próximas semanas"
+          aria-label="Próximo período"
           className="flex h-11 w-11 items-center justify-center rounded-md hover:bg-accent"
-          onClick={() => ancora && setInicio(deslocarJanela(ancora, JANELA_DIAS))}
+          onClick={() => ancora && setInicio(deslocarJanela(ancora, janelaDias))}
         >
           <ChevronRight className="h-5 w-5" aria-hidden />
         </button>
@@ -79,18 +135,20 @@ export default function AgendaPage() {
         <span className="text-sm font-medium">
           Só minhas
           <span className="block text-xs font-normal text-muted-foreground">
-            {semEmpregado
-              ? 'Seu usuário não tem técnico vinculado'
-              : filterMine
-                ? 'Visitas atribuídas a você'
-                : 'Visitas de toda a equipe'}
+            {semana
+              ? 'Desligado na semana: a carga é da equipe'
+              : semEmpregado
+                ? 'Seu usuário não tem técnico vinculado'
+                : filterMine
+                  ? 'Visitas atribuídas a você'
+                  : 'Visitas de toda a equipe'}
           </span>
         </span>
         <input
           id="agenda-filter-mine"
           type="checkbox"
           checked={filterMine && !semEmpregado}
-          disabled={semEmpregado}
+          disabled={semana || semEmpregado}
           onChange={(e) => setFilterMine(e.target.checked)}
           className="h-6 w-6 shrink-0 cursor-pointer accent-ok disabled:opacity-40"
         />
@@ -102,13 +160,13 @@ export default function AgendaPage() {
           Erro ao carregar a agenda. Verifique conexão.
         </p>
       )}
-      {!isLoading && !error && grupos.length === 0 && (
+      {!isLoading && !error && !semana && grupos.length === 0 && (
         <p className="py-8 text-center text-muted-foreground">
           Nenhuma visita neste período.
         </p>
       )}
 
-      {grupos.map((g) => (
+      {!semana && grupos.map((g) => (
         <section key={g.date} className="space-y-2">
           <h2 className="sticky top-0 z-10 bg-background py-1 text-sm font-semibold uppercase text-muted-foreground">
             {rotuloDia(g.date)}
@@ -118,6 +176,47 @@ export default function AgendaPage() {
           ))}
         </section>
       ))}
+
+      {semana && (
+        <>
+          <FaixaDias
+            dias={cargaPorDia(visitas, dias)}
+            selecionado={diaAtual}
+            onSelecionar={(d) => (emAjuste ? ajustar({ date: d }) : setDiaSel(d))}
+          />
+          {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
+          <PainelRecursos
+            dimensao={dimensao}
+            onTrocarDimensao={setDimensao}
+            tecnicos={cargaPorTecnico(visitas, diaAtual, tecnicos.data ?? [])}
+            instrumentos={usoPorInstrumento(visitas, diaAtual, instrumentos.data ?? [])}
+            instrumentoIdsDaVisita={emAjusteAtual?.instrument_ids ?? []}
+            tecnicoIdDaVisita={emAjusteAtual && emAjusteAtual.tecnico_id !== false ? emAjusteAtual.tecnico_id : undefined}
+            alvoAtivo={!!emAjuste}
+            onTocarTecnico={(id) => ajustar({ tecnico_id: id })}
+            onTocarInstrumento={(id) => {
+              const atuais = emAjusteAtual?.instrument_ids ?? []
+              ajustar({
+                instrument_ids: atuais.includes(id)
+                  ? atuais.filter((x) => x !== id)
+                  : [...atuais, id],
+              })
+            }}
+          />
+          {doDia.map((v) => (
+            <VisitaCard
+              key={v.id}
+              visita={v}
+              onSelect={setSelecionada}
+              onAjustar={data?.can_manage ? (x) => setEmAjuste(emAjuste?.id === x.id ? null : x) : undefined}
+              emAjuste={emAjuste?.id === v.id}
+            />
+          ))}
+          {doDia.length === 0 && (
+            <p className="py-6 text-center text-muted-foreground">Nenhuma visita neste dia.</p>
+          )}
+        </>
+      )}
 
       {data?.can_manage && (
         <button
