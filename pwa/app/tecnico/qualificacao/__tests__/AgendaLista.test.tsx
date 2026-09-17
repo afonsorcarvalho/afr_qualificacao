@@ -11,7 +11,7 @@ function visita(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
     id: 1, date: '2026-09-17', time_start: 8, time_stop: 12, planned_hours: 4,
     os_id: 4, os_name: 'OS26-06-0002', os_state: 'scheduled',
     partner_name: 'Hospital São Lucas', city: 'São Luís',
-    equipment_list: ['Autoclave 01'], instrument_list: [],
+    equipment_list: ['Autoclave 01'], instrument_list: [], instrument_ids: [],
     tecnico_id: 441, tecnico_name: 'Afonso', is_mine: true,
     state: 'planned', overflow: false,
     editable: true, lock_reason: false,
@@ -40,6 +40,16 @@ describe('VisitaCard', () => {
     )
     expect(screen.getByText(/Somente o Gestor edita a agenda\./)).toBeInTheDocument()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('mostra o instrumento junto do equipamento quando houver', () => {
+    render(
+      <VisitaCard
+        visita={visita({ instrument_list: ['Termômetro TH-02'] })}
+        onSelect={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/Instr\.: Termômetro TH-02/)).toBeInTheDocument()
   })
 
   it('mostra a mensagem de conflito quando houver', () => {

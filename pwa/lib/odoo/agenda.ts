@@ -20,6 +20,8 @@ export interface VisitaAgenda {
   city: string
   equipment_list: string[]
   instrument_list: string[]
+  /** Ids dos instrumentos — a folha marca por eles, o painel casa por eles. */
+  instrument_ids: number[]
   tecnico_id: number | false
   tecnico_name: string
   is_mine: boolean
@@ -48,6 +50,8 @@ export interface VisitaVals {
   time_stop?: number
   tecnico_id?: number
   note?: string
+  /** Lista simples de ids; o servidor monta o `(6, 0, ids)`. */
+  instrument_ids?: number[]
 }
 
 export interface Opcao {
@@ -110,4 +114,17 @@ export async function listTecnicoOptions(): Promise<Opcao[]> {
 
 export async function listOsOptions(): Promise<Opcao[]> {
   return odooClient.callKw<Opcao[]>(VISITA_MODEL, 'board_os_options', [])
+}
+
+export interface InstrumentoOpcao {
+  id: number
+  name: string
+  /** Maior `validate_calibration` dos certificados; `false` se não há nenhum. */
+  validade: string | false
+}
+
+export async function listInstrumentoOptions(): Promise<InstrumentoOpcao[]> {
+  return odooClient.callKw<InstrumentoOpcao[]>(
+    VISITA_MODEL, 'pwa_instrumento_options', [],
+  )
 }

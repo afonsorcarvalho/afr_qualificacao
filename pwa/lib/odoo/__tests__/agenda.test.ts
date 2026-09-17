@@ -14,6 +14,7 @@ import {
   createVisita,
   deleteVisita,
   listTecnicoOptions,
+  listInstrumentoOptions,
 } from '../agenda'
 
 const MODEL = 'afr.qualificacao.os.visita'
@@ -77,5 +78,19 @@ describe('agenda RPC', () => {
     callKw.mockResolvedValue([{ id: 441, name: 'Afonso' }])
     await listTecnicoOptions()
     expect(callKw).toHaveBeenCalledWith(MODEL, 'pwa_tecnico_options', [])
+  })
+
+  it('listInstrumentoOptions chama o método com sudo do backend', async () => {
+    callKw.mockResolvedValue([])
+    await listInstrumentoOptions()
+    expect(callKw).toHaveBeenCalledWith(MODEL, 'pwa_instrumento_options', [])
+  })
+
+  it('updateVisita aceita instrument_ids como lista de ids', async () => {
+    callKw.mockResolvedValue({ id: 7 })
+    await updateVisita(7, { instrument_ids: [1, 2] })
+    expect(callKw).toHaveBeenCalledWith(MODEL, 'pwa_visita_update', [
+      7, { instrument_ids: [1, 2] },
+    ])
   })
 })

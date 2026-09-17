@@ -7,6 +7,7 @@ import {
   deleteVisita,
   listTecnicoOptions,
   listOsOptions,
+  listInstrumentoOptions,
   type AgendaPayload,
   type VisitaVals,
 } from '@/lib/odoo/agenda'
@@ -85,6 +86,15 @@ export function useOsOptions(enabled: boolean) {
   return useQuery({
     queryKey: ['agenda-os'],
     queryFn: listOsOptions,
+    staleTime: 5 * 60_000,
+    enabled,
+  })
+}
+
+export function useInstrumentoOptions(enabled: boolean) {
+  return useQuery({
+    queryKey: ['agenda-instrumentos'],
+    queryFn: listInstrumentoOptions,
     staleTime: 5 * 60_000,
     enabled,
   })

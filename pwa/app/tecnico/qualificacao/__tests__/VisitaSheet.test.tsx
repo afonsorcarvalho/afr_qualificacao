@@ -21,7 +21,7 @@ const visita: VisitaAgenda = {
   id: 1, date: '2026-09-17', time_start: 8, time_stop: 12, planned_hours: 4,
   os_id: 4, os_name: 'OS26-06-0002', os_state: 'scheduled',
   partner_name: 'Hospital', city: 'São Luís',
-  equipment_list: [], instrument_list: [],
+  equipment_list: [], instrument_list: [], instrument_ids: [],
   tecnico_id: 441, tecnico_name: 'Afonso', is_mine: true,
   state: 'planned', overflow: false, editable: true, lock_reason: false,
   conflict: false, conflict_msg: '', note: '',
