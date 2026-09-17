@@ -15,6 +15,7 @@ vi.mock('@/lib/hooks/useAgenda', () => ({
   useDeleteVisita: () => ({ mutateAsync: mutateDelete, isPending: false }),
   useTecnicoOptions: () => ({ data: [{ id: 441, name: 'Afonso' }, { id: 9, name: 'Bruno' }] }),
   useOsOptions: () => ({ data: [{ id: 4, name: 'OS26-06-0002 - Hospital' }] }),
+  useInstrumentoOptions: () => ({ data: [] }),
 }))
 
 const visita: VisitaAgenda = {
@@ -41,8 +42,10 @@ describe('VisitaSheet', () => {
     await waitFor(() => expect(mutateUpdate).toHaveBeenCalled())
     const enviado = mutateUpdate.mock.calls[0][0]
     expect(enviado.id).toBe(1)
+    // `instrument_ids` entrou na whitelist junto dos demais campos de editar
+    // (Task 1 — folha de visita agora também grava os instrumentos).
     expect(Object.keys(enviado.vals).sort()).toEqual(
-      ['date', 'note', 'tecnico_id', 'time_start', 'time_stop'],
+      ['date', 'instrument_ids', 'note', 'tecnico_id', 'time_start', 'time_stop'],
     )
     expect(enviado.vals.date).toBe('2026-09-18')
   })
