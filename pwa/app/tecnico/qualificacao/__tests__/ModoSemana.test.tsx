@@ -42,7 +42,10 @@ vi.mock('@/lib/hooks/useAgenda', () => ({
   useTecnicoOptions: () => ({ data: [{ id: 441, name: 'Afonso' }, { id: 9, name: 'Bruno' }] }),
   useOsOptions: () => ({ data: [] }),
   useInstrumentoOptions: () => ({
-    data: [{ id: 1, name: 'Q001', validade: '2027-01-01' }],
+    data: [
+      { id: 1, name: 'Q001', validade: '2027-01-01' },
+      { id: 2, name: 'Q002', validade: '2027-01-01' },
+    ],
   }),
 }))
 
@@ -103,28 +106,61 @@ describe('Modo Semana', () => {
     )
   })
 
-  it('tocar num instrumento liga, e tocar de novo desliga', async () => {
+  it('depois de mover a visita, a vista segue e a seleção continua (não fica presa)', async () => {
     const { rerender, qc } = montar()
     irParaSemana()
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^sáb 19/i }))
+    await waitFor(() =>
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-09-19' } }),
+    )
+    // Simula o refetch (real, depois do `onSuccess`) trazendo a visita já
+    // com a data nova.
+    payloadAtual = { ...payload, visitas: [visita({ date: '2026-09-19' })] }
+    rerender(
+      <QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>,
+    )
+    // (a) a faixa passou a mostrar o dia novo como selecionado
+    expect(screen.getByRole('button', { name: /^sáb 19/i })).toHaveAttribute('aria-pressed', 'true')
+    // (b) o card continua visível e ainda em ajuste — "Concluir", não "Ajustar"
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Ajustar$/ })).toBeNull()
+  })
+
+  it('ligar Q001, depois ligar Q002 (Q001 continua ligado), depois desligar Q001', async () => {
+    const { rerender, qc } = montar()
+    const refresh = () => rerender(
+      <QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>,
+    )
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
     fireEvent.click(screen.getByRole('button', { name: /^Instrumento$/ }))
+
     fireEvent.click(screen.getByRole('button', { name: /Q001/ }))
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [1] } }),
     )
+    // Simula o refetch (real, depois do `onSuccess`) trazendo a visita já
+    // com Q001 ligado — `useAgenda` aqui é mock estático, então só um
+    // `rerender` explícito faz o componente reler `payloadAtual`.
     payloadAtual = { ...payload, visitas: [visita({ instrument_ids: [1] })] }
-    // `useAgenda` aqui é um mock estático (não é o react-query real): trocar
-    // `payloadAtual` não dispara, sozinho, um novo render — no app de
-    // verdade quem faz isso é o refetch que o `onSuccess` da mutação
-    // invalida. `rerender` simula esse refetch já ter chegado antes do
-    // próximo toque.
-    rerender(
-      <QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>,
+    refresh()
+
+    // A cena que motivou o `emAjusteAtual`: ligar um SEGUNDO instrumento
+    // diferente não pode apagar o primeiro.
+    mutateUpdate.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: /Q002/ }))
+    await waitFor(() =>
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [1, 2] } }),
     )
+
+    payloadAtual = { ...payload, visitas: [visita({ instrument_ids: [1, 2] })] }
+    refresh()
+
     mutateUpdate.mockClear()
     fireEvent.click(screen.getByRole('button', { name: /Q001/ }))
     await waitFor(() =>
-      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [] } }),
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [2] } }),
     )
   })
 
@@ -140,6 +176,21 @@ describe('Modo Semana', () => {
       expect(screen.getByText(/data passada/)).toBeInTheDocument(),
     )
     expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
+  })
+
+  it('tocar Concluir depois de um erro limpa a tarja', async () => {
+    mutateUpdate.mockRejectedValueOnce(
+      new Error('Não é possível programar uma visita para uma data passada'),
+    )
+    montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Bruno/ }))
+    await waitFor(() =>
+      expect(screen.getByText(/data passada/)).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Concluir/ }))
+    expect(screen.queryByText(/data passada/)).toBeNull()
   })
 
   it('sem can_manage não há "Ajustar" e o painel não vira alvo', () => {

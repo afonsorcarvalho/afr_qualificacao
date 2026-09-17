@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
@@ -47,6 +47,16 @@ export default function AgendaPage() {
   const tecnicos = useTecnicoOptions(semana)
   const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
 
+  // Rede de segurança: se a visita em ajuste sumir do payload (apagada em
+  // outro lugar, saiu da janela), a seleção não pode ficar presa a um
+  // registro que não existe mais.
+  useEffect(() => {
+    if (emAjuste && data && !data.visitas.some((v) => v.id === emAjuste.id)) {
+      encerrarAjuste()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, emAjuste])
+
   if (disponivel.data === false) {
     return (
       <p className="mx-auto max-w-[880px] p-4 text-center text-muted-foreground">
@@ -72,6 +82,13 @@ export default function AgendaPage() {
     ? visitas.find((v) => v.id === emAjuste.id) ?? emAjuste
     : null
 
+  /** A seleção termina (toque em "Concluir", ou a visita some do payload):
+   * nada de tarja de erro sobrevivendo a uma seleção que já acabou. */
+  function encerrarAjuste() {
+    setEmAjuste(null)
+    setErroAjuste('')
+  }
+
   /**
    * Cada toque no painel grava UM campo. A visita em ajuste continua
    * selecionada depois do erro: o Gestor precisa poder tentar outro alvo sem
@@ -82,6 +99,13 @@ export default function AgendaPage() {
     setErroAjuste('')
     try {
       await update.mutateAsync({ id: emAjuste.id, vals })
+      // A vista segue a visita: sem isto, mover para outro dia tirava o
+      // card de `doDia` (some o "Concluir" junto), e cada novo toque na
+      // faixa reaplicava o mesmo `date` — sem jeito de navegar ou
+      // desselecionar sem sair do modo Semana.
+      if (typeof vals.date === 'string') {
+        setDiaSel(vals.date)
+      }
     } catch (e) {
       setErroAjuste(e instanceof Error && e.message ? e.message : mensagemDeFalha(e))
     }
@@ -208,7 +232,7 @@ export default function AgendaPage() {
               key={v.id}
               visita={v}
               onSelect={setSelecionada}
-              onAjustar={data?.can_manage ? (x) => setEmAjuste(emAjuste?.id === x.id ? null : x) : undefined}
+              onAjustar={data?.can_manage ? (x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x)) : undefined}
               emAjuste={emAjuste?.id === v.id}
             />
           ))}
