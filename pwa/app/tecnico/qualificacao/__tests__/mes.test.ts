@@ -209,22 +209,30 @@ describe('PALETA', () => {
     expect(corDoTecnico(3)).not.toBe(corDoTecnico(11))
   })
 
-  it('cada cor da paleta, e o cinza de "sem técnico", passa 3:1 sobre --card nos DOIS temas', () => {
+  it('cada cor da paleta, e o cinza de "sem técnico", passa 3:1 sobre os QUATRO fundos possíveis', () => {
     // Crescer a paleta não pode ser feito pegando qualquer shade: metade do
     // catálogo do Tailwind (amarelo/âmbar claro) some sobre o `--card` quase
     // branco do tema claro, e os tons escuros somem sobre o quase preto do
     // escuro. 3:1 é o piso da WCAG 1.4.11 para elemento gráfico portador de
     // informação — que é o que o pontinho é.
+    //
+    // `--primary` entra na lista junto com `--card` porque a célula do dia
+    // SELECIONADO passou a ter tinta sólida (achado 4) — e o dia selecionado
+    // por default é hoje, ou seja, é a primeira célula que o usuário vê, e a
+    // que mais costuma ter visita. Medir só sobre `--card` deixaria os
+    // pontinhos sumirem exatamente ali.
     const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
     for (const tema of [':root', ':root.dark']) {
-      const card = tokenDe(css, tema, 'card')
-      expect(card, `--card ausente em ${tema}`).not.toBeNull()
-      const bg = hsl2rgb(card!)
-      for (const cor of [...PALETA, COR_SEM_TECNICO]) {
-        expect(
-          contraste(hex2rgb(cor), bg),
-          `${cor} sobre --card de ${tema}`,
-        ).toBeGreaterThanOrEqual(3)
+      for (const papel of ['card', 'primary']) {
+        const fundo = tokenDe(css, tema, papel)
+        expect(fundo, `--${papel} ausente em ${tema}`).not.toBeNull()
+        const bg = hsl2rgb(fundo!)
+        for (const cor of [...PALETA, COR_SEM_TECNICO]) {
+          expect(
+            contraste(hex2rgb(cor), bg),
+            `${cor} sobre --${papel} de ${tema}`,
+          ).toBeGreaterThanOrEqual(3)
+        }
       }
     }
   })

@@ -339,6 +339,9 @@ describe('GradeMes', () => {
     )
     const fora = screen.getByRole('button', { name: /^fora do mês, 30 de agosto,/ })
     const dentro = screen.getByRole('button', { name: /^1 de setembro,/ })
+    // O stripper é defensivo: hoje os tokens de cor moram no botão, não no
+    // número — se algum dia descerem para cá, a asserção continua exigindo
+    // uma diferença ALÉM deles, que é o que a review pediu.
     const semTokenDeTexto = (c: string) =>
       c.replace(/text-(?:muted-foreground|foreground|primary-foreground)/g, '').trim()
     const numFora = within(fora).getByTestId('numero').className

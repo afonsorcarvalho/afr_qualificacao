@@ -91,11 +91,15 @@ export function rotuloMes(iso: string): string {
 // ver de relance DE QUEM é a visita.
 //
 // Nenhuma cor é livre: cada uma passa 3:1 (piso da WCAG 1.4.11 para
-// elemento gráfico que carrega informação) sobre o `--card` dos DOIS temas —
-// quase branco no claro, quase preto no escuro —, o que descarta metade do
-// catálogo do Tailwind (os amarelos claros somem no claro, os tons 800+
-// somem no escuro). Medido em `mes.test.ts`, que quebra se alguém trocar um
-// tom por um mais bonito e menos legível.
+// elemento gráfico que carrega informação) sobre os QUATRO fundos em que um
+// pontinho pode sentar — `--card` dos dois temas (célula comum) e
+// `--primary` dos dois temas (célula do dia selecionado, que ganhou tinta
+// sólida no achado 4, e que por default é justamente o dia de hoje). Isso
+// descarta boa parte do catálogo do Tailwind: os tons claros somem sobre o
+// cartão branco do tema claro, e os escuros somem sobre o `--primary` navy
+// do mesmo tema — sobra uma faixa estreita de luminância, e é por isso que
+// a paleta puxa para os matizes médios. Medido em `mes.test.ts`, que quebra
+// se alguém trocar um tom por um mais bonito e menos legível.
 //
 // A ORDEM também é escolhida: os matizes não entram em roda-cromática, e sim
 // intercalados (passo 5 sobre a roda), porque ids consecutivos são o caso
@@ -103,16 +107,16 @@ export function rotuloMes(iso: string): string {
 // justamente as duas cores parecidas na mesma célula.
 export const PALETA: string[] = [
   '#db2777', // pink-600
-  '#16a34a', // green-600
-  '#7c3aed', // violet-600
-  '#a16207', // yellow-700
-  '#0369a1', // sky-700
-  '#e11d48', // rose-600
+  '#059669', // emerald-600
+  '#8b5cf6', // violet-500
+  '#ea580c', // orange-600
+  '#0284c7', // sky-600
+  '#f43f5e', // rose-500
   '#0d9488', // teal-600
   '#c026d3', // fuchsia-600
-  '#4d7c0f', // lime-700
-  '#6366f1', // indigo-500
-  '#ea580c', // orange-600
+  '#16a34a', // green-600
+  '#3b82f6', // blue-500
+  '#dc2626', // red-600
   '#0891b2', // cyan-600
 ]
 
