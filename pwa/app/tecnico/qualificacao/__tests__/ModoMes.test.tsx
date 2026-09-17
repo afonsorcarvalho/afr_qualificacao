@@ -41,14 +41,23 @@ let payloadAtual: AgendaPayload = payload
 // simular isso sem tocar no resto do dublê.
 let isLoadingAtual = false
 
+// Fix round 2 (buraco estrutural apontado na review final): o dublê devolvia
+// `error: null` incondicionalmente, então NENHUM teste deste arquivo
+// alcançava o ramo de erro — e era exatamente lá que o modo Mês travava com
+// spinner eterno colado na mensagem de falha. Erro representável é
+// pré-requisito do teste do achado 1.
+let erroAtual: Error | null = null
+
 // Mesmo raciocínio do `ModoSemana.test.tsx`: `vi.fn` que NÃO descarta os
 // argumentos — é o que permite provar a faixa de datas pedida (`date_from`/
 // `date_to` = grade[0]/grade[41]) e o `onlyMine`.
 const mockUseAgenda = vi.fn(
   (_dateFrom: string | null, _dateTo: string | null, _onlyMine: boolean, _enabled: boolean) => (
-    isLoadingAtual
-      ? { data: undefined, isLoading: true, error: null }
-      : { data: payloadAtual, isLoading: false, error: null }
+    erroAtual
+      ? { data: undefined, isLoading: false, error: erroAtual }
+      : isLoadingAtual
+        ? { data: undefined, isLoading: true, error: null }
+        : { data: payloadAtual, isLoading: false, error: null }
   ),
 )
 
@@ -79,6 +88,7 @@ describe('Modo Mês', () => {
   beforeEach(() => {
     payloadAtual = payload
     isLoadingAtual = false
+    erroAtual = null
     mutateUpdate.mockReset().mockResolvedValue(visita())
     mockUseAgenda.mockClear()
     // Mesma razão do `ModoSemana.test.tsx`: o store é singleton (zustand +
@@ -290,5 +300,76 @@ describe('Modo Mês', () => {
     // nenhuma visita na janela — não pode virar chip (brief 3d: "não o
     // roster inteiro, 20 chips de gente sem visita é ruído").
     expect(screen.queryByText('Bruno')).toBeNull()
+  })
+
+  // --- fix round 2, achado 1: erro de rede no modo Mês ---
+
+  it('erro na primeira abertura do mês mostra SÓ o erro — sem spinner eterno e sem grade', async () => {
+    erroAtual = new Error('Failed to fetch')
+    montar()
+    irParaMes()
+
+    await waitFor(() =>
+      expect(screen.getByText(/Erro ao carregar a agenda/)).toBeInTheDocument(),
+    )
+    // Sem `data`, o `useEffect` de ancoragem nunca roda e `ancoraMes` fica
+    // `null` para sempre: o gate antigo (`mes && (ancoraMes === null ||
+    // isLoading)`) ficava `true` para sempre junto, e a tela mostrava
+    // spinner E erro ao mesmo tempo, indefinidamente — só sair do modo
+    // resolvia.
+    expect(screen.queryByText('Carregando sua agenda...')).toBeNull()
+    // E o remédio não pode abrir o buraco simétrico: com `mesCarregando`
+    // agora `false`, a grade não pode vazar meio vazia (42 células sem
+    // âncora) por baixo da mensagem de erro.
+    expect(
+      screen.queryAllByRole('button', { name: /de (setembro|agosto|outubro)/ }),
+    ).toHaveLength(0)
+    expect(screen.queryByText('Nenhuma visita neste dia.')).toBeNull()
+  })
+
+  // --- fix round 2, achado 2: visita armada invisível fora do dia selecionado ---
+
+  it('visita armada continua anunciada ao navegar de mês, e o toque num dia do novo mês NÃO grava', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo período' }))
+    await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
+
+    // O único indicador de "tem visita armada" era o anel + "Concluir"
+    // DENTRO do VisitaCard, que só existe se a visita cair no dia
+    // selecionado. Em outubro o card não é renderizado, e sem a tarja a tela
+    // não dizia mais nada sobre o ajuste em curso.
+    expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+
+    mutateUpdate.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: /^20 de outubro,/ }))
+    // A armadilha de 3 toques: o Gestor tocava 20/out só pra ver o dia e a
+    // visita era reagendada um mês adiante, em silêncio.
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /^20 de outubro,/ })).toHaveAttribute('aria-pressed', 'true')
+
+    // E há saída explícita, sem depender do card do dia certo.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(screen.queryByText(/Movendo a visita/)).toBeNull()
+  })
+
+  it('visita armada na Semana continua anunciada depois de trocar para o Mês', async () => {
+    montar()
+    fireEvent.click(screen.getByRole('button', { name: /^Semana$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // A mesma armadilha atravessa modos: a tarja mora FORA dos ramos de
+    // modo justamente por isso.
+    expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
   })
 })

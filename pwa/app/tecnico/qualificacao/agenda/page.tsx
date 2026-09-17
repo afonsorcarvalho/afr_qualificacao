@@ -146,7 +146,17 @@ export default function AgendaPage() {
   // spinner). Fix round 1 (achado 1): o gate original só cobria a 1ª
   // busca; `isLoading` sozinho já cobre as duas, porque também é `true`
   // durante a 1ª.
-  const mesCarregando = mes && (ancoraMes === null || isLoading)
+  //
+  // `!error` é do fix round 2 (achado 1): com a busca falhando, `data` fica
+  // `undefined`, o `useEffect` de ancoragem acima nunca roda e `ancoraMes`
+  // fica `null` PARA SEMPRE — o gate ficava `true` para sempre junto, e a
+  // tela mostrava o spinner e "Erro ao carregar a agenda" ao mesmo tempo,
+  // indefinidamente, sem saída a não ser sair do modo.
+  const mesCarregando = mes && !error && (ancoraMes === null || isLoading)
+  // Um gate só, sem redundância: `mesCarregando` já embute `isLoading`, mas
+  // só vale no mês — `mes && ...` é `false` na Lista e na Semana, onde o
+  // spinner continua sendo o `isLoading` cru.
+  const carregando = mes ? mesCarregando : isLoading
   const pontosDia = mes ? tecnicosPorDia(visitas, gradeMes, roster) : []
   // Dia default quando não há seleção válida na grade: primeiro tenta
   // `hoje` (server_today) — mesmo critério da Semana, que nasce ancorada
@@ -166,6 +176,14 @@ export default function AgendaPage() {
   const emAjusteAtual = emAjuste
     ? visitas.find((v) => v.id === emAjuste.id) ?? emAjuste
     : null
+  // A visita armada só é ALVO de gravação enquanto ela própria está visível
+  // na janela atual (fix round 2, achado 2). Sem isto, navegar de mês (ou
+  // trocar de modo) tirava o card da tela sem desarmar nada, e o toque
+  // seguinte num dia qualquer reagendava a visita em silêncio — três toques
+  // e a visita tinha mudado de mês sem ninguém pedir. O que a janela mostra
+  // e o que o toque grava passam a ser a mesma coisa.
+  const janelaVisivel = mes ? gradeMes : dias
+  const alvoVisivel = !!emAjusteAtual && janelaVisivel.includes(emAjusteAtual.date)
 
   /** A seleção termina (toque em "Concluir", ou a visita some do payload):
    * nada de tarja de erro sobrevivendo a uma seleção que já acabou. */
@@ -292,7 +310,33 @@ export default function AgendaPage() {
         />
       </label>
 
-      {(isLoading || mesCarregando) && <LoadingState label="Carregando sua agenda..." />}
+      {/* Tarja de ajuste em curso — FORA dos ramos de modo de propósito
+          (ruling do controlador): o indicador de "tem visita armada" não
+          pode depender do `VisitaCard`, que só é renderizado quando a visita
+          cai no dia selecionado. Vale para Semana E Mês, e carrega o
+          identificador da visita e uma saída explícita — nada aqui depende
+          de cor. */}
+      {emAjusteAtual && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2">
+          <span className="min-w-0 text-sm">
+            Movendo a visita {emAjusteAtual.os_name} de {rotuloDia(emAjusteAtual.date)}
+            <span className="block text-xs text-muted-foreground">
+              {alvoVisivel
+                ? 'Toque num dia para mover.'
+                : 'Fora do período visível: volte ao período dela ou cancele.'}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={encerrarAjuste}
+            className="min-h-[44px] shrink-0 rounded-md border border-border px-3 text-sm font-medium"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {carregando && <LoadingState label="Carregando sua agenda..." />}
       {error && (
         <p className="text-center text-danger">
           Erro ao carregar a agenda. Verifique conexão.
@@ -320,7 +364,7 @@ export default function AgendaPage() {
           <FaixaDias
             dias={cargaPorDia(visitas, dias)}
             selecionado={diaAtual}
-            onSelecionar={(d) => (emAjuste ? ajustar({ date: d }) : setDiaSel(d))}
+            onSelecionar={(d) => (alvoVisivel ? ajustar({ date: d }) : setDiaSel(d))}
           />
           {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
           <PainelRecursos
@@ -331,7 +375,7 @@ export default function AgendaPage() {
             instrumentos={usoPorInstrumento(visitas, diaAtual, instrumentos.data ?? [])}
             instrumentoIdsDaVisita={emAjusteAtual?.instrument_ids ?? []}
             tecnicoIdDaVisita={emAjusteAtual && emAjusteAtual.tecnico_id !== false ? emAjusteAtual.tecnico_id : undefined}
-            alvoAtivo={!!emAjuste}
+            alvoAtivo={alvoVisivel}
             onTocarTecnico={(id) => ajustar({ tecnico_id: id })}
             onTocarInstrumento={(id) => {
               const atuais = emAjusteAtual?.instrument_ids ?? []
@@ -357,7 +401,11 @@ export default function AgendaPage() {
         </>
       )}
 
-      {mes && !mesCarregando && (
+      {/* `!error` e `ancoraMes !== null`: com `mesCarregando` agora falso no
+          erro (achado 1), sem estes dois a grade vazaria vazia — 0 células,
+          âncora '' e "Nenhuma visita neste dia." — por baixo da mensagem de
+          falha. */}
+      {mes && !mesCarregando && !error && ancoraMes !== null && (
         <VistaMes
           visitas={visitas}
           dias={pontosDia}
@@ -368,6 +416,7 @@ export default function AgendaPage() {
           roster={roster}
           podeAjustar={!!data?.can_manage}
           emAjuste={emAjusteAtual}
+          alvoAtivo={alvoVisivel}
           onAjustar={ajustar}
           onAlternarAjuste={(x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x))}
           erroAjuste={erroAjuste}

@@ -23,6 +23,7 @@ export function VistaMes({
   roster,
   podeAjustar,
   emAjuste,
+  alvoAtivo,
   onAjustar,
   onAlternarAjuste,
   erroAjuste,
@@ -39,6 +40,14 @@ export function VistaMes({
   podeAjustar: boolean
   /** Visita em ajuste, já resincronizada com o payload (ou `null`). */
   emAjuste: VisitaAgenda | null
+  /**
+   * `true` só quando a visita em ajuste está DENTRO da grade visível. Separado
+   * de `emAjuste` porque o card (anel + "Concluir") continua marcando a visita
+   * armada onde quer que ela esteja, enquanto o toque num dia só pode gravar
+   * enquanto o alvo está à vista — navegar de mês com uma visita armada
+   * reagendava a visita no primeiro toque, em silêncio (fix round 2, achado 2).
+   */
+  alvoAtivo: boolean
   /** Toque num dia da grade com visita em ajuste: grava `{ date }`. */
   onAjustar: (vals: VisitaVals) => void
   /** Toque em "Ajustar"/"Concluir" no card: liga/desliga o ajuste daquela visita. */
@@ -66,7 +75,7 @@ export function VistaMes({
         ancora={ancora}
         hoje={hoje}
         selecionado={diaSel}
-        onSelecionar={(date) => (emAjuste ? onAjustar({ date }) : onSelecionarDia(date))}
+        onSelecionar={(date) => (alvoAtivo ? onAjustar({ date }) : onSelecionarDia(date))}
       />
 
       {(legenda.length > 0 || temSemTecnico) && (
