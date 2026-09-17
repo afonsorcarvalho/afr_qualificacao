@@ -1,7 +1,7 @@
 'use client'
 import { useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { ClipboardList, BarChart3, User, Loader2 } from 'lucide-react'
+import { ClipboardList, CalendarDays, BarChart3, User, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useNavProgress } from '@/components/providers/NavProgress'
 
@@ -9,6 +9,7 @@ const ROOT_PATH = '/tecnico/qualificacao'
 
 export const NAV_ITEMS = [
   { href: ROOT_PATH, label: 'OSs', Icon: ClipboardList },
+  { href: `${ROOT_PATH}/agenda`, label: 'Agenda', Icon: CalendarDays },
   { href: `${ROOT_PATH}/historico`, label: 'Histórico', Icon: BarChart3 },
   { href: `${ROOT_PATH}/perfil`, label: 'Perfil', Icon: User },
 ] as const
@@ -19,6 +20,8 @@ function useActiveHref() {
   const isPerfil = pathname.startsWith(`${ROOT_PATH}/perfil`)
   if (isHist) return `${ROOT_PATH}/historico`
   if (isPerfil) return `${ROOT_PATH}/perfil`
+  const isAgenda = pathname.startsWith(`${ROOT_PATH}/agenda`)
+  if (isAgenda) return `${ROOT_PATH}/agenda`
   return pathname.startsWith(ROOT_PATH) ? ROOT_PATH : ''
 }
 
@@ -35,9 +38,19 @@ function useActiveHref() {
  * (`lg:hidden` / `hidden lg:flex`). Detectar viewport em JS quebraria a
  * hidratação e é proibido pelo plano.
  */
-export function TecnicoNav({ variant }: { variant: 'bottom' | 'side' }) {
+export function TecnicoNav({
+  variant,
+  agendaDisponivel = true,
+}: {
+  variant: 'bottom' | 'side'
+  /** Falso esconde a aba Agenda: o módulo de agendamento não está instalado. */
+  agendaDisponivel?: boolean
+}) {
   const activeHref = useActiveHref()
   const isSide = variant === 'side'
+  const itens = NAV_ITEMS.filter(
+    (i) => agendaDisponivel || !i.href.endsWith('/agenda'),
+  )
   return (
     <nav
       aria-label={isSide ? 'Navegação principal (lateral)' : 'Navegação principal (barra inferior)'}
@@ -48,7 +61,7 @@ export function TecnicoNav({ variant }: { variant: 'bottom' | 'side' }) {
           : 'sticky bottom-0 flex justify-around border-t border-border px-2 py-1 text-xs shadow-[0_-8px_24px_rgba(0,0,0,0.45)] lg:hidden',
       )}
     >
-      {NAV_ITEMS.map(({ href, label, Icon }) => (
+      {itens.map(({ href, label, Icon }) => (
         <NavItem
           key={href}
           href={href}
@@ -82,7 +95,7 @@ function NavItem({
     <a
       href={href}
       // "page": este link leva a uma rota-destino de nível de app (OSs,
-      // Histórico, Perfil). Ver ColetaCard: lá a coleta selecionada usa
+      // Agenda, Histórico, Perfil). Ver ColetaCard: lá a coleta selecionada usa
       // aria-current="true" porque marca seleção dentro de uma lista, não a
       // página atual — os dois valores divergem de propósito, não por acaso.
       aria-current={active ? 'page' : undefined}

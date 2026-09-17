@@ -18,11 +18,15 @@ describe('TecnicoNav', () => {
     push.mockClear()
   })
 
-  it('renderiza os três destinos com href correto', () => {
+  it('renderiza os quatro destinos com href correto', () => {
     render(<TecnicoNav variant="bottom" />)
     expect(screen.getByRole('link', { name: /OSs/ })).toHaveAttribute(
       'href',
       '/tecnico/qualificacao',
+    )
+    expect(screen.getByRole('link', { name: /Agenda/ })).toHaveAttribute(
+      'href',
+      '/tecnico/qualificacao/agenda',
     )
     expect(screen.getByRole('link', { name: /Histórico/ })).toHaveAttribute(
       'href',
@@ -32,6 +36,12 @@ describe('TecnicoNav', () => {
       'href',
       '/tecnico/qualificacao/perfil',
     )
+  })
+
+  it('esconde a Agenda quando o módulo de agendamento não existe', () => {
+    render(<TecnicoNav variant="bottom" agendaDisponivel={false} />)
+    expect(screen.queryByRole('link', { name: /Agenda/ })).toBeNull()
+    expect(screen.getByRole('link', { name: /Histórico/ })).toBeInTheDocument()
   })
 
   it('marca aria-current no destino ativo', () => {
