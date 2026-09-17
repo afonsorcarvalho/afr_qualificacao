@@ -5,6 +5,7 @@ import { render, screen } from '@testing-library/react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { agruparPorDia, deslocarJanela } from '../agenda/janela'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
+import { semRelogioDoAparelho } from '@/tests/relogio'
 
 function visita(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
   return {
@@ -75,15 +76,11 @@ describe('agrupamento e janela', () => {
   })
 
   it('desloca a janela sem consultar o relógio do aparelho', () => {
-    const agora = Date.now
     // Qualquer leitura do relógio local aqui é defeito: a janela nasce do
     // `server_today` que veio no payload.
-    Date.now = () => { throw new Error('relógio do aparelho usado') }
-    try {
+    semRelogioDoAparelho(() => {
       expect(deslocarJanela('2026-09-16', 14)).toEqual('2026-09-30')
       expect(deslocarJanela('2026-09-16', -14)).toEqual('2026-09-02')
-    } finally {
-      Date.now = agora
-    }
+    })
   })
 })

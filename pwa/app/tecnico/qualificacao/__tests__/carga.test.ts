@@ -3,6 +3,7 @@ import {
   cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana,
 } from '../agenda/carga'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
+import { semRelogioDoAparelho } from '@/tests/relogio'
 
 function v(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
   return {
@@ -19,16 +20,19 @@ function v(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
 
 describe('diasDaSemana', () => {
   it('devolve 7 dias ISO a partir do início, sem ler o relógio do aparelho', () => {
-    const agora = Date.now
-    Date.now = () => { throw new Error('relógio do aparelho usado') }
-    try {
+    semRelogioDoAparelho(() => {
       expect(diasDaSemana('2026-09-14')).toEqual([
         '2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17',
         '2026-09-18', '2026-09-19', '2026-09-20',
       ])
-    } finally {
-      Date.now = agora
-    }
+    })
+  })
+
+  it('atravessa virada de ano sem tropeçar no transbordo de mês/dia', () => {
+    expect(diasDaSemana('2026-12-29')).toEqual([
+      '2026-12-29', '2026-12-30', '2026-12-31', '2027-01-01',
+      '2027-01-02', '2027-01-03', '2027-01-04',
+    ])
   })
 })
 
@@ -122,5 +126,16 @@ describe('usoPorInstrumento', () => {
       [], '2026-09-17', [{ id: 1, name: 'Q001', validade: '2026-09-17' }],
     )
     expect(r[0].vencido).toBe(false)
+  })
+
+  it('ordena os usos por horário, não pela ordem de chegada da API', () => {
+    const r = usoPorInstrumento(
+      // A visita das 13h chega primeiro no array — se a função apenas
+      // repassar a ordem de entrada, o teste falha.
+      [v({ id: 8, date: '2026-09-17', instrument_ids: [1], time_start: 13, time_stop: 17 }),
+       v({ id: 7, date: '2026-09-17', instrument_ids: [1], time_start: 8, time_stop: 12 })],
+      '2026-09-17', instrumentos,
+    )
+    expect(r[0].usos.map((u) => u.visitaId)).toEqual([7, 8])
   })
 })

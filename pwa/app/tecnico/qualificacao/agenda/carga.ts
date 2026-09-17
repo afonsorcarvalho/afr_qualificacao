@@ -92,8 +92,14 @@ export function usoPorInstrumento(
     // Validade igual ao dia ainda vale — é o mesmo `>=` do
     // `_instrument_valid_on` no servidor.
     vencido: !i.validade || i.validade < dia,
+    // Ordenado por horário, não pela ordem de chegada da API: o backend por
+    // acaso já devolve `date, time_start, id`, mas depender de ordenação
+    // incidental é a mesma fragilidade que já custou fix rounds nesta
+    // feature, e o painel lê isto de relance ("8–12, depois 13–17").
     usos: doDia
       .filter((v) => v.instrument_ids.includes(i.id))
+      .slice()
+      .sort((a, b) => a.time_start - b.time_start)
       .map((v) => ({
         visitaId: v.id,
         osName: v.os_name,
