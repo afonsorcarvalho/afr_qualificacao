@@ -38,6 +38,7 @@ export function PainelRecursos({
   dimensao,
   onTrocarDimensao,
   tecnicos,
+  pico,
   instrumentos,
   instrumentoIdsDaVisita,
   tecnicoIdDaVisita,
@@ -48,6 +49,15 @@ export function PainelRecursos({
   dimensao: Dimensao
   onTrocarDimensao: (d: Dimensao) => void
   tecnicos: CargaTecnico[]
+  /**
+   * Pico de horas de um técnico-dia na SEMANA visível inteira (não só no dia
+   * mostrado) — calculado pelo chamador (`picoDaSemana`), que tem acesso aos
+   * 7 dias. Calculado aqui, sobre só o dia atual, as barras reescalariam a
+   * cada troca de dia. O modelo não define jornada padrão, então fixar 8h
+   * também seria número fingido — por isso é o maior valor real, não uma
+   * constante.
+   */
+  pico: number
   instrumentos: UsoInstrumento[]
   instrumentoIdsDaVisita: number[]
   /** Dono atual da visita em ajuste — marca a linha do técnico correspondente. */
@@ -56,9 +66,6 @@ export function PainelRecursos({
   onTocarTecnico: (id: number) => void
   onTocarInstrumento: (id: number) => void
 }) {
-  // Escala relativa ao mais cheio da vista: o modelo não define jornada padrão,
-  // e fixar 8h aqui seria número fingido.
-  const pico = Math.max(1, ...tecnicos.map((t) => t.horas))
   return (
     <div className="rounded-lg border border-border bg-card">
       <div className="flex gap-1 border-b border-border p-1">

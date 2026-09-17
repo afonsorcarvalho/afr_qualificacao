@@ -107,3 +107,37 @@ Nota sobre a aritmética do brief: o passo 6 previa "281 + 12 (Task 6) + 7
 testes desta task, o total real é 307/42. Meta do brief já estava
 atingida antes desta rodada; delta líquido desta task é +7 testes / +1
 arquivo, como esperado.
+
+## Atualização — 2026-09-17 (onda de correções do review final — modo Semana)
+
+Fixes pontuais do review final do "modo Semana" (achados 1-8; ver
+`.superpowers/sdd/2026-09-17-agenda-modo-semana/final-fix-report.md` para o
+detalhe achado a achado). Correção da contagem: esta rodada partiu de
+309/43 testes (a contagem de 307/42 acima já estava defasada em +2/+1 antes
+desta onda — a origem exata dessa defasagem não foi investigada, fora do
+escopo desta rodada de fixes pontuais).
+
+O texto "Desligado na semana: a carga é da equipe" (checkbox "Só minhas")
+já estava correto nesta doc; o que estava quebrado era o CÓDIGO —
+`useAgenda` recebia `filterMine` (persistido `true` por padrão) em vez de
+`false` fixo no modo Semana, e o checkbox aparecia marcado e desabilitado
+ao lado desse mesmo texto. Agora o comportamento bate com o texto.
+
+Arquivos novos: `__tests__/ModoSemanaRace.test.tsx` (1 teste; integração
+real do `useUpdateVisita`, sem mockar `@/lib/hooks/useAgenda` — é a única
+forma de flagrar uma corrida que mora dentro do `onSuccess` do react-query
+de verdade). Modificados: `agenda/page.tsx`, `lib/hooks/useAgenda.ts`,
+`agenda/carga.ts`, `agenda/_PainelRecursos.tsx`, `__tests__/ModoSemana.test.tsx`,
+`__tests__/carga.test.ts`, `__tests__/PainelSemana.test.tsx`.
+
+| Métrica | Valor |
+|---|---|
+| Arquivos de teste | 43 |
+| Testes | 321 pass / 0 skip / 0 fail |
+| Comando | `npx vitest run` |
+| `npx tsc --noEmit` | limpo |
+| `npm run build` | não rodado (dev server em uso na porta 3010 — instrução explícita da task) |
+
+Backend (`afr_qualificacao_agendamento`): 114 pass / 0 fail (era 112;
++2 testes dos achados 7 e 8 — rótulo de fallback do instrumento sem
+tag/id_number/name, e ordenação de `pwa_instrumento_options`).

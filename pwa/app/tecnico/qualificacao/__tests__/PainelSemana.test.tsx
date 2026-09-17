@@ -70,6 +70,7 @@ function painel(over = {}) {
       dimensao="tecnico"
       onTrocarDimensao={vi.fn()}
       tecnicos={tecnicos}
+      pico={Math.max(1, ...tecnicos.map((t) => t.horas))}
       instrumentos={instrumentos}
       instrumentoIdsDaVisita={[]}
       alvoAtivo={false}
@@ -103,6 +104,18 @@ describe('PainelRecursos — técnico', () => {
     render(painel({ alvoAtivo: true, tecnicoIdDaVisita: 441 }))
     expect(screen.getByRole('button', { name: /Afonso/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /Bruno/ })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('a barra usa o pico da SEMANA (prop do chamador), não o do dia', () => {
+    // Um técnico com 4h num dia onde ele é o mais cheio (pico do dia = 4h)
+    // encheria a barra (100%) se a escala fosse local. Passar o pico real da
+    // semana (16h, de outro dia) prova que a escala não é recalculada aqui.
+    const { container } = render(painel({
+      tecnicos: [{ id: 441, name: 'Afonso', horas: 4 }],
+      pico: 16,
+    }))
+    const barra = container.querySelector('.bg-primary') as HTMLElement
+    expect(barra.style.width).toBe('25%')
   })
 })
 

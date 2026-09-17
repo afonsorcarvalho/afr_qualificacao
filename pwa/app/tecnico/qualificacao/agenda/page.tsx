@@ -12,7 +12,7 @@ import { clsx } from 'clsx'
 import { agruparPorDia, deslocarJanela } from './janela'
 import { FaixaDias } from './_FaixaDias'
 import { PainelRecursos, type Dimensao } from './_PainelRecursos'
-import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana } from './carga'
+import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -33,7 +33,11 @@ export default function AgendaPage() {
   // `disponivel.data` é `undefined` enquanto a query de disponibilidade
   // carrega (não `false`) — só o `false` explícito (módulo ausente) deve
   // segurar o `pwa_agenda_fetch`. Enquanto carrega, a busca segue normal.
-  const { data, isLoading, error } = useAgenda(inicio, fim, filterMine, disponivel.data !== false)
+  // No modo Semana o filtro "Só minhas" fica sempre desligado (ver o
+  // checkbox desabilitado abaixo): a carga é da equipe, não de uma pessoa —
+  // passar `filterMine` aqui mostraria uma faixa de dias que contradiz o
+  // painel logo abaixo.
+  const { data, isLoading, error } = useAgenda(inicio, fim, semana ? false : filterMine, disponivel.data !== false)
   const [selecionada, setSelecionada] = useState<VisitaAgenda | null>(null)
   const [criando, setCriando] = useState(false)
   // Muda a cada abertura: sem isto, os `useState` internos da folha em modo
@@ -48,14 +52,32 @@ export default function AgendaPage() {
   const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
 
   // Rede de segurança: se a visita em ajuste sumir do payload (apagada em
-  // outro lugar, saiu da janela), a seleção não pode ficar presa a um
-  // registro que não existe mais.
+  // outro lugar, saiu da janela) OU continuar lá mas ter travado (outro
+  // lugar tirou a OS de `scheduled`, ex. `in_progress`), a seleção não pode
+  // ficar presa a um alvo que não aceita mais gravação. Sem o segundo caso,
+  // o card passa a renderizar o ramo travado (sem "Concluir"), mas
+  // `alvoAtivo` continua ligado — cada toque na faixa/painel dispara uma
+  // gravação que o servidor recusa, sem saída a não ser trocar de modo.
   useEffect(() => {
-    if (emAjuste && data && !data.visitas.some((v) => v.id === emAjuste.id)) {
+    if (!emAjuste || !data) return
+    const atual = data.visitas.find((v) => v.id === emAjuste.id)
+    if (!atual || !atual.editable) {
       encerrarAjuste()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, emAjuste])
+
+  // Modo Semana na primeiríssima carga: `inicio` nasce `null`, e sem
+  // `date_from`/`date_to` explícitos o servidor aplica a janela padrão de 14
+  // dias (`pwa_agenda_fetch`), enquanto a faixa (`diasDaSemana`) sempre
+  // mostra 7. Ancorar `inicio` assim que o payload chega alinha cabeçalho e
+  // faixa, e evita buscar uma semana inteira de visitas a mais até a
+  // próxima navegação.
+  useEffect(() => {
+    if (semana && inicio === null && data?.date_from) {
+      setInicio(data.date_from)
+    }
+  }, [semana, inicio, data?.date_from])
 
   if (disponivel.data === false) {
     return (
@@ -73,6 +95,11 @@ export default function AgendaPage() {
   const diaAtual = diaSel && dias.includes(diaSel) ? diaSel : dias[0] ?? ''
   const visitas = data?.visitas ?? []
   const doDia = visitas.filter((v) => v.date === diaAtual)
+  // `pwa_tecnico_options` filtra por `is_tecnico=True`, mas `tecnico_id` na
+  // visita não é restrito a isso — um painel de capacidade que só mostra o
+  // roster oficial esconderia carga real de quem tem visita mas não a flag.
+  // União com quem aparece nas visitas da janela, sem duplicar por id.
+  const roster = rosterTecnicos(tecnicos.data ?? [], visitas)
   // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
   // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
   // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
@@ -171,7 +198,7 @@ export default function AgendaPage() {
         <input
           id="agenda-filter-mine"
           type="checkbox"
-          checked={filterMine && !semEmpregado}
+          checked={semana ? false : filterMine && !semEmpregado}
           disabled={semana || semEmpregado}
           onChange={(e) => setFilterMine(e.target.checked)}
           className="h-6 w-6 shrink-0 cursor-pointer accent-ok disabled:opacity-40"
@@ -212,7 +239,8 @@ export default function AgendaPage() {
           <PainelRecursos
             dimensao={dimensao}
             onTrocarDimensao={setDimensao}
-            tecnicos={cargaPorTecnico(visitas, diaAtual, tecnicos.data ?? [])}
+            tecnicos={cargaPorTecnico(visitas, diaAtual, roster)}
+            pico={picoDaSemana(visitas, dias, roster)}
             instrumentos={usoPorInstrumento(visitas, diaAtual, instrumentos.data ?? [])}
             instrumentoIdsDaVisita={emAjusteAtual?.instrument_ids ?? []}
             tecnicoIdDaVisita={emAjusteAtual && emAjusteAtual.tecnico_id !== false ? emAjusteAtual.tecnico_id : undefined}

@@ -33,9 +33,19 @@ const payload: AgendaPayload = {
 
 let payloadAtual: AgendaPayload = payload
 
+// `vi.fn` que NÃO descarta os argumentos: uma lambda `() => ({...})` não
+// permite provar QUAL `onlyMine` a página pediu — é exatamente o formato
+// que deixou passar o item 1 do review (modo Semana buscando com
+// `only_mine=true`).
+const mockUseAgenda = vi.fn(
+  (_dateFrom: string | null, _dateTo: string | null, _onlyMine: boolean, _enabled: boolean) => (
+    { data: payloadAtual, isLoading: false, error: null }
+  ),
+)
+
 vi.mock('@/lib/hooks/useAgenda', () => ({
   useAgendaDisponivel: () => ({ data: true }),
-  useAgenda: () => ({ data: payloadAtual, isLoading: false, error: null }),
+  useAgenda: (...args: [string | null, string | null, boolean, boolean]) => mockUseAgenda(...args),
   useUpdateVisita: () => ({ mutateAsync: mutateUpdate, isPending: false }),
   useCreateVisita: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteVisita: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -65,10 +75,13 @@ describe('Modo Semana', () => {
   beforeEach(() => {
     payloadAtual = payload
     mutateUpdate.mockReset().mockResolvedValue(visita())
+    mockUseAgenda.mockClear()
     // O store é um singleton do módulo (zustand + persist): sem resetar
     // `modoAgenda` aqui, o toque em "Semana" de um teste vaza para o
-    // próximo, que já nasceria no modo errado.
-    useTecnicoSettings.setState({ modoAgenda: 'lista' })
+    // próximo, que já nasceria no modo errado. `filterMine` também: o
+    // default persistido é `true`, e é justamente essa persistência que faz
+    // do modo Semana com filtro ligado o caso comum, não a aresta.
+    useTecnicoSettings.setState({ modoAgenda: 'lista', filterMine: true })
   })
 
   it('o botão de modo alterna Lista e Semana', () => {
@@ -78,12 +91,29 @@ describe('Modo Semana', () => {
     expect(screen.getByRole('button', { name: /^Técnico$/ })).toBeInTheDocument()
   })
 
-  it('"Só minhas" chega desabilitado no modo Semana', () => {
+  it('"Só minhas" chega desabilitado E DESMARCADO no modo Semana, mesmo com o filtro persistido ligado', () => {
+    // `filterMine: true` é o default persistido (`tecnicoSettings.ts`) — a
+    // UI não pode mostrar o checkbox marcado (ligado) ao lado de um texto
+    // que diz "desligado na semana": a mesma linha se contradizendo.
     montar()
     const filtro = screen.getByRole('checkbox') as HTMLInputElement
     expect(filtro.disabled).toBe(false)
+    expect(filtro.checked).toBe(true)
     irParaSemana()
-    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    const filtroSemana = screen.getByRole('checkbox') as HTMLInputElement
+    expect(filtroSemana.disabled).toBe(true)
+    expect(filtroSemana.checked).toBe(false)
+  })
+
+  it('modo Semana busca com onlyMine=false SEMPRE, mesmo com "Só minhas" persistido ligado — e volta a true na Lista', () => {
+    montar()
+    irParaSemana()
+    const ultimaChamadaSemana = mockUseAgenda.mock.calls.at(-1)
+    expect(ultimaChamadaSemana?.[2]).toBe(false)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Lista$/ }))
+    const ultimaChamadaLista = mockUseAgenda.mock.calls.at(-1)
+    expect(ultimaChamadaLista?.[2]).toBe(true)
   })
 
   it('tocar num técnico com a visita em ajuste passa a visita para ele', async () => {
@@ -191,6 +221,53 @@ describe('Modo Semana', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /Concluir/ }))
     expect(screen.queryByText(/data passada/)).toBeNull()
+  })
+
+  it('rede de segurança: visita em ajuste que SOME do payload encerra o ajuste', async () => {
+    mutateUpdate.mockRejectedValueOnce(new Error('falha qualquer'))
+    const { rerender, qc } = montar()
+    const refresh = () => rerender(
+      <QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>,
+    )
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Bruno/ }))
+    await waitFor(() => expect(screen.getByText(/falha qualquer/)).toBeInTheDocument())
+
+    // A visita é apagada em outro lugar (ou sai da janela): some do payload.
+    payloadAtual = { ...payload, visitas: [] }
+    refresh()
+
+    expect(screen.queryByText(/falha qualquer/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /Bruno/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Concluir/ })).toBeNull()
+  })
+
+  it('rede de segurança: visita que TRAVA (editable:false) durante o ajuste também encerra — sem armadilha sem saída', () => {
+    const { rerender, qc } = montar()
+    const refresh = () => rerender(
+      <QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>,
+    )
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
+
+    // Outro usuário tirou a OS de `scheduled` enquanto a visita estava
+    // selecionada: o refetch traz `editable: false`. Sem a rede de
+    // segurança estendida, `alvoAtivo` continuaria ligado e cada toque na
+    // faixa/painel dispararia uma gravação que o servidor recusa — sem
+    // saída a não ser trocar de modo.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        editable: false, lock_reason: 'OS em execução (Em execução).',
+      })],
+    }
+    refresh()
+
+    expect(screen.queryByRole('button', { name: /Concluir/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Bruno/ })).toBeNull()
+    expect(screen.getByText(/OS em execução/)).toBeInTheDocument()
   })
 
   it('sem can_manage não há "Ajustar" e o painel não vira alvo', () => {

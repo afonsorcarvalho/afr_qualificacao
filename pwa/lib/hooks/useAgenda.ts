@@ -49,10 +49,27 @@ function useInvalidarAgenda() {
 }
 
 export function useUpdateVisita() {
+  const qc = useQueryClient()
   const invalidar = useInvalidarAgenda()
   return useMutation({
     mutationFn: ({ id, vals }: { id: number; vals: VisitaVals }) => updateVisita(id, vals),
-    onSuccess: invalidar,
+    // `pwa_visita_update` já devolve a visita serializada — usar esse
+    // retorno para atualizar o cache NA HORA, antes do `invalidateQueries`
+    // (assíncrono: dispara o refetch mas não espera por ele). Sem isto, dois
+    // toques em sequência (ex. ligar dois instrumentos, um logo depois do
+    // outro) partem do mesmo payload velho: o segundo lê `instrument_ids`
+    // de antes do primeiro gravar, e o `(6, 0, ids)` do servidor apaga o que
+    // o primeiro toque tinha acabado de ligar.
+    onSuccess: (visita) => {
+      qc.setQueriesData<AgendaPayload>({ queryKey: ['agenda'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          visitas: old.visitas.map((v) => (v.id === visita.id ? visita : v)),
+        }
+      })
+      invalidar()
+    },
   })
 }
 

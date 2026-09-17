@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana,
+  rosterTecnicos, picoDaSemana,
 } from '../agenda/carga'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
@@ -84,6 +85,67 @@ describe('cargaPorTecnico', () => {
       '2026-09-17', tecnicos,
     )
     expect(r[0].horas).toBe(0)
+  })
+})
+
+describe('rosterTecnicos', () => {
+  const oficiais = [
+    { id: 441, name: 'Afonso' },
+    { id: 9, name: 'Bruno' },
+  ]
+
+  it('inclui técnico oficial sem visita nenhuma', () => {
+    const r = rosterTecnicos(oficiais, [])
+    expect(r.map((t) => t.id).sort((a, b) => a - b)).toEqual([9, 441])
+  })
+
+  it('acrescenta técnico da visita que NÃO está no roster oficial, com o nome da visita', () => {
+    const r = rosterTecnicos(
+      oficiais,
+      [v({ tecnico_id: 55, tecnico_name: 'Carlos (sem flag)', planned_hours: 4 })],
+    )
+    expect(r.map((t) => t.name)).toContain('Carlos (sem flag)')
+    const carlos = r.find((t) => t.id === 55)
+    expect(carlos).toEqual({ id: 55, name: 'Carlos (sem flag)' })
+  })
+
+  it('não duplica quando o técnico da visita já está no roster oficial', () => {
+    const r = rosterTecnicos(
+      oficiais,
+      [v({ tecnico_id: 441, tecnico_name: 'Afonso' })],
+    )
+    expect(r.filter((t) => t.id === 441)).toHaveLength(1)
+  })
+
+  it('ordena por nome, não por id ou ordem de chegada', () => {
+    const r = rosterTecnicos(
+      [{ id: 2, name: 'Zeca' }],
+      [v({ tecnico_id: 1, tecnico_name: 'Ana' })],
+    )
+    expect(r.map((t) => t.name)).toEqual(['Ana', 'Zeca'])
+  })
+
+  it('ignora visita sem técnico (tecnico_id false)', () => {
+    const r = rosterTecnicos(oficiais, [v({ tecnico_id: false })])
+    expect(r).toHaveLength(2)
+  })
+})
+
+describe('picoDaSemana', () => {
+  const tecnicos = [{ id: 441, name: 'Afonso' }]
+  const dias = ['2026-09-17', '2026-09-18']
+
+  it('é o maior técnico-dia de TODOS os dias da semana, não só de um', () => {
+    const r = picoDaSemana(
+      [v({ id: 1, date: '2026-09-17', tecnico_id: 441, planned_hours: 4 }),
+       v({ id: 2, date: '2026-09-18', tecnico_id: 441, planned_hours: 12 })],
+      dias, tecnicos,
+    )
+    expect(r).toBe(12)
+  })
+
+  it('sem visita nenhuma, o piso é 1 (nunca 0, para não dividir por zero)', () => {
+    expect(picoDaSemana([], dias, tecnicos)).toBe(1)
   })
 })
 
