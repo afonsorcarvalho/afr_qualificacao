@@ -67,3 +67,16 @@ export function tokenDe(css: string, seletor: string, papel: string): string | n
   const m = bloco.match(new RegExp(String.raw`--${papel}:\s*([^;]+);`))
   return m ? m[1].trim() : null
 }
+
+/**
+ * Hex (`#rrggbb`) -> RGB (0-255). Existe aqui, e não dentro de um teste,
+ * pelo mesmo motivo do resto do arquivo: a `PALETA` do modo Mês é hex
+ * literal (cor de ponto de técnico não é papel semântico, não vira token) e
+ * precisa ser medida contra os mesmos `--card` que o resto da guarda de tema
+ * mede — com a MESMA matemática, não com uma segunda cópia.
+ */
+export function hex2rgb(hex: string): number[] {
+  const h = hex.replace('#', '')
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h
+  return [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16))
+}
