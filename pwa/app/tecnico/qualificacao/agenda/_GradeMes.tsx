@@ -253,29 +253,34 @@ export function GradeMes({
                   `labelCelula`), então a barra é reforço visual, não uma
                   segunda fonte de informação.
 
-                  SUPRIMIDA no dia SELECIONADO (achado do fix de contraste
-                  desta task): `--ok` e `--danger` foram desenhados para
-                  serem TEXTO legível sobre `--card`/`--background` (a
-                  medição em `mes.test.ts` mede exatamente isso), não peça
-                  gráfica sobre `--primary` — sobre o fundo sólido do dia
-                  selecionado a razão medida é 1.77–2.63:1 nos dois tokens e
-                  nos dois temas, bem abaixo do piso de 3:1 da WCAG 1.4.11.
-                  Não existe tom fixo que limpe 3:1 contra `--card` E
-                  `--primary` ao mesmo tempo nos dois temas — os dois tokens
-                  ficam em extremos opostos de luminância de propósito (texto
-                  escuro sobre fundo claro no tema claro, e o inverso no
-                  escuro). A informação não se perde: o `aria-label` do dia
-                  selecionado carrega a mesma contagem e o mesmo sufixo de
-                  conflito de qualquer outro dia — a Global Constraint #4 exige
-                  que cor nunca seja o ÚNICO portador, não que todo fato tenha
-                  também um portador visual. */}
-              {corBarra && !ehSelecionado && (
+                  CONTORNO no dia SELECIONADO (fix round 1 — a primeira versão
+                  suprimia a barra ali, mas o dia default/"hoje" nasce
+                  selecionado, então o dia que MAIS precisa da barra era
+                  justamente o único sem ela). `--ok`/`--danger` foram
+                  desenhados para serem TEXTO legível sobre `--card`/
+                  `--background` (medição em `mes.test.ts`), e o PREENCHIMENTO
+                  deles mede só 1.77–2.63:1 contra `--primary` nos dois temas
+                  — abaixo do piso de 3:1. Mas a WCAG 1.4.11 mede o contraste
+                  do LIMITE (boundary) de um elemento gráfico de estado, não
+                  do preenchimento inteiro — e o limite pode usar um token
+                  diferente do preenchimento. `--primary-foreground` contra
+                  `--primary` mede 14.17:1 (claro) e 18.23:1 (escuro) — é o
+                  PAR que já sustenta o texto do dia selecionado (`text-
+                  primary-foreground` acima), então um contorno de 1px nesse
+                  token comunica o mesmo matiz (verde/vermelho) via
+                  preenchimento E cumpre 1.4.11 via o contorno. `ring-inset`
+                  (não `ring` solto): o contorno tem que ficar DENTRO da barra
+                  de 3px, não vazar por cima dela e brigar com as marcas
+                  logo acima. Medição completa em `mes.test.ts`, describe
+                  "barra de estado do dia". */}
+              {corBarra && (
                 <span
                   data-testid="barra-estado"
                   aria-hidden
                   className={clsx(
                     'pointer-events-none absolute inset-x-0 bottom-0 h-[3px]',
                     corBarra === 'danger' ? 'bg-danger' : 'bg-ok',
+                    ehSelecionado && 'ring-1 ring-inset ring-primary-foreground',
                   )}
                 />
               )}

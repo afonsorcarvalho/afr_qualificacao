@@ -392,34 +392,41 @@ describe('PALETA', () => {
 /**
  * Guarda de contraste da barra de estado do dia (Task 1). Mesmo método da
  * guarda da `PALETA` logo acima (hsl→rgb + razão WCAG), só que medindo os
- * TOKENS `--ok`/`--danger` em vez da paleta hex de técnico.
+ * TOKENS `--ok`/`--danger`/`--primary-foreground` em vez da paleta hex de
+ * técnico.
  *
- * Só DOIS fundos aqui, não os quatro que o brief original pedia
- * (`--card`/`--primary` × claro/escuro): medido com este mesmo método,
- * `--ok` e `--danger` passam 3:1 sobre `--card` nos dois temas (6.94–9.93:1),
- * mas caem para 1.77–2.63:1 sobre `--primary` nos dois temas — bem abaixo do
- * piso. A razão é estrutural, não um valor mal escolhido: `--ok`/`--danger`
- * foram calibrados (ver comentário no topo de `globals.css`) para serem TEXTO
- * legível sobre `--card`/`--background`, e não existe tom fixo que limpe 3:1
- * contra `--card` E `--primary` ao mesmo tempo nos dois temas — os dois
- * tokens sentam em extremos opostos de luminância de propósito (claro no
- * tema claro é `--card` quase branco e `--primary` quase preto; o inverso no
- * escuro).
+ * Duas medições, dois papéis diferentes na barra:
  *
- * A saída (decidida com o advisor desta task, não um token novo inventado em
- * silêncio): a barra NÃO renderiza no dia SELECIONADO — o único dia com fundo
- * `--primary` — e o `aria-label` continua carregando a mesma informação
- * (contagem, nomes, sufixo de conflito) nesse dia, então a Global Constraint
- * #4 ("cor nunca é o único portador") continua respeitada; só o portador
- * VISUAL fica ausente ali, não a informação. Ver `GradeMes.tsx` (prop
- * `conflitos`, supressão `!ehSelecionado`) e o describe "barra de estado do
- * dia" em `GradeMes.test.tsx`, que pina essa supressão — sem aquele teste,
- * a redução de escopo desta guarda para dois fundos ficaria sem lastro (
- * alguém poderia reintroduzir a barra no dia selecionado e esta guarda
- * continuaria verde).
+ * 1. `--ok`/`--danger` contra `--card` (o fundo da célula NÃO selecionada,
+ *    nos dois temas): 6.94–9.93:1, folgado. É essa dupla que pinta o
+ *    PREENCHIMENTO da barra sempre — inclusive no dia selecionado, onde o
+ *    preenchimento sozinho mede só 1.77–2.63:1 contra `--primary` (medido no
+ *    fix round 1, abaixo do piso de 3:1).
+ * 2. `--primary-foreground` contra `--primary` (o par que já pinta o TEXTO
+ *    do dia selecionado, `text-primary-foreground`): 14.17:1 (claro) e
+ *    18.23:1 (escuro) — é essa dupla que sustenta o CONTORNO de 1px que a
+ *    barra ganha só no dia selecionado (`ring-1 ring-inset
+ *    ring-primary-foreground` em `_GradeMes.tsx`).
+ *
+ * A saída (fix round 1, decidida com o coordinator desta task depois que a
+ * primeira versão — suprimir a barra inteira no dia selecionado — se provou
+ * errada no navegador: o dia default nasce SELECIONADO e é frequentemente o
+ * que mais precisa da barra): a WCAG 1.4.11 mede o contraste do LIMITE
+ * (boundary) de um elemento gráfico de estado, não do preenchimento inteiro
+ * — e o limite pode usar um token diferente do preenchimento. Por isso a
+ * barra continua sempre visível (preenchimento `--ok`/`--danger`, o mesmo
+ * token do dia não selecionado — o MATIZ nunca muda) e ganha só um contorno
+ * de 1px em `--primary-foreground` quando o dia está selecionado, cumprindo
+ * 1.4.11 pelo contorno sem precisar de um token de preenchimento novo.
+ *
+ * Não existe tom de PREENCHIMENTO fixo que limpe 3:1 contra `--card` E
+ * `--primary` ao mesmo tempo nos dois temas — os dois fundos sentam em
+ * extremos opostos de luminância de propósito (claro no tema claro é
+ * `--card` quase branco e `--primary` quase preto; o inverso no escuro) — daí
+ * o contorno, não uma terceira cor de preenchimento inventada.
  */
-describe('barra de estado do dia: --ok/--danger legíveis sobre --card nos dois temas', () => {
-  it('--ok e --danger passam 3:1 sobre --card no claro e no escuro', () => {
+describe('barra de estado do dia: --ok/--danger sobre --card, e --primary-foreground sobre --primary (contorno do dia selecionado)', () => {
+  it('--ok e --danger passam 3:1 sobre --card no claro e no escuro (preenchimento da barra)', () => {
     const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
     for (const tema of [':root', ':root.dark']) {
       const card = tokenDe(css, tema, 'card')
@@ -433,6 +440,20 @@ describe('barra de estado do dia: --ok/--danger legíveis sobre --card nos dois 
           `--${papel} sobre --card em ${tema}`,
         ).toBeGreaterThanOrEqual(3)
       }
+    }
+  })
+
+  it('--primary-foreground passa 3:1 sobre --primary no claro e no escuro (contorno da barra no dia selecionado)', () => {
+    const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
+    for (const tema of [':root', ':root.dark']) {
+      const primary = tokenDe(css, tema, 'primary')
+      const primaryFg = tokenDe(css, tema, 'primary-foreground')
+      expect(primary, `--primary ausente em ${tema}`).not.toBeNull()
+      expect(primaryFg, `--primary-foreground ausente em ${tema}`).not.toBeNull()
+      expect(
+        contraste(hsl2rgb(primaryFg!), hsl2rgb(primary!)),
+        `--primary-foreground sobre --primary em ${tema}`,
+      ).toBeGreaterThanOrEqual(3)
     }
   })
 })

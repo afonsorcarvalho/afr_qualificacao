@@ -767,7 +767,19 @@ describe('GradeMes', () => {
       expect(barra.className).toContain('bg-danger')
     })
 
-    it('dia SELECIONADO não mostra a barra — --ok/--danger medem 1.77–2.63:1 sobre --primary, abaixo do piso de 3:1 (ver guarda em mes.test.ts); o aria-label continua carregando a mesma informação', () => {
+    // --- fix round 1: a primeira versão suprimia a barra no dia
+    // selecionado (achado de contraste — --ok/--danger medem só 1.77–2.63:1
+    // sobre --primary). O coordinator achou no navegador que o dia default
+    // NASCE selecionado (hoje), e no banco de dev ele tinha conflito — o
+    // único dia sem barra era justamente o que mais precisava dela. A saída:
+    // a barra continua sempre visível (mesmo preenchimento --ok/--danger de
+    // qualquer outro dia — o matiz nunca muda) e ganha um CONTORNO de 1px em
+    // --primary-foreground só no dia selecionado, que mede 14.17:1 (claro) e
+    // 18.23:1 (escuro) contra --primary — WCAG 1.4.11 mede o contraste do
+    // LIMITE do elemento gráfico, não do preenchimento inteiro. Ver o
+    // describe "barra de estado do dia" em mes.test.ts.
+
+    it('dia SELECIONADO com conflito: barra --danger, agora com contorno --primary-foreground', () => {
       const dias = montarDias({
         '2026-09-05': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
       })
@@ -783,9 +795,54 @@ describe('GradeMes', () => {
         />,
       )
       const cel = screen.getAllByRole('button', { pressed: true })[0]
-      expect(within(cel).queryByTestId('barra-estado')).not.toBeInTheDocument()
-      // A informação não se perde — só o portador visual é suprimido aqui.
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-danger')
+      expect(barra.className).toContain('ring-primary-foreground')
+      // A informação também continua no aria-label — o contorno reforça,
+      // não substitui.
       expect(cel).toHaveAccessibleName(/5 de setembro, 1 visita: Ana Silva, com conflito/)
+    })
+
+    it('dia SELECIONADO com visita e sem conflito: barra --ok, com o mesmo contorno', () => {
+      const dias = montarDias({
+        '2026-09-05': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-05"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getAllByRole('button', { pressed: true })[0]
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-ok')
+      expect(barra.className).toContain('ring-primary-foreground')
+    })
+
+    it('dia NÃO selecionado não leva o contorno — só o dia selecionado ganha `ring-primary-foreground`', () => {
+      const dias = montarDias({
+        '2026-09-05': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: /^5 de setembro,/ })
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-ok')
+      expect(barra.className).not.toContain('ring-primary-foreground')
     })
 
     it('a barra é aria-hidden e não entra na árvore de acessibilidade', () => {
