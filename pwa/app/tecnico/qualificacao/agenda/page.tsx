@@ -234,10 +234,19 @@ export default function AgendaPage() {
   // a seção do dia contradiria o brief ("filtro altera SÓ as marcas da
   // grade"). A FILTRADA (sufixo `Grade`) roda sobre `visitasVisiveis` e
   // alimenta só as marcas (`dias`/`instrumentos` da `_GradeMes`).
-  const pontosDiaJanela = useMemo(
-    () => (mes ? tecnicosPorDia(visitas, gradeMes, roster) : []),
-    [mes, visitas, gradeMes, roster],
-  )
+  // Conjunto de ids de técnico com visita na janela (os 42 dias da grade) —
+  // é só isso que `legendaTecnicos` abaixo precisa. Fix round 1 (achado 6,
+  // evitável): antes rodava `tecnicosPorDia` (agregação 42 dias × roster)
+  // só pra depois jogar fora tudo menos os ids — em modo Mês `visitas` JÁ É
+  // a janela inteira (o fetch usa `gradeMes[0]`/`gradeMes[41]` como
+  // `date_from`/`date_to`), e `roster` já é a união de quem tem visita, tão
+  // basta uma varredura O(V) direto sobre `visitas`.
+  const idsTecnicoNaJanela = useMemo(() => {
+    const ids = new Set<number | false>()
+    if (!mes) return ids
+    for (const v of visitas) ids.add(v.tecnico_id)
+    return ids
+  }, [mes, visitas])
   // Instrumentos da grade do mês — FONTE ÚNICA (versão `Janela`) das
   // superfícies que precisam do universo inteiro: a faixa de legenda e a
   // seção "Instrumentos do dia". Com o catálogo em falha devolve `[]`: nada
@@ -246,6 +255,14 @@ export default function AgendaPage() {
     () => (mes && !instrumentosComFalha ? instrumentosPorDia(visitas, gradeMes, opcoesInstrumento) : []),
     [mes, instrumentosComFalha, visitas, gradeMes, opcoesInstrumento],
   )
+  // `true` quando NENHUMA visita da janela usa instrumento nenhum — seja
+  // porque o catálogo está em falha (`pontosInstrumentoJanela` já vem `[]`),
+  // seja porque simplesmente ninguém usou instrumento neste mês (navegar
+  // pra um mês sem nenhuma visita instrumentada). Nos dois casos
+  // `legendaInstrumentos` fica `[]` — a faixa não tem NENHUM item pra
+  // mostrar, e um `instrumentosSel` restrito de um mês/momento anterior não
+  // tem contra o que ser aplicado aqui.
+  const semInstrumentoNaJanela = pontosInstrumentoJanela.every((d) => d.instrumentos.length === 0)
   // As duas faixas (Task 2): uma visita contribui com marca se passa nas
   // DUAS camadas — interseção (E), não união —, e a restrição de
   // instrumentos por si só já exclui visita sem instrumento nenhum
@@ -253,24 +270,27 @@ export default function AgendaPage() {
   // abaixo — `doDia` (os `VisitaCard`s) e `instrumentosDoDiaSel` continuam
   // lendo `visitas`/`pontosInstrumentoJanela`, a lista completa.
   //
-  // `instrumentosComFalha` ignora uma restrição de instrumento já armada
-  // (achado da review desta task): com o catálogo em falha,
-  // `legendaInstrumentos` fica `[]` e a faixa inteira (`FaixaLegenda`, que
-  // retorna `null` sem item) some da tela — "Todos" incluído. Sem esta
-  // cláusula, um `instrumentosSel` restrito de ANTES da falha continuava
-  // suprimindo as bolinhas de técnico sem nenhum controle visível pra
-  // limpar — a mesma forma de armadilha ("sem saída a não ser trocar de
-  // modo") que este arquivo já corrigiu duas vezes para outros casos.
+  // `semInstrumentoNaJanela` ignora uma restrição de instrumento já armada
+  // quando ela não tem NADA contra o que ser aplicada nesta janela (achado
+  // 1 da review, fix round 1 — generalizado a partir do achado anterior do
+  // advisor, que só cobria `instrumentosComFalha`): sem esta cláusula, um
+  // `instrumentosSel` restrito de um mês/momento anterior continuava
+  // suprimindo TODAS as marcas do mês (inclusive as de técnico, por causa
+  // da interseção) sem nenhum controle visível pra limpar — a mesma forma
+  // de armadilha ("sem saída a não ser trocar de modo") que este arquivo já
+  // corrigiu várias vezes para outros gatilhos. Alcançável por NAVEGAÇÃO
+  // pura, sem nenhuma falha: restringir instrumentos em setembro e tocar ▶
+  // pra um mês sem visita instrumentada bastava.
   const visitasVisiveis = useMemo(() => {
     if (!mes || (tecnicosSel === null && instrumentosSel === null)) return visitas
     return visitas.filter((v) => {
       const passaTecnico = tecnicosSel === null || tecnicosSel.has(v.tecnico_id)
       const passaInstrumento =
-        instrumentosSel === null || instrumentosComFalha ||
+        instrumentosSel === null || semInstrumentoNaJanela ||
         v.instrument_ids.some((id) => instrumentosSel.has(id))
       return passaTecnico && passaInstrumento
     })
-  }, [mes, visitas, tecnicosSel, instrumentosSel, instrumentosComFalha])
+  }, [mes, visitas, tecnicosSel, instrumentosSel, semInstrumentoNaJanela])
   const pontosDiaGrade = useMemo(
     () => (mes ? tecnicosPorDia(visitasVisiveis, gradeMes, roster) : []),
     [mes, visitasVisiveis, gradeMes, roster],
@@ -306,18 +326,14 @@ export default function AgendaPage() {
   // `alternarTecnico` abaixo). Ordem do roster (por nome), "Sem técnico" no
   // fim — mesma ordem que `_VistaMes` produzia antes desta task.
   const legendaTecnicos = useMemo(() => {
-    const idsNaJanela = new Set<number | false>()
-    for (const d of pontosDiaJanela) {
-      for (const p of d.pontos) idsNaJanela.add(p.id)
-    }
     const itens: { chave: string | number; id: number | false; cor: string; nome: string }[] = roster
-      .filter((t) => idsNaJanela.has(t.id))
+      .filter((t) => idsTecnicoNaJanela.has(t.id))
       .map((t) => ({ chave: t.id, id: t.id as number | false, cor: corDoTecnico(t.id), nome: t.name }))
-    if (idsNaJanela.has(false)) {
+    if (idsTecnicoNaJanela.has(false)) {
       itens.push({ chave: 'sem-tecnico', id: false, cor: COR_SEM_TECNICO, nome: 'Sem técnico' })
     }
     return itens
-  }, [pontosDiaJanela, roster])
+  }, [idsTecnicoNaJanela, roster])
   // Dia default quando não há seleção válida na grade: primeiro tenta
   // `hoje` (server_today) — mesmo critério da Semana, que nasce ancorada
   // em `data.date_from` = hoje — e só cai no 1º dia do mês quando "hoje"
@@ -727,7 +743,15 @@ export default function AgendaPage() {
           legendaTecnicos={legendaTecnicos}
           legendaInstrumentos={legendaInstrumentos}
           tecnicosSel={tecnicosSel}
-          instrumentosSel={instrumentosSel}
+          // Durante a falha do catálogo (não a navegação sem uso), a faixa
+          // precisa FICAR escondida — `legendaInstrumentos` já é `[]`, e sem
+          // forçar `null` aqui um `instrumentosSel` restrito de antes da
+          // falha faria `FaixaLegenda` renderizar (itens vazios, mas
+          // `selecionado !== null`), quebrando a garantia de que a falha do
+          // catálogo apaga a faixa inteira. Fora da falha (navegação pura
+          // pra um mês sem uso), passa o `Set` real — é o que dá a
+          // `FaixaLegenda` o "Todos" desligado como escape visível.
+          instrumentosSel={instrumentosComFalha ? null : instrumentosSel}
           onAlternarTecnico={alternarTecnico}
           onAlternarInstrumento={alternarInstrumento}
           onTodosTecnicos={todosTecnicos}

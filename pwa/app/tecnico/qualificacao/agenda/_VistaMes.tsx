@@ -33,15 +33,27 @@ interface ItemLegenda<T extends number | false> {
  * cor/forma nunca foram o único portador — só a fronteira ENTRE os dois
  * grupos era ambígua sem ele.
  *
- * Faixa sem item não renderiza nada: rótulo órfão ("Instrumentos:" seguido de
- * vazio) é ruído que afirma o que não há (brief 3b) — o badge "Todos" também
- * some junto, faixa vazia não tem o que filtrar.
+ * Faixa sem item E sem restrição não renderiza nada: rótulo órfão
+ * ("Instrumentos:" seguido de vazio) é ruído que afirma o que não há (brief
+ * 3b), e nesse caso não há filtro pra limpar mesmo. Mas quando HÁ uma
+ * restrição ativa (`selecionado !== null`) e a janela simplesmente não tem
+ * item pra mostrar — ex.: o Gestor restringiu instrumentos em setembro e
+ * navegou pra um mês sem nenhuma visita instrumentada —, a faixa CONTINUA
+ * renderizada, só com o rótulo e o badge "Todos": é a única saída visível
+ * pra uma restrição que sobrou de outro mês (fix round 1, achado 1 — a
+ * MESMA classe de defeito que o `instrumentosComFalha` já fechava sozinho
+ * pra falha de catálogo, agora fechada por inteiro).
  *
  * Estado ligado/desligado nunca é só cor: `aria-pressed` carrega o estado
- * pra leitor de tela, e visualmente é borda/contorno (tracejado quando
- * desligado) + opacidade do FUNDO — nunca opacidade sobre o texto do nome,
- * que ficaria abaixo do piso de contraste (`temaTokens.test.ts` proíbe
- * `opacity-N` nu na mesma linha de um token de texto).
+ * pra leitor de tela, e visualmente é PESO — ligado é preenchido
+ * (`bg-accent`, igual ao "Todos" ativo), desligado fica apagado (sem fundo,
+ * contorno tracejado, texto em `text-muted-foreground`) — nunca o
+ * contrário: um chip desligado com MAIS peso visual que os ligados lê como
+ * "selecionado" pro olho, o oposto do que `aria-pressed=false` diz (achado
+ * de validação em navegador, fix round 1). A cor de `text-muted-foreground`
+ * é o "token puro" que `temaTokens.test.ts` pede no lugar de opacidade — a
+ * regra da guarda continua sendo respeitada porque nenhuma classe daqui é
+ * `opacity-N` nu.
  */
 function FaixaLegenda<T extends number | false>({
   id,
@@ -64,12 +76,12 @@ function FaixaLegenda<T extends number | false>({
   onAlternar: (id: T) => void
   onTodos: () => void
 }) {
-  if (itens.length === 0) return null
+  if (itens.length === 0 && selecionado === null) return null
   return (
     <div
       role="group"
       aria-labelledby={id}
-      className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-xs text-muted-foreground"
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-xs"
     >
       <span id={id} className="font-medium text-foreground">
         {rotulo}
@@ -79,8 +91,10 @@ function FaixaLegenda<T extends number | false>({
         aria-pressed={selecionado === null}
         onClick={onTodos}
         className={clsx(
-          'flex min-h-[44px] items-center rounded-md border px-2 font-medium text-foreground',
-          selecionado === null ? 'border-transparent bg-accent' : 'border-dashed border-border bg-muted/40',
+          'flex min-h-[44px] items-center rounded-md border px-2',
+          selecionado === null
+            ? 'border-transparent bg-accent font-semibold text-foreground'
+            : 'border-dashed border-border text-muted-foreground',
         )}
       >
         Todos
@@ -95,7 +109,9 @@ function FaixaLegenda<T extends number | false>({
             onClick={() => onAlternar(item.id)}
             className={clsx(
               'flex min-h-[44px] items-center gap-1.5 rounded-md border px-2',
-              ligado ? 'border-transparent' : 'border-dashed border-border bg-muted/40',
+              ligado
+                ? 'border-transparent bg-accent font-semibold text-foreground'
+                : 'border-dashed border-border text-muted-foreground',
             )}
           >
             {marca === 'bolinha' ? (
