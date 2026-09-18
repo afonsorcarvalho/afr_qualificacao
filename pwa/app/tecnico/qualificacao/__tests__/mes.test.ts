@@ -254,10 +254,16 @@ describe('instrumentosPorDia', () => {
     expect(dia.instrumentos.map((i) => i.id)).toEqual([5])
   })
 
-  it('ordem segue `opcoes`, com desconhecidos no fim por id crescente', () => {
-    // `opcoes` aqui está em ordem DECRESCENTE de id (8 antes de 5) de
-    // propósito: se o código ignorasse a ordem de `opcoes` e só ordenasse
-    // tudo por id crescente, este teste pegaria a diferença.
+  it('ordem é por nome (não pela ordem de `opcoes`), com desconhecidos no fim por id crescente', () => {
+    // Fix final (M-1): a ordem deixou de ser a de `opcoes` e passou a ser a
+    // de `ordenarInstrumentos` — a MESMA que a legenda aplica em `page.tsx`.
+    // A ordem do servidor era uma regra que só a célula conseguia aplicar (a
+    // legenda não recebe `opcoes`), então as duas metades da tela desenhavam
+    // o mesmo conjunto em sequências diferentes.
+    //
+    // `opcoes` aqui vem em ordem DECRESCENTE de id e com os nomes fora de
+    // ordem alfabética de propósito: se o código voltasse a seguir `opcoes`,
+    // sairia [8, 5, ...] em vez de [5, 8, ...].
     const opcoesInvertidas: InstrumentoOpcao[] = [
       { id: 8, name: 'Termômetro', validade: false },
       { id: 5, name: 'Multímetro', validade: '2027-01-01' },
@@ -267,7 +273,27 @@ describe('instrumentosPorDia', () => {
       dias, opcoesInvertidas,
     )
     const dia = r.find((d) => d.date === '2026-09-17')!
-    expect(dia.instrumentos.map((i) => i.id)).toEqual([8, 5, 50, 99])
+    // Conhecidos por nome (Multímetro < Termômetro), desconhecidos no fim por
+    // id — identificador fabricado nunca encabeça a lista.
+    expect(dia.instrumentos.map((i) => i.id)).toEqual([5, 8, 50, 99])
+  })
+
+  it('nome com número usa colação numérica: TAG-2 antes de TAG-10', () => {
+    // `localeCompare` sem `{ numeric: true }` compara caractere a caractere e
+    // põe "TAG-10" antes de "TAG-2" — com tags sequenciais (o caso comum do
+    // cadastro), a célula e a legenda ficavam numa ordem que não é a que o
+    // técnico lê na etiqueta.
+    const opcoesTags: InstrumentoOpcao[] = [
+      { id: 1, name: 'TAG-10', validade: false },
+      { id: 2, name: 'TAG-2', validade: false },
+      { id: 3, name: 'TAG-3', validade: false },
+    ]
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [1, 2, 3] })],
+      dias, opcoesTags,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos.map((i) => i.name)).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
   })
 })
 

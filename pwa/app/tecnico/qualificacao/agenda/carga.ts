@@ -24,16 +24,37 @@ export interface CargaTecnico {
   horas: number
 }
 
+/** Um uso de um instrumento numa visita: quem, quando, em qual OS. */
+export interface UsoDeVisita {
+  visitaId: number
+  osName: string
+  tecnicoName: string
+  faixa: string
+}
+
 export interface UsoInstrumento {
   id: number
   name: string
   vencido: boolean
-  usos: {
-    visitaId: number
-    osName: string
-    tecnicoName: string
-    faixa: string
-  }[]
+  usos: UsoDeVisita[]
+}
+
+/**
+ * Linha da seção "Instrumentos do dia" do modo Mês. Nasce de um
+ * `PontoInstrumento` (a MESMA entrada que virou triângulo na célula e chip na
+ * legenda) acrescido dos usos do dia — por isso carrega `cor` e `name` do
+ * ponto, em vez de recalcular: é a garantia estrutural de que as duas metades
+ * da tela não podem discordar sobre quais instrumentos o dia tem.
+ *
+ * Sem `vencido`, ao contrário de `UsoInstrumento`: o aviso de certificado
+ * vencido está fora de escopo no Mês por escolha do usuário, e um campo à mão
+ * é um convite a reintroduzi-lo.
+ */
+export interface InstrumentoDoDia {
+  id: number
+  name: string
+  cor: string
+  usos: UsoDeVisita[]
 }
 
 /** Sete dias ISO a partir de `inicio`, em UTC — nunca lê o relógio do aparelho. */
@@ -123,6 +144,30 @@ export function picoDaSemana(
   return Math.max(1, max)
 }
 
+/**
+ * Usos de UM instrumento dentro de uma lista de visitas JÁ filtrada pelo dia.
+ * Recebe `doDia`, não `visitas`: quem chama filtra a data uma vez só e reusa
+ * — refiltrar por instrumento levaria o painel da Semana de `V + N×V_dia`
+ * para `N×V`.
+ *
+ * Ordenado por horário, não pela ordem de chegada da API: o backend por acaso
+ * já devolve `date, time_start, id`, mas depender de ordenação incidental é a
+ * mesma fragilidade que já custou fix rounds nesta feature, e o painel lê
+ * isto de relance ("8–12, depois 13–17").
+ */
+function usosNoDia(doDia: VisitaAgenda[], id: number): UsoDeVisita[] {
+  return doDia
+    .filter((v) => v.instrument_ids.includes(id))
+    .slice()
+    .sort((a, b) => a.time_start - b.time_start)
+    .map((v) => ({
+      visitaId: v.id,
+      osName: v.os_name,
+      tecnicoName: v.tecnico_name,
+      faixa: `${horaOdoo(v.time_start)}–${horaOdoo(v.time_stop)}`,
+    }))
+}
+
 export function usoPorInstrumento(
   visitas: VisitaAgenda[],
   dia: string,
@@ -136,19 +181,37 @@ export function usoPorInstrumento(
     // Validade igual ao dia ainda vale — é o mesmo `>=` do
     // `_instrument_valid_on` no servidor.
     vencido: !i.validade || i.validade < dia,
-    // Ordenado por horário, não pela ordem de chegada da API: o backend por
-    // acaso já devolve `date, time_start, id`, mas depender de ordenação
-    // incidental é a mesma fragilidade que já custou fix rounds nesta
-    // feature, e o painel lê isto de relance ("8–12, depois 13–17").
-    usos: doDia
-      .filter((v) => v.instrument_ids.includes(i.id))
-      .slice()
-      .sort((a, b) => a.time_start - b.time_start)
-      .map((v) => ({
-        visitaId: v.id,
-        osName: v.os_name,
-        tecnicoName: v.tecnico_name,
-        faixa: `${horaOdoo(v.time_start)}–${horaOdoo(v.time_stop)}`,
-      })),
+    usos: usosNoDia(doDia, i.id),
+  }))
+}
+
+/**
+ * Seção "Instrumentos do dia" do modo Mês.
+ *
+ * A fonte da lista são os `pontos` — a entrada de `instrumentosPorDia`
+ * correspondente ao dia selecionado, a MESMA que desenhou os triângulos da
+ * célula e os chips da legenda —, e não o catálogo
+ * `pwa_instrumento_options`. Antes do fix final, a seção mapeava sobre o
+ * catálogo (a INTERSEÇÃO entre usado e catalogado) enquanto a grade mostrava
+ * a UNIÃO: bastava um id usado estar fora das opções (instrumento arquivado,
+ * catálogo que falhou de carregar) para as duas metades da tela se
+ * contradizerem em silêncio — a grade afirmando que o dia tem o instrumento e
+ * a lista negando.
+ *
+ * `usoPorInstrumento` continua intocada: o painel da Semana precisa listar
+ * TODO instrumento do catálogo, inclusive os sem uso, justamente pra mostrar
+ * quem está livre. São duas perguntas diferentes sobre o mesmo dia.
+ */
+export function instrumentosDoDia(
+  visitas: VisitaAgenda[],
+  dia: string,
+  pontos: { id: number; name: string; cor: string }[],
+): InstrumentoDoDia[] {
+  const doDia = visitas.filter((v) => v.date === dia)
+  return pontos.map((p) => ({
+    id: p.id,
+    name: p.name,
+    cor: p.cor,
+    usos: usosNoDia(doDia, p.id),
   }))
 }
