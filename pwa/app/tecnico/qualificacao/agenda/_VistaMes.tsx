@@ -131,7 +131,9 @@ export function VistaMes({
    * reagendava a visita no primeiro toque, em silêncio (fix round 2, achado 2).
    */
   alvoAtivo: boolean
-  /** Toque num dia da grade com visita em ajuste: grava `{ date }`. */
+  /** Toque num dia da grade com visita em ajuste: chamado com `{ date }` —
+   * quem decide se isso arma o diálogo de confirmação de data ou grava
+   * direto é a `page.tsx` (Task 1: hoje sempre arma, nunca grava aqui). */
   onAjustar: (vals: VisitaVals) => void
   /** Toque em "Ajustar"/"Concluir" no card: liga/desliga o ajuste daquela visita. */
   onAlternarAjuste: (visita: VisitaAgenda) => void

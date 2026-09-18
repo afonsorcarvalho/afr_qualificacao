@@ -222,7 +222,7 @@ describe('Modo Mês', () => {
     expect(screen.queryByText('OS26-02')).toBeNull()
   })
 
-  it('Gestor: selecionar visita para ajuste + tocar outro dia chama pwa_visita_update com o date do destino', async () => {
+  it('Gestor: selecionar visita para ajuste + tocar outro dia abre diálogo de confirmação; Confirmar chama pwa_visita_update com o date do destino', async () => {
     montar()
     irParaMes()
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
@@ -231,9 +231,66 @@ describe('Modo Mês', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
     fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
 
+    // Não grava direto — abre a confirmação com as duas datas no texto.
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    expect(within(dialogo).getByText(
+      'Tem certeza que deseja mudar a data da visita OS26-02 de 17/09/2026 para 19/09/2026?',
+    )).toBeInTheDocument()
+
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Confirmar' }))
+
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-09-19' } }),
     )
+  })
+
+  it('Cancelar no diálogo de confirmação não grava e mantém a visita armada', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }))
+
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // A visita continua armada — o Gestor precisa poder escolher outro dia
+    // sem recomeçar.
+    expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+  })
+
+  it('tocar no mesmo dia em que a visita já está não abre diálogo', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(mutateUpdate).not.toHaveBeenCalled()
+  })
+
+  it('visita armada some do payload fecha o diálogo pendente de confirmação de data', async () => {
+    const { rerender, qc } = montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+    expect(screen.getByRole('dialog', { name: 'Mudar data da visita' })).toBeInTheDocument()
+
+    payloadAtual = { ...payload, visitas: [] }
+    rerender(<QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('mover para célula fora do mês grava e a vista acompanha o destino (a âncora avança para o mês do destino)', async () => {
@@ -248,6 +305,7 @@ describe('Modo Mês', () => {
     // sempre 6 semanas) — "3 de outubro" é uma célula "fora do mês"
     // clicável na mesma grade.
     fireEvent.click(screen.getByRole('button', { name: /^fora do mês, 3 de outubro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
 
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-10-03' } }),

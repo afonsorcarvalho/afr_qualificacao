@@ -13,6 +13,7 @@ import { agruparPorDia, deslocarJanela } from './janela'
 import { FaixaDias } from './_FaixaDias'
 import { PainelRecursos, type Dimensao } from './_PainelRecursos'
 import { VistaMes } from './_VistaMes'
+import { ConfirmarMudancaData } from './_ConfirmarMudancaData'
 import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, instrumentosDoDia, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
 import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia, ordenarInstrumentos } from './mes'
 import type { PontoInstrumento } from './mes'
@@ -68,6 +69,11 @@ export default function AgendaPage() {
   const [dimensao, setDimensao] = useState<Dimensao>('tecnico')
   const [emAjuste, setEmAjuste] = useState<VisitaAgenda | null>(null)
   const [erroAjuste, setErroAjuste] = useState('')
+  // ISO do destino tocado na grade/faixa enquanto o diálogo de confirmação
+  // de mudança de DATA está aberto. `null` = nenhum diálogo pendente. Só
+  // data pede confirmação (Task 1) — técnico e instrumento continuam
+  // gravando direto, por isso este estado é separado de `emAjuste`.
+  const [dataPendente, setDataPendente] = useState<string | null>(null)
   const update = useUpdateVisita()
   const tecnicos = useTecnicoOptions(visaoEquipe)
   // `pwa_instrumento_options` alimenta três telas distintas: o painel de
@@ -290,10 +296,56 @@ export default function AgendaPage() {
   }
 
   /** A seleção termina (toque em "Concluir", ou a visita some do payload):
-   * nada de tarja de erro sobrevivendo a uma seleção que já acabou. */
+   * nada de tarja de erro sobrevivendo a uma seleção que já acabou, e nada
+   * de diálogo de confirmação de data perguntando sobre uma visita que não
+   * aceita mais gravação. */
   function encerrarAjuste() {
     setEmAjuste(null)
     setErroAjuste('')
+    setDataPendente(null)
+  }
+
+  /** Toque em "Ajustar"/"Concluir" no card: liga/desliga o ajuste daquela
+   * visita. Trocar de alvo limpa qualquer diálogo de data pendente do alvo
+   * anterior — mesmo raciocínio de `encerrarAjuste`, aplicado à troca. */
+  function alternarAjuste(visita: VisitaAgenda) {
+    if (emAjuste?.id === visita.id) {
+      encerrarAjuste()
+      return
+    }
+    setDataPendente(null)
+    setEmAjuste(visita)
+  }
+
+  /**
+   * Toque num dia da grade/faixa com visita armada: mesmo dia não abre
+   * diálogo nenhum (não há o que confirmar) — mas ainda seleciona o dia
+   * (`setDiaSel`), em vez de não fazer nada, pra manter a mesma resposta ao
+   * toque que o caminho sem visita armada já dá (todo toque num dia
+   * seleciona aquele dia); um toque silenciosamente inerte só porque há uma
+   * visita armada seria uma exceção sem motivo visível pro Gestor. Dia
+   * diferente arma `dataPendente`, que abre o diálogo de confirmação — só
+   * `ajustar` grava de fato, depois do "Confirmar".
+   */
+  function armarData(date: string) {
+    if (!emAjusteAtual) return
+    if (date === emAjusteAtual.date) {
+      setDiaSel(date)
+      return
+    }
+    setDataPendente(date)
+  }
+
+  /** "Confirmar" do diálogo: grava pelo `ajustar` que já existe (âncora do
+   * mês, `setDiaSel`, tarja de erro) e fecha o diálogo. */
+  function confirmarData() {
+    if (dataPendente) ajustar({ date: dataPendente })
+    setDataPendente(null)
+  }
+
+  /** "Cancelar" do diálogo: fecha sem gravar — a visita continua armada. */
+  function cancelarData() {
+    setDataPendente(null)
   }
 
   /**
@@ -483,7 +535,7 @@ export default function AgendaPage() {
           <FaixaDias
             dias={cargaPorDia(visitas, dias)}
             selecionado={diaAtual}
-            onSelecionar={(d) => (alvoVisivel ? ajustar({ date: d }) : setDiaSel(d))}
+            onSelecionar={(d) => (alvoVisivel ? armarData(d) : setDiaSel(d))}
           />
           {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
           <PainelRecursos
@@ -510,7 +562,7 @@ export default function AgendaPage() {
               key={v.id}
               visita={v}
               onSelect={setSelecionada}
-              onAjustar={data?.can_manage ? (x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x)) : undefined}
+              onAjustar={data?.can_manage ? alternarAjuste : undefined}
               emAjuste={emAjuste?.id === v.id}
             />
           ))}
@@ -539,12 +591,21 @@ export default function AgendaPage() {
           podeAjustar={!!data?.can_manage}
           emAjuste={emAjusteAtual}
           alvoAtivo={alvoVisivel}
-          onAjustar={ajustar}
-          onAlternarAjuste={(x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x))}
+          onAjustar={(vals) => { if (typeof vals.date === 'string') armarData(vals.date) }}
+          onAlternarAjuste={alternarAjuste}
           erroAjuste={erroAjuste}
           onSelecionarVisita={setSelecionada}
         />
       )}
+
+      <ConfirmarMudancaData
+        open={dataPendente !== null && !!emAjusteAtual}
+        osName={emAjusteAtual?.os_name ?? ''}
+        dataAtual={emAjusteAtual?.date ?? ''}
+        dataNova={dataPendente ?? ''}
+        onConfirmar={confirmarData}
+        onCancelar={cancelarData}
+      />
 
       {data?.can_manage && (
         <button
