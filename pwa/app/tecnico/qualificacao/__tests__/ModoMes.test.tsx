@@ -54,7 +54,26 @@ let erroAtual: Error | null = null
 // acima) permite provar que o modo Mês liga o hook com `enabled=true`
 // (brief 3a) sem depender de string mágica nenhuma.
 let instrumentoOptionsAtual: InstrumentoOpcao[] = []
-const mockUseInstrumentoOptions = vi.fn((_enabled: boolean) => ({ data: instrumentoOptionsAtual }))
+
+// Fix final (bloqueador I-1): o dublê devolvia `{ data }` PRONTO e nada mais —
+// nenhum teste deste arquivo conseguia representar a query de instrumentos em
+// voo ou em falha, que são exatamente os dois estados em que a tela se
+// contradizia (grade dizendo `Instrumento #101`, seção do dia sumindo, sem
+// nenhuma mensagem). `estadoInstrumentos` torna os três estados
+// representáveis; o default é SETTLED, pra não jogar os ~20 testes do arquivo
+// dentro do gate de carregamento novo.
+type EstadoInstrumentos = 'ok' | 'pending' | 'error'
+let estadoInstrumentos: EstadoInstrumentos = 'ok'
+const mockUseInstrumentoOptions = vi.fn((_enabled: boolean) => {
+  if (estadoInstrumentos === 'pending') {
+    return { data: undefined, isPending: true, isError: false }
+  }
+  if (estadoInstrumentos === 'error') {
+    // react-query v5: no erro o status vira `error`, não `pending`.
+    return { data: undefined, isPending: false, isError: true }
+  }
+  return { data: instrumentoOptionsAtual, isPending: false, isError: false }
+})
 
 // Mesmo raciocínio do `ModoSemana.test.tsx`: `vi.fn` que NÃO descarta os
 // argumentos — é o que permite provar a faixa de datas pedida (`date_from`/
@@ -98,6 +117,7 @@ describe('Modo Mês', () => {
     isLoadingAtual = false
     erroAtual = null
     instrumentoOptionsAtual = []
+    estadoInstrumentos = 'ok'
     mutateUpdate.mockReset().mockResolvedValue(visita())
     mockUseAgenda.mockClear()
     mockUseInstrumentoOptions.mockClear()
@@ -549,5 +569,122 @@ describe('Modo Mês', () => {
     expect(screen.getByText('Instrumentos do dia')).toBeInTheDocument()
 
     expect(screen.queryByText(/vencid/i)).toBeNull()
+  })
+  // --- fix final, bloqueador I-1: grade, legenda e lista do dia lendo a
+  // mesma fonte, e falha do catálogo de instrumentos visível ---
+
+  it('catálogo de instrumentos em falha: a falha é VISÍVEL e nenhum identificador fabricado é apresentado como nome', async () => {
+    estadoInstrumentos = 'error'
+    // A visita USA um instrumento: sem isto não haveria nome fabricado para
+    // suprimir e o teste passaria mesmo antes da correção.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // 1. A falha é dita em pt-BR, não engolida.
+    expect(screen.getByText(/Erro ao carregar os instrumentos/)).toBeInTheDocument()
+
+    // 2. Nenhum `Instrumento #101` em lugar nenhum: nem como chip de legenda,
+    //    nem no texto da tela. Antes da correção, `instrumentos.data`
+    //    indefinido fazia TODO instrumento usado virar um identificador
+    //    fabricado apresentado como fato.
+    expect(screen.queryByText(/Instrumento #/)).toBeNull()
+
+    // 3. E ele também não vaza pelos 42 `aria-label` das células.
+    const celulas = screen.getAllByRole('button', { name: /de (setembro|agosto|outubro)/ })
+    expect(celulas.some((c) => (c.getAttribute('aria-label') ?? '').includes('Instrumento #'))).toBe(false)
+
+    // 4. As três superfícies concordam em não afirmar nada: sem faixa de
+    //    legenda e sem seção do dia — e não uma dizendo que o dia tem
+    //    instrumento enquanto a outra some.
+    expect(screen.queryByRole('group', { name: 'Instrumentos:' })).toBeNull()
+    expect(screen.queryByText('Instrumentos do dia')).toBeNull()
+
+    // 5. O resto do mês continua utilizável (degrada como a dos técnicos).
+    expect(screen.getByRole('group', { name: 'Técnicos:' })).toBeInTheDocument()
+    expect(screen.getByText('OS26-02')).toBeInTheDocument()
+  })
+
+  it('catálogo de instrumentos ainda em voo: segura o LoadingState em vez de mostrar a grade com nomes que vão pular', async () => {
+    estadoInstrumentos = 'pending'
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+
+    // As duas buscas saem em paralelo na primeira abertura; se a do catálogo
+    // resolve depois, a grade aparecia com `Instrumento #101` e os nomes
+    // trocavam sozinhos em seguida.
+    expect(screen.getByText('Carregando sua agenda...')).toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: /de (setembro|agosto|outubro)/ })).toHaveLength(0)
+    expect(screen.queryByText(/Instrumento #/)).toBeNull()
+  })
+
+  it('instrumento usado mas ausente das opções (arquivado): grade, legenda e seção do dia concordam', async () => {
+    // Só o 102 está no catálogo; o 101 foi arquivado depois de usado
+    // (`pwa_instrumento_options` faz `search([])`, com `active_test` ligado),
+    // então continua em `instrument_ids` e some das opções.
+    instrumentoOptionsAtual = [{ id: 102, name: 'Q002', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', instrument_ids: [101, 102],
+        time_start: 8, time_stop: 12, os_name: 'OS26-02', tecnico_name: 'Afonso',
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Legenda (metade 1) — deriva da união do que é usado.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q002')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).getByText('Instrumento #101')).toBeInTheDocument()
+
+    // Célula (a mesma fonte da legenda).
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,.*Instrumento #101/ }),
+    ).toBeInTheDocument()
+
+    // Seção "Instrumentos do dia" (metade 2) — antes da correção ela mapeava
+    // sobre o catálogo (a INTERSEÇÃO) e o 101 sumia: a grade afirmava que o
+    // dia tem o instrumento e a lista negava.
+    const secao = screen.getByText('Instrumentos do dia').closest('div') as HTMLElement
+    expect(within(secao).getByText('Q002')).toBeInTheDocument()
+    expect(within(secao).getByText('Instrumento #101')).toBeInTheDocument()
+    expect(within(secao).getAllByText(/08:00–12:00/)).toHaveLength(2)
+  })
+
+  it('legenda e célula listam os instrumentos na MESMA ordem, com colação numérica (TAG-2 antes de TAG-10)', async () => {
+    instrumentoOptionsAtual = [
+      { id: 1, name: 'TAG-10', validade: '2027-01-01' },
+      { id: 2, name: 'TAG-2', validade: '2027-01-01' },
+      { id: 3, name: 'TAG-3', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [1, 2, 3] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    const nomesLegenda = within(grupoInstrumentos)
+      .getAllByText(/^TAG-\d+$/)
+      .map((el) => el.textContent)
+    expect(nomesLegenda).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
+
+    // A célula (via `aria-label`, a fonte de verdade do que ela desenha) tem
+    // de listar na MESMA sequência — a ordem também decide quais triângulos
+    // sobrevivem quando a célula corta por lotação.
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).toContain('instrumentos: TAG-2, TAG-3, TAG-10')
   })
 })

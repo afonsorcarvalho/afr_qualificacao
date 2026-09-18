@@ -1,10 +1,72 @@
 'use client'
 import { VisitaCard } from '../_components/VisitaCard'
 import { GradeMes } from './_GradeMes'
-import { corDoTecnico, corDoInstrumento, COR_SEM_TECNICO } from './mes'
+import { corDoTecnico, COR_SEM_TECNICO } from './mes'
 import type { PontosDia, PontosInstrumentoDia, PontoInstrumento } from './mes'
-import type { UsoInstrumento } from './carga'
+import type { InstrumentoDoDia } from './carga'
 import type { VisitaAgenda, VisitaVals, Opcao } from '@/lib/odoo/agenda'
+
+/**
+ * Uma faixa de legenda: rótulo curto + lista de itens com a marca da frente.
+ *
+ * As duas faixas (técnico e instrumento) eram ~55 linhas de JSX quase
+ * idêntico num componente de 232 — diferiam só no id do rótulo, no texto e na
+ * marca. Extraídas, a a11y das duas passa a ser uma coisa só:
+ * `role="group"` + `aria-labelledby` ligando cada lista ao seu PRÓPRIO
+ * rótulo de forma programática, não só por ordem de leitura no DOM — um
+ * leitor de tela anuncia o grupo pelo nome antes de entrar nos itens, em vez
+ * de concatenar "Técnicos: Ana Silva, Instrumentos: Q001" num fluxo só (fix
+ * round 1, achado 3). O rótulo em si é ganho de clareza de domínio, não
+ * correção de a11y por item: cada chip já carrega o nome em texto puro, então
+ * cor/forma nunca foram o único portador — só a fronteira ENTRE os dois
+ * grupos era ambígua sem ele.
+ *
+ * Faixa sem item não renderiza nada: rótulo órfão ("Instrumentos:" seguido de
+ * vazio) é ruído que afirma o que não há (brief 3b).
+ */
+function FaixaLegenda({
+  id,
+  rotulo,
+  itens,
+  marca,
+}: {
+  /** Id do `<span>` do rótulo, alvo do `aria-labelledby` do grupo. */
+  id: string
+  rotulo: string
+  itens: { chave: string | number; cor: string; nome: string }[]
+  /** Bolinha = técnico, triângulo = instrumento — a FORMA é o que separa os
+   *  dois domínios na grade, e a legenda repete a mesma convenção. */
+  marca: 'bolinha' | 'triangulo'
+}) {
+  if (itens.length === 0) return null
+  return (
+    <div
+      role="group"
+      aria-labelledby={id}
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
+    >
+      <span id={id} className="font-medium text-foreground">
+        {rotulo}
+      </span>
+      {itens.map((item) => (
+        <span key={item.chave} className="flex items-center gap-1.5">
+          {marca === 'bolinha' ? (
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: item.cor }}
+              aria-hidden
+            />
+          ) : (
+            <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
+              <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={item.cor} />
+            </svg>
+          )}
+          {item.nome}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 /**
  * Modo Mês — monta o que a `page.tsx` já calculou: `GradeMes` + legenda de
@@ -18,7 +80,8 @@ export function VistaMes({
   visitas,
   dias,
   instrumentos,
-  usoInstrumentosDia,
+  legendaInstrumentos,
+  instrumentosDoDia,
   ancora,
   hoje,
   diaSel,
@@ -37,12 +100,20 @@ export function VistaMes({
   /** Instrumentos usados por dia, nos 42 dias da grade (`instrumentosPorDia`). */
   instrumentos: PontosInstrumentoDia[]
   /**
-   * Usos do instrumento no dia SELECIONADO, já filtrados para quem tem uso
-   * (`usoPorInstrumento` de `carga.ts`, a mesma agregação do painel da
-   * Semana) — a seção "Instrumentos do dia" só lista quem está de fato
-   * marcado, ao contrário do painel da Semana, que também mostra "livre".
+   * Instrumentos distintos da janela de 42 dias, deduplicados e já ordenados
+   * pela página com a MESMA função que ordena a célula (`ordenarInstrumentos`)
+   * — legenda e grade não podem listar o mesmo conjunto em sequências
+   * diferentes, senão só a cor casaria as duas, e cor sozinha não carrega
+   * informação (Global Constraint #4).
    */
-  usoInstrumentosDia: UsoInstrumento[]
+  legendaInstrumentos: PontoInstrumento[]
+  /**
+   * Seção "Instrumentos do dia": derivada da entrada de `instrumentos`
+   * correspondente ao dia selecionado, acrescida dos usos. Mesma fonte da
+   * grade e da legenda de propósito — as três superfícies não podem
+   * discordar sobre quais instrumentos o dia tem.
+   */
+  instrumentosDoDia: InstrumentoDoDia[]
   ancora: string
   hoje: string | null
   diaSel: string
@@ -78,30 +149,6 @@ export function VistaMes({
   const legenda = roster.filter((t) => idsNaJanela.has(t.id))
   const temSemTecnico = idsNaJanela.has(false)
 
-  // Legenda de instrumentos: mesmo critério da de técnicos, "usado nos 42
-  // dias da janela", não o mês estrito. Sem `roster` equivalente pra
-  // instrumento (a página não passa `pwa_instrumento_options` cru pra cá —
-  // ruling do controlador, este componente só recebe dados já agregados),
-  // a lista distinta sai de `instrumentos` mesmo, deduplicada por id — nome
-  // e cor já são estáveis por id (`corDoInstrumento`), então dedupar por id
-  // não perde nem embaralha informação. Ordenada por nome (`localeCompare`
-  // pt-BR) DEPOIS do dedupe, mesmo padrão de `rosterTecnicos` em
-  // `carga.ts` — sem o sort, a ordem seria a de primeira aparição
-  // cronológica pelos 42 dias da grade, que reordena a cada navegação de
-  // mês conforme o conjunto de instrumentos usados muda (fix round 1,
-  // achado 2: `PontoInstrumento` já carrega `name`, não é preciso nenhuma
-  // prop nova pra isso).
-  const legendaInstrumentos: PontoInstrumento[] = []
-  const idsInstrumentoNaLegenda = new Set<number>()
-  for (const d of instrumentos) {
-    for (const inst of d.instrumentos) {
-      if (idsInstrumentoNaLegenda.has(inst.id)) continue
-      idsInstrumentoNaLegenda.add(inst.id)
-      legendaInstrumentos.push(inst)
-    }
-  }
-  legendaInstrumentos.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-
   const doDia = visitas.filter((v) => v.date === diaSel)
 
   return (
@@ -115,93 +162,62 @@ export function VistaMes({
         onSelecionar={(date) => (alvoAtivo ? onAjustar({ date }) : onSelecionarDia(date))}
       />
 
-      {/* As duas faixas (técnico e instrumento) leem igual: rótulo curto +
-          lista, `role="group"`/`aria-labelledby` ligando cada uma ao seu
-          próprio rótulo de forma programática, não só por ordem de leitura
-          no DOM — um leitor de tela anuncia o grupo pelo nome antes de
-          entrar nos itens, em vez de só concatenar "Técnicos: Ana Silva,
-          Instrumentos: Q001" num fluxo só (fix round 1, achado 3). O
-          rótulo em si é ganho de clareza de domínio, não correção de a11y:
-          cada chip já carrega o nome em texto puro, então cor/forma nunca
-          foram o único portador por item — só a fronteira ENTRE os dois
-          grupos era ambígua sem ele. */}
-      {(legenda.length > 0 || temSemTecnico) && (
-        <div
-          role="group"
-          aria-labelledby="legenda-mes-tecnicos"
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
-        >
-          <span id="legenda-mes-tecnicos" className="font-medium text-foreground">
-            Técnicos:
-          </span>
-          {legenda.map((t) => (
-            <span key={t.id} className="flex items-center gap-1.5">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: corDoTecnico(t.id) }}
-                aria-hidden
-              />
-              {t.name}
-            </span>
-          ))}
-          {temSemTecnico && (
-            <span className="flex items-center gap-1.5">
-              <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: COR_SEM_TECNICO }}
-                aria-hidden
-              />
-              Sem técnico
-            </span>
-          )}
-        </div>
-      )}
+      {/* Duas faixas, mesma mecânica (`FaixaLegenda`): a de técnicos leva
+          "Sem técnico" no fim quando alguma visita DA JANELA (os 42 dias,
+          inclusive o transbordo esmaecido pros meses vizinhos que a própria
+          grade desenha) não tem `tecnico_id` — mesmo escopo dos chips acima,
+          não só o mês estrito. */}
+      <FaixaLegenda
+        id="legenda-mes-tecnicos"
+        rotulo="Técnicos:"
+        marca="bolinha"
+        itens={[
+          ...legenda.map((t) => ({ chave: t.id, cor: corDoTecnico(t.id), nome: t.name })),
+          ...(temSemTecnico
+            ? [{ chave: 'sem-tecnico', cor: COR_SEM_TECNICO, nome: 'Sem técnico' }]
+            : []),
+        ]}
+      />
 
-      {/* Segunda faixa, só de instrumento — mesma regra da de técnico:
-          nada de rótulo órfão quando nenhum instrumento tem uso na janela
-          visível (brief 3b). */}
-      {legendaInstrumentos.length > 0 && (
-        <div
-          role="group"
-          aria-labelledby="legenda-mes-instrumentos"
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
-        >
-          <span id="legenda-mes-instrumentos" className="font-medium text-foreground">
-            Instrumentos:
-          </span>
-          {legendaInstrumentos.map((inst) => (
-            <span key={inst.id} className="flex items-center gap-1.5">
-              <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
-                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={inst.cor} />
-              </svg>
-              {inst.name}
-            </span>
-          ))}
-        </div>
-      )}
+      <FaixaLegenda
+        id="legenda-mes-instrumentos"
+        rotulo="Instrumentos:"
+        marca="triangulo"
+        itens={legendaInstrumentos.map((i) => ({ chave: i.id, cor: i.cor, nome: i.name }))}
+      />
 
       {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
 
-      {/* "Instrumentos do dia" (brief 3c): acima dos `VisitaCard`s, uma
-          linha por instrumento com uso no dia selecionado, com o triângulo
-          da cor, o nome e os usos (OS + faixa de horário) — reusa
-          `usoPorInstrumento` de `carga.ts`, já filtrado pela página pra só
-          quem tem uso. Sem instrumento no dia, a seção nem aparece: o
-          "Nenhuma visita neste dia." abaixo já cobre o dia vazio.
-          Deliberadamente sem aviso de calibração vencida, mesmo que
-          `UsoInstrumento.vencido` esteja disponível — fora de escopo por
+      {/* "Instrumentos do dia": mesma fonte da grade e da legenda (a entrada
+          de `instrumentosPorDia` do dia selecionado, já com os usos
+          pendurados pela página) — é isso que impede as duas metades da tela
+          de se contradizerem sobre quais instrumentos o dia tem, inclusive
+          quando o id usado não está no catálogo (instrumento arquivado
+          depois de usado), caso em que as duas mostram `Instrumento #<id>`.
+          Uma linha por instrumento, com o triângulo da cor, o nome e os usos
+          (faixa de horário + OS/técnico). Sem instrumento no dia, a seção nem
+          aparece: o "Nenhuma visita neste dia." abaixo já cobre o dia vazio.
+          Deliberadamente sem aviso de calibração vencida — fora de escopo por
           escolha do usuário (brief). */}
-      {usoInstrumentosDia.length > 0 && (
+      {instrumentosDoDia.length > 0 && (
         <div className="space-y-1 rounded-lg border border-border bg-card p-2">
           <h3 className="px-1 text-xs font-semibold uppercase text-muted-foreground">
             Instrumentos do dia
           </h3>
-          {usoInstrumentosDia.map((i) => (
+          {instrumentosDoDia.map((i) => (
             <div key={i.id} className="flex min-h-[44px] items-start gap-2 px-1 py-1 text-sm">
               <svg aria-hidden className="mt-1.5 h-2 w-2 shrink-0" viewBox="0 0 10 10">
-                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={corDoInstrumento(i.id)} />
+                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={i.cor} />
               </svg>
-              <span className="w-20 shrink-0 truncate font-medium">{i.name}</span>
+              {/* Nome QUEBRA em vez de truncar (e ainda leva `title` pro
+                  desktop): a 390px o `truncate` cortava tudo acima de ~10
+                  caracteres, e o outro portador de identidade — a cor — se
+                  repete a cada 12 ids, então o nome cortado não tinha
+                  substituto. `title` sozinho não resolveria: num PWA de toque
+                  não existe hover. */}
+              <span className="w-20 shrink-0 break-words font-medium" title={i.name}>
+                {i.name}
+              </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-xs text-muted-foreground">
                 {i.usos.map((u) => (
                   <span key={u.visitaId} className="flex min-w-0 items-baseline gap-1">

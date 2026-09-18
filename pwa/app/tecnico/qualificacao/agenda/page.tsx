@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
@@ -13,8 +13,9 @@ import { agruparPorDia, deslocarJanela } from './janela'
 import { FaixaDias } from './_FaixaDias'
 import { PainelRecursos, type Dimensao } from './_PainelRecursos'
 import { VistaMes } from './_VistaMes'
-import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
-import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia } from './mes'
+import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, instrumentosDoDia, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
+import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia, ordenarInstrumentos } from './mes'
+import type { PontoInstrumento } from './mes'
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -44,7 +45,10 @@ export default function AgendaPage() {
   // que ancora lista/semana. Misturar as duas semânticas no mesmo estado
   // faria o mês virar "14 dias a partir de", não um mês de calendário.
   const [ancoraMes, setAncoraMes] = useState<string | null>(null)
-  const gradeMes = ancoraMes ? gradeDoMes(ancoraMes) : []
+  // Memoizada: `gradeDoMes` monta 42 `Date` a cada chamada, e o resultado é a
+  // dependência de quase todo o resto do modo Mês — sem referência estável,
+  // nenhum dos `useMemo` abaixo economizaria nada.
+  const gradeMes = useMemo(() => (ancoraMes ? gradeDoMes(ancoraMes) : []), [ancoraMes])
   const dateFrom = mes ? (gradeMes[0] ?? null) : inicio
   const dateTo = mes ? (gradeMes[41] ?? null) : fim
   // `disponivel.data` é `undefined` enquanto a query de disponibilidade
@@ -117,21 +121,15 @@ export default function AgendaPage() {
     }
   }, [mes, ancoraMes, data?.server_today])
 
-  if (disponivel.data === false) {
-    return (
-      <p className="mx-auto max-w-[880px] p-4 text-center text-muted-foreground">
-        Agenda de visitas indisponível: o módulo de agendamento não está
-        instalado neste servidor.
-      </p>
-    )
-  }
-
   const ancora = inicio ?? data?.date_from ?? null
   const semEmpregado = data ? !data.my_employee_id : false
   const grupos = agruparPorDia(data?.visitas ?? [])
   const dias = ancora ? diasDaSemana(ancora) : []
   const diaAtual = diaSel && dias.includes(diaSel) ? diaSel : dias[0] ?? ''
-  const visitas = data?.visitas ?? []
+  // Referência estável: `data?.visitas ?? []` cria um array novo a cada render
+  // quando a busca ainda não respondeu, e isso sozinho invalidaria todos os
+  // `useMemo` abaixo que dependem das visitas.
+  const visitas = useMemo(() => data?.visitas ?? [], [data])
   const doDia = visitas.filter((v) => v.date === diaAtual)
   // `pwa_tecnico_options` filtra por `is_tecnico=True`, mas `tecnico_id` na
   // visita não é restrito a isso — um painel de capacidade que só mostra o
@@ -141,8 +139,33 @@ export default function AgendaPage() {
   // (semana) exigem — passar o retorno cru de `useTecnicoOptions` faria uma
   // visita de técnico sem a flag `is_tecnico` contar no `total` do dia sem
   // gerar pontinho, silenciosamente.
-  const roster = rosterTecnicos(tecnicos.data ?? [], visitas)
+  const roster = useMemo(
+    () => rosterTecnicos(tecnicos.data ?? [], visitas),
+    [tecnicos.data, visitas],
+  )
   const hoje = data?.server_today ?? null
+  // Catálogo de instrumentos e o conjunto de ids que ele conhece. O conjunto
+  // é o que separa "instrumento de cadastro" de "id fabricado
+  // (`Instrumento #<id>`)" na hora de ordenar — ver `ordenarInstrumentos`.
+  const opcoesInstrumento = useMemo(() => instrumentos.data ?? [], [instrumentos.data])
+  const idsInstrumentoConhecidos = useMemo(
+    () => new Set(opcoesInstrumento.map((o) => o.id)),
+    [opcoesInstrumento],
+  )
+  // `pwa_instrumento_options` pode falhar sozinho (RPC 500, sessão expirada,
+  // ou falta de permissão de leitura em `engc.calibration.instruments` — a
+  // chamada no servidor é sem `sudo`), sem que a busca da agenda falhe junto.
+  // Antes do fix final isso era INVISÍVEL: `instrumentos.data` ficava
+  // `undefined` pra sempre, todo instrumento usado virava `Instrumento #101`
+  // na grade, na legenda e nos 42 `aria-label` — identificadores fabricados
+  // apresentados como se fossem nome de cadastro —, e a seção "Instrumentos
+  // do dia" sumia por completo, sem nenhuma mensagem.
+  //
+  // Agora a falha degrada como a dos técnicos: o Mês continua utilizável
+  // (dias, pontinhos, cards), mas SEM nenhum triângulo, sem a faixa de
+  // instrumentos e sem a seção do dia — as três superfícies concordam em não
+  // afirmar nada —, e com uma tarja de erro explícita mais abaixo.
+  const instrumentosComFalha = instrumentos.isError
   // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês) OU a
   // busca da faixa completa ainda está em voo (2ª busca, cada toque em
   // ◀ ▶ com `queryKey` novo), não há grade utilizável pra mostrar —
@@ -157,16 +180,50 @@ export default function AgendaPage() {
   // fica `null` PARA SEMPRE — o gate ficava `true` para sempre junto, e a
   // tela mostrava o spinner e "Erro ao carregar a agenda" ao mesmo tempo,
   // indefinidamente, sem saída a não ser sair do modo.
-  const mesCarregando = mes && !error && (ancoraMes === null || isLoading)
+  //
+  // `instrumentos.isPending` é do fix final: as duas buscas saem em PARALELO
+  // na primeira abertura do Mês, e sem isto a grade aparecia com
+  // `Instrumento #N` nos rótulos e os nomes "pulavam" quando o catálogo
+  // chegava depois. Só entra aqui porque `querInstrumentos` garante a query
+  // habilitada sempre que `mes` é true (query desabilitada fica `pending` pra
+  // sempre no react-query v5, o que travaria o spinner); e no erro o status
+  // vira `error`, não `pending`, então a tarja aparece em vez do spinner.
+  const mesCarregando =
+    mes && !error && (ancoraMes === null || isLoading || instrumentos.isPending)
   // Um gate só, sem redundância: `mesCarregando` já embute `isLoading`, mas
   // só vale no mês — `mes && ...` é `false` na Lista e na Semana, onde o
   // spinner continua sendo o `isLoading` cru.
   const carregando = mes ? mesCarregando : isLoading
-  const pontosDia = mes ? tecnicosPorDia(visitas, gradeMes, roster) : []
-  // Instrumentos da grade do mês — mesma fonte (`pwa_instrumento_options`)
-  // que alimenta o painel da Semana, mas aqui cobrindo os 42 dias da janela
-  // visível de uma vez, pros triângulos da `_GradeMes` e pra legenda.
-  const pontosInstrumentoDia = mes ? instrumentosPorDia(visitas, gradeMes, instrumentos.data ?? []) : []
+  const pontosDia = useMemo(
+    () => (mes ? tecnicosPorDia(visitas, gradeMes, roster) : []),
+    [mes, visitas, gradeMes, roster],
+  )
+  // Instrumentos da grade do mês — FONTE ÚNICA das três superfícies: os
+  // triângulos da `_GradeMes`, a faixa de legenda e a seção "Instrumentos do
+  // dia". Com o catálogo em falha devolve `[]`: nada de 42 dias de
+  // `Instrumento #<id>` posando de nome.
+  const pontosInstrumentoDia = useMemo(
+    () => (mes && !instrumentosComFalha ? instrumentosPorDia(visitas, gradeMes, opcoesInstrumento) : []),
+    [mes, instrumentosComFalha, visitas, gradeMes, opcoesInstrumento],
+  )
+  // Legenda de instrumentos: os distintos da janela de 42 dias (mesmo escopo
+  // da faixa de técnicos, que cobre a grade desenhada e não o mês estrito),
+  // deduplicados por id e ordenados pela MESMA função que ordena a célula
+  // (`ordenarInstrumentos`) — daí a montagem viver aqui, onde
+  // `idsInstrumentoConhecidos` está à mão, e não dentro da `_VistaMes`, que
+  // por ruling do controlador só recebe dado já agregado.
+  const legendaInstrumentos = useMemo(() => {
+    const vistos = new Set<number>()
+    const itens: PontoInstrumento[] = []
+    for (const d of pontosInstrumentoDia) {
+      for (const inst of d.instrumentos) {
+        if (vistos.has(inst.id)) continue
+        vistos.add(inst.id)
+        itens.push(inst)
+      }
+    }
+    return ordenarInstrumentos(itens, idsInstrumentoConhecidos)
+  }, [pontosInstrumentoDia, idsInstrumentoConhecidos])
   // Dia default quando não há seleção válida na grade: primeiro tenta
   // `hoje` (server_today) — mesmo critério da Semana, que nasce ancorada
   // em `data.date_from` = hoje — e só cai no 1º dia do mês quando "hoje"
@@ -177,14 +234,25 @@ export default function AgendaPage() {
   const diaSelMes = diaSel && gradeMes.includes(diaSel)
     ? diaSel
     : (hoje && gradeMes.includes(hoje) ? hoje : (ancoraMes ?? ''))
-  // "Instrumentos do dia" (brief 3c): reusa `usoPorInstrumento` (a mesma
-  // agregação do painel da Semana) sobre o dia selecionado do mês, filtrando
-  // pra só quem tem uso — ao contrário do painel da Semana, que lista todo
-  // instrumento (inclusive "livre") pra mostrar quem está disponível, a
-  // seção do Mês é só um resumo do que o dia já tem marcado.
-  const usoInstrumentosDia = mes
-    ? usoPorInstrumento(visitas, diaSelMes, instrumentos.data ?? []).filter((u) => u.usos.length > 0)
-    : []
+  // "Instrumentos do dia" (brief 3c): sai da ENTRADA de
+  // `pontosInstrumentoDia` do dia selecionado, casada por `date` — a mesma
+  // que virou triângulo na célula —, acrescida dos usos (OS, técnico, faixa
+  // de horário). Até o fix final esta seção mapeava sobre
+  // `pwa_instrumento_options` via `usoPorInstrumento`: a interseção entre
+  // usado e catalogado, enquanto a grade mostrava a união. Um instrumento
+  // arquivado depois de usado (`pwa_instrumento_options` faz `search([])`,
+  // com `active_test` ligado) bastava pra grade afirmar que o dia tem o
+  // instrumento e a lista negar, em silêncio.
+  const instrumentosDoDiaSel = useMemo(
+    () => (mes
+      ? instrumentosDoDia(
+          visitas,
+          diaSelMes,
+          pontosInstrumentoDia.find((p) => p.date === diaSelMes)?.instrumentos ?? [],
+        )
+      : []),
+    [mes, visitas, diaSelMes, pontosInstrumentoDia],
+  )
   // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
   // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
   // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
@@ -201,6 +269,18 @@ export default function AgendaPage() {
   // e o que o toque grava passam a ser a mesma coisa.
   const janelaVisivel = mes ? gradeMes : dias
   const alvoVisivel = !!emAjusteAtual && janelaVisivel.includes(emAjusteAtual.date)
+
+  // O early return fica DEPOIS das derivações de propósito: todo `useMemo`
+  // acima é um hook, e hook depois de `return` condicional quebra a ordem de
+  // hooks entre renders.
+  if (disponivel.data === false) {
+    return (
+      <p className="mx-auto max-w-[880px] p-4 text-center text-muted-foreground">
+        Agenda de visitas indisponível: o módulo de agendamento não está
+        instalado neste servidor.
+      </p>
+    )
+  }
 
   /** A seleção termina (toque em "Concluir", ou a visita some do payload):
    * nada de tarja de erro sobrevivendo a uma seleção que já acabou. */
@@ -359,6 +439,17 @@ export default function AgendaPage() {
           Erro ao carregar a agenda. Verifique conexão.
         </p>
       )}
+      {/* Falha SÓ do catálogo de instrumentos (a agenda em si carregou). Sem
+          esta tarja, a queda era muda: a grade continuava desenhando, e o
+          Gestor não tinha como saber que os triângulos e a lista do dia
+          sumiram por falha, e não porque nenhuma visita usa instrumento. */}
+      {mes && instrumentosComFalha && (
+        <p className="text-center text-danger">
+          Erro ao carregar os instrumentos. O mês está sem os triângulos, sem a
+          faixa de instrumentos e sem a lista do dia. Verifique conexão ou suas
+          permissões.
+        </p>
+      )}
       {!isLoading && !error && modoAgenda === 'lista' && grupos.length === 0 && (
         <p className="py-8 text-center text-muted-foreground">
           Nenhuma visita neste período.
@@ -427,7 +518,8 @@ export default function AgendaPage() {
           visitas={visitas}
           dias={pontosDia}
           instrumentos={pontosInstrumentoDia}
-          usoInstrumentosDia={usoInstrumentosDia}
+          legendaInstrumentos={legendaInstrumentos}
+          instrumentosDoDia={instrumentosDoDiaSel}
           ancora={ancoraMes ?? ''}
           hoje={hoje}
           diaSel={diaSelMes}
