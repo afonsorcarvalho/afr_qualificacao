@@ -125,4 +125,31 @@ describe('BottomSheet: foco', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('Escape fecha a folha e NÃO acorda o atalho global do layout por baixo dela', () => {
+    // Achado da validação em navegador: o layout de `/tecnico/qualificacao`
+    // tem um atalho global "Escape = voltar" (`router.back()`) numa escuta de
+    // `window`. Com a folha aberta, o mesmo Escape fazia as duas coisas — a
+    // folha fechava E o app navegava de página. É a mesma classe do achado 1
+    // (controle do FUNDO ativável por teclado enquanto o `aria-modal` diz que
+    // o fundo não existe), só que pelo atalho em vez do Tab. Como a escuta da
+    // folha é em `document` e o `window` é o próximo do caminho de
+    // borbulhamento, parar a propagação aqui resolve sem tocar em quem
+    // fecha o quê.
+    const onClose = vi.fn()
+    const atalhoDoFundo = vi.fn()
+    window.addEventListener('keydown', atalhoDoFundo)
+    const { rerender } = render(<Folha open onClose={onClose} />)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(atalhoDoFundo).not.toHaveBeenCalled()
+
+    // Fechada, o atalho do layout volta a valer — nada foi desligado de vez.
+    rerender(<Folha open={false} onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(atalhoDoFundo).toHaveBeenCalledTimes(1)
+
+    window.removeEventListener('keydown', atalhoDoFundo)
+  })
 })

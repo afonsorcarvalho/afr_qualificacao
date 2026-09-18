@@ -54,6 +54,16 @@ export function BottomSheet({
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Fechar a folha é TUDO o que este Escape faz. O layout de
+        // `/tecnico/qualificacao` mantém um atalho global "Escape = voltar"
+        // (`router.back()`) numa escuta de `window`, e sem parar a
+        // propagação o mesmo toque fechava a folha E trocava de página —
+        // achado da validação em navegador, e a mesma classe do trap abaixo
+        // (controle do FUNDO disparando por teclado enquanto o
+        // `aria-modal` afirma que o fundo não existe). Funciona porque esta
+        // escuta é em `document`, que vem ANTES de `window` no caminho de
+        // borbulhamento; quem fecha o que não muda.
+        e.stopPropagation()
         onClose()
         return
       }
