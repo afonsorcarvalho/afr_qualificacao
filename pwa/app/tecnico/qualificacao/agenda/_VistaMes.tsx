@@ -19,7 +19,14 @@ interface ItemLegenda<T extends number | false> {
 }
 
 /** Limiar de arrasto (px) acima do qual o toque em andamento vira rolagem,
- *  não gesto — a faixa quebra em várias linhas e rola no celular (brief). */
+ *  não gesto — a faixa quebra em várias linhas e rola no celular (brief).
+ *  Só governa o ISOLAR (toque longo): acima disto, o timer de 500ms é
+ *  cancelado. Não decide mais se o `click` seguinte vale — isso agora é
+ *  função de ONDE o ponteiro foi solto, ver `soltarToqueLongo`. 10px segue
+ *  razoável aqui: o gesto que este limiar precisa distinguir é "dedo parado
+ *  esperando o toque longo" vs. "rolagem/arrasto de verdade", e uma rolagem
+ *  real passa de 10px em poucos ms — não precisa ser maior só porque a
+ *  supressão do clique não depende mais dele. */
 const LIMIAR_ARRASTO_PX = 10
 /** Duração do toque longo (ms) até isolar. */
 const DURACAO_TOQUE_LONGO_MS = 500
@@ -141,10 +148,11 @@ function FaixaLegenda<T extends number | false>({
    * `click` é disparado pelo NAVEGADOR depois que este componente já reagiu
    * ao `pointerup`, e não há como o `pointerup` "cancelar" um `click` que
    * ainda nem existe. Por isso o `onClick` do item consulta esta flag antes
-   * de alternar: se o toque longo já isolou (ou se foi arrasto, não
-   * toque), o `click` que vem a seguir é engolido — senão o mesmo toque que
-   * isolou desligaria o próprio item isolado um instante depois (brief:
-   * "toque longo não pode disparar também o toque simples").
+   * de alternar: se o toque longo já isolou (ou se o ponteiro foi solto
+   * FORA das bounds do chip, ver `soltarToqueLongo`), o `click` que vem a
+   * seguir é engolido — senão o mesmo toque que isolou desligaria o próprio
+   * item isolado um instante depois (brief: "toque longo não pode disparar
+   * também o toque simples").
    *
    * Precisa viver FORA de `toqueRef` porque o `click` do navegador pode
    * chegar depois que um SEGUNDO dedo já fez `pointerdown` noutro chip da
@@ -240,12 +248,17 @@ function FaixaLegenda<T extends number | false>({
     const dx = evento.clientX - estado.x
     const dy = evento.clientY - estado.y
     if (Math.hypot(dx, dy) > LIMIAR_ARRASTO_PX) {
-      // Arrasto: cancela o isolar pendente E impede o click de alternar em
-      // seguida — foi rolagem, não toque (brief). `estado.pointerId`, não
-      // um booleano (fix round 5) — já sabemos que bate com
-      // `evento.pointerId` pela guarda acima.
+      // Só cancela o ISOLAR pendente — NÃO suprime mais o click aqui (fix:
+      // "às vezes o clique funciona, às vezes não"). A regra original
+      // ("arrastar cancela: não isola e não alterna", brief) supunha que
+      // >10px de trajeto só acontece numa rolagem/arrasto real — mas 10px
+      // de tremida de mão (ou de dedo) num toque de ~120ms é comum, e
+      // suprimir o click por causa disso descartava o toque curto legítimo
+      // de forma intermitente (reproduzido em navegador: pointerdown, mover
+      // 13px, pointerup, sem nenhum arrasto de verdade). Quem decide se o
+      // click vale agora é `soltarToqueLongo`, pela posição de ONDE o
+      // ponteiro foi solto — não por quanto ele andou no caminho.
       clearTimeout(estado.timer)
-      suprimirCliqueRef.current = estado.pointerId
     }
   }
 
@@ -265,6 +278,33 @@ function FaixaLegenda<T extends number | false>({
     // decide se a consome. `cancelarToqueLongo`, abaixo, é quem trata o
     // caso em que esse `click` NUNCA vem.
     clearTimeout(estado.timer)
+
+    // Supressão do click decidida AQUI, pela posição de SOLTURA — como um
+    // botão nativo: aperta, arrasta pra FORA, solta lá fora, e o clique não
+    // conta (nenhum botão real alterna nesse gesto). DENTRO das bounds, o
+    // click vale mesmo que o dedo tenha tremido no caminho —
+    // `moverToqueLongo` já não suprime mais por distância, só cancela o
+    // isolar. As bounds são do PRÓPRIO botão (`evento.currentTarget`) contra
+    // a posição real do ponteiro: com `setPointerCapture` (ver
+    // `iniciarToqueLongo`), o `pointerup` chega a ESTE botão mesmo se o
+    // dedo/mouse estiver fisicamente fora dele — é essa posição capturada
+    // que precisa ser comparada contra a área visível do chip, não a
+    // posição de um elemento diferente por baixo do dedo.
+    //
+    // Só ARMA a flag aqui, nunca desarma: se o toque longo já isolou com
+    // sucesso, `iniciarToqueLongo` já armou a supressão do clique-fantasma
+    // (dentro do próprio `setTimeout`) antes deste `pointerup` chegar, e
+    // soltar DENTRO do chip — o caminho normal de um toque longo bem
+    // sucedido — não pode reverter essa supressão.
+    const bounds = evento.currentTarget.getBoundingClientRect()
+    const soltoForaDoChip =
+      evento.clientX < bounds.left ||
+      evento.clientX > bounds.right ||
+      evento.clientY < bounds.top ||
+      evento.clientY > bounds.bottom
+    if (soltoForaDoChip) {
+      suprimirCliqueRef.current = estado.pointerId
+    }
   }
 
   function cancelarToqueLongo(evento: React.PointerEvent<HTMLButtonElement>) {
@@ -384,7 +424,8 @@ function FaixaLegenda<T extends number | false>({
             aria-keyshortcuts="Alt+Enter"
             onClick={(evento) => {
               // O `click` chega DEPOIS do `pointerup` — se o toque longo já
-              // isolou (ou se foi arrasto), este `click` é o mesmo gesto
+              // isolou (ou se o ponteiro foi solto fora das bounds do chip,
+              // ver `soltarToqueLongo`), este `click` é o mesmo gesto
               // "vazando" como toque simples, e precisa ser engolido. Ver
               // comentário de `suprimirCliqueRef` acima.
               //
