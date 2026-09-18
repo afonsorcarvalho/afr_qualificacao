@@ -303,13 +303,42 @@ describe('Modo Mês', () => {
     // Chip de "Afonso" (tem visita na janela) e "Sem técnico" (visita sem
     // tecnico_id) — nenhum dos dois vem de texto de card, já que o dia
     // selecionado por default (hoje, 17) só mostra a visita do Afonso no
-    // corpo do card, nunca a palavra "Sem técnico".
-    expect(screen.getByText('Afonso')).toBeInTheDocument()
-    expect(screen.getByText('Sem técnico')).toBeInTheDocument()
+    // corpo do card, nunca a palavra "Sem técnico". Escopado ao `group`
+    // "Técnicos:" (fix round 1, achado 3): prova que o rótulo está
+    // programaticamente ligado à lista via `aria-labelledby`, não só
+    // presente em algum lugar da tela.
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    expect(within(grupoTecnicos).getByText('Afonso')).toBeInTheDocument()
+    expect(within(grupoTecnicos).getByText('Sem técnico')).toBeInTheDocument()
     // "Bruno" está no roster (mock de useTecnicoOptions) mas não tem
     // nenhuma visita na janela — não pode virar chip (brief 3d: "não o
     // roster inteiro, 20 chips de gente sem visita é ruído").
-    expect(screen.queryByText('Bruno')).toBeNull()
+    expect(within(grupoTecnicos).queryByText('Bruno')).toBeNull()
+  })
+
+  // --- fix round 1: legenda cobre a JANELA de 42 dias, não o mês estrito ---
+
+  it('legenda inclui técnico e instrumento de um dia de transbordo (fora do mês estrito, dentro da janela de 42 dias)', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    // A grade de setembro/2026 vai de 2026-08-30 a 2026-10-10 (42 dias) —
+    // "2026-10-05" está fora do mês estrito, mas dentro da janela visível.
+    // Se a fonte das legendas fosse trocada por algo filtrado ao mês
+    // estrito (ex. `noMes`), este teste quebra; antes desta correção,
+    // nenhum teste provava esse limite.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-10-05', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    expect(within(grupoTecnicos).getByText('Afonso')).toBeInTheDocument()
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
   })
 
   // --- fix round 2, achado 1: erro de rede no modo Mês ---
@@ -409,13 +438,42 @@ describe('Modo Mês', () => {
     irParaMes()
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
 
-    expect(screen.getByText('Q001')).toBeInTheDocument()
-    expect(screen.queryByText('Q002')).toBeNull()
-    // A faixa carrega um rótulo textual próprio, não só a forma do
-    // triângulo — cor e forma nunca são o único portador (Global
-    // Constraint de a11y); sem isto, um leitor de tela ouviria "Afonso,
-    // Q001" como um único grupo indistinto.
-    expect(screen.getByText('Instrumentos:')).toBeInTheDocument()
+    // A faixa carrega um rótulo textual próprio ("Instrumentos:") ligado
+    // programaticamente ao grupo via `role="group"` + `aria-labelledby` —
+    // escopar por ele prova a ligação, não só que o texto existe em algum
+    // lugar da tela (fix round 1, achado 3). O rótulo em si é ganho de
+    // clareza de domínio (distingue as duas faixas), não correção de a11y
+    // por item: cada chip já carrega o nome em texto puro.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).queryByText('Q002')).toBeNull()
+  })
+
+  it('legenda de instrumentos vem ordenada por nome, não pela ordem de aparição na janela', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Zebra', validade: '2027-01-01' },
+      { id: 102, name: 'Abelha', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        // "Zebra" aparece PRIMEIRO cronologicamente na janela (05/09);
+        // "Abelha" só aparece depois (20/09). Ordem de aparição colocaria
+        // Zebra antes de Abelha — a ordem alfabética exige o inverso (fix
+        // round 1, achado 2).
+        visita({ id: 7, date: '2026-09-05', instrument_ids: [101] }),
+        visita({ id: 8, date: '2026-09-20', instrument_ids: [102] }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    const nomes = within(grupoInstrumentos)
+      .getAllByText(/^(Zebra|Abelha)$/)
+      .map((el) => el.textContent)
+    expect(nomes).toEqual(['Abelha', 'Zebra'])
   })
 
   it('sem instrumento usado na janela, a faixa de instrumentos não é renderizada', async () => {
@@ -427,7 +485,7 @@ describe('Modo Mês', () => {
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
 
     expect(screen.queryByText('Q001')).toBeNull()
-    expect(screen.queryByText('Instrumentos:')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Instrumentos:' })).toBeNull()
   })
 
   it('tocar num dia com instrumento mostra a seção "Instrumentos do dia" com nome, OS e faixa de horário', async () => {

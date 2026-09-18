@@ -82,10 +82,15 @@ export function VistaMes({
   // dias da janela", não o mês estrito. Sem `roster` equivalente pra
   // instrumento (a página não passa `pwa_instrumento_options` cru pra cá —
   // ruling do controlador, este componente só recebe dados já agregados),
-  // a lista distinta sai de `instrumentos` mesmo: primeiro id visto em cada
-  // dia (ordem cronológica da grade) entra na legenda, sem duplicar —
-  // nome e cor já são estáveis por id (`corDoInstrumento`), então dedupar
-  // por id não perde nem embaralha informação.
+  // a lista distinta sai de `instrumentos` mesmo, deduplicada por id — nome
+  // e cor já são estáveis por id (`corDoInstrumento`), então dedupar por id
+  // não perde nem embaralha informação. Ordenada por nome (`localeCompare`
+  // pt-BR) DEPOIS do dedupe, mesmo padrão de `rosterTecnicos` em
+  // `carga.ts` — sem o sort, a ordem seria a de primeira aparição
+  // cronológica pelos 42 dias da grade, que reordena a cada navegação de
+  // mês conforme o conjunto de instrumentos usados muda (fix round 1,
+  // achado 2: `PontoInstrumento` já carrega `name`, não é preciso nenhuma
+  // prop nova pra isso).
   const legendaInstrumentos: PontoInstrumento[] = []
   const idsInstrumentoNaLegenda = new Set<number>()
   for (const d of instrumentos) {
@@ -95,6 +100,7 @@ export function VistaMes({
       legendaInstrumentos.push(inst)
     }
   }
+  legendaInstrumentos.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 
   const doDia = visitas.filter((v) => v.date === diaSel)
 
@@ -109,8 +115,25 @@ export function VistaMes({
         onSelecionar={(date) => (alvoAtivo ? onAjustar({ date }) : onSelecionarDia(date))}
       />
 
+      {/* As duas faixas (técnico e instrumento) leem igual: rótulo curto +
+          lista, `role="group"`/`aria-labelledby` ligando cada uma ao seu
+          próprio rótulo de forma programática, não só por ordem de leitura
+          no DOM — um leitor de tela anuncia o grupo pelo nome antes de
+          entrar nos itens, em vez de só concatenar "Técnicos: Ana Silva,
+          Instrumentos: Q001" num fluxo só (fix round 1, achado 3). O
+          rótulo em si é ganho de clareza de domínio, não correção de a11y:
+          cada chip já carrega o nome em texto puro, então cor/forma nunca
+          foram o único portador por item — só a fronteira ENTRE os dois
+          grupos era ambígua sem ele. */}
       {(legenda.length > 0 || temSemTecnico) && (
-        <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
+        <div
+          role="group"
+          aria-labelledby="legenda-mes-tecnicos"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
+        >
+          <span id="legenda-mes-tecnicos" className="font-medium text-foreground">
+            Técnicos:
+          </span>
           {legenda.map((t) => (
             <span key={t.id} className="flex items-center gap-1.5">
               <span
@@ -136,17 +159,16 @@ export function VistaMes({
 
       {/* Segunda faixa, só de instrumento — mesma regra da de técnico:
           nada de rótulo órfão quando nenhum instrumento tem uso na janela
-          visível (brief 3b). Forma (triângulo) em vez de bolinha é o
-          diferenciador visual, mas forma sozinha não chega a quem não a
-          resolve num alvo de 8px nem a quem usa leitor de tela (o
-          `aria-hidden` do triângulo é decorativo, igual ao da bolinha) —
-          por isso o rótulo textual "Instrumentos:" abre a faixa, o mesmo
-          papel que "; instrumentos: ..." já cumpre dentro do aria-label
-          da célula (Global Constraint de a11y: cor E forma nunca são o
-          único portador). */}
+          visível (brief 3b). */}
       {legendaInstrumentos.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Instrumentos:</span>
+        <div
+          role="group"
+          aria-labelledby="legenda-mes-instrumentos"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
+        >
+          <span id="legenda-mes-instrumentos" className="font-medium text-foreground">
+            Instrumentos:
+          </span>
           {legendaInstrumentos.map((inst) => (
             <span key={inst.id} className="flex items-center gap-1.5">
               <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
