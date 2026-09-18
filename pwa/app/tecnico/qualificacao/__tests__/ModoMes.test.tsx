@@ -62,7 +62,7 @@ let instrumentoOptionsAtual: InstrumentoOpcao[] = []
 // nenhuma mensagem). `estadoInstrumentos` torna os três estados
 // representáveis; o default é SETTLED, pra não jogar os ~20 testes do arquivo
 // dentro do gate de carregamento novo.
-type EstadoInstrumentos = 'ok' | 'pending' | 'error'
+type EstadoInstrumentos = 'ok' | 'pending' | 'error' | 'erro-com-cache'
 let estadoInstrumentos: EstadoInstrumentos = 'ok'
 const mockUseInstrumentoOptions = vi.fn((_enabled: boolean) => {
   if (estadoInstrumentos === 'pending') {
@@ -71,6 +71,11 @@ const mockUseInstrumentoOptions = vi.fn((_enabled: boolean) => {
   if (estadoInstrumentos === 'error') {
     // react-query v5: no erro o status vira `error`, não `pending`.
     return { data: undefined, isPending: false, isError: true }
+  }
+  if (estadoInstrumentos === 'erro-com-cache') {
+    // Refetch que falhou (foco de janela, ou depois do `staleTime`): `isError`
+    // true MAS com o último catálogo bom ainda em `data`.
+    return { data: instrumentoOptionsAtual, isPending: false, isError: true }
   }
   return { data: instrumentoOptionsAtual, isPending: false, isError: false }
 })
@@ -686,5 +691,41 @@ describe('Modo Mês', () => {
     // sobrevivem quando a célula corta por lotação.
     const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
     expect(celula.getAttribute('aria-label')).toContain('instrumentos: TAG-2, TAG-3, TAG-10')
+  })
+  it('refetch do catálogo falha mas o catálogo anterior continua em cache: nada é blanqueado e nenhuma tarja aparece', async () => {
+    estadoInstrumentos = 'erro-com-cache'
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // O catálogo bom está na mão: não há nome fabricado pra suprimir, e tirar
+    // os triângulos/legenda/lista por causa de uma falha de fundo passageira
+    // seria remover informação correta da tela.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
+    const secao = screen.getByText('Instrumentos do dia').closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+
+    // E a tarja seria ruído: nada está faltando pro usuário.
+    expect(screen.queryByText(/Erro ao carregar os instrumentos/)).toBeNull()
+  })
+
+  it('agenda e catálogo falhando juntos (sessão expirada): só a tarja da agenda, sem a segunda falando de uma grade que não existe', async () => {
+    erroAtual = new Error('Failed to fetch')
+    estadoInstrumentos = 'error'
+    montar()
+    irParaMes()
+
+    await waitFor(() =>
+      expect(screen.getByText(/Erro ao carregar a agenda/)).toBeInTheDocument(),
+    )
+    // A `VistaMes` nem é renderizada quando a agenda falha — uma tarja falando
+    // de triângulos e lista do dia de uma grade ausente é ruído puro.
+    expect(screen.queryByText(/Erro ao carregar os instrumentos/)).toBeNull()
   })
 })

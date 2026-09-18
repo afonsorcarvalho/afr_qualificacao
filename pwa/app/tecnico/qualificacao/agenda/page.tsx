@@ -165,7 +165,14 @@ export default function AgendaPage() {
   // (dias, pontinhos, cards), mas SEM nenhum triângulo, sem a faixa de
   // instrumentos e sem a seção do dia — as três superfícies concordam em não
   // afirmar nada —, e com uma tarja de erro explícita mais abaixo.
-  const instrumentosComFalha = instrumentos.isError
+  //
+  // `data === undefined` é o que restringe isso ao caso que importa: um
+  // REFETCH que falha (foco de janela, ou depois do `staleTime` de 5min)
+  // deixa `isError` true COM o último catálogo bom ainda em `data`. Blanquear
+  // ali tiraria informação boa da tela por causa de uma falha de fundo
+  // passageira — e não há nome fabricado nenhum pra suprimir, que é a única
+  // coisa que a tarja existe pra impedir.
+  const instrumentosComFalha = instrumentos.isError && instrumentos.data === undefined
   // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês) OU a
   // busca da faixa completa ainda está em voo (2ª busca, cada toque em
   // ◀ ▶ com `queryKey` novo), não há grade utilizável pra mostrar —
@@ -442,8 +449,12 @@ export default function AgendaPage() {
       {/* Falha SÓ do catálogo de instrumentos (a agenda em si carregou). Sem
           esta tarja, a queda era muda: a grade continuava desenhando, e o
           Gestor não tinha como saber que os triângulos e a lista do dia
-          sumiram por falha, e não porque nenhuma visita usa instrumento. */}
-      {mes && instrumentosComFalha && (
+          sumiram por falha, e não porque nenhuma visita usa instrumento.
+          `!error` porque sessão expirada / conexão caída derruba as DUAS
+          buscas: sem ele, a tela mostrava "Erro ao carregar a agenda" mais uma
+          segunda tarja falando de triângulos e lista de uma `VistaMes` que
+          nem chega a ser renderizada (o gate dela também tem `!error`). */}
+      {mes && !error && instrumentosComFalha && (
         <p className="text-center text-danger">
           Erro ao carregar os instrumentos. O mês está sem os triângulos, sem a
           faixa de instrumentos e sem a lista do dia. Verifique conexão ou suas
