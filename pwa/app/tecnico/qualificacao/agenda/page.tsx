@@ -561,6 +561,24 @@ export default function AgendaPage() {
     setInstrumentosSel(null)
   }
 
+  /**
+   * Toque longo (Task 1) num chip da faixa "Técnicos:": isola aquele
+   * técnico — o `Set` passa a ter só ele. Tocar de novo no chip que JÁ é o
+   * único ligado reverte pra "Todos" (`null`) — o gesto é reversível por si
+   * mesmo, sem obrigar a caçar o badge "Todos" (brief). Só quem sabe se o
+   * `id` tocado é o único ligado é quem detém o `Set` — por isso a decisão
+   * mora aqui, não na `FaixaLegenda`, que só avisa qual `id` foi tocado.
+   */
+  function isolarTecnico(id: number | false) {
+    setTecnicosSel((atual) => (atual !== null && atual.size === 1 && atual.has(id) ? null : new Set([id])))
+  }
+  /** Mesmo raciocínio de `isolarTecnico`, para a faixa "Instrumentos:" — as
+   *  duas faixas são independentes no gesto: isolar uma nunca toca no `Set`
+   *  da outra. */
+  function isolarInstrumento(id: number) {
+    setInstrumentosSel((atual) => (atual !== null && atual.size === 1 && atual.has(id) ? null : new Set([id])))
+  }
+
   return (
     <div className="mx-auto w-full max-w-[880px] space-y-4">
       <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
@@ -779,6 +797,8 @@ export default function AgendaPage() {
           onAlternarInstrumento={alternarInstrumento}
           onTodosTecnicos={todosTecnicos}
           onTodosInstrumentos={todosInstrumentos}
+          onIsolarTecnico={isolarTecnico}
+          onIsolarInstrumento={isolarInstrumento}
           instrumentosDoDia={instrumentosDoDiaSel}
           ancora={ancoraMes ?? ''}
           hoje={hoje}

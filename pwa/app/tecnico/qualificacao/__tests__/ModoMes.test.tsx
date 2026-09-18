@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /// <reference types="@testing-library/jest-dom" />
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AgendaPage from '../agenda/page'
 import { gradeDoMes } from '../agenda/mes'
@@ -1370,5 +1370,201 @@ describe('Modo Mês', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.queryByText(/Movendo a visita/)).toBeNull()
     expect(mutateUpdate).not.toHaveBeenCalled()
+  })
+})
+
+// --- Task 1 (isolar recurso): toque longo num chip da faixa ---
+//
+// Fake timers só entram DEPOIS do `await waitFor` do mount — o `waitFor` do
+// Testing Library faz polling em timer real, e ligar `vi.useFakeTimers()`
+// antes travaria o próprio mount. `afterEach` sempre volta pra timer real,
+// mesmo se um teste falhar no meio — senão o fake timer vaza pro próximo
+// teste do arquivo (que não espera por isso) e trava ele num `waitFor` que
+// nunca avança.
+describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function montarNoMes() {
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102],
+        }),
+      ],
+    }
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+  }
+
+  /** Simula o gesto completo até o limiar de 500ms, SEM soltar o ponteiro
+   *  ainda — o timer de isolar dispara com o dedo/botão ainda pressionado,
+   *  igual ao toque longo real. */
+  function seguraAte500ms(chip: HTMLElement) {
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+  }
+
+  it('toque longo isola: só aquele chip fica ligado, os demais desligam (aria-pressed e marcas da grade)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    vi.useRealTimers()
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).toContain('Afonso')
+    expect(celula.getAttribute('aria-label')).not.toContain('Bruno')
+  })
+
+  it('toque longo no chip já isolado volta para "Todos"', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const badgeTodos = within(grupo).getByRole('button', { name: 'Todos os técnicos' })
+
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'false')
+
+    // Segundo toque longo no MESMO chip, já isolado: reverte pra "Todos" —
+    // reversível por si mesmo, sem precisar caçar o badge "Todos".
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('toque simples continua alternando só aquele chip, sem isolar', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.click(chipAfonso)
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+    // Bruno não foi tocado — continua ligado (toque simples só alterna o
+    // chip clicado, não isola os demais).
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('toque longo não dispara também o alternar: o chip isolado termina ligado, não desligado', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    // O `click` que o navegador dispara em seguida a um toque real (pointerup
+    // -> click) não pode "desfazer" o isolar reaplicando o alternar.
+    fireEvent.click(chipAfonso)
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('arrastar além do limiar antes dos 500ms cancela o gesto: não isola nem alterna', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(chipAfonso, { pointerId: 1, clientX: 30, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    fireEvent.click(chipAfonso)
+
+    // Nada mudou: nem isolou (Bruno continuaria ligado, único sinal visível
+    // de um isolar bem-sucedido), nem alternou (Afonso continua ligado).
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('Alt+Enter isola pelo teclado', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.keyDown(chipAfonso, { key: 'Enter', altKey: true })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('Alt+clique isola pelo mouse', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Instrumentos:' })
+    const chipQ001 = within(grupo).getByRole('button', { name: /Q001/ })
+    const chipQ002 = within(grupo).getByRole('button', { name: /Q002/ })
+
+    fireEvent.click(chipQ001, { altKey: true })
+
+    expect(chipQ001).toHaveAttribute('aria-pressed', 'true')
+    expect(chipQ002).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('a dica "Segure um para ver só ele" aparece nas duas faixas', async () => {
+    await montarNoMes()
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoTecnicos).getByText('Segure um para ver só ele')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).getByText('Segure um para ver só ele')).toBeInTheDocument()
+  })
+
+  it('isolar na faixa de instrumentos não mexe na de técnicos', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    const chipQ001 = within(grupoInstrumentos).getByRole('button', { name: /Q001/ })
+
+    seguraAte500ms(chipQ001)
+    fireEvent.pointerUp(chipQ001, { pointerId: 1 })
+
+    expect(chipQ001).toHaveAttribute('aria-pressed', 'true')
+
+    vi.useRealTimers()
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const badgeTodosTecnicos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
+    expect(badgeTodosTecnicos).toHaveAttribute('aria-pressed', 'true')
+    expect(within(grupoTecnicos).getByRole('button', { name: 'Afonso' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(grupoTecnicos).getByRole('button', { name: 'Bruno' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

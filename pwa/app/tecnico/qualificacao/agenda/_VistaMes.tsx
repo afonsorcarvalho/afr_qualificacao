@@ -1,4 +1,5 @@
 'use client'
+import { useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
 import { VisitaCard } from '../_components/VisitaCard'
 import { GradeMes } from './_GradeMes'
@@ -16,6 +17,12 @@ interface ItemLegenda<T extends number | false> {
   cor: string
   nome: string
 }
+
+/** Limiar de arrasto (px) acima do qual o toque em andamento vira rolagem,
+ *  não gesto — a faixa quebra em várias linhas e rola no celular (brief). */
+const LIMIAR_ARRASTO_PX = 10
+/** Duração do toque longo (ms) até isolar. */
+const DURACAO_TOQUE_LONGO_MS = 500
 
 /**
  * Uma faixa de legenda/filtro: rótulo curto + badge "Todos" + um botão por
@@ -75,6 +82,7 @@ function FaixaLegenda<T extends number | false>({
   selecionado,
   onAlternar,
   onTodos,
+  onIsolar,
 }: {
   /** Id do `<span>` do rótulo, alvo do `aria-labelledby` do grupo. */
   id: string
@@ -97,7 +105,84 @@ function FaixaLegenda<T extends number | false>({
   selecionado: Set<T> | null
   onAlternar: (id: T) => void
   onTodos: () => void
+  /**
+   * Toque longo (ou `Alt+Enter`/`Alt+clique`, o equivalente de teclado):
+   * isola aquele item — a faixa passa a ter só ele ligado. Chamar de novo no
+   * item já isolado é reversível por si mesmo (a `page.tsx` decide voltar
+   * pra "Todos" quando `id` já é o único do `Set`) — a faixa aqui só avisa
+   * QUAL id foi tocado, sem saber se o resultado vai ser isolar ou reverter.
+   */
+  onIsolar: (id: T) => void
 }) {
+  /**
+   * Estado do toque longo em andamento — no máximo um por vez nesta faixa
+   * (as duas faixas são instâncias separadas do componente, então isolar
+   * num instrumento nunca compartilha timer com um toque em andamento na
+   * faixa de técnicos). Fica em `ref`, não em `state`: o `pointermove`
+   * dispara a cada pixel de arrasto, e um `setState` aí recriaria a faixa
+   * inteira a torto e a direito só pra checar um limiar de distância.
+   *
+   * `suprimirClique` é o que resolve a ordem real dos eventos num toque:
+   * `pointerdown` → (500ms) → `pointerup` → `click` — o `click` é disparado
+   * pelo NAVEGADOR depois que este componente já reagiu ao `pointerup`, e
+   * não há como o `pointerup` "cancelar" um `click` que ainda nem existe.
+   * Por isso o `onClick` do item consulta esta flag antes de alternar: se o
+   * toque longo já isolou (ou se foi arrasto, não toque), o `click` que vem
+   * a seguir é engolido — senão o mesmo toque que isolou desligaria o
+   * próprio item isolado um instante depois (brief: "toque longo não pode
+   * disparar também o toque simples").
+   */
+  const toqueRef = useRef<{
+    timer: ReturnType<typeof setTimeout>
+    x: number
+    y: number
+    suprimirClique: boolean
+  } | null>(null)
+
+  // A armadilha clássica deste componente: um timer solto. Se a faixa
+  // desmontar (troca de mês, de modo, ou a própria navegação da agenda) com
+  // o toque longo ainda armado, o `setTimeout` dispara depois — chamando
+  // `onIsolar` num id que já não corresponde a nada visível na tela. Limpo
+  // em TODO caminho de saída, inclusive aqui, na desmontagem.
+  useEffect(() => {
+    return () => {
+      if (toqueRef.current) clearTimeout(toqueRef.current.timer)
+    }
+  }, [])
+
+  function iniciarToqueLongo(itemId: T, evento: React.PointerEvent<HTMLButtonElement>) {
+    if (toqueRef.current) clearTimeout(toqueRef.current.timer)
+    const timer = setTimeout(() => {
+      onIsolar(itemId)
+      // O toque ainda pode estar pressionado quando o timer dispara — o
+      // `pointerup` (e o `click` que o segue) ainda vêm. Marcar aqui, não
+      // esperar o `pointerup`, é o que garante a supressão mesmo que o
+      // usuário solte o dedo bem em cima dos 500ms.
+      if (toqueRef.current) toqueRef.current.suprimirClique = true
+    }, DURACAO_TOQUE_LONGO_MS)
+    toqueRef.current = { timer, x: evento.clientX, y: evento.clientY, suprimirClique: false }
+  }
+
+  function moverToqueLongo(evento: React.PointerEvent<HTMLButtonElement>) {
+    const estado = toqueRef.current
+    if (!estado || estado.suprimirClique) return
+    const dx = evento.clientX - estado.x
+    const dy = evento.clientY - estado.y
+    if (Math.hypot(dx, dy) > LIMIAR_ARRASTO_PX) {
+      // Arrasto: cancela o isolar pendente E impede o click de alternar em
+      // seguida — foi rolagem, não toque (brief).
+      clearTimeout(estado.timer)
+      estado.suprimirClique = true
+    }
+  }
+
+  function soltarToqueLongo() {
+    // Só limpa o TIMER (caso o toque tenha sido curto e ele ainda não tenha
+    // disparado) — o objeto em si sobrevive até o `onClick`, que é quem
+    // precisa ler `suprimirClique` pra decidir se alterna ou não.
+    if (toqueRef.current) clearTimeout(toqueRef.current.timer)
+  }
+
   if (itens.length === 0 && selecionado === null) return null
   return (
     <div
@@ -129,9 +214,46 @@ function FaixaLegenda<T extends number | false>({
             key={item.chave}
             type="button"
             aria-pressed={ligado}
-            onClick={() => onAlternar(item.id)}
+            // `aria-keyshortcuts` é o token padrão (não traduzido — é lido
+            // por ferramentas, não por prosa), e o `title` carrega a mesma
+            // informação em pt-BR pra quem só tem o rato/toque (brief).
+            aria-keyshortcuts="Alt+Enter"
+            title="Toque e segure (ou Alt+clique, ou Alt+Enter) para ver só este"
+            onClick={(evento) => {
+              // O `click` chega DEPOIS do `pointerup` — se o toque longo já
+              // isolou (ou se foi arrasto), este `click` é o mesmo gesto
+              // "vazando" como toque simples, e precisa ser engolido. Ver
+              // comentário de `toqueRef` acima.
+              if (toqueRef.current?.suprimirClique) {
+                toqueRef.current = null
+                return
+              }
+              if (evento.altKey) {
+                onIsolar(item.id)
+                return
+              }
+              onAlternar(item.id)
+            }}
+            onKeyDown={(evento) => {
+              // Equivalente de teclado do toque longo — sem isto o gesto
+              // simplesmente não existe pra quem navega por teclado ou
+              // leitor de tela (brief).
+              if (evento.altKey && (evento.key === 'Enter' || evento.key === ' ')) {
+                evento.preventDefault()
+                onIsolar(item.id)
+              }
+            }}
+            onContextMenu={(evento) => evento.preventDefault()}
+            onPointerDown={(evento) => iniciarToqueLongo(item.id, evento)}
+            onPointerMove={moverToqueLongo}
+            onPointerUp={soltarToqueLongo}
+            onPointerCancel={soltarToqueLongo}
             className={clsx(
-              'flex min-h-[44px] items-center gap-1.5 rounded-md border px-2',
+              // `select-none` + `touch-manipulation`: suprime a seleção de
+              // texto e o menu de contexto que o toque longo dispara nativo
+              // no mobile — sem isso o gesto concorre com o comportamento
+              // do navegador (brief).
+              'flex min-h-[44px] select-none items-center gap-1.5 rounded-md border px-2 touch-manipulation',
               ligado
                 ? 'border-transparent bg-accent font-semibold text-foreground'
                 : 'border-dashed border-border text-muted-foreground',
@@ -163,6 +285,13 @@ function FaixaLegenda<T extends number | false>({
           </button>
         )
       })}
+      {/* Dica textual do gesto — sem ela o toque longo é invisível (brief).
+          Em texto apagado, não é instrução crítica pra usar a faixa (o toque
+          simples de sempre continua funcionando sem ler isto), por isso não
+          leva `role`/`aria-live` nenhum: é reforço, não anúncio. */}
+      <span className="basis-full text-[11px] text-muted-foreground">
+        Segure um para ver só ele
+      </span>
     </div>
   )
 }
@@ -187,6 +316,8 @@ export function VistaMes({
   onAlternarInstrumento,
   onTodosTecnicos,
   onTodosInstrumentos,
+  onIsolarTecnico,
+  onIsolarInstrumento,
   instrumentosDoDia,
   ancora,
   hoje,
@@ -238,6 +369,14 @@ export function VistaMes({
   onAlternarInstrumento: (id: number) => void
   onTodosTecnicos: () => void
   onTodosInstrumentos: () => void
+  /**
+   * Toque longo (ou `Alt+Enter`/`Alt+clique`) num chip: isola aquele
+   * recurso, ou — se ele já é o único ligado — reverte pra "Todos" (Task 1).
+   * A decisão de isolar vs. reverter mora na `page.tsx`, dona dos dois
+   * `Set`: esta função só recebe o `id` tocado.
+   */
+  onIsolarTecnico: (id: number | false) => void
+  onIsolarInstrumento: (id: number) => void
   /**
    * Seção "Instrumentos do dia": derivada da entrada correspondente ao dia
    * selecionado, acrescida dos usos, a partir da lista de visitas COMPLETA
@@ -299,6 +438,7 @@ export function VistaMes({
         selecionado={tecnicosSel}
         onAlternar={onAlternarTecnico}
         onTodos={onTodosTecnicos}
+        onIsolar={onIsolarTecnico}
       />
 
       <FaixaLegenda
@@ -310,6 +450,7 @@ export function VistaMes({
         selecionado={instrumentosSel}
         onAlternar={onAlternarInstrumento}
         onTodos={onTodosInstrumentos}
+        onIsolar={onIsolarInstrumento}
       />
 
       {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
