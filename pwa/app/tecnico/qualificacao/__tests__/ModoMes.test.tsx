@@ -1622,7 +1622,7 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
 
   // --- Fix round 1 (review) ---
 
-  it('gesto abortado por pointercancel não engole um Enter legítimo de teclado noutro chip (achado 1 importante)', async () => {
+  it('flag de supressão armada e ainda por consumir não engole um Enter legítimo de teclado noutro chip (achado 1 importante — quem protege aqui é o gate de detail, não um pointercancel)', async () => {
     await montarNoMes()
     vi.useFakeTimers()
 
@@ -1630,23 +1630,30 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
     const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
 
-    // Toque longo em Afonso isola — mas o SISTEMA interrompe o toque com
-    // `pointercancel` em vez do `pointerup` normal (rolagem detectada
-    // tarde, notificação, etc.): nenhum `click` vem depois pra consumir a
-    // flag de supressão, que fica presa no `toqueRef`.
+    // Toque longo em Afonso isola e solta NORMALMENTE — `pointerup`, não
+    // `pointercancel`. Isto importa: desde o fix round 4/5,
+    // `cancelarToqueLongo` (só `pointercancel`) É quem libera a flag, e só
+    // quando o `pointerId` que cancela é o mesmo que a armou — um
+    // `pointerup` normal nunca passa por ali. Armar a flag por ESTE
+    // caminho é o que garante que ela continua ARMADA na hora do clique de
+    // teclado abaixo: se a flag já tivesse sido liberada por outro motivo,
+    // o teste passaria mesmo com o gate de `detail` apagado, sem provar
+    // nada (foi exatamente o que aconteceu com a versão anterior deste
+    // teste, que usava `pointercancel` — achado da re-review, fix round 5).
     fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
     act(() => {
       vi.advanceTimersByTime(500)
     })
-    fireEvent.pointerCancel(chipAfonso, { pointerId: 1 })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
     expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
     expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
 
     // Interação seguinte na faixa é só por TECLADO, num chip diferente, sem
     // nenhum `pointerdown` antes (Tab até lá + Enter) — o `click`
-    // sintetizado por essa ativação tem `detail: 0`. Sem a checagem de
-    // `detail` antes de `suprimirClique`, este clique legítimo seria
-    // engolido pela flag que sobrou do gesto abortado de Afonso.
+    // sintetizado por essa ativação tem `detail: 0`. A flag de Afonso
+    // continua armada (o click REAL dele ainda está "em voo", nunca
+    // disparado neste teste) — é o gate `evento.detail === 0`, e só ele,
+    // quem impede este clique legítimo de ser engolido.
     fireEvent.click(chipBruno, { detail: 0 })
 
     expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
@@ -1907,5 +1914,81 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     // (um clique de ponteiro real tem `detail: 1`) — e este clique era
     // engolido em silêncio, mesmo sem nenhuma relação com o gesto abortado.
     expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // --- Fix round 5 (re-review): a flag precisa saber QUEM a armou ---
+
+  it('pointercancel do dedo que armou a flag ainda a libera mesmo depois de outro dedo tomar o toqueRef (janela i, fix round 5)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 isola Afonso (a flag guarda o `pointerId` 1).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+
+    // Dedo 2 toca Bruno ANTES do `pointercancel` do dedo 1 chegar — toma o
+    // `toqueRef` por inteiro (só um gesto de posição/timer em andamento por
+    // vez, ver comentário do componente).
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+
+    // SÓ ENTÃO o sistema interrompe o dedo 1 com `pointercancel` — o
+    // `toqueRef` já não é mais dele, mas a flag de supressão continua
+    // sendo (ela guarda o `pointerId` que a armou, não quem é dono do
+    // `toqueRef` agora).
+    fireEvent.pointerCancel(chipAfonso, { pointerId: 1 })
+
+    // Dedo 2 solta rápido — toque simples em Bruno, sem isolar — e o click
+    // real dele chega.
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+    fireEvent.click(chipBruno, { detail: 1 })
+
+    // Bruno precisa alternar normalmente (liga, já que estava desligado
+    // pela restrição a Afonso). Sem esta correção, o `pointercancel` do
+    // dedo 1 não conseguia liberar a flag (comparava contra o DONO ATUAL
+    // do `toqueRef`, que já era o dedo 2) — ela ficava presa e engolia
+    // este clique sem nenhuma relação com o gesto de Afonso.
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('pointercancel de um dedo NÃO libera a flag armada por OUTRO dedo — o click atrasado do primeiro continua suprimido (janela ii, fix round 5)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 isola Afonso e solta NORMALMENTE (`pointerup`) — o click real
+    // dele ainda está "em voo" (a flag guarda o `pointerId` 1).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+
+    // Dedo 2 toca Bruno (toma o `toqueRef`) e é interrompido por
+    // `pointercancel` — um gesto totalmente diferente do de Afonso.
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+    fireEvent.pointerCancel(chipBruno, { pointerId: 2 })
+
+    // SÓ ENTÃO chega o click atrasado do dedo 1, no PRÓPRIO chip que ele
+    // isolou.
+    fireEvent.click(chipAfonso, { detail: 1 })
+
+    // Afonso precisa continuar isolado — o `pointercancel` do dedo 2 (id 2)
+    // não pode liberar uma flag que foi armada pelo dedo 1 (id 1). Sem
+    // esta correção (round 4 zerava a flag sempre que o `pointerId` do
+    // `pointercancel` batia com o dono ATUAL do `toqueRef`, sem checar de
+    // quem era a flag), o click atrasado do dedo 1 chegava sem supressão e
+    // desfazia o isolamento que ele mesmo tinha acabado de fazer.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
   })
 })

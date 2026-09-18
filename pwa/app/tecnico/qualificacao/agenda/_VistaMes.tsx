@@ -156,8 +156,25 @@ function FaixaLegenda<T extends number | false>({
    * mais nada pra consultar, cairia direto no `onAlternar` e desligaria o
    * item que ele tinha acabado de isolar (achado da re-review, fix round
    * 2). Desacoplada, ela sobrevive à troca de dono do `toqueRef`.
+   *
+   * `number | null` — o `pointerId` que ARMOU a supressão, não um booleano
+   * (fix round 5). Um booleano não distingue "de quem" é a flag, e isso
+   * quebra dos dois lados quando duas janelas de dois ponteiros na mesma
+   * faixa se cruzam: (i) o dedo que armou a flag perde a posse do
+   * `toqueRef` pra um segundo dedo ANTES do seu próprio `pointercancel`
+   * chegar — comparar `pointercancel` contra o dono ATUAL do `toqueRef`
+   * (round 4) faz esse `pointercancel` sair sem liberar nada, e a flag
+   * fica presa pra sempre; (ii) o inverso — um segundo dedo assume o
+   * `toqueRef`, é ele quem recebe `pointercancel`, e um booleano não tem
+   * como diferenciar "sou eu quem deve liberar" de "foi outro gesto quem
+   * armou isto", então o `pointercancel` do segundo dedo zerava (round 4)
+   * uma flag que era do PRIMEIRO — o click atrasado do primeiro chegava
+   * sem supressão e desfazia o isolamento que ele mesmo tinha acabado de
+   * fazer (a janela do round 2 reaberta por outra porta). Guardando o
+   * `pointerId`, `cancelarToqueLongo` só libera quando é o SEU
+   * `pointerId` que está armado — nunca o de outro gesto.
    */
-  const suprimirCliqueRef = useRef(false)
+  const suprimirCliqueRef = useRef<number | null>(null)
 
   // A armadilha clássica deste componente: um timer solto. Se a faixa
   // desmontar (troca de mês, de modo, ou a própria navegação da agenda) com
@@ -197,15 +214,21 @@ function FaixaLegenda<T extends number | false>({
     // gesto anterior continua tendo direito de ser suprimido, mesmo que o
     // `toqueRef` já pertença a um dedo novo (fix round 2).
     if (toqueRef.current) clearTimeout(toqueRef.current.timer)
+    // Capturado ANTES do `setTimeout`, não lido de `evento` dentro dele: o
+    // `pointerId` precisa sobreviver ao fim deste `iniciarToqueLongo`
+    // (o evento sintético em si não precisa — só o número).
+    const pointerId = evento.pointerId
     const timer = setTimeout(() => {
       onIsolar(itemId)
       // O toque ainda pode estar pressionado quando o timer dispara — o
       // `pointerup` (e o `click` que o segue) ainda vêm. Marcar aqui, não
       // esperar o `pointerup`, é o que garante a supressão mesmo que o
-      // usuário solte o dedo bem em cima dos 500ms.
-      suprimirCliqueRef.current = true
+      // usuário solte o dedo bem em cima dos 500ms. Guarda o `pointerId`
+      // DESTE gesto, não um booleano (fix round 5, ver comentário de
+      // `suprimirCliqueRef`).
+      suprimirCliqueRef.current = pointerId
     }, DURACAO_TOQUE_LONGO_MS)
-    toqueRef.current = { pointerId: evento.pointerId, timer, x: evento.clientX, y: evento.clientY }
+    toqueRef.current = { pointerId, timer, x: evento.clientX, y: evento.clientY }
   }
 
   function moverToqueLongo(evento: React.PointerEvent<HTMLButtonElement>) {
@@ -218,9 +241,11 @@ function FaixaLegenda<T extends number | false>({
     const dy = evento.clientY - estado.y
     if (Math.hypot(dx, dy) > LIMIAR_ARRASTO_PX) {
       // Arrasto: cancela o isolar pendente E impede o click de alternar em
-      // seguida — foi rolagem, não toque (brief).
+      // seguida — foi rolagem, não toque (brief). `estado.pointerId`, não
+      // um booleano (fix round 5) — já sabemos que bate com
+      // `evento.pointerId` pela guarda acima.
       clearTimeout(estado.timer)
-      suprimirCliqueRef.current = true
+      suprimirCliqueRef.current = estado.pointerId
     }
   }
 
@@ -243,27 +268,42 @@ function FaixaLegenda<T extends number | false>({
   }
 
   function cancelarToqueLongo(evento: React.PointerEvent<HTMLButtonElement>) {
+    // Duas guardas INDEPENDENTES, de propósito (fix round 5) — timer e
+    // flag não têm o mesmo dono:
+    //
+    // 1) O TIMER só pode ser mexido por quem é dono do `toqueRef` agora
+    //    (mesma guarda de `moverToqueLongo`/`soltarToqueLongo`, achado 2):
+    //    o `pointercancel` de um dedo que já perdeu a posse (um segundo
+    //    dedo tomou o `toqueRef` antes deste evento chegar) não pode
+    //    cancelar um timer que já é de outra pessoa.
     const estado = toqueRef.current
-    if (!estado || estado.pointerId !== evento.pointerId) return
-    clearTimeout(estado.timer)
-    // `pointercancel`, ao contrário de `pointerup`, GARANTE (spec de
-    // Pointer Events) que nenhum `click` vem depois pra ESTE gesto — o
-    // sistema interrompeu o toque antes de completar (rolagem detectada
-    // tarde, notificação, etc.). Deixar `suprimirCliqueRef` armada até o
-    // PRÓXIMO `click` qualquer (round 1) suprimia até um clique de
-    // PONTEIRO legítimo e sem nenhuma relação, no primeiro chip que
-    // alguém tocasse depois — o gate `evento.detail === 0` do round 1
-    // protege só o caminho de TECLADO (`detail` sempre 0 ali), nunca este
-    // (um clique de ponteiro real tem `detail >= 1`, então passava direto
-    // pela checagem) — achado da review final, fix round 4. Zerar AQUI,
-    // onde temos certeza de que não sobra nada a suprimir, fecha esse
-    // buraco sem reabrir os das reviews anteriores: um toque longo
-    // bem-sucedido que termina em `pointerup` normal nunca passa por esta
-    // função, então o clique-fantasma DELE continua protegido (requisito
-    // a); o gate de teclado (b), a independência de `toqueRef`/`pointerId`
-    // da corrida de dois dedos do round 2 (c) e a captura de ponteiro do
-    // round 3 (d) — nenhum dos três é tocado por esta função.
-    suprimirCliqueRef.current = false
+    if (estado && estado.pointerId === evento.pointerId) {
+      clearTimeout(estado.timer)
+    }
+    // 2) A FLAG só pode ser liberada por quem a ARMOU — não por quem é
+    //    dono do `toqueRef` agora. `pointercancel`, ao contrário de
+    //    `pointerup`, GARANTE (spec de Pointer Events) que nenhum `click`
+    //    vem depois pra ESTE `pointerId` — então, se foi ELE quem armou a
+    //    supressão, não sobra nada a proteger, e liberar aqui é seguro.
+    //    Comparar contra o dono do `toqueRef` (round 4) tinha DUAS janelas
+    //    (achado da re-review, fix round 5):
+    //    (i) o dedo que armou a flag perde a posse do `toqueRef` pra um
+    //        segundo dedo ANTES do seu próprio `pointercancel` chegar — o
+    //        `pointercancel` saía sem liberar nada (comparava contra o
+    //        dono ERRADO), e a flag ficava presa pra sempre, engolindo o
+    //        próximo clique de ponteiro legítimo, sem relação nenhuma;
+    //    (ii) o inverso — um SEGUNDO dedo assume o `toqueRef` e é ELE quem
+    //         recebe `pointercancel`; comparando contra o dono do
+    //         `toqueRef`, esse `pointercancel` zerava uma flag que era do
+    //         PRIMEIRO dedo — o click atrasado do primeiro chegava sem
+    //         supressão e desfazia o isolamento que ele mesmo tinha
+    //         acabado de fazer (a janela do round 2 reaberta por outra
+    //         porta).
+    //    Comparando contra QUEM ARMOU a flag (não contra o `toqueRef`),
+    //    as duas se fecham: um `pointercancel` só libera a flag que é DELE.
+    if (suprimirCliqueRef.current === evento.pointerId) {
+      suprimirCliqueRef.current = null
+    }
   }
 
   /**
@@ -353,16 +393,17 @@ function FaixaLegenda<T extends number | false>({
               // ou Espaço num botão focado — em vez de vindo de um
               // ponteiro real, que sempre carrega `detail >= 1` (contagem
               // de cliques). Checar isso ANTES de `suprimirCliqueRef` é o
-              // que impede um gesto abortado por `pointercancel` (nenhum
-              // `click` chega pra consumir a flag) de "vazar" e engolir um
-              // Enter legítimo, sem `pointerdown` nenhum, num chip qualquer
-              // da mesma faixa (achado 1 importante, fix round 1). Mais
-              // robusto que tentar zerar a flag em cada caminho de saída do
-              // ponteiro: não depende de prever toda ordem possível de
-              // eventos do sistema, só do CONTRATO do próprio evento que
-              // está sendo tratado.
-              if (evento.detail !== 0 && suprimirCliqueRef.current) {
-                suprimirCliqueRef.current = false
+              // que impede uma flag ainda armada (o click REAL do gesto que
+              // a armou ainda não chegou) de "vazar" e engolir um Enter
+              // legítimo, sem `pointerdown` nenhum, num chip qualquer da
+              // mesma faixa (achado 1 importante, fix round 1). `click` não
+              // carrega `pointerId` (só `PointerEvent` carrega) — não dá
+              // pra confirmar que ESTE click é o do MESMO gesto que armou a
+              // flag, só que é um click de ponteiro de verdade, então
+              // consome o que estiver armado (`!== null`), de quem quer
+              // que seja.
+              if (evento.detail !== 0 && suprimirCliqueRef.current !== null) {
+                suprimirCliqueRef.current = null
                 return
               }
               if (evento.altKey) {
