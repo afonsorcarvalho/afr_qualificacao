@@ -12,11 +12,22 @@ const SIGLAS_SEMANA: string[] = Array.from({ length: 7 }, (_, i) => {
   return new Intl.DateTimeFormat('pt-BR', { weekday: 'narrow', timeZone: 'UTC' }).format(dt)
 })
 
+// Escopo de MÓDULO, não dentro de `rotuloDia` — construir um
+// `Intl.DateTimeFormat` novo por célula, por render (42 por render), é
+// trabalho pago à toa: a grade nem `VistaMes` são memoizadas, nenhuma prop
+// vinda da `page.tsx` é estável, e os blocos de filtro/isolar (rounds
+// anteriores) multiplicaram a frequência de render (achado minor, review
+// final). Mesma ideia de `SIGLAS_SEMANA` acima, só que preso pra reuso em
+// vez de rodado uma vez no módulo.
+const FORMATADOR_ROTULO_DIA = new Intl.DateTimeFormat('pt-BR', {
+  day: 'numeric', month: 'long', timeZone: 'UTC',
+})
+
 /** "2026-09-17" → "17 de setembro", pt-BR, `timeZone: 'UTC'`. */
 function rotuloDia(date: string): string {
   const [a, m, d] = date.split('-').map(Number)
   const dt = new Date(Date.UTC(a, m - 1, d))
-  return new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(dt)
+  return FORMATADOR_ROTULO_DIA.format(dt)
 }
 
 /**

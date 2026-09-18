@@ -9,6 +9,14 @@
  */
 import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
 
+// Escopo de MÓDULO: `String.prototype.localeCompare(..., locale, opts)`
+// constrói um `Intl.Collator` novo por CHAMADA — dentro de um comparador de
+// `sort`, isso é pago em cada uma das ~42 comparações de CADA agregação de
+// `ordenarInstrumentos` por render (achado minor, review final). Um
+// `Intl.Collator` construído uma vez e reusado via `.compare(a, b)` é a
+// mesma otimização, só que explícita.
+const COLATOR_PT_BR_NUMERICO = new Intl.Collator('pt-BR', { numeric: true })
+
 export interface PontoTecnico {
   /** `false` = visita sem técnico atribuído. */
   id: number | false
@@ -266,7 +274,7 @@ export function ordenarInstrumentos<T extends { id: number; name: string }>(
     const bConhecido = conhecidos.has(b.id)
     if (aConhecido !== bConhecido) return aConhecido ? -1 : 1
     if (!aConhecido) return a.id - b.id
-    const porNome = a.name.localeCompare(b.name, 'pt-BR', { numeric: true })
+    const porNome = COLATOR_PT_BR_NUMERICO.compare(a.name, b.name)
     return porNome !== 0 ? porNome : a.id - b.id
   })
 }

@@ -171,6 +171,25 @@ function FaixaLegenda<T extends number | false>({
   }, [])
 
   function iniciarToqueLongo(itemId: T, evento: React.PointerEvent<HTMLButtonElement>) {
+    // Pede a CAPTURA do ponteiro pro próprio botão. Toque (touch) já
+    // implica captura implícita do navegador — mas MOUSE e CANETA não têm
+    // essa captura implícita nenhuma. Sem isto, assim que o ponteiro sai da
+    // área do chip, `pointermove`/`pointerup` passam a mirar em outro
+    // elemento (o fundo da faixa, um chip vizinho) e NUNCA MAIS chegam a
+    // este botão — nem `moverToqueLongo` cancela o arrasto, nem
+    // `soltarToqueLongo` limpa o timer, que sobrevive e isola sozinho aos
+    // 500ms, bem depois de o usuário já ter soltado o mouse fora do chip
+    // (achado importante, review final). Com a captura, os três handlers
+    // (já guardados por `pointerId`, fix round 1) voltam a receber os
+    // eventos onde quer que o ponteiro esteja na tela. `try/catch`: a
+    // chamada pode lançar em ambiente sem suporte ao Pointer Capture — o
+    // gesto degrada pra "só funciona soltando dentro do chip" em vez de
+    // quebrar por inteiro.
+    try {
+      evento.currentTarget.setPointerCapture(evento.pointerId)
+    } catch {
+      // sem suporte — segue sem captura.
+    }
     // Um novo `pointerdown` assume a faixa (no máximo um toque longo em
     // andamento por vez, ver comentário de `toqueRef`) — limpa o timer de
     // quem quer que estivesse antes, mesmo que seja outro `pointerId`. Isto
@@ -220,6 +239,36 @@ function FaixaLegenda<T extends number | false>({
     clearTimeout(estado.timer)
   }
 
+  /**
+   * Texto da região viva (`role="status"`) desta faixa — o que faz o
+   * isolar (e o reverter, e o alternar simples) PERCEPTÍVEIS pra quem usa
+   * leitor de tela (achado importante, review final). `aria-pressed` por
+   * chip não basta: o chip que RECEBEU o `Alt+Enter` (ou o toque longo)
+   * está em `true` nos TRÊS estados pelos quais ele passa — "Todos", isolado
+   * nele, de volta a "Todos" — e as únicas mudanças de DOM acontecem em
+   * botões que não estão com o foco (os irmãos, o "Todos"), que nenhum
+   * leitor de tela anuncia. Sem uma região viva, o atalho existe
+   * mecanicamente e é invisível — o Global Constraint "todo gesto com
+   * equivalente de teclado" fica sem substância.
+   *
+   * `rotuloTodos` já carrega o plural certo da faixa ("Todos os técnicos" /
+   * "Todos os instrumentos") — reaproveitado aqui em vez de outra prop nova
+   * só pro plural.
+   */
+  function textoStatus(): string {
+    const plural = rotuloTodos.replace(/^Todos os /, '')
+    if (selecionado === null) return `Mostrando todos os ${plural}`
+    if (selecionado.size === 1) {
+      // `.values().next().value` em vez de `[...selecionado]`/destructuring:
+      // iterar um `Set` exige `--downlevelIteration` ou `target` ES2015+
+      // neste `tsconfig`, e não é essa a troca deste round.
+      const unicoId = selecionado.values().next().value
+      const item = itens.find((i) => i.id === unicoId)
+      if (item) return `Mostrando só ${item.nome}`
+    }
+    return `Mostrando ${selecionado.size} de ${itens.length} ${plural}`
+  }
+
   if (itens.length === 0 && selecionado === null) return null
   return (
     <div
@@ -229,6 +278,13 @@ function FaixaLegenda<T extends number | false>({
     >
       <span id={id} className="font-medium text-foreground">
         {rotulo}
+      </span>
+      {/* Região viva desta faixa — ver `textoStatus`. Fica sempre montada
+          (quando a faixa renderiza) pra que a TROCA de texto seja o que
+          dispara o anúncio, não a chegada do nó em si (regra de
+          `role="status"`/`aria-live="polite"`). */}
+      <span role="status" className="sr-only">
+        {textoStatus()}
       </span>
       <button
         type="button"
@@ -251,11 +307,14 @@ function FaixaLegenda<T extends number | false>({
             key={item.chave}
             type="button"
             aria-pressed={ligado}
-            // `aria-keyshortcuts` é o token padrão (não traduzido — é lido
-            // por ferramentas, não por prosa), e o `title` carrega a mesma
-            // informação em pt-BR pra quem só tem o rato/toque (brief).
+            // `aria-keyshortcuts` é TOKEN pra ferramenta assistiva, não
+            // prosa — por isso não vira `title`: um `title` por chip é lido
+            // como descrição acessível do botão em boa parte dos leitores
+            // de tela, e com 8 técnicos ou 20 instrumentos a MESMA frase de
+            // 12 palavras seria ouvida dezenas de vezes por faixa, enquanto
+            // a dica visível (`Segure um para ver só ele`, abaixo) já diz
+            // isso uma vez só, por faixa (achado minor, review final).
             aria-keyshortcuts="Alt+Enter"
-            title="Toque e segure (ou Alt+clique, ou Alt+Enter) para ver só este"
             onClick={(evento) => {
               // O `click` chega DEPOIS do `pointerup` — se o toque longo já
               // isolou (ou se foi arrasto), este `click` é o mesmo gesto

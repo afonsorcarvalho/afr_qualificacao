@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
@@ -74,6 +74,20 @@ export default function AgendaPage() {
   // data pede confirmação (Task 1) — técnico e instrumento continuam
   // gravando direto, por isso este estado é separado de `emAjuste`.
   const [dataPendente, setDataPendente] = useState<string | null>(null)
+  /**
+   * Alvo de foco pra depois de um "Confirmar" que muda de MÊS (achado
+   * minor, review final). Ao fechar o `BottomSheet` da confirmação, o
+   * efeito `[open]` dele devolve o foco, síncrono, à célula que abriu o
+   * diálogo — mas se a gravação muda `ancoraMes` (a visita foi pra fora do
+   * mês visível), as 42 células são re-chaveadas por `date` e a célula
+   * recém-focada desmonta: o foco cai pro `<body>` sem aviso nenhum. A
+   * tarja "Movendo a visita" continua montada através da troca de mês
+   * (`emAjusteAtual` não depende de qual mês está visível), então é um
+   * alvo estável pra devolver o foco de propósito depois da gravação —
+   * ao contrário de focar a célula nova, que ainda não existe no DOM no
+   * momento em que `ajustar` resolve.
+   */
+  const tarjaAjusteRef = useRef<HTMLDivElement>(null)
   // Badges de filtro das duas faixas de legenda do Mês (Task 2). `null` =
   // "Todos" (sem restrição naquela faixa). Em memória só — nunca persistido,
   // nunca enviado ao servidor: alteram SÓ as marcas da grade (`pontosDiaGrade`/
@@ -147,8 +161,15 @@ export default function AgendaPage() {
 
   const ancora = inicio ?? data?.date_from ?? null
   const semEmpregado = data ? !data.my_employee_id : false
-  const grupos = agruparPorDia(data?.visitas ?? [])
-  const dias = ancora ? diasDaSemana(ancora) : []
+  // `useMemo`, não plain: as duas rodam em TODO render, mesmo no Mês — onde
+  // os dois resultados são descartados (`janelaVisivel` usa `gradeMes`, não
+  // `dias`, quando `mes` é `true`) — e os blocos de filtro/isolar dos rounds
+  // anteriores multiplicaram a frequência de render (achado minor, review
+  // final). `[data]`/`[ancora]` porque `visitas` (a versão memoizada,
+  // estável) só nasce um pouco abaixo — trocar a dependência por ela exigiria
+  // mover estas duas linhas pra depois, e não é essa a troca pedida aqui.
+  const grupos = useMemo(() => agruparPorDia(data?.visitas ?? []), [data])
+  const dias = useMemo(() => (ancora ? diasDaSemana(ancora) : []), [ancora])
   const diaAtual = diaSel && dias.includes(diaSel) ? diaSel : dias[0] ?? ''
   // Referência estável: `data?.visitas ?? []` cria um array novo a cada render
   // quando a busca ainda não respondeu, e isso sozinho invalidaria todos os
@@ -517,6 +538,12 @@ export default function AgendaPage() {
         // dos outros modos (ruling do controlador, brief 3d).
         if (mes && ancoraMes && !noMes(vals.date, ancoraMes)) {
           setAncoraMes(primeiroDiaDoMes(vals.date))
+          // A célula que tinha o foco (a do diálogo de confirmação, já
+          // devolvido pelo `BottomSheet` ao fechar) está prestes a
+          // desmontar — as 42 células da grade nova são outras (achado
+          // minor, review final). Sem isto, o foco cai pro `<body>` assim
+          // que este re-render troca a grade pro mês novo.
+          tarjaAjusteRef.current?.focus()
         }
       }
     } catch (e) {
@@ -673,7 +700,11 @@ export default function AgendaPage() {
           identificador da visita e uma saída explícita — nada aqui depende
           de cor. */}
       {emAjusteAtual && (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2">
+        <div
+          ref={tarjaAjusteRef}
+          tabIndex={-1}
+          className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2"
+        >
           <span className="min-w-0 text-sm">
             Movendo a visita {emAjusteAtual.os_name} de {rotuloDia(emAjusteAtual.date)}
             <span className="block text-xs text-muted-foreground">

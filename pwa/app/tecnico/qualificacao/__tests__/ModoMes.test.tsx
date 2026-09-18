@@ -347,6 +347,32 @@ describe('Modo Mês', () => {
     expect(screen.queryByRole('button', { name: /^Ajustar$/ })).toBeNull()
   })
 
+  it('foco não cai pro <body> depois de um "Confirmar" que muda de mês — vai pra tarja "Movendo a visita" (achado minor, review final)', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    // Mesma célula "fora do mês" do teste acima — cruza pra outubro.
+    fireEvent.click(screen.getByRole('button', { name: /^fora do mês, 3 de outubro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() =>
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-10-03' } }),
+    )
+    // A troca de mês é o gatilho do bug: o `BottomSheet` do diálogo já
+    // devolveu o foco, síncrono, pra célula de "3 de outubro" ao fechar —
+    // mas essa célula pertencia à grade de SETEMBRO (a de outubro é a
+    // versão "fora do mês", célula DIFERENTE da versão "dentro do mês" que
+    // a grade de outubro desenha). Assim que a âncora avança, a célula que
+    // tinha o foco desmonta.
+    await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
+
+    const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
+    expect(tarja).toHaveFocus()
+  })
+
   it('não-gestor (can_manage: false) não vê o gesto de ajuste', async () => {
     // Fix round 1 (achado 2): o payload original acoplava `can_manage:
     // false` com `editable: false` — combinação real (o servidor amarra os
@@ -1745,5 +1771,107 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
 
     expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
     expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  // --- Review final da branch ---
+
+  it('pede a captura do ponteiro ao iniciar o toque longo — soltar o mouse fora do chip não isola sozinho (achado importante 1)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // happy-dom rastreia `hasPointerCapture` mas não redireciona o
+    // DESPACHO do evento pro elemento capturador quando o evento é
+    // disparado noutro nó — o comportamento central que faz a captura
+    // valer a pena no navegador real (custo antecipado pela review). O
+    // stub simula esse redirecionamento: registra quem capturou cada
+    // `pointerId` e resolve o alvo real de `pointermove`/`pointerup`
+    // disparados "fora" do chip, do mesmo jeito que o navegador faria.
+    const capturas = new Map<number, HTMLElement>()
+    const capturarSpy = vi.spyOn(HTMLElement.prototype, 'setPointerCapture')
+      .mockImplementation(function (this: HTMLElement, pointerId: number) {
+        capturas.set(pointerId, this)
+      })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    // Prova o MECANISMO do fix: o botão pediu a captura do ponteiro que
+    // acabou de pressioná-lo.
+    expect(capturarSpy).toHaveBeenCalledWith(1)
+
+    // Arrasta pra fora do chip — em cima do FUNDO da faixa, não mais do
+    // botão — e solta lá aos ~300ms, antes dos 500ms do toque longo. Com a
+    // captura redirecionando (o stub simula isso), os eventos chegam ao
+    // BOTÃO mesmo fisicamente fora dele — os handlers já guardados por
+    // `pointerId` (rounds anteriores) fecham o ciclo.
+    const alvoReal = capturas.get(1) ?? grupo
+    fireEvent.pointerMove(alvoReal, { pointerId: 1, clientX: 999, clientY: 999 })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    fireEvent.pointerUp(alvoReal, { pointerId: 1 })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    // Sem a captura, nenhum handler do botão teria rodado depois do
+    // arrasto: o timer sobreviveria e isolaria Afonso ~200ms depois de o
+    // usuário já ter soltado o mouse. Com ela, o arrasto (>10px) já tinha
+    // cancelado o timer antes mesmo do pointerup.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+
+    capturarSpy.mockRestore()
+  })
+
+  it('a região viva da faixa anuncia isolar, reverter e o alternar simples (achado importante 2)', async () => {
+    await montarNoMes()
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const status = within(grupoTecnicos).getByRole('status')
+    const chipAfonso = within(grupoTecnicos).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupoTecnicos).getByRole('button', { name: 'Bruno' })
+
+    expect(status).toHaveTextContent('Mostrando todos os técnicos')
+
+    // Isolar por teclado (Alt+Enter) — o único caminho que quem usa leitor
+    // de tela tem pro gesto.
+    fireEvent.keyDown(chipAfonso, { key: 'Enter', altKey: true })
+    expect(status).toHaveTextContent('Mostrando só Afonso')
+
+    // Reverter (segundo Alt+Enter no mesmo chip).
+    fireEvent.keyDown(chipAfonso, { key: 'Enter', altKey: true })
+    expect(status).toHaveTextContent('Mostrando todos os técnicos')
+
+    // Toque simples (alternar) também precisa atualizar a região viva —
+    // não só isolar/reverter.
+    fireEvent.click(chipBruno)
+    expect(status).toHaveTextContent('Mostrando só Afonso')
+  })
+
+  it('a região viva mostra "N de M" quando a restrição não é nem "Todos" nem um item só (achado importante 2)', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' }),
+        visita({ id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno' }),
+        visita({ id: 9, date: '2026-09-17', tecnico_id: 55, tecnico_name: 'Carla' }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const status = within(grupoTecnicos).getByRole('status')
+    const chipCarla = within(grupoTecnicos).getByRole('button', { name: 'Carla' })
+
+    // Desliga só Carla — de "Todos" (3) restam 2 de 3, nem "Todos" nem "só
+    // um", o caso geral que `textoStatus` cobre com a contagem.
+    fireEvent.click(chipCarla)
+
+    expect(status).toHaveTextContent('Mostrando 2 de 3 técnicos')
   })
 })
