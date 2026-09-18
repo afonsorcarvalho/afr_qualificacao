@@ -1,14 +1,30 @@
 // @vitest-environment happy-dom
 /// <reference types="@testing-library/jest-dom" />
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AgendaPage from '../agenda/page'
 import { gradeDoMes } from '../agenda/mes'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
-import type { AgendaPayload, VisitaAgenda } from '@/lib/odoo/agenda'
+import type { AgendaPayload, InstrumentoOpcao, VisitaAgenda } from '@/lib/odoo/agenda'
 
 const mutateUpdate = vi.fn()
+
+// Espia `instrumentosPorDia` sem trocá-la por um dublê: a agregação real
+// continua rodando (os outros testes deste arquivo leem o resultado dela na
+// grade), só passa a ser contável. `vi.hoisted` porque a fábrica do
+// `vi.mock` roda antes das declarações do módulo.
+const { espiaInstrumentosPorDia } = vi.hoisted(() => ({ espiaInstrumentosPorDia: vi.fn() }))
+vi.mock('../agenda/mes', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../agenda/mes')>()
+  return {
+    ...real,
+    instrumentosPorDia: (...args: Parameters<typeof real.instrumentosPorDia>) => {
+      espiaInstrumentosPorDia(...args)
+      return real.instrumentosPorDia(...args)
+    },
+  }
+})
 
 function visita(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
   return {
@@ -48,6 +64,38 @@ let isLoadingAtual = false
 // pré-requisito do teste do achado 1.
 let erroAtual: Error | null = null
 
+// Task 3: `instrumentoOptionsAtual` deixa cada teste controlar o
+// `pwa_instrumento_options` que chega, e `mockUseInstrumentoOptions` (um
+// `vi.fn` que preserva o argumento, mesmo raciocínio do `mockUseAgenda`
+// acima) permite provar que o modo Mês liga o hook com `enabled=true`
+// (brief 3a) sem depender de string mágica nenhuma.
+let instrumentoOptionsAtual: InstrumentoOpcao[] = []
+
+// Fix final (bloqueador I-1): o dublê devolvia `{ data }` PRONTO e nada mais —
+// nenhum teste deste arquivo conseguia representar a query de instrumentos em
+// voo ou em falha, que são exatamente os dois estados em que a tela se
+// contradizia (grade dizendo `Instrumento #101`, seção do dia sumindo, sem
+// nenhuma mensagem). `estadoInstrumentos` torna os três estados
+// representáveis; o default é SETTLED, pra não jogar os ~20 testes do arquivo
+// dentro do gate de carregamento novo.
+type EstadoInstrumentos = 'ok' | 'pending' | 'error' | 'erro-com-cache'
+let estadoInstrumentos: EstadoInstrumentos = 'ok'
+const mockUseInstrumentoOptions = vi.fn((_enabled: boolean) => {
+  if (estadoInstrumentos === 'pending') {
+    return { data: undefined, isPending: true, isError: false }
+  }
+  if (estadoInstrumentos === 'error') {
+    // react-query v5: no erro o status vira `error`, não `pending`.
+    return { data: undefined, isPending: false, isError: true }
+  }
+  if (estadoInstrumentos === 'erro-com-cache') {
+    // Refetch que falhou (foco de janela, ou depois do `staleTime`): `isError`
+    // true MAS com o último catálogo bom ainda em `data`.
+    return { data: instrumentoOptionsAtual, isPending: false, isError: true }
+  }
+  return { data: instrumentoOptionsAtual, isPending: false, isError: false }
+})
+
 // Mesmo raciocínio do `ModoSemana.test.tsx`: `vi.fn` que NÃO descarta os
 // argumentos — é o que permite provar a faixa de datas pedida (`date_from`/
 // `date_to` = grade[0]/grade[41]) e o `onlyMine`.
@@ -69,7 +117,7 @@ vi.mock('@/lib/hooks/useAgenda', () => ({
   useDeleteVisita: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useTecnicoOptions: () => ({ data: [{ id: 441, name: 'Afonso' }, { id: 9, name: 'Bruno' }] }),
   useOsOptions: () => ({ data: [] }),
-  useInstrumentoOptions: () => ({ data: [] }),
+  useInstrumentoOptions: (enabled: boolean) => mockUseInstrumentoOptions(enabled),
 }))
 
 function montar() {
@@ -89,8 +137,12 @@ describe('Modo Mês', () => {
     payloadAtual = payload
     isLoadingAtual = false
     erroAtual = null
+    instrumentoOptionsAtual = []
+    estadoInstrumentos = 'ok'
     mutateUpdate.mockReset().mockResolvedValue(visita())
     mockUseAgenda.mockClear()
+    mockUseInstrumentoOptions.mockClear()
+    espiaInstrumentosPorDia.mockClear()
     // Mesma razão do `ModoSemana.test.tsx`: o store é singleton (zustand +
     // persist) e vaza entre testes sem reset explícito.
     useTecnicoSettings.setState({ modoAgenda: 'lista', filterMine: true })
@@ -187,7 +239,7 @@ describe('Modo Mês', () => {
     expect(screen.queryByText('OS26-02')).toBeNull()
   })
 
-  it('Gestor: selecionar visita para ajuste + tocar outro dia chama pwa_visita_update com o date do destino', async () => {
+  it('Gestor: selecionar visita para ajuste + tocar outro dia abre diálogo de confirmação; Confirmar chama pwa_visita_update com o date do destino', async () => {
     montar()
     irParaMes()
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
@@ -196,9 +248,66 @@ describe('Modo Mês', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
     fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
 
+    // Não grava direto — abre a confirmação com as duas datas no texto.
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    expect(within(dialogo).getByText(
+      'Tem certeza que deseja mudar a data da visita OS26-02 de 17/09/2026 para 19/09/2026?',
+    )).toBeInTheDocument()
+
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Confirmar' }))
+
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-09-19' } }),
     )
+  })
+
+  it('Cancelar no diálogo de confirmação não grava e mantém a visita armada', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }))
+
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // A visita continua armada — o Gestor precisa poder escolher outro dia
+    // sem recomeçar.
+    expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+  })
+
+  it('tocar no mesmo dia em que a visita já está não abre diálogo', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(mutateUpdate).not.toHaveBeenCalled()
+  })
+
+  it('visita armada some do payload fecha o diálogo pendente de confirmação de data', async () => {
+    const { rerender, qc } = montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+    expect(screen.getByRole('dialog', { name: 'Mudar data da visita' })).toBeInTheDocument()
+
+    payloadAtual = { ...payload, visitas: [] }
+    rerender(<QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('mover para célula fora do mês grava e a vista acompanha o destino (a âncora avança para o mês do destino)', async () => {
@@ -213,6 +322,7 @@ describe('Modo Mês', () => {
     // sempre 6 semanas) — "3 de outubro" é uma célula "fora do mês"
     // clicável na mesma grade.
     fireEvent.click(screen.getByRole('button', { name: /^fora do mês, 3 de outubro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
 
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-10-03' } }),
@@ -235,6 +345,32 @@ describe('Modo Mês', () => {
     expect(screen.getByRole('button', { name: /^3 de outubro,/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Ajustar$/ })).toBeNull()
+  })
+
+  it('foco não cai pro <body> depois de um "Confirmar" que muda de mês — vai pra tarja "Movendo a visita" (achado minor, review final)', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    // Mesma célula "fora do mês" do teste acima — cruza pra outubro.
+    fireEvent.click(screen.getByRole('button', { name: /^fora do mês, 3 de outubro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() =>
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-10-03' } }),
+    )
+    // A troca de mês é o gatilho do bug: o `BottomSheet` do diálogo já
+    // devolveu o foco, síncrono, pra célula de "3 de outubro" ao fechar —
+    // mas essa célula pertencia à grade de SETEMBRO (a de outubro é a
+    // versão "fora do mês", célula DIFERENTE da versão "dentro do mês" que
+    // a grade de outubro desenha). Assim que a âncora avança, a célula que
+    // tinha o foco desmonta.
+    await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
+
+    const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
+    expect(tarja).toHaveFocus()
   })
 
   it('não-gestor (can_manage: false) não vê o gesto de ajuste', async () => {
@@ -293,13 +429,42 @@ describe('Modo Mês', () => {
     // Chip de "Afonso" (tem visita na janela) e "Sem técnico" (visita sem
     // tecnico_id) — nenhum dos dois vem de texto de card, já que o dia
     // selecionado por default (hoje, 17) só mostra a visita do Afonso no
-    // corpo do card, nunca a palavra "Sem técnico".
-    expect(screen.getByText('Afonso')).toBeInTheDocument()
-    expect(screen.getByText('Sem técnico')).toBeInTheDocument()
+    // corpo do card, nunca a palavra "Sem técnico". Escopado ao `group`
+    // "Técnicos:" (fix round 1, achado 3): prova que o rótulo está
+    // programaticamente ligado à lista via `aria-labelledby`, não só
+    // presente em algum lugar da tela.
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    expect(within(grupoTecnicos).getByText('Afonso')).toBeInTheDocument()
+    expect(within(grupoTecnicos).getByText('Sem técnico')).toBeInTheDocument()
     // "Bruno" está no roster (mock de useTecnicoOptions) mas não tem
     // nenhuma visita na janela — não pode virar chip (brief 3d: "não o
     // roster inteiro, 20 chips de gente sem visita é ruído").
-    expect(screen.queryByText('Bruno')).toBeNull()
+    expect(within(grupoTecnicos).queryByText('Bruno')).toBeNull()
+  })
+
+  // --- fix round 1: legenda cobre a JANELA de 42 dias, não o mês estrito ---
+
+  it('legenda inclui técnico e instrumento de um dia de transbordo (fora do mês estrito, dentro da janela de 42 dias)', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    // A grade de setembro/2026 vai de 2026-08-30 a 2026-10-10 (42 dias) —
+    // "2026-10-05" está fora do mês estrito, mas dentro da janela visível.
+    // Se a fonte das legendas fosse trocada por algo filtrado ao mês
+    // estrito (ex. `noMes`), este teste quebra; antes desta correção,
+    // nenhum teste provava esse limite.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-10-05', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    expect(within(grupoTecnicos).getByText('Afonso')).toBeInTheDocument()
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
   })
 
   // --- fix round 2, achado 1: erro de rede no modo Mês ---
@@ -371,5 +536,1459 @@ describe('Modo Mês', () => {
     // A mesma armadilha atravessa modos: a tarja mora FORA dos ramos de
     // modo justamente por isso.
     expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+  })
+
+  // --- Task 3: legenda e lista do dia de instrumentos ---
+
+  it('useInstrumentoOptions é habilitado no modo Mês', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    expect(mockUseInstrumentoOptions).toHaveBeenCalledWith(true)
+  })
+
+  it('legenda mostra o instrumento usado na janela e não mostra o instrumento das opções que ninguém usa', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    // A visita usa só Q001, e cai num dia DIFERENTE do selecionado por
+    // default (hoje, 17) — isola a legenda (janela inteira) da seção do
+    // dia (só o dia selecionado), que este teste não cobre.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-20', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // A faixa carrega um rótulo textual próprio ("Instrumentos:") ligado
+    // programaticamente ao grupo via `role="group"` + `aria-labelledby` —
+    // escopar por ele prova a ligação, não só que o texto existe em algum
+    // lugar da tela (fix round 1, achado 3). O rótulo em si é ganho de
+    // clareza de domínio (distingue as duas faixas), não correção de a11y
+    // por item: cada chip já carrega o nome em texto puro.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).queryByText('Q002')).toBeNull()
+  })
+
+  it('legenda de instrumentos vem ordenada por nome, não pela ordem de aparição na janela', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Zebra', validade: '2027-01-01' },
+      { id: 102, name: 'Abelha', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        // "Zebra" aparece PRIMEIRO cronologicamente na janela (05/09);
+        // "Abelha" só aparece depois (20/09). Ordem de aparição colocaria
+        // Zebra antes de Abelha — a ordem alfabética exige o inverso (fix
+        // round 1, achado 2).
+        visita({ id: 7, date: '2026-09-05', instrument_ids: [101] }),
+        visita({ id: 8, date: '2026-09-20', instrument_ids: [102] }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    const nomes = within(grupoInstrumentos)
+      .getAllByText(/^(Zebra|Abelha)$/)
+      .map((el) => el.textContent)
+    expect(nomes).toEqual(['Abelha', 'Zebra'])
+  })
+
+  it('sem instrumento usado na janela, a faixa de instrumentos não é renderizada', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    // Payload default: a única visita não usa nenhum instrumento
+    // (`instrument_ids: []`).
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    expect(screen.queryByText('Q001')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Instrumentos:' })).toBeNull()
+  })
+
+  it('tocar num dia com instrumento mostra a seção "Instrumentos do dia" com nome, OS e faixa de horário', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-20', instrument_ids: [101],
+        time_start: 8, time_stop: 12, os_name: 'OS26-02', tecnico_name: 'Afonso',
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^20 de setembro,/ }))
+
+    // O `VisitaCard` do dia também mostra "08:00–12:00" e "OS26-02" no
+    // corpo — escopar a busca à seção evita casar com o card em vez da
+    // seção de instrumentos.
+    const titulo = screen.getByText('Instrumentos do dia')
+    const secao = titulo.closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+    expect(within(secao).getByText(/08:00–12:00/)).toBeInTheDocument()
+    expect(within(secao).getByText(/OS26-02\/Afonso/)).toBeInTheDocument()
+  })
+
+  it('tocar num dia sem instrumento não mostra a seção "Instrumentos do dia"', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-20', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Dia selecionado por default é "hoje" (17), sem instrumento.
+    expect(screen.queryByText('Instrumentos do dia')).toBeNull()
+
+    // Tocar num dia vazio (18) também não mostra a seção.
+    fireEvent.click(screen.getByRole('button', { name: /^18 de setembro,/ }))
+    expect(screen.queryByText('Instrumentos do dia')).toBeNull()
+  })
+
+  it('nenhum texto de "vencido" aparece, mesmo com validade vencida — guarda do escopo acordado', async () => {
+    instrumentoOptionsAtual = [
+      // Validade no passado: se algum código reintroduzisse o aviso de
+      // certificado vencido, este seria o caso que o dispararia.
+      { id: 101, name: 'Q001', validade: '2020-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-20', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^20 de setembro,/ }))
+    expect(screen.getByText('Instrumentos do dia')).toBeInTheDocument()
+
+    expect(screen.queryByText(/vencid/i)).toBeNull()
+  })
+  // --- fix final, bloqueador I-1: grade, legenda e lista do dia lendo a
+  // mesma fonte, e falha do catálogo de instrumentos visível ---
+
+  it('catálogo de instrumentos em falha: a falha é VISÍVEL e nenhum identificador fabricado é apresentado como nome', async () => {
+    estadoInstrumentos = 'error'
+    // A visita USA um instrumento: sem isto não haveria nome fabricado para
+    // suprimir e o teste passaria mesmo antes da correção.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // 1. A falha é dita em pt-BR, não engolida.
+    expect(screen.getByText(/Erro ao carregar os instrumentos/)).toBeInTheDocument()
+
+    // 2. Nenhum `Instrumento #101` em lugar nenhum: nem como chip de legenda,
+    //    nem no texto da tela. Antes da correção, `instrumentos.data`
+    //    indefinido fazia TODO instrumento usado virar um identificador
+    //    fabricado apresentado como fato.
+    expect(screen.queryByText(/Instrumento #/)).toBeNull()
+
+    // 3. E ele também não vaza pelos 42 `aria-label` das células.
+    const celulas = screen.getAllByRole('button', { name: /de (setembro|agosto|outubro)/ })
+    expect(celulas.some((c) => (c.getAttribute('aria-label') ?? '').includes('Instrumento #'))).toBe(false)
+
+    // 4. As três superfícies concordam em não afirmar nada: sem faixa de
+    //    legenda e sem seção do dia — e não uma dizendo que o dia tem
+    //    instrumento enquanto a outra some.
+    expect(screen.queryByRole('group', { name: 'Instrumentos:' })).toBeNull()
+    expect(screen.queryByText('Instrumentos do dia')).toBeNull()
+
+    // 5. O resto do mês continua utilizável (degrada como a dos técnicos).
+    expect(screen.getByRole('group', { name: 'Técnicos:' })).toBeInTheDocument()
+    expect(screen.getByText('OS26-02')).toBeInTheDocument()
+  })
+
+  it('catálogo de instrumentos ainda em voo: segura o LoadingState em vez de mostrar a grade com nomes que vão pular', async () => {
+    estadoInstrumentos = 'pending'
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+
+    // As duas buscas saem em paralelo na primeira abertura; se a do catálogo
+    // resolve depois, a grade aparecia com `Instrumento #101` e os nomes
+    // trocavam sozinhos em seguida.
+    expect(screen.getByText('Carregando sua agenda...')).toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: /de (setembro|agosto|outubro)/ })).toHaveLength(0)
+    expect(screen.queryByText(/Instrumento #/)).toBeNull()
+  })
+
+  it('instrumento usado mas ausente das opções (arquivado): grade, legenda e seção do dia concordam', async () => {
+    // Só o 102 está no catálogo; o 101 foi arquivado depois de usado
+    // (`pwa_instrumento_options` faz `search([])`, com `active_test` ligado),
+    // então continua em `instrument_ids` e some das opções.
+    instrumentoOptionsAtual = [{ id: 102, name: 'Q002', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', instrument_ids: [101, 102],
+        time_start: 8, time_stop: 12, os_name: 'OS26-02', tecnico_name: 'Afonso',
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Legenda (metade 1) — deriva da união do que é usado.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q002')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).getByText('Instrumento #101')).toBeInTheDocument()
+
+    // Célula (a mesma fonte da legenda).
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,.*Instrumento #101/ }),
+    ).toBeInTheDocument()
+
+    // Seção "Instrumentos do dia" (metade 2) — antes da correção ela mapeava
+    // sobre o catálogo (a INTERSEÇÃO) e o 101 sumia: a grade afirmava que o
+    // dia tem o instrumento e a lista negava.
+    const secao = screen.getByText('Instrumentos do dia').closest('div') as HTMLElement
+    expect(within(secao).getByText('Q002')).toBeInTheDocument()
+    expect(within(secao).getByText('Instrumento #101')).toBeInTheDocument()
+    expect(within(secao).getAllByText(/08:00–12:00/)).toHaveLength(2)
+  })
+
+  it('legenda e célula listam os instrumentos na MESMA ordem, com colação numérica (TAG-2 antes de TAG-10)', async () => {
+    instrumentoOptionsAtual = [
+      { id: 1, name: 'TAG-10', validade: '2027-01-01' },
+      { id: 2, name: 'TAG-2', validade: '2027-01-01' },
+      { id: 3, name: 'TAG-3', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [1, 2, 3] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    const nomesLegenda = within(grupoInstrumentos)
+      .getAllByText(/^TAG-\d+$/)
+      .map((el) => el.textContent)
+    expect(nomesLegenda).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
+
+    // A célula (via `aria-label`, a fonte de verdade do que ela desenha) tem
+    // de listar na MESMA sequência — a ordem também decide quais triângulos
+    // sobrevivem quando a célula corta por lotação.
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).toContain('instrumentos: TAG-2, TAG-3, TAG-10')
+  })
+  it('refetch do catálogo falha mas o catálogo anterior continua em cache: nada é blanqueado e nenhuma tarja aparece', async () => {
+    estadoInstrumentos = 'erro-com-cache'
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // O catálogo bom está na mão: não há nome fabricado pra suprimir, e tirar
+    // os triângulos/legenda/lista por causa de uma falha de fundo passageira
+    // seria remover informação correta da tela.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
+    const secao = screen.getByText('Instrumentos do dia').closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+
+    // E a tarja seria ruído: nada está faltando pro usuário.
+    expect(screen.queryByText(/Erro ao carregar os instrumentos/)).toBeNull()
+  })
+
+  it('agenda e catálogo falhando juntos (sessão expirada): só a tarja da agenda, sem a segunda falando de uma grade que não existe', async () => {
+    erroAtual = new Error('Failed to fetch')
+    estadoInstrumentos = 'error'
+    montar()
+    irParaMes()
+
+    await waitFor(() =>
+      expect(screen.getByText(/Erro ao carregar a agenda/)).toBeInTheDocument(),
+    )
+    // A `VistaMes` nem é renderizada quando a agenda falha — uma tarja falando
+    // de triângulos e lista do dia de uma grade ausente é ruído puro.
+    expect(screen.queryByText(/Erro ao carregar os instrumentos/)).toBeNull()
+  })
+
+  // --- Task 2: badges de filtro nas duas faixas de legenda ---
+
+  it('desligar um técnico tira a bolinha dele das células e o aria-label deixa de citá-lo', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' }),
+        visita({ id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno' }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Os dois nomes começam citados no mesmo dia (dois técnicos, mesma data).
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,.*Afonso.*Bruno/ }),
+    ).toBeInTheDocument()
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).not.toContain('Afonso')
+    expect(celula.getAttribute('aria-label')).toContain('Bruno')
+  })
+
+  it('desligar um técnico não tira o VisitaCard dele do dia selecionado nem a seção "Instrumentos do dia"', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+    // A bolinha some da célula...
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).not.toContain('Afonso')
+    // ...mas o card e a seção "Instrumentos do dia" continuam mostrando a
+    // visita (o filtro altera SÓ as marcas da grade — brief).
+    expect(screen.getByText('OS26-02')).toBeInTheDocument()
+    const secao = screen.getByText('Instrumentos do dia').closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+  })
+
+  it('interseção: com um instrumento selecionado, a visita de outro técnico que não usa aquele instrumento perde as marcas', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Desliga Q002: a faixa de instrumentos fica restrita a Q001.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+
+    // Nenhum técnico foi tocado — mas Bruno (só usa Q002) some das marcas do
+    // dia, porque sua visita não intersecta a faixa de instrumentos restrita.
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).toContain('Afonso')
+    expect(celula.getAttribute('aria-label')).not.toContain('Bruno')
+    // O TRIÂNGULO também é filtrado, não só a bolinha: `pontosInstrumentoGrade`
+    // é código novo sem cobertura própria — sem esta asserção, Q002
+    // continuando no trecho "; instrumentos: ..." passaria batido.
+    expect(celula.getAttribute('aria-label')).toContain('Q001')
+    expect(celula.getAttribute('aria-label')).not.toContain('Q002')
+  })
+
+  it('consequência aceita: com a faixa de instrumentos restrita, a visita sem instrumento nenhum perde a bolinha do técnico', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        // Sem instrumento nenhum — o alvo desta consequência.
+        visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [] }),
+        // Mesmo dia, usa Q001 — permanece dentro da faixa restrita.
+        visita({ id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [101] }),
+        // Em outro dia, só pra Q002 entrar na legenda da janela.
+        visita({ id: 9, date: '2026-09-20', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102] }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Restringe a faixa de instrumentos a Q001 (desliga Q002).
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+
+    // O técnico da visita sem instrumento (Afonso) nunca foi tocado — mesmo
+    // assim some da célula, porque a visita não tem instrumento nenhum para
+    // intersectar a faixa restrita. Bruno (usa Q001) continua.
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).not.toContain('Afonso')
+    expect(celula.getAttribute('aria-label')).toContain('Bruno')
+  })
+
+  it('catálogo de instrumentos cai em falha com uma restrição de instrumento já armada: a faixa some, e a restrição para de suprimir as bolinhas de técnico', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102],
+        }),
+      ],
+    }
+    const { rerender, qc } = montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Restringe a instrumentos a Q001 — Bruno (só usa Q002) some das marcas
+    // (mesmo mecanismo do teste de interseção acima).
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Bruno')
+
+    // O catálogo cai em falha SEM cache (achado da review desta task): a
+    // faixa "Instrumentos:" inteira some — "Todos" incluído — e não haveria
+    // mais controle pra limpar a restrição que já estava armada.
+    estadoInstrumentos = 'error'
+    rerender(<QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>)
+
+    expect(screen.getByText(/Erro ao carregar os instrumentos/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Instrumentos:' })).toBeNull()
+    // A restrição parou de suprimir: as duas bolinhas voltam a aparecer —
+    // sem isto, Bruno ficaria escondido sem nenhum jeito de religá-lo.
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).toContain('Afonso')
+    expect(celula.getAttribute('aria-label')).toContain('Bruno')
+  })
+
+  it('restringir instrumentos e navegar para um mês sem NENHUMA visita instrumentada: a faixa continua com "Todos" visível, e a restrição do mês anterior não suprime as marcas de lá (achado 1, fix round 1)', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Restringe a Q001 — antes de navegar, mesma mecânica dos testes acima.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Bruno')
+
+    // Outubro: uma visita, NENHUM instrumento usado em lugar nenhum da
+    // janela — sem catálogo em falha, só um mês onde a faixa não tem nada
+    // pra mostrar (`legendaInstrumentos` fica `[]` igual à falha, mas por
+    // outro motivo).
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 9, date: '2026-10-05', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [],
+      })],
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo período' }))
+    await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
+
+    // A faixa "Instrumentos:" continua na tela com "Todos" — mesmo sem
+    // nenhum chip de item pra mostrar — porque `instrumentosSel` ainda não
+    // é `null` (o Gestor nunca tocou "Todos"); sem isto a restrição de
+    // setembro ficaria escondida e sem controle nenhum pra limpar.
+    const grupoInstrumentosOutubro = screen.getByRole('group', { name: 'Instrumentos:' })
+    const badgeTodosOutubro = within(grupoInstrumentosOutubro).getByRole('button', { name: 'Todos os instrumentos' })
+    expect(badgeTodosOutubro).toHaveAttribute('aria-pressed', 'false')
+
+    // E a restrição de Q001/Q002 — que não tem contra o que ser aplicada
+    // num mês sem nenhum instrumento usado — não suprime a bolinha de
+    // Afonso em outubro.
+    expect(
+      screen.getByRole('button', { name: /^5 de outubro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
+  it('as duas faixas restritas ao mesmo tempo combinam por interseção (E), não união', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        // Afonso + Q001: bate as duas faixas restritas — deve sobreviver.
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        // Afonso + Q002: técnico bate, instrumento não — some.
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [102],
+        }),
+        // Bruno + Q001: instrumento bate, técnico não — some.
+        visita({
+          id: 9, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [101],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Restringe técnico a Afonso (desliga Bruno)...
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Bruno' }))
+    // ...e instrumento a Q001 (desliga Q002).
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+
+    // União deixaria as três visitas (qualquer uma bate uma das duas
+    // faixas); interseção só deixa a 7 (Afonso E Q001).
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const label = celula.getAttribute('aria-label') ?? ''
+    expect(label).toContain('1 visita')
+    expect(label).toContain('Afonso')
+    expect(label).not.toContain('Bruno')
+    expect(label).toContain('Q001')
+    expect(label).not.toContain('Q002')
+  })
+
+  it('os dois badges "Todos" têm nomes acessíveis distintos, um por faixa', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Busca no escopo da TELA, não dentro do grupo: `getByRole` falha se
+    // houver mais de um botão com o mesmo nome — é essa ambiguidade que o
+    // teste guarda. O `role="group"` + `aria-labelledby` já separava as duas
+    // faixas na leitura em FLUXO, mas a navegação por LISTA de botões (o
+    // rotor do leitor de tela) anuncia só o nome, e eram dois "Todos"
+    // indistinguíveis na mesma tela.
+    const todosTecnicos = screen.getByRole('button', { name: 'Todos os técnicos' })
+    const todosInstrumentos = screen.getByRole('button', { name: 'Todos os instrumentos' })
+    expect(
+      within(screen.getByRole('group', { name: 'Técnicos:' }))
+        .getByRole('button', { name: 'Todos os técnicos' }),
+    ).toBe(todosTecnicos)
+    expect(
+      within(screen.getByRole('group', { name: 'Instrumentos:' }))
+        .getByRole('button', { name: 'Todos os instrumentos' }),
+    ).toBe(todosInstrumentos)
+
+    // O texto VISÍVEL continua o "Todos" curto: a faixa é estreita e o
+    // rótulo do grupo está do lado. O nome longo é só para quem lê o botão
+    // fora do contexto dele.
+    expect(todosTecnicos).toHaveTextContent('Todos')
+    expect(todosInstrumentos).toHaveTextContent('Todos')
+  })
+
+  it('desligar todos os chips de uma faixa sem usar "Todos" deixa um Set vazio (não null): nada passa naquela camada, mas "Todos" continua visível como saída', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Único técnico da janela é Afonso — desligá-lo (sem tocar "Todos")
+    // deixa `tecnicosSel` num `Set` vazio, não `null`.
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Afonso')
+    // A saída continua lá, ligável a qualquer momento.
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
+    expect(badgeTodos).toBeInTheDocument()
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(badgeTodos)
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
+  it('"Todos" restaura a faixa e o próprio badge reflete aria-pressed corretamente', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'false')
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Afonso')
+
+    fireEvent.click(badgeTodos)
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
+  it('badge desligado continua na faixa — dá para religar', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupoTecnicos).getByRole('button', { name: 'Afonso' })
+    fireEvent.click(chipAfonso)
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+    // O botão continua na faixa (legível sem cor, via aria-pressed) — não
+    // some da tela só porque foi desligado.
+    expect(within(grupoTecnicos).getByRole('button', { name: 'Afonso' })).toBeInTheDocument()
+
+    fireEvent.click(chipAfonso)
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
+  it('com as duas faixas em "Todos", a agregação de instrumentos roda UMA vez por conjunto de visitas', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Sem restrição nenhuma, `visitasVisiveis` É `visitas` (mesma
+    // referência), então a agregação "da grade" produziria byte a byte a
+    // mesma coisa que a "da janela" — Map sobre o catálogo, laço de 42 dias
+    // e um sort por dia, pagos duas vezes a cada troca de payload.
+    //
+    // O número: entrar no Mês passa por DUAS rodadas de derivação (antes e
+    // depois de a âncora do mês existir, que é o que monta a grade de 42
+    // dias). O que este teste guarda é o CUSTO POR RODADA — uma agregação,
+    // não duas: eram 4 chamadas, agora são 2. Se a contagem cair para 1, a
+    // rodada extra sumiu e o teste deve ser relido, não afrouxado.
+    expect(espiaInstrumentosPorDia).toHaveBeenCalledTimes(2)
+    // E a grade continua mostrando o que a agregação diz.
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Q001')
+
+    // Com uma restrição ativa as duas listas DIVERGEM, e aí a segunda
+    // agregação é obrigatória — o atalho não pode engolir este caso.
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Técnicos:' })).getByRole('button', { name: 'Afonso' }),
+    )
+    expect(espiaInstrumentosPorDia).toHaveBeenCalledTimes(3)
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Q001')
+  })
+
+  it('a marca do chip desligado também perde o preenchimento — vira contorno (achado 2 da review final)', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const chipAfonso = within(screen.getByRole('group', { name: 'Técnicos:' }))
+      .getByRole('button', { name: 'Afonso' })
+    const chipQ001 = within(screen.getByRole('group', { name: 'Instrumentos:' }))
+      .getByRole('button', { name: /Q001/ })
+    // As marcas são `aria-hidden` (decoração — o nome do recurso está em
+    // texto puro ao lado), então não têm papel pra consultar: a busca é
+    // estrutural, mesmo precedente do teste de peso acima.
+    const bolinha = () => chipAfonso.querySelector('span[aria-hidden]') as HTMLElement
+    const triangulo = () => chipQ001.querySelector('polygon') as SVGPolygonElement
+
+    // Ligado: marca CHEIA, na cor do recurso.
+    expect(bolinha().style.backgroundColor).not.toBe('')
+    expect(bolinha().style.backgroundColor).not.toBe('transparent')
+    expect(triangulo().getAttribute('fill')).not.toBe('none')
+
+    fireEvent.click(chipAfonso)
+    fireEvent.click(chipQ001)
+
+    // Desligado: só contorno. A marca é o elemento visual DOMINANTE do chip
+    // — mantê-la saturada enquanto o resto do chip apaga fazia o chip
+    // desligado continuar lendo como ligado, que é o mesmo defeito que o
+    // fix round 1 corrigiu no fundo e na borda e deixou passar na marca.
+    expect(bolinha().style.backgroundColor).toBe('transparent')
+    expect(bolinha().style.borderColor).not.toBe('')
+    expect(triangulo().getAttribute('fill')).toBe('none')
+    expect(Number(triangulo().getAttribute('stroke-width'))).toBeGreaterThan(0)
+  })
+
+  it('chip ligado é o preenchido (tem o peso); desligado fica apagado — nunca o contrário (achado 2, fix round 1)', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupoTecnicos).getByRole('button', { name: 'Afonso' })
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
+
+    // Estado inicial ("Todos" ativo, Afonso ligado por herança): os dois
+    // usam o MESMO vocabulário de peso — preenchido, sem contorno
+    // tracejado.
+    expect(badgeTodos.className).toMatch(/bg-accent/)
+    expect(chipAfonso.className).toMatch(/bg-accent/)
+    expect(chipAfonso.className).not.toMatch(/border-dashed/)
+
+    fireEvent.click(chipAfonso)
+
+    // Desligado: sem preenchimento, com contorno tracejado — a validação em
+    // navegador achou o oposto (desligado com MAIS peso visual que ligado,
+    // o olho lia o destacado como "selecionado"). Desligar um chip
+    // específico sai do estado "Todos" (vira um `Set` restrito), então o
+    // próprio badge "Todos" segue o MESMO vocabulário: também perde o
+    // preenchimento.
+    expect(chipAfonso.className).not.toMatch(/bg-accent/)
+    expect(chipAfonso.className).toMatch(/border-dashed/)
+    expect(badgeTodos.className).not.toMatch(/bg-accent/)
+    expect(badgeTodos.className).toMatch(/border-dashed/)
+  })
+
+  it('trocar de modo e voltar ao Mês zera o filtro', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Afonso')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Semana$/ }))
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Voltar ao Mês: o badge "Todos" está de novo ativo e a bolinha voltou.
+    const grupoTecnicosDepois = screen.getByRole('group', { name: 'Técnicos:' })
+    expect(within(grupoTecnicosDepois).getByRole('button', { name: 'Todos os técnicos' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
+  // --- achados da review da Task 1: gate de `alvoVisivel` no diálogo pendente ---
+
+  it('refetch em segundo plano move a visita em ajuste para fora da janela visível: fecha o diálogo pendente de confirmação de data', async () => {
+    const { rerender, qc } = montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+    expect(screen.getByRole('dialog', { name: 'Mudar data da visita' })).toBeInTheDocument()
+
+    // Refetch em BACKGROUND — não uma navegação do Gestor — traz a MESMA
+    // visita (mesmo id, ainda `editable`) com uma data fora da grade de
+    // setembro/2026 visível. `alvoVisivel` cai para `false` sem que
+    // ninguém tenha tocado em nada.
+    payloadAtual = { ...payload, visitas: [visita({ date: '2026-11-15' })] }
+    rerender(<QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>)
+
+    // O diálogo fecha sozinho — não fica pendurado esperando um "Confirmar"
+    // que gravaria fora da janela visível.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // A tarja de ajuste continua (a visita não sumiu nem travou), agora
+    // avisando que está fora do período visível.
+    expect(screen.getByText(/Fora do período visível/)).toBeInTheDocument()
+    expect(mutateUpdate).not.toHaveBeenCalled()
+  })
+
+  it('visita armada perde editable (travada em outro lugar) fecha o diálogo pendente de confirmação de data', async () => {
+    const { rerender, qc } = montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+    expect(screen.getByRole('dialog', { name: 'Mudar data da visita' })).toBeInTheDocument()
+
+    // Mesma visita, mesma data — só perde `editable` (ex.: a OS saiu de
+    // `scheduled` em outro lugar). Gatilho DIFERENTE do teste "some do
+    // payload" acima: sem este teste, o ramo `!atual.editable` da rede de
+    // segurança nunca era exercido.
+    payloadAtual = { ...payload, visitas: [visita({ editable: false })] }
+    rerender(<QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByText(/Movendo a visita/)).toBeNull()
+    expect(mutateUpdate).not.toHaveBeenCalled()
+  })
+})
+
+// --- Task 1 (isolar recurso): toque longo num chip da faixa ---
+//
+// Fake timers só entram DEPOIS do `await waitFor` do mount — o `waitFor` do
+// Testing Library faz polling em timer real, e ligar `vi.useFakeTimers()`
+// antes travaria o próprio mount. `afterEach` sempre volta pra timer real,
+// mesmo se um teste falhar no meio — senão o fake timer vaza pro próximo
+// teste do arquivo (que não espera por isso) e trava ele num `waitFor` que
+// nunca avança.
+describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function montarNoMes() {
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102],
+        }),
+      ],
+    }
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    // Retorna os utils do `render` (fix round 1, achado 3): o teste de
+    // desmontagem com o timer armado precisa do `unmount` desta MESMA
+    // instância — um `montar()` novo criaria uma árvore sem relação com o
+    // toque já em andamento na primeira.
+    const utils = montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+    return utils
+  }
+
+  /** Simula o gesto completo até o limiar de 500ms, SEM soltar o ponteiro
+   *  ainda — o timer de isolar dispara com o dedo/botão ainda pressionado,
+   *  igual ao toque longo real. */
+  function seguraAte500ms(chip: HTMLElement) {
+    fireEvent.pointerDown(chip, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+  }
+
+  it('toque longo isola: só aquele chip fica ligado, os demais desligam (aria-pressed e marcas da grade)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    vi.useRealTimers()
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(celula.getAttribute('aria-label')).toContain('Afonso')
+    expect(celula.getAttribute('aria-label')).not.toContain('Bruno')
+  })
+
+  it('toque longo no chip já isolado volta para "Todos"', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const badgeTodos = within(grupo).getByRole('button', { name: 'Todos os técnicos' })
+
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'false')
+
+    // Segundo toque longo no MESMO chip, já isolado: reverte pra "Todos" —
+    // reversível por si mesmo, sem precisar caçar o badge "Todos".
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('toque simples continua alternando só aquele chip, sem isolar', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.click(chipAfonso)
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+    // Bruno não foi tocado — continua ligado (toque simples só alterna o
+    // chip clicado, não isola os demais).
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('toque longo não dispara também o alternar: o chip isolado termina ligado, não desligado', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+
+    seguraAte500ms(chipAfonso)
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    // O `click` que o navegador dispara em seguida a um toque real (pointerup
+    // -> click) não pode "desfazer" o isolar reaplicando o alternar.
+    // `detail: 1` é o que marca este `click` como vindo de um PONTEIRO real
+    // (mouse/toque) — sem isto, o padrão de `MouseEvent` sintético é
+    // `detail: 0`, o mesmo valor de um `click` ativado por teclado, e o
+    // teste não provaria nada sobre o caminho que a correção do achado 1
+    // precisa distinguir.
+    fireEvent.click(chipAfonso, { detail: 1 })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('arrastar além do limiar antes dos 500ms cancela o gesto: não isola nem alterna', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(chipAfonso, { pointerId: 1, clientX: 30, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    // `detail: 1`: é um click de ponteiro real que está sendo suprimido
+    // aqui (arrasto), não um click de teclado passando pelo atalho do
+    // achado 1 — os dois caminhos de supressão são independentes.
+    fireEvent.click(chipAfonso, { detail: 1 })
+
+    // Nada mudou: nem isolou (Bruno continuaria ligado, único sinal visível
+    // de um isolar bem-sucedido), nem alternou (Afonso continua ligado).
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('Alt+Enter isola pelo teclado', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.keyDown(chipAfonso, { key: 'Enter', altKey: true })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('Alt+clique isola pelo mouse', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Instrumentos:' })
+    const chipQ001 = within(grupo).getByRole('button', { name: /Q001/ })
+    const chipQ002 = within(grupo).getByRole('button', { name: /Q002/ })
+
+    fireEvent.click(chipQ001, { altKey: true })
+
+    expect(chipQ001).toHaveAttribute('aria-pressed', 'true')
+    expect(chipQ002).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('a dica "Segure um para ver só ele" aparece nas duas faixas', async () => {
+    await montarNoMes()
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    expect(within(grupoTecnicos).getByText('Segure um para ver só ele')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).getByText('Segure um para ver só ele')).toBeInTheDocument()
+  })
+
+  it('isolar na faixa de instrumentos não mexe na de técnicos', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    const chipQ001 = within(grupoInstrumentos).getByRole('button', { name: /Q001/ })
+
+    seguraAte500ms(chipQ001)
+    fireEvent.pointerUp(chipQ001, { pointerId: 1 })
+
+    expect(chipQ001).toHaveAttribute('aria-pressed', 'true')
+
+    vi.useRealTimers()
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const badgeTodosTecnicos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
+    expect(badgeTodosTecnicos).toHaveAttribute('aria-pressed', 'true')
+    expect(within(grupoTecnicos).getByRole('button', { name: 'Afonso' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(grupoTecnicos).getByRole('button', { name: 'Bruno' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('Alt+Espaço isola pelo teclado', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.keyDown(chipAfonso, { key: ' ', altKey: true })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  // --- Fix round 1 (review) ---
+
+  it('flag de supressão armada e ainda por consumir não engole um Enter legítimo de teclado noutro chip (achado 1 importante — quem protege aqui é o gate de detail, não um pointercancel)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Toque longo em Afonso isola e solta NORMALMENTE — `pointerup`, não
+    // `pointercancel`. Isto importa: desde o fix round 4/5,
+    // `cancelarToqueLongo` (só `pointercancel`) É quem libera a flag, e só
+    // quando o `pointerId` que cancela é o mesmo que a armou — um
+    // `pointerup` normal nunca passa por ali. Armar a flag por ESTE
+    // caminho é o que garante que ela continua ARMADA na hora do clique de
+    // teclado abaixo: se a flag já tivesse sido liberada por outro motivo,
+    // o teste passaria mesmo com o gate de `detail` apagado, sem provar
+    // nada (foi exatamente o que aconteceu com a versão anterior deste
+    // teste, que usava `pointercancel` — achado da re-review, fix round 5).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    // Interação seguinte na faixa é só por TECLADO, num chip diferente, sem
+    // nenhum `pointerdown` antes (Tab até lá + Enter) — o `click`
+    // sintetizado por essa ativação tem `detail: 0`. A flag de Afonso
+    // continua armada (o click REAL dele ainda está "em voo", nunca
+    // disparado neste teste) — é o gate `evento.detail === 0`, e só ele,
+    // quem impede este clique legítimo de ser engolido.
+    fireEvent.click(chipBruno, { detail: 0 })
+
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('pointerup de um dedo não cancela o toque longo em andamento de outro chip da mesma faixa (achado 2)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 (pointerId 1) toca Afonso e solta rápido, sem isolar.
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    // Dedo 2 (pointerId 2) toca Bruno e continua pressionado — o
+    // `pointerdown` dele já assume o `toqueRef` da faixa (só um toque longo
+    // em andamento por vez é o comportamento aceito, ver comentário do
+    // componente).
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+    // O `pointerup` do dedo 1 chega DEPOIS do `pointerdown` do dedo 2 — sem
+    // conferir o `pointerId`, isto cancelaria por engano o timer que já
+    // pertence ao dedo 2.
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+
+    // O toque longo do dedo 2 (Bruno) precisa ter completado normalmente —
+    // Afonso desligado é o único sinal visível de que Bruno isolou de
+    // verdade (sem isolar nenhum, os dois continuariam com "Todos", os dois
+    // ligados).
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('desmontar com o toque longo armado limpa o timer (cleanup) — nada sobra pra chamar onIsolar depois (achado 3)', async () => {
+    const { unmount } = await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+
+    // Contagem de timers pendentes ANTES do gesto — não pode ser 0 fixo
+    // como baseline: o React Query e outros hooks da página já podem ter
+    // timers próprios em voo, e um `toBe(0)` cravado seria frágil. O que
+    // prova o cleanup é a DELTA: +1 no pointerdown, de volta ao mesmo
+    // número na desmontagem.
+    const timersAntes = vi.getTimerCount()
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    expect(vi.getTimerCount()).toBe(timersAntes + 1)
+
+    // Desmonta a árvore inteira (troca de mês/modo real desmontaria só a
+    // `VistaMes`, mas também reseta o filtro — mascararia exatamente o que
+    // este teste quer provar) ANTES dos 500ms, com o timer do toque longo
+    // ainda armado.
+    unmount()
+
+    // Sem o `useEffect` de limpeza, este timer sobreviveria à desmontagem e
+    // dispararia `onIsolar` (que chama `setTecnicosSel`) num componente que
+    // não existe mais — a armadilha do timer solto que o brief pede pra
+    // fechar. O `toqueRef` (e o próprio componente) não existem mais pra
+    // consultar `onIsolar` diretamente, então a prova aqui é que o TIMER em
+    // si não sobra na fila: nada existe mais que possa chamá-lo.
+    expect(vi.getTimerCount()).toBe(timersAntes)
+
+    // Avançar o relógio depois da desmontagem não pode lançar nem deixar
+    // nada pendurado.
+    expect(() => {
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+    }).not.toThrow()
+  })
+
+  // --- Fix round 2 (re-review): corrida de dois dedos ---
+
+  it('clique-fantasma do dedo 1 não desliga o item isolado quando o dedo 2 já tocou outro chip antes do click chegar', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 (pointerId 1): toque longo em Afonso, isola, solta normalmente
+    // (pointerup, não pointercancel — o `click` real ainda vai vir).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    // Dedo 2 (pointerId 2) toca Bruno ANTES do `click` do dedo 1 chegar —
+    // a janela assíncrona real entre o `pointerup` e o `click` que o
+    // navegador dispara depois. Sem a correção, o `pointerdown` do dedo 2
+    // sobrescreve `toqueRef.current` inteiro, levando junto a supressão que
+    // o `click` do dedo 1 ainda precisa consumir.
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+
+    // Só AGORA chega o `click` do dedo 1 (detail: 1 — click de ponteiro
+    // real). Precisa continuar suprimido: sem isto, cairia no `onAlternar`
+    // e desligaria Afonso, que acabou de ser isolado com sucesso.
+    fireEvent.click(chipAfonso, { detail: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+
+    // (b) o segundo gesto continua funcionando normalmente: completa o
+    // toque longo em Bruno (isola, derrubando Afonso) e o próprio `click`
+    // fantasma DELE também é suprimido corretamente — a correção não pode
+    // ter comprometido o ciclo de supressão do gesto que a sucedeu.
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+    fireEvent.click(chipBruno, { detail: 1 })
+
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  // --- Review final da branch ---
+
+  it('pede a captura do ponteiro ao iniciar o toque longo — soltar o mouse fora do chip não isola sozinho (achado importante 1)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // happy-dom rastreia `hasPointerCapture` mas não redireciona o
+    // DESPACHO do evento pro elemento capturador quando o evento é
+    // disparado noutro nó — o comportamento central que faz a captura
+    // valer a pena no navegador real (custo antecipado pela review). O
+    // stub simula esse redirecionamento: registra quem capturou cada
+    // `pointerId` e resolve o alvo real de `pointermove`/`pointerup`
+    // disparados "fora" do chip, do mesmo jeito que o navegador faria.
+    const capturas = new Map<number, HTMLElement>()
+    const capturarSpy = vi.spyOn(HTMLElement.prototype, 'setPointerCapture')
+      .mockImplementation(function (this: HTMLElement, pointerId: number) {
+        capturas.set(pointerId, this)
+      })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    // Prova o MECANISMO do fix: o botão pediu a captura do ponteiro que
+    // acabou de pressioná-lo.
+    expect(capturarSpy).toHaveBeenCalledWith(1)
+
+    // Arrasta pra fora do chip — em cima do FUNDO da faixa, não mais do
+    // botão — e solta lá aos ~300ms, antes dos 500ms do toque longo. Com a
+    // captura redirecionando (o stub simula isso), os eventos chegam ao
+    // BOTÃO mesmo fisicamente fora dele — os handlers já guardados por
+    // `pointerId` (rounds anteriores) fecham o ciclo.
+    const alvoReal = capturas.get(1) ?? grupo
+    fireEvent.pointerMove(alvoReal, { pointerId: 1, clientX: 999, clientY: 999 })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    fireEvent.pointerUp(alvoReal, { pointerId: 1 })
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    // Sem a captura, nenhum handler do botão teria rodado depois do
+    // arrasto: o timer sobreviveria e isolaria Afonso ~200ms depois de o
+    // usuário já ter soltado o mouse. Com ela, o arrasto (>10px) já tinha
+    // cancelado o timer antes mesmo do pointerup.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+
+    capturarSpy.mockRestore()
+  })
+
+  it('a região viva da faixa anuncia isolar, reverter e o alternar simples (achado importante 2)', async () => {
+    await montarNoMes()
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const status = within(grupoTecnicos).getByRole('status')
+    const chipAfonso = within(grupoTecnicos).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupoTecnicos).getByRole('button', { name: 'Bruno' })
+
+    expect(status).toHaveTextContent('Mostrando todos os técnicos')
+
+    // Isolar por teclado (Alt+Enter) — o único caminho que quem usa leitor
+    // de tela tem pro gesto.
+    fireEvent.keyDown(chipAfonso, { key: 'Enter', altKey: true })
+    expect(status).toHaveTextContent('Mostrando só Afonso')
+
+    // Reverter (segundo Alt+Enter no mesmo chip).
+    fireEvent.keyDown(chipAfonso, { key: 'Enter', altKey: true })
+    expect(status).toHaveTextContent('Mostrando todos os técnicos')
+
+    // Toque simples (alternar) também precisa atualizar a região viva —
+    // não só isolar/reverter.
+    fireEvent.click(chipBruno)
+    expect(status).toHaveTextContent('Mostrando só Afonso')
+  })
+
+  it('a região viva mostra "N de M" quando a restrição não é nem "Todos" nem um item só (achado importante 2)', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' }),
+        visita({ id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno' }),
+        visita({ id: 9, date: '2026-09-17', tecnico_id: 55, tecnico_name: 'Carla' }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const status = within(grupoTecnicos).getByRole('status')
+    const chipCarla = within(grupoTecnicos).getByRole('button', { name: 'Carla' })
+
+    // Desliga só Carla — de "Todos" (3) restam 2 de 3, nem "Todos" nem "só
+    // um", o caso geral que `textoStatus` cobre com a contagem.
+    fireEvent.click(chipCarla)
+
+    expect(status).toHaveTextContent('Mostrando 2 de 3 técnicos')
+  })
+
+  it('pointercancel libera suprimirCliqueRef: um clique de PONTEIRO legítimo noutro chip da faixa volta a alternar normalmente (achado da review final, fix round 4)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Toque longo em Afonso isola — mas o SISTEMA interrompe o toque com
+    // `pointercancel` em vez do `pointerup` normal (rolagem detectada
+    // tarde, notificação, etc.): por spec, nenhum `click` vem depois pra
+    // ESTE gesto.
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerCancel(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    // Interação seguinte é um toque simples REAL (ponteiro, não teclado)
+    // num chip DIFERENTE, sem nenhuma relação com o gesto de Afonso.
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+    fireEvent.click(chipBruno, { detail: 1 })
+
+    // Bruno precisa ligar (alternar normal). Antes do fix, a flag de
+    // supressão ficava presa do `pointercancel` de Afonso — o gate
+    // `detail === 0` do round 1 protege só cliques de TECLADO, nunca este
+    // (um clique de ponteiro real tem `detail: 1`) — e este clique era
+    // engolido em silêncio, mesmo sem nenhuma relação com o gesto abortado.
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  // --- Fix round 5 (re-review): a flag precisa saber QUEM a armou ---
+
+  it('pointercancel do dedo que armou a flag ainda a libera mesmo depois de outro dedo tomar o toqueRef (janela i, fix round 5)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 isola Afonso (a flag guarda o `pointerId` 1).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+
+    // Dedo 2 toca Bruno ANTES do `pointercancel` do dedo 1 chegar — toma o
+    // `toqueRef` por inteiro (só um gesto de posição/timer em andamento por
+    // vez, ver comentário do componente).
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+
+    // SÓ ENTÃO o sistema interrompe o dedo 1 com `pointercancel` — o
+    // `toqueRef` já não é mais dele, mas a flag de supressão continua
+    // sendo (ela guarda o `pointerId` que a armou, não quem é dono do
+    // `toqueRef` agora).
+    fireEvent.pointerCancel(chipAfonso, { pointerId: 1 })
+
+    // Dedo 2 solta rápido — toque simples em Bruno, sem isolar — e o click
+    // real dele chega.
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+    fireEvent.click(chipBruno, { detail: 1 })
+
+    // Bruno precisa alternar normalmente (liga, já que estava desligado
+    // pela restrição a Afonso). Sem esta correção, o `pointercancel` do
+    // dedo 1 não conseguia liberar a flag (comparava contra o DONO ATUAL
+    // do `toqueRef`, que já era o dedo 2) — ela ficava presa e engolia
+    // este clique sem nenhuma relação com o gesto de Afonso.
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('pointercancel de um dedo NÃO libera a flag armada por OUTRO dedo — o click atrasado do primeiro continua suprimido (janela ii, fix round 5)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 isola Afonso e solta NORMALMENTE (`pointerup`) — o click real
+    // dele ainda está "em voo" (a flag guarda o `pointerId` 1).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+
+    // Dedo 2 toca Bruno (toma o `toqueRef`) e é interrompido por
+    // `pointercancel` — um gesto totalmente diferente do de Afonso.
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+    fireEvent.pointerCancel(chipBruno, { pointerId: 2 })
+
+    // SÓ ENTÃO chega o click atrasado do dedo 1, no PRÓPRIO chip que ele
+    // isolou.
+    fireEvent.click(chipAfonso, { detail: 1 })
+
+    // Afonso precisa continuar isolado — o `pointercancel` do dedo 2 (id 2)
+    // não pode liberar uma flag que foi armada pelo dedo 1 (id 1). Sem
+    // esta correção (round 4 zerava a flag sempre que o `pointerId` do
+    // `pointercancel` batia com o dono ATUAL do `toqueRef`, sem checar de
+    // quem era a flag), o click atrasado do dedo 1 chegava sem supressão e
+    // desfazia o isolamento que ele mesmo tinha acabado de fazer.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
   })
 })

@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
@@ -13,8 +13,10 @@ import { agruparPorDia, deslocarJanela } from './janela'
 import { FaixaDias } from './_FaixaDias'
 import { PainelRecursos, type Dimensao } from './_PainelRecursos'
 import { VistaMes } from './_VistaMes'
-import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
-import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia } from './mes'
+import { ConfirmarMudancaData } from './_ConfirmarMudancaData'
+import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, instrumentosDoDia, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
+import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia, ordenarInstrumentos, corDoTecnico, COR_SEM_TECNICO } from './mes'
+import type { PontoInstrumento } from './mes'
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -44,7 +46,10 @@ export default function AgendaPage() {
   // que ancora lista/semana. Misturar as duas semânticas no mesmo estado
   // faria o mês virar "14 dias a partir de", não um mês de calendário.
   const [ancoraMes, setAncoraMes] = useState<string | null>(null)
-  const gradeMes = ancoraMes ? gradeDoMes(ancoraMes) : []
+  // Memoizada: `gradeDoMes` monta 42 `Date` a cada chamada, e o resultado é a
+  // dependência de quase todo o resto do modo Mês — sem referência estável,
+  // nenhum dos `useMemo` abaixo economizaria nada.
+  const gradeMes = useMemo(() => (ancoraMes ? gradeDoMes(ancoraMes) : []), [ancoraMes])
   const dateFrom = mes ? (gradeMes[0] ?? null) : inicio
   const dateTo = mes ? (gradeMes[41] ?? null) : fim
   // `disponivel.data` é `undefined` enquanto a query de disponibilidade
@@ -64,11 +69,42 @@ export default function AgendaPage() {
   const [dimensao, setDimensao] = useState<Dimensao>('tecnico')
   const [emAjuste, setEmAjuste] = useState<VisitaAgenda | null>(null)
   const [erroAjuste, setErroAjuste] = useState('')
+  // ISO do destino tocado na grade/faixa enquanto o diálogo de confirmação
+  // de mudança de DATA está aberto. `null` = nenhum diálogo pendente. Só
+  // data pede confirmação (Task 1) — técnico e instrumento continuam
+  // gravando direto, por isso este estado é separado de `emAjuste`.
+  const [dataPendente, setDataPendente] = useState<string | null>(null)
+  /**
+   * Alvo de foco pra depois de um "Confirmar" que muda de MÊS (achado
+   * minor, review final). Ao fechar o `BottomSheet` da confirmação, o
+   * efeito `[open]` dele devolve o foco, síncrono, à célula que abriu o
+   * diálogo — mas se a gravação muda `ancoraMes` (a visita foi pra fora do
+   * mês visível), as 42 células são re-chaveadas por `date` e a célula
+   * recém-focada desmonta: o foco cai pro `<body>` sem aviso nenhum. A
+   * tarja "Movendo a visita" continua montada através da troca de mês
+   * (`emAjusteAtual` não depende de qual mês está visível), então é um
+   * alvo estável pra devolver o foco de propósito depois da gravação —
+   * ao contrário de focar a célula nova, que ainda não existe no DOM no
+   * momento em que `ajustar` resolve.
+   */
+  const tarjaAjusteRef = useRef<HTMLDivElement>(null)
+  // Badges de filtro das duas faixas de legenda do Mês (Task 2). `null` =
+  // "Todos" (sem restrição naquela faixa). Em memória só — nunca persistido,
+  // nunca enviado ao servidor: alteram SÓ as marcas da grade (`pontosDiaGrade`/
+  // `pontosInstrumentoGrade`), nunca o que é buscado ou o que os cards/seção
+  // "Instrumentos do dia" mostram.
+  const [tecnicosSel, setTecnicosSel] = useState<Set<number | false> | null>(null)
+  const [instrumentosSel, setInstrumentosSel] = useState<Set<number> | null>(null)
   const update = useUpdateVisita()
   const tecnicos = useTecnicoOptions(visaoEquipe)
-  // O painel de instrumentos só existe na Semana — o mês não tem painel de
-  // recursos, só a legenda de técnicos.
-  const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
+  // `pwa_instrumento_options` alimenta três telas distintas: o painel de
+  // recursos da Semana (só quando a dimensão é "instrumento", pra não gastar
+  // fetch enquanto o Gestor olha "Técnico"), e a legenda + lista do dia do
+  // Mês (task 3), que precisam da lista inteira sempre que o mês está
+  // aberto — daí a expressão única em vez de espalhar `|| mes` pelos sítios
+  // que já checavam `semana`.
+  const querInstrumentos = mes || (semana && dimensao === 'instrumento')
+  const instrumentos = useInstrumentoOptions(querInstrumentos)
 
   // Rede de segurança: se a visita em ajuste sumir do payload (apagada em
   // outro lugar, saiu da janela) OU continuar lá mas ter travado (outro
@@ -112,21 +148,33 @@ export default function AgendaPage() {
     }
   }, [mes, ancoraMes, data?.server_today])
 
-  if (disponivel.data === false) {
-    return (
-      <p className="mx-auto max-w-[880px] p-4 text-center text-muted-foreground">
-        Agenda de visitas indisponível: o módulo de agendamento não está
-        instalado neste servidor.
-      </p>
-    )
-  }
+  // Filtro das faixas de legenda do Mês: estado em memória só, zera ao
+  // trocar de modo (brief Task 2 — "trocar de modo ou recarregar zera").
+  // Roda em toda troca, inclusive AO ENTRAR no Mês (já nasce `null` de
+  // qualquer forma) — o alvo real é a saída: sem isto, um filtro deixado
+  // restrito na Semana ou na Lista sobreviveria escondido e reapareceria
+  // ativo na próxima vez que o Mês abrisse.
+  useEffect(() => {
+    setTecnicosSel(null)
+    setInstrumentosSel(null)
+  }, [modoAgenda])
 
   const ancora = inicio ?? data?.date_from ?? null
   const semEmpregado = data ? !data.my_employee_id : false
-  const grupos = agruparPorDia(data?.visitas ?? [])
-  const dias = ancora ? diasDaSemana(ancora) : []
+  // `useMemo`, não plain: as duas rodam em TODO render, mesmo no Mês — onde
+  // os dois resultados são descartados (`janelaVisivel` usa `gradeMes`, não
+  // `dias`, quando `mes` é `true`) — e os blocos de filtro/isolar dos rounds
+  // anteriores multiplicaram a frequência de render (achado minor, review
+  // final). `[data]`/`[ancora]` porque `visitas` (a versão memoizada,
+  // estável) só nasce um pouco abaixo — trocar a dependência por ela exigiria
+  // mover estas duas linhas pra depois, e não é essa a troca pedida aqui.
+  const grupos = useMemo(() => agruparPorDia(data?.visitas ?? []), [data])
+  const dias = useMemo(() => (ancora ? diasDaSemana(ancora) : []), [ancora])
   const diaAtual = diaSel && dias.includes(diaSel) ? diaSel : dias[0] ?? ''
-  const visitas = data?.visitas ?? []
+  // Referência estável: `data?.visitas ?? []` cria um array novo a cada render
+  // quando a busca ainda não respondeu, e isso sozinho invalidaria todos os
+  // `useMemo` abaixo que dependem das visitas.
+  const visitas = useMemo(() => data?.visitas ?? [], [data])
   const doDia = visitas.filter((v) => v.date === diaAtual)
   // `pwa_tecnico_options` filtra por `is_tecnico=True`, mas `tecnico_id` na
   // visita não é restrito a isso — um painel de capacidade que só mostra o
@@ -136,8 +184,40 @@ export default function AgendaPage() {
   // (semana) exigem — passar o retorno cru de `useTecnicoOptions` faria uma
   // visita de técnico sem a flag `is_tecnico` contar no `total` do dia sem
   // gerar pontinho, silenciosamente.
-  const roster = rosterTecnicos(tecnicos.data ?? [], visitas)
+  const roster = useMemo(
+    () => rosterTecnicos(tecnicos.data ?? [], visitas),
+    [tecnicos.data, visitas],
+  )
   const hoje = data?.server_today ?? null
+  // Catálogo de instrumentos e o conjunto de ids que ele conhece. O conjunto
+  // é o que separa "instrumento de cadastro" de "id fabricado
+  // (`Instrumento #<id>`)" na hora de ordenar — ver `ordenarInstrumentos`.
+  const opcoesInstrumento = useMemo(() => instrumentos.data ?? [], [instrumentos.data])
+  const idsInstrumentoConhecidos = useMemo(
+    () => new Set(opcoesInstrumento.map((o) => o.id)),
+    [opcoesInstrumento],
+  )
+  // `pwa_instrumento_options` pode falhar sozinho (RPC 500, sessão expirada,
+  // ou falta de permissão de leitura em `engc.calibration.instruments` — a
+  // chamada no servidor é sem `sudo`), sem que a busca da agenda falhe junto.
+  // Antes do fix final isso era INVISÍVEL: `instrumentos.data` ficava
+  // `undefined` pra sempre, todo instrumento usado virava `Instrumento #101`
+  // na grade, na legenda e nos 42 `aria-label` — identificadores fabricados
+  // apresentados como se fossem nome de cadastro —, e a seção "Instrumentos
+  // do dia" sumia por completo, sem nenhuma mensagem.
+  //
+  // Agora a falha degrada como a dos técnicos: o Mês continua utilizável
+  // (dias, pontinhos, cards), mas SEM nenhum triângulo, sem a faixa de
+  // instrumentos e sem a seção do dia — as três superfícies concordam em não
+  // afirmar nada —, e com uma tarja de erro explícita mais abaixo.
+  //
+  // `data === undefined` é o que restringe isso ao caso que importa: um
+  // REFETCH que falha (foco de janela, ou depois do `staleTime` de 5min)
+  // deixa `isError` true COM o último catálogo bom ainda em `data`. Blanquear
+  // ali tiraria informação boa da tela por causa de uma falha de fundo
+  // passageira — e não há nome fabricado nenhum pra suprimir, que é a única
+  // coisa que a tarja existe pra impedir.
+  const instrumentosComFalha = instrumentos.isError && instrumentos.data === undefined
   // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês) OU a
   // busca da faixa completa ainda está em voo (2ª busca, cada toque em
   // ◀ ▶ com `queryKey` novo), não há grade utilizável pra mostrar —
@@ -152,12 +232,143 @@ export default function AgendaPage() {
   // fica `null` PARA SEMPRE — o gate ficava `true` para sempre junto, e a
   // tela mostrava o spinner e "Erro ao carregar a agenda" ao mesmo tempo,
   // indefinidamente, sem saída a não ser sair do modo.
-  const mesCarregando = mes && !error && (ancoraMes === null || isLoading)
+  //
+  // `instrumentos.isPending` é do fix final: as duas buscas saem em PARALELO
+  // na primeira abertura do Mês, e sem isto a grade aparecia com
+  // `Instrumento #N` nos rótulos e os nomes "pulavam" quando o catálogo
+  // chegava depois. Só entra aqui porque `querInstrumentos` garante a query
+  // habilitada sempre que `mes` é true (query desabilitada fica `pending` pra
+  // sempre no react-query v5, o que travaria o spinner); e no erro o status
+  // vira `error`, não `pending`, então a tarja aparece em vez do spinner.
+  const mesCarregando =
+    mes && !error && (ancoraMes === null || isLoading || instrumentos.isPending)
   // Um gate só, sem redundância: `mesCarregando` já embute `isLoading`, mas
   // só vale no mês — `mes && ...` é `false` na Lista e na Semana, onde o
   // spinner continua sendo o `isLoading` cru.
   const carregando = mes ? mesCarregando : isLoading
-  const pontosDia = mes ? tecnicosPorDia(visitas, gradeMes, roster) : []
+  // Duas versões de cada agregação da grade do mês, desde a Task 2 (badges
+  // de filtro): a UNFILTRADA (sufixo `Janela`) cobre as 42 dias com TODAS as
+  // visitas, e é a fonte das duas faixas de legenda/filtro e da seção
+  // "Instrumentos do dia" — que precisam listar/mostrar o universo inteiro,
+  // ligado ou desligado, senão não haveria como religar quem foi desligado
+  // (brief: "as faixas continuam listando todos os recursos da janela") nem
+  // a seção do dia contradiria o brief ("filtro altera SÓ as marcas da
+  // grade"). A FILTRADA (sufixo `Grade`) roda sobre `visitasVisiveis` e
+  // alimenta só as marcas (`dias`/`instrumentos` da `_GradeMes`).
+  // Conjunto de ids de técnico com visita na janela (os 42 dias da grade) —
+  // é só isso que `legendaTecnicos` abaixo precisa. Fix round 1 (achado 6,
+  // evitável): antes rodava `tecnicosPorDia` (agregação 42 dias × roster)
+  // só pra depois jogar fora tudo menos os ids — em modo Mês `visitas` JÁ É
+  // a janela inteira (o fetch usa `gradeMes[0]`/`gradeMes[41]` como
+  // `date_from`/`date_to`), e `roster` já é a união de quem tem visita, tão
+  // basta uma varredura O(V) direto sobre `visitas`.
+  const idsTecnicoNaJanela = useMemo(() => {
+    const ids = new Set<number | false>()
+    if (!mes) return ids
+    for (const v of visitas) ids.add(v.tecnico_id)
+    return ids
+  }, [mes, visitas])
+  // Instrumentos da grade do mês — FONTE ÚNICA (versão `Janela`) das
+  // superfícies que precisam do universo inteiro: a faixa de legenda e a
+  // seção "Instrumentos do dia". Com o catálogo em falha devolve `[]`: nada
+  // de 42 dias de `Instrumento #<id>` posando de nome.
+  const pontosInstrumentoJanela = useMemo(
+    () => (mes && !instrumentosComFalha ? instrumentosPorDia(visitas, gradeMes, opcoesInstrumento) : []),
+    [mes, instrumentosComFalha, visitas, gradeMes, opcoesInstrumento],
+  )
+  // `true` quando NENHUMA visita da janela usa instrumento nenhum — seja
+  // porque o catálogo está em falha (`pontosInstrumentoJanela` já vem `[]`),
+  // seja porque simplesmente ninguém usou instrumento neste mês (navegar
+  // pra um mês sem nenhuma visita instrumentada). Nos dois casos
+  // `legendaInstrumentos` fica `[]` — a faixa não tem NENHUM item pra
+  // mostrar, e um `instrumentosSel` restrito de um mês/momento anterior não
+  // tem contra o que ser aplicado aqui.
+  const semInstrumentoNaJanela = pontosInstrumentoJanela.every((d) => d.instrumentos.length === 0)
+  // As duas faixas (Task 2): uma visita contribui com marca se passa nas
+  // DUAS camadas — interseção (E), não união —, e a restrição de
+  // instrumentos por si só já exclui visita sem instrumento nenhum
+  // (consequência aceita no brief). Alimenta SÓ as agregações `*Grade`
+  // abaixo — `doDia` (os `VisitaCard`s) e `instrumentosDoDiaSel` continuam
+  // lendo `visitas`/`pontosInstrumentoJanela`, a lista completa.
+  //
+  // `semInstrumentoNaJanela` ignora uma restrição de instrumento já armada
+  // quando ela não tem NADA contra o que ser aplicada nesta janela (achado
+  // 1 da review, fix round 1 — generalizado a partir do achado anterior do
+  // advisor, que só cobria `instrumentosComFalha`): sem esta cláusula, um
+  // `instrumentosSel` restrito de um mês/momento anterior continuava
+  // suprimindo TODAS as marcas do mês (inclusive as de técnico, por causa
+  // da interseção) sem nenhum controle visível pra limpar — a mesma forma
+  // de armadilha ("sem saída a não ser trocar de modo") que este arquivo já
+  // corrigiu várias vezes para outros gatilhos. Alcançável por NAVEGAÇÃO
+  // pura, sem nenhuma falha: restringir instrumentos em setembro e tocar ▶
+  // pra um mês sem visita instrumentada bastava.
+  const visitasVisiveis = useMemo(() => {
+    if (!mes || (tecnicosSel === null && instrumentosSel === null)) return visitas
+    return visitas.filter((v) => {
+      const passaTecnico = tecnicosSel === null || tecnicosSel.has(v.tecnico_id)
+      const passaInstrumento =
+        instrumentosSel === null || semInstrumentoNaJanela ||
+        v.instrument_ids.some((id) => instrumentosSel.has(id))
+      return passaTecnico && passaInstrumento
+    })
+  }, [mes, visitas, tecnicosSel, instrumentosSel, semInstrumentoNaJanela])
+  const pontosDiaGrade = useMemo(
+    () => (mes ? tecnicosPorDia(visitasVisiveis, gradeMes, roster) : []),
+    [mes, visitasVisiveis, gradeMes, roster],
+  )
+  // Sem NENHUMA das duas faixas restrita, `visitasVisiveis` devolve a mesma
+  // REFERÊNCIA de `visitas` (ver o early return do memo acima) — e aí esta
+  // agregação produziria byte a byte a mesma coisa que `pontosInstrumentoJanela`:
+  // Map sobre o catálogo, laço de 42 dias e um `sort` por dia, pagos duas
+  // vezes a cada troca de `visitas`, que é o caso COMUM (o filtro é
+  // opcional). O atalho pode vir antes das outras condições: com `!mes` ou
+  // catálogo em falha, `pontosInstrumentoJanela` já é `[]`, que é
+  // exatamente o que este memo devolveria. Compartilhar a referência é
+  // seguro porque ninguém ordena/muta esses arrays no lugar —
+  // `ordenarInstrumentos` faz `.slice().sort()` e `instrumentosDoDia` só
+  // mapeia.
+  const pontosInstrumentoGrade = useMemo(
+    () => {
+      if (visitasVisiveis === visitas) return pontosInstrumentoJanela
+      return mes && !instrumentosComFalha ? instrumentosPorDia(visitasVisiveis, gradeMes, opcoesInstrumento) : []
+    },
+    [mes, instrumentosComFalha, visitasVisiveis, visitas, pontosInstrumentoJanela, gradeMes, opcoesInstrumento],
+  )
+  // Legenda de instrumentos: os distintos da janela de 42 dias (mesmo escopo
+  // da faixa de técnicos, que cobre a grade desenhada e não o mês estrito),
+  // deduplicados por id e ordenados pela MESMA função que ordena a célula
+  // (`ordenarInstrumentos`) — daí a montagem viver aqui, onde
+  // `idsInstrumentoConhecidos` está à mão, e não dentro da `_VistaMes`, que
+  // por ruling do controlador só recebe dado já agregado. Fonte
+  // `pontosInstrumentoJanela` (não filtrada): a faixa lista todo mundo,
+  // ligado ou desligado (Task 2).
+  const legendaInstrumentos = useMemo(() => {
+    const vistos = new Set<number>()
+    const itens: PontoInstrumento[] = []
+    for (const d of pontosInstrumentoJanela) {
+      for (const inst of d.instrumentos) {
+        if (vistos.has(inst.id)) continue
+        vistos.add(inst.id)
+        itens.push(inst)
+      }
+    }
+    return ordenarInstrumentos(itens, idsInstrumentoConhecidos)
+  }, [pontosInstrumentoJanela, idsInstrumentoConhecidos])
+  // Legenda de técnicos (Task 2): mesmo raciocínio de `legendaInstrumentos`
+  // acima, movido de dentro de `_VistaMes` pra cá pra poder alimentar tanto
+  // a faixa (universo inteiro) quanto o filtro (que precisa do universo pra
+  // inicializar o `Set` ao desligar o primeiro item a partir de "Todos", ver
+  // `alternarTecnico` abaixo). Ordem do roster (por nome), "Sem técnico" no
+  // fim — mesma ordem que `_VistaMes` produzia antes desta task.
+  const legendaTecnicos = useMemo(() => {
+    const itens: { chave: string | number; id: number | false; cor: string; nome: string }[] = roster
+      .filter((t) => idsTecnicoNaJanela.has(t.id))
+      .map((t) => ({ chave: t.id, id: t.id as number | false, cor: corDoTecnico(t.id), nome: t.name }))
+    if (idsTecnicoNaJanela.has(false)) {
+      itens.push({ chave: 'sem-tecnico', id: false, cor: COR_SEM_TECNICO, nome: 'Sem técnico' })
+    }
+    return itens
+  }, [idsTecnicoNaJanela, roster])
   // Dia default quando não há seleção válida na grade: primeiro tenta
   // `hoje` (server_today) — mesmo critério da Semana, que nasce ancorada
   // em `data.date_from` = hoje — e só cai no 1º dia do mês quando "hoje"
@@ -168,6 +379,28 @@ export default function AgendaPage() {
   const diaSelMes = diaSel && gradeMes.includes(diaSel)
     ? diaSel
     : (hoje && gradeMes.includes(hoje) ? hoje : (ancoraMes ?? ''))
+  // "Instrumentos do dia" (brief 3c): sai da ENTRADA de
+  // `pontosInstrumentoJanela` (não filtrada — Task 2) do dia selecionado,
+  // casada por `date`, acrescida dos usos (OS, técnico, faixa de horário).
+  // Desde a Task 2 esta fonte pode DIVERGIR do triângulo da célula quando o
+  // filtro está ativo — de propósito: o brief é explícito que o filtro
+  // altera SÓ as marcas da grade, e esta seção continua sobre a lista
+  // completa de visitas. Até o fix final esta seção mapeava sobre
+  // `pwa_instrumento_options` via `usoPorInstrumento`: a interseção entre
+  // usado e catalogado, enquanto a grade mostrava a união. Um instrumento
+  // arquivado depois de usado (`pwa_instrumento_options` faz `search([])`,
+  // com `active_test` ligado) bastava pra grade afirmar que o dia tem o
+  // instrumento e a lista negar, em silêncio.
+  const instrumentosDoDiaSel = useMemo(
+    () => (mes
+      ? instrumentosDoDia(
+          visitas,
+          diaSelMes,
+          pontosInstrumentoJanela.find((p) => p.date === diaSelMes)?.instrumentos ?? [],
+        )
+      : []),
+    [mes, visitas, diaSelMes, pontosInstrumentoJanela],
+  )
   // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
   // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
   // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
@@ -185,11 +418,100 @@ export default function AgendaPage() {
   const janelaVisivel = mes ? gradeMes : dias
   const alvoVisivel = !!emAjusteAtual && janelaVisivel.includes(emAjusteAtual.date)
 
+  // Rede de segurança (achado 1 da review da Task 1): o diálogo de
+  // confirmação de DATA pendente (`dataPendente`) não pode sobreviver ao
+  // alvo SAIR DA JANELA VISÍVEL. Cenário: o Gestor arma o diálogo (toca um
+  // dia diferente, `dataPendente` fica setado) e, antes de tocar
+  // "Confirmar", a visita deixa de estar à vista — seja porque ele navegou
+  // de mês/semana, seja porque um refetch em background a moveu para FORA
+  // dos 42 dias desenhados. Nos dois casos o diálogo continuava aberto,
+  // pronto pra gravar num alvo que `alvoVisivel` existe justamente pra
+  // proibir (ver comentário dele acima). O `useEffect` anterior não cobre
+  // isto: ele só olha "sumiu do payload" ou "travou".
+  //
+  // O que este efeito NÃO cobre, de propósito: um refetch que move a visita
+  // para outra data DENTRO da janela (17/09 → 25/09 com o diálogo armado
+  // para 19/09). `alvoVisivel` continua `true` e nada dispara — e não
+  // precisa: o texto do diálogo re-renderiza com a data nova, então o que o
+  // Gestor lê antes de confirmar é o que vai ser gravado. É autocorrigível,
+  // não um buraco.
+  //
+  // `confirmarData` abaixo repete o mesmo check por defesa em profundidade
+  // (mesmo clique, mesmo tick).
+  useEffect(() => {
+    if (dataPendente !== null && !alvoVisivel) {
+      setDataPendente(null)
+    }
+  }, [dataPendente, alvoVisivel])
+
+  // O early return fica DEPOIS das derivações de propósito: todo `useMemo`
+  // acima é um hook, e hook depois de `return` condicional quebra a ordem de
+  // hooks entre renders.
+  if (disponivel.data === false) {
+    return (
+      <p className="mx-auto max-w-[880px] p-4 text-center text-muted-foreground">
+        Agenda de visitas indisponível: o módulo de agendamento não está
+        instalado neste servidor.
+      </p>
+    )
+  }
+
   /** A seleção termina (toque em "Concluir", ou a visita some do payload):
-   * nada de tarja de erro sobrevivendo a uma seleção que já acabou. */
+   * nada de tarja de erro sobrevivendo a uma seleção que já acabou, e nada
+   * de diálogo de confirmação de data perguntando sobre uma visita que não
+   * aceita mais gravação. */
   function encerrarAjuste() {
     setEmAjuste(null)
     setErroAjuste('')
+    setDataPendente(null)
+  }
+
+  /** Toque em "Ajustar"/"Concluir" no card: liga/desliga o ajuste daquela
+   * visita. Trocar de alvo limpa qualquer diálogo de data pendente do alvo
+   * anterior — mesmo raciocínio de `encerrarAjuste`, aplicado à troca. */
+  function alternarAjuste(visita: VisitaAgenda) {
+    if (emAjuste?.id === visita.id) {
+      encerrarAjuste()
+      return
+    }
+    setDataPendente(null)
+    setEmAjuste(visita)
+  }
+
+  /**
+   * Toque num dia da grade/faixa com visita armada: mesmo dia não abre
+   * diálogo nenhum (não há o que confirmar) — mas ainda seleciona o dia
+   * (`setDiaSel`), em vez de não fazer nada, pra manter a mesma resposta ao
+   * toque que o caminho sem visita armada já dá (todo toque num dia
+   * seleciona aquele dia); um toque silenciosamente inerte só porque há uma
+   * visita armada seria uma exceção sem motivo visível pro Gestor. Dia
+   * diferente arma `dataPendente`, que abre o diálogo de confirmação — só
+   * `ajustar` grava de fato, depois do "Confirmar".
+   */
+  function armarData(date: string) {
+    if (!emAjusteAtual) return
+    if (date === emAjusteAtual.date) {
+      setDiaSel(date)
+      return
+    }
+    setDataPendente(date)
+  }
+
+  /** "Confirmar" do diálogo: grava pelo `ajustar` que já existe (âncora do
+   * mês, `setDiaSel`, tarja de erro) e fecha o diálogo. `alvoVisivel`
+   * checado de novo aqui (achado 1 da review da Task 1): o `useEffect` logo
+   * acima já fecha o diálogo reativamente assim que o alvo sai da janela,
+   * mas o clique e o efeito não são a mesma coisa — esta segunda checagem é
+   * o que garante que NENHUM clique em "Confirmar" grava fora da janela,
+   * mesmo numa corrida entre o efeito e o clique. */
+  function confirmarData() {
+    if (dataPendente && alvoVisivel) ajustar({ date: dataPendente })
+    setDataPendente(null)
+  }
+
+  /** "Cancelar" do diálogo: fecha sem gravar — a visita continua armada. */
+  function cancelarData() {
+    setDataPendente(null)
   }
 
   /**
@@ -216,11 +538,72 @@ export default function AgendaPage() {
         // dos outros modos (ruling do controlador, brief 3d).
         if (mes && ancoraMes && !noMes(vals.date, ancoraMes)) {
           setAncoraMes(primeiroDiaDoMes(vals.date))
+          // A célula que tinha o foco (a do diálogo de confirmação, já
+          // devolvido pelo `BottomSheet` ao fechar) está prestes a
+          // desmontar — as 42 células da grade nova são outras (achado
+          // minor, review final). Sem isto, o foco cai pro `<body>` assim
+          // que este re-render troca a grade pro mês novo.
+          tarjaAjusteRef.current?.focus()
         }
       }
     } catch (e) {
       setErroAjuste(e instanceof Error && e.message ? e.message : mensagemDeFalha(e))
     }
+  }
+
+  /**
+   * Toque num chip da faixa "Técnicos:" (Task 2). Partindo de "Todos"
+   * (`null`), o primeiro toque desliga UM item — o `Set` de trabalho nasce
+   * com TODOS os ids hoje na faixa (`legendaTecnicos`, o universo da janela
+   * visível) e o toque remove só o tocado; ficar sem essa base faria o
+   * primeiro toque "restringir a um só" em vez de "desligar um".
+   */
+  function alternarTecnico(id: number | false) {
+    setTecnicosSel((atual) => {
+      const base = atual ?? new Set(legendaTecnicos.map((t) => t.id))
+      const novo = new Set(base)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
+
+  /** Mesmo raciocínio de `alternarTecnico`, para a faixa "Instrumentos:". */
+  function alternarInstrumento(id: number) {
+    setInstrumentosSel((atual) => {
+      const base = atual ?? new Set(legendaInstrumentos.map((i) => i.id))
+      const novo = new Set(base)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
+
+  /** Badge "Todos" de qualquer uma das duas faixas: limpa a restrição SÓ
+   *  daquela faixa — a outra continua com o que estava. */
+  function todosTecnicos() {
+    setTecnicosSel(null)
+  }
+  function todosInstrumentos() {
+    setInstrumentosSel(null)
+  }
+
+  /**
+   * Toque longo (Task 1) num chip da faixa "Técnicos:": isola aquele
+   * técnico — o `Set` passa a ter só ele. Tocar de novo no chip que JÁ é o
+   * único ligado reverte pra "Todos" (`null`) — o gesto é reversível por si
+   * mesmo, sem obrigar a caçar o badge "Todos" (brief). Só quem sabe se o
+   * `id` tocado é o único ligado é quem detém o `Set` — por isso a decisão
+   * mora aqui, não na `FaixaLegenda`, que só avisa qual `id` foi tocado.
+   */
+  function isolarTecnico(id: number | false) {
+    setTecnicosSel((atual) => (atual !== null && atual.size === 1 && atual.has(id) ? null : new Set([id])))
+  }
+  /** Mesmo raciocínio de `isolarTecnico`, para a faixa "Instrumentos:" — as
+   *  duas faixas são independentes no gesto: isolar uma nunca toca no `Set`
+   *  da outra. */
+  function isolarInstrumento(id: number) {
+    setInstrumentosSel((atual) => (atual !== null && atual.size === 1 && atual.has(id) ? null : new Set([id])))
   }
 
   return (
@@ -317,7 +700,11 @@ export default function AgendaPage() {
           identificador da visita e uma saída explícita — nada aqui depende
           de cor. */}
       {emAjusteAtual && (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2">
+        <div
+          ref={tarjaAjusteRef}
+          tabIndex={-1}
+          className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2"
+        >
           <span className="min-w-0 text-sm">
             Movendo a visita {emAjusteAtual.os_name} de {rotuloDia(emAjusteAtual.date)}
             <span className="block text-xs text-muted-foreground">
@@ -342,6 +729,21 @@ export default function AgendaPage() {
           Erro ao carregar a agenda. Verifique conexão.
         </p>
       )}
+      {/* Falha SÓ do catálogo de instrumentos (a agenda em si carregou). Sem
+          esta tarja, a queda era muda: a grade continuava desenhando, e o
+          Gestor não tinha como saber que os triângulos e a lista do dia
+          sumiram por falha, e não porque nenhuma visita usa instrumento.
+          `!error` porque sessão expirada / conexão caída derruba as DUAS
+          buscas: sem ele, a tela mostrava "Erro ao carregar a agenda" mais uma
+          segunda tarja falando de triângulos e lista de uma `VistaMes` que
+          nem chega a ser renderizada (o gate dela também tem `!error`). */}
+      {mes && !error && instrumentosComFalha && (
+        <p className="text-center text-danger">
+          Erro ao carregar os instrumentos. O mês está sem os triângulos, sem a
+          faixa de instrumentos e sem a lista do dia. Verifique conexão ou suas
+          permissões.
+        </p>
+      )}
       {!isLoading && !error && modoAgenda === 'lista' && grupos.length === 0 && (
         <p className="py-8 text-center text-muted-foreground">
           Nenhuma visita neste período.
@@ -364,7 +766,7 @@ export default function AgendaPage() {
           <FaixaDias
             dias={cargaPorDia(visitas, dias)}
             selecionado={diaAtual}
-            onSelecionar={(d) => (alvoVisivel ? ajustar({ date: d }) : setDiaSel(d))}
+            onSelecionar={(d) => (alvoVisivel ? armarData(d) : setDiaSel(d))}
           />
           {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
           <PainelRecursos
@@ -391,7 +793,7 @@ export default function AgendaPage() {
               key={v.id}
               visita={v}
               onSelect={setSelecionada}
-              onAjustar={data?.can_manage ? (x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x)) : undefined}
+              onAjustar={data?.can_manage ? alternarAjuste : undefined}
               emAjuste={emAjuste?.id === v.id}
             />
           ))}
@@ -408,21 +810,49 @@ export default function AgendaPage() {
       {mes && !mesCarregando && !error && ancoraMes !== null && (
         <VistaMes
           visitas={visitas}
-          dias={pontosDia}
+          dias={pontosDiaGrade}
+          instrumentos={pontosInstrumentoGrade}
+          legendaTecnicos={legendaTecnicos}
+          legendaInstrumentos={legendaInstrumentos}
+          tecnicosSel={tecnicosSel}
+          // Durante a falha do catálogo (não a navegação sem uso), a faixa
+          // precisa FICAR escondida — `legendaInstrumentos` já é `[]`, e sem
+          // forçar `null` aqui um `instrumentosSel` restrito de antes da
+          // falha faria `FaixaLegenda` renderizar (itens vazios, mas
+          // `selecionado !== null`), quebrando a garantia de que a falha do
+          // catálogo apaga a faixa inteira. Fora da falha (navegação pura
+          // pra um mês sem uso), passa o `Set` real — é o que dá a
+          // `FaixaLegenda` o "Todos" desligado como escape visível.
+          instrumentosSel={instrumentosComFalha ? null : instrumentosSel}
+          onAlternarTecnico={alternarTecnico}
+          onAlternarInstrumento={alternarInstrumento}
+          onTodosTecnicos={todosTecnicos}
+          onTodosInstrumentos={todosInstrumentos}
+          onIsolarTecnico={isolarTecnico}
+          onIsolarInstrumento={isolarInstrumento}
+          instrumentosDoDia={instrumentosDoDiaSel}
           ancora={ancoraMes ?? ''}
           hoje={hoje}
           diaSel={diaSelMes}
           onSelecionarDia={setDiaSel}
-          roster={roster}
           podeAjustar={!!data?.can_manage}
           emAjuste={emAjusteAtual}
           alvoAtivo={alvoVisivel}
-          onAjustar={ajustar}
-          onAlternarAjuste={(x) => (emAjuste?.id === x.id ? encerrarAjuste() : setEmAjuste(x))}
+          onAjustar={(vals) => { if (typeof vals.date === 'string') armarData(vals.date) }}
+          onAlternarAjuste={alternarAjuste}
           erroAjuste={erroAjuste}
           onSelecionarVisita={setSelecionada}
         />
       )}
+
+      <ConfirmarMudancaData
+        open={dataPendente !== null && !!emAjusteAtual}
+        osName={emAjusteAtual?.os_name ?? ''}
+        dataAtual={emAjusteAtual?.date ?? ''}
+        dataNova={dataPendente ?? ''}
+        onConfirmar={confirmarData}
+        onCancelar={cancelarData}
+      />
 
       {data?.can_manage && (
         <button

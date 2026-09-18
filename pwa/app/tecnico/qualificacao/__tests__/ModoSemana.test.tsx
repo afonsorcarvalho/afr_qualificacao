@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /// <reference types="@testing-library/jest-dom" />
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AgendaPage from '../agenda/page'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
@@ -126,14 +126,81 @@ describe('Modo Semana', () => {
     )
   })
 
-  it('tocar num dia com a visita em ajuste move para aquele dia', async () => {
+  it('tocar num dia com a visita em ajuste abre diálogo de confirmação; Confirmar move para aquele dia', async () => {
     montar()
     irParaSemana()
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
     fireEvent.click(screen.getByRole('button', { name: /^sáb 19/i }))
+
+    // Não grava direto — abre a confirmação com as duas datas no texto.
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    expect(within(dialogo).getByText(
+      'Tem certeza que deseja mudar a data da visita OS26-02 de 17/09/2026 para 19/09/2026?',
+    )).toBeInTheDocument()
+
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Confirmar' }))
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-09-19' } }),
     )
+  })
+
+  it('Cancelar no diálogo de confirmação não grava e mantém a visita armada', async () => {
+    montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^sáb 19/i }))
+
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }))
+
+    expect(mutateUpdate).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // A visita continua armada — o Gestor precisa poder escolher outro dia
+    // sem recomeçar.
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
+  })
+
+  it('tocar no mesmo dia em que a visita já está não abre diálogo', async () => {
+    montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^qui 17/i }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(mutateUpdate).not.toHaveBeenCalled()
+  })
+
+  it('ajuste de técnico e de instrumento continuam sem diálogo de confirmação (guarda de escopo: só data pede confirmação)', async () => {
+    montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Bruno/ }))
+    await waitFor(() =>
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { tecnico_id: 9 } }),
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    mutateUpdate.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: /^Instrumento$/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Q001/ }))
+    await waitFor(() =>
+      expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [1] } }),
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('rede de segurança: visita em ajuste que SOME do payload fecha o diálogo pendente de confirmação de data', async () => {
+    const { rerender, qc } = montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^sáb 19/i }))
+    expect(screen.getByRole('dialog', { name: 'Mudar data da visita' })).toBeInTheDocument()
+
+    payloadAtual = { ...payload, visitas: [] }
+    rerender(<QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('depois de mover a visita, a vista segue e a seleção continua (não fica presa)', async () => {
@@ -141,6 +208,7 @@ describe('Modo Semana', () => {
     irParaSemana()
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
     fireEvent.click(screen.getByRole('button', { name: /^sáb 19/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-09-19' } }),
     )
@@ -192,6 +260,28 @@ describe('Modo Semana', () => {
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [2] } }),
     )
+  })
+
+  it('erro do servidor ao confirmar mudança de data aparece em tarja e a seleção não se perde', async () => {
+    mutateUpdate.mockRejectedValue(
+      new Error('Não é possível programar uma visita para uma data passada'),
+    )
+    montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^sáb 19/i }))
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/data passada/)).toBeInTheDocument(),
+    )
+    // O diálogo já fechou (o "Confirmar" fecha antes do resultado do
+    // `mutateAsync` voltar) e a visita continua armada — mesmo
+    // comportamento do caminho de técnico/instrumento, só que atravessando
+    // o gate novo.
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
   })
 
   it('erro do servidor aparece em tarja e a seleção não se perde', async () => {

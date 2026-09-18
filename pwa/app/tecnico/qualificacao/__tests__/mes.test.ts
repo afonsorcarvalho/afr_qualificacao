@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes,
   corDoTecnico, tecnicosPorDia, PALETA, COR_SEM_TECNICO,
+  corDoInstrumento, instrumentosPorDia,
 } from '../agenda/mes'
-import type { VisitaAgenda, Opcao } from '@/lib/odoo/agenda'
+import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -188,6 +189,111 @@ describe('tecnicosPorDia', () => {
     )
     const dia = r.find((d) => d.date === '2026-09-17')!
     expect(dia.pontos.map((p) => p.id)).toEqual([441, 9, false])
+  })
+})
+
+describe('corDoInstrumento', () => {
+  it('é estável entre chamadas para o mesmo id', () => {
+    expect(corDoInstrumento(7)).toBe(corDoInstrumento(7))
+  })
+
+  it('vem da mesma PALETA usada por corDoTecnico', () => {
+    expect(PALETA).toContain(corDoInstrumento(3))
+  })
+})
+
+describe('instrumentosPorDia', () => {
+  const opcoes: InstrumentoOpcao[] = [
+    { id: 5, name: 'Multímetro', validade: '2027-01-01' },
+    { id: 8, name: 'Termômetro', validade: false },
+  ]
+  const dias = ['2026-09-17', '2026-09-18']
+
+  it('duas visitas usando o mesmo instrumento no dia rendem um único item com visitas: 2', () => {
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [5], instrument_list: ['Multímetro'] }),
+       v({ id: 2, date: '2026-09-17', instrument_ids: [5], instrument_list: ['Multímetro'] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos).toEqual([
+      { id: 5, name: 'Multímetro', cor: corDoInstrumento(5), visitas: 2 },
+    ])
+  })
+
+  it('instrumento fora de `opcoes` vira "Instrumento #<id>", sem parear por índice com instrument_list', () => {
+    // `instrument_list` é filtrada de nomes vazios no servidor, então pode
+    // ficar mais curta que `instrument_ids` — aqui ela traz só o nome de UM
+    // instrumento (o 5) enquanto `instrument_ids` também usa o 99, que não
+    // está em `opcoes`. Se o código pareasse por posição, o 99 roubaria o
+    // nome "Multímetro" do índice 0.
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [99], instrument_list: ['Multímetro'] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos).toEqual([
+      { id: 99, name: 'Instrumento #99', cor: corDoInstrumento(99), visitas: 1 },
+    ])
+  })
+
+  it('dia sem visita rende instrumentos: []', () => {
+    const r = instrumentosPorDia([], dias, opcoes)
+    expect(r).toEqual([
+      { date: '2026-09-17', instrumentos: [] },
+      { date: '2026-09-18', instrumentos: [] },
+    ])
+  })
+
+  it('instrumento das opções não usado no dia não vira item', () => {
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [5], instrument_list: ['Multímetro'] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos.map((i) => i.id)).toEqual([5])
+  })
+
+  it('ordem é por nome (não pela ordem de `opcoes`), com desconhecidos no fim por id crescente', () => {
+    // Fix final (M-1): a ordem deixou de ser a de `opcoes` e passou a ser a
+    // de `ordenarInstrumentos` — a MESMA que a legenda aplica em `page.tsx`.
+    // A ordem do servidor era uma regra que só a célula conseguia aplicar (a
+    // legenda não recebe `opcoes`), então as duas metades da tela desenhavam
+    // o mesmo conjunto em sequências diferentes.
+    //
+    // `opcoes` aqui vem em ordem DECRESCENTE de id e com os nomes fora de
+    // ordem alfabética de propósito: se o código voltasse a seguir `opcoes`,
+    // sairia [8, 5, ...] em vez de [5, 8, ...].
+    const opcoesInvertidas: InstrumentoOpcao[] = [
+      { id: 8, name: 'Termômetro', validade: false },
+      { id: 5, name: 'Multímetro', validade: '2027-01-01' },
+    ]
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [8, 5, 99, 50] })],
+      dias, opcoesInvertidas,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    // Conhecidos por nome (Multímetro < Termômetro), desconhecidos no fim por
+    // id — identificador fabricado nunca encabeça a lista.
+    expect(dia.instrumentos.map((i) => i.id)).toEqual([5, 8, 50, 99])
+  })
+
+  it('nome com número usa colação numérica: TAG-2 antes de TAG-10', () => {
+    // `localeCompare` sem `{ numeric: true }` compara caractere a caractere e
+    // põe "TAG-10" antes de "TAG-2" — com tags sequenciais (o caso comum do
+    // cadastro), a célula e a legenda ficavam numa ordem que não é a que o
+    // técnico lê na etiqueta.
+    const opcoesTags: InstrumentoOpcao[] = [
+      { id: 1, name: 'TAG-10', validade: false },
+      { id: 2, name: 'TAG-2', validade: false },
+      { id: 3, name: 'TAG-3', validade: false },
+    ]
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [1, 2, 3] })],
+      dias, opcoesTags,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos.map((i) => i.name)).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
   })
 })
 

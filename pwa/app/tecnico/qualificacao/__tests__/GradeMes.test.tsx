@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { GradeMes } from '../agenda/_GradeMes'
 import { gradeDoMes } from '../agenda/mes'
-import type { PontosDia, PontoTecnico } from '../agenda/mes'
+import type { PontosDia, PontoTecnico, PontosInstrumentoDia, PontoInstrumento } from '../agenda/mes'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { contraste, hsl2rgb, tokenDe } from '@/tests/contraste'
@@ -25,11 +25,23 @@ function montarDias(overrides: Record<string, Partial<PontosDia>> = {}): PontosD
   return GRADE.map((date) => ({ ...pontosDiaVazio(date), ...(overrides[date] ?? {}) }))
 }
 
+function instrumento(over: Partial<PontoInstrumento> = {}): PontoInstrumento {
+  return { id: 101, name: 'Q001', cor: '#059669', visitas: 1, ...over }
+}
+
+/** Grade de 42 `PontosInstrumentoDia` vazios, com overrides por data ISO. */
+function montarInstrumentos(
+  overrides: Record<string, PontoInstrumento[]> = {},
+): PontosInstrumentoDia[] {
+  return GRADE.map((date) => ({ date, instrumentos: overrides[date] ?? [] }))
+}
+
 describe('GradeMes', () => {
   it('renderiza 42 células, uma por dia da grade', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -44,6 +56,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -60,6 +73,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-05"
@@ -88,6 +102,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -103,6 +118,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -125,6 +141,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -148,6 +165,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -163,6 +181,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -177,6 +196,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje="2026-09-20"
         selecionado="2026-09-01"
@@ -196,6 +216,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje="2026-09-20"
         selecionado="2026-09-01"
@@ -216,6 +237,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -240,6 +262,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -262,6 +285,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-01"
@@ -279,6 +303,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-05"
@@ -315,6 +340,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje="2026-09-05"
         selecionado="2026-09-05"
@@ -331,6 +357,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
         selecionado="2026-09-10"
@@ -349,5 +376,272 @@ describe('GradeMes', () => {
     // Trocar só o token de texto é o que a validação manual achou fraco nos
     // DOIS temas; a diferença tem que sobreviver a apagar os tokens de cor.
     expect(semTokenDeTexto(numFora)).not.toBe(semTokenDeTexto(numDentro))
+  })
+
+  // --- Task 2: triângulos de instrumento e regra de lotação da célula ---
+
+  it('dia com 2 técnicos e 1 instrumento mostra 3 marcas, sem +N', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 2,
+        pontos: [ponto({ id: 1, name: 'Ana Silva' }), ponto({ id: 2, name: 'João Lima' })],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [instrumento({ id: 101, name: 'Q001' })],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(within(cel).getAllByTestId('ponto')).toHaveLength(2)
+    expect(within(cel).getAllByTestId('triangulo')).toHaveLength(1)
+    expect(within(cel).queryByTestId('mais')).not.toBeInTheDocument()
+  })
+
+  it('dia com 3 técnicos e 5 instrumentos mostra +5 sem apagar nenhum dos dois grupos', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 3,
+        pontos: [
+          ponto({ id: 1, name: 'Ana Silva' }),
+          ponto({ id: 2, name: 'Bruno' }),
+          ponto({ id: 3, name: 'Carla' }),
+        ],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+        instrumento({ id: 103, name: 'Q003' }),
+        instrumento({ id: 104, name: 'Q004' }),
+        instrumento({ id: 105, name: 'Q005' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    // A repartição de slots garante 1 pra cada grupo antes de dar o slot
+    // extra pro maior — sem essa garantia, os 3 técnicos engoliriam as 3
+    // marcas e os 5 instrumentos sumiriam por inteiro atrás do "+N".
+    expect(within(cel).getAllByTestId('ponto').length).toBeGreaterThanOrEqual(1)
+    expect(within(cel).getAllByTestId('triangulo').length).toBeGreaterThanOrEqual(1)
+    expect(
+      within(cel).getAllByTestId('ponto').length + within(cel).getAllByTestId('triangulo').length,
+    ).toBe(3)
+    expect(within(cel).getByTestId('mais')).toHaveTextContent('+5')
+  })
+
+  // --- Task 3 (review da Task 2): bordas de `repartirMarcas` ---
+
+  it('total === 4 marcas (2 técnicos + 2 instrumentos) mostra as 4, sem +N', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 2,
+        pontos: [ponto({ id: 1, name: 'Ana Silva' }), ponto({ id: 2, name: 'João Lima' })],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(within(cel).getAllByTestId('ponto')).toHaveLength(2)
+    expect(within(cel).getAllByTestId('triangulo')).toHaveLength(2)
+    expect(within(cel).queryByTestId('mais')).not.toBeInTheDocument()
+  })
+
+  it('empate com estouro (3 técnicos + 3 instrumentos): o slot extra vai para os técnicos', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 3,
+        pontos: [
+          ponto({ id: 1, name: 'Ana Silva' }),
+          ponto({ id: 2, name: 'Bruno' }),
+          ponto({ id: 3, name: 'Carla' }),
+        ],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+        instrumento({ id: 103, name: 'Q003' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    // 6 marcas ao todo, só 3 cabem soltas: 1 slot garantido pra cada grupo
+    // + o 3º (o do empate) vai para os técnicos, não para os instrumentos.
+    expect(within(cel).getAllByTestId('ponto')).toHaveLength(2)
+    expect(within(cel).getAllByTestId('triangulo')).toHaveLength(1)
+    expect(within(cel).getByTestId('mais')).toHaveTextContent('+3')
+  })
+
+  it('dia com 5 instrumentos e nenhum técnico mostra 3 triângulos e +2', () => {
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+        instrumento({ id: 103, name: 'Q003' }),
+        instrumento({ id: 104, name: 'Q004' }),
+        instrumento({ id: 105, name: 'Q005' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={montarDias()}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(within(cel).getAllByTestId('triangulo')).toHaveLength(3)
+    expect(within(cel).queryAllByTestId('ponto')).toHaveLength(0)
+    expect(within(cel).getByTestId('mais')).toHaveTextContent('+2')
+  })
+
+  it('aria-label lista os instrumentos do dia depois das visitas', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 3,
+        pontos: [ponto({ id: 1, name: 'Ana Silva', visitas: 2 }), ponto({ id: 2, name: 'João Lima' })],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByRole('button', {
+        name: '17 de setembro, 3 visitas: Ana Silva (2), João Lima; instrumentos: Q001, Q002',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('conflito e instrumentos juntos: o sufixo de conflito fica colado nas visitas, antes de "instrumentos:"', () => {
+    const dias = montarDias({
+      '2026-09-19': {
+        total: 1,
+        conflito: true,
+        pontos: [ponto({ id: 1, name: 'Ana Silva' })],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-19': [instrumento({ id: 101, name: 'Q001' })],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    // ", com conflito" qualifica as visitas — precisa ficar colado nelas,
+    // não depois da lista de instrumentos (que leria como se o conflito
+    // fosse dos instrumentos).
+    expect(
+      screen.getByRole('button', {
+        name: '19 de setembro, 1 visita: Ana Silva, com conflito; instrumentos: Q001',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('dia sem instrumento não escreve a parte de instrumentos no aria-label', () => {
+    const dias = montarDias({
+      '2026-09-18': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={montarInstrumentos()}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByRole('button', { name: '18 de setembro, 1 visita: Ana Silva' }),
+    ).toBeInTheDocument()
+  })
+
+  it('bolinhas e triângulos continuam fora da árvore de acessibilidade', () => {
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [instrumento({ id: 101, name: 'Q001' })],
+    })
+    const dias = montarDias({
+      '2026-09-17': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const ponto1 = within(cel).getByTestId('ponto')
+    const triangulo1 = within(cel).getByTestId('triangulo')
+    expect(ponto1.closest('[aria-hidden]')).not.toBeNull()
+    expect(triangulo1).toHaveAttribute('aria-hidden')
   })
 })

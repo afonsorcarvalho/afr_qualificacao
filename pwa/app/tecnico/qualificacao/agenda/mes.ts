@@ -7,7 +7,15 @@
  * `janela.ts` — quem decide "hoje" é o servidor, o front só soma dias sobre
  * uma data que já veio pronta.
  */
-import type { VisitaAgenda, Opcao } from '@/lib/odoo/agenda'
+import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
+
+// Escopo de MÓDULO: `String.prototype.localeCompare(..., locale, opts)`
+// constrói um `Intl.Collator` novo por CHAMADA — dentro de um comparador de
+// `sort`, isso é pago em cada uma das ~42 comparações de CADA agregação de
+// `ordenarInstrumentos` por render (achado minor, review final). Um
+// `Intl.Collator` construído uma vez e reusado via `.compare(a, b)` é a
+// mesma otimização, só que explícita.
+const COLATOR_PT_BR_NUMERICO = new Intl.Collator('pt-BR', { numeric: true })
 
 export interface PontoTecnico {
   /** `false` = visita sem técnico atribuído. */
@@ -135,6 +143,25 @@ export function corDoTecnico(id: number | false): string {
 }
 
 /**
+ * Índice `data -> visitas do dia`, montado numa passada só. As agregações da
+ * grade rodam sobre 42 dias; varrer a lista inteira de visitas dentro do laço
+ * (`visitas.filter(v => v.date === date)`) custava 42×V comparações por
+ * função, 84×V somando as duas — com o teto de 500 visitas do fetch, ~42 mil
+ * comparações por render. É local a cada função de propósito: as assinaturas
+ * públicas (com testes em cima) continuam recebendo `visitas` cru, e nenhuma
+ * das duas passa a depender de um índice montado pelo chamador.
+ */
+function agruparPorData(visitas: VisitaAgenda[]): Map<string, VisitaAgenda[]> {
+  const porData = new Map<string, VisitaAgenda[]>()
+  for (const v of visitas) {
+    const atual = porData.get(v.date)
+    if (atual) atual.push(v)
+    else porData.set(v.date, [v])
+  }
+  return porData
+}
+
+/**
  * Um item por técnico distinto com visita no dia, na ordem do roster (que
  * já vem ordenado por nome em `rosterTecnicos`), seguido do balde "sem
  * técnico" quando houver visita sem `tecnico_id`. Técnico do roster sem
@@ -147,28 +174,38 @@ export function tecnicosPorDia(
   dias: string[],
   roster: Opcao[],
 ): PontosDia[] {
-  return dias.map((date) => {
-    const doDia = visitas.filter((v) => v.date === date)
-    const pontos: PontoTecnico[] = []
+  const porData = agruparPorData(visitas)
 
+  return dias.map((date) => {
+    const doDia = porData.get(date) ?? []
+
+    // Contagem por técnico numa passada, em vez de um `filter` do dia inteiro
+    // por técnico do roster (roster×V_dia): a ORDEM continua sendo a do
+    // roster, é só a contagem que deixou de varrer.
+    const contagem = new Map<number | false, number>()
+    for (const v of doDia) {
+      contagem.set(v.tecnico_id, (contagem.get(v.tecnico_id) ?? 0) + 1)
+    }
+
+    const pontos: PontoTecnico[] = []
     for (const t of roster) {
-      const doTecnico = doDia.filter((v) => v.tecnico_id === t.id)
-      if (doTecnico.length === 0) continue
+      const visitasCount = contagem.get(t.id)
+      if (!visitasCount) continue
       pontos.push({
         id: t.id,
         name: t.name,
         cor: corDoTecnico(t.id),
-        visitas: doTecnico.length,
+        visitas: visitasCount,
       })
     }
 
-    const semTecnico = doDia.filter((v) => v.tecnico_id === false)
-    if (semTecnico.length > 0) {
+    const semTecnico = contagem.get(false) ?? 0
+    if (semTecnico > 0) {
       pontos.push({
         id: false,
         name: 'Sem técnico',
         cor: COR_SEM_TECNICO,
-        visitas: semTecnico.length,
+        visitas: semTecnico,
       })
     }
 
@@ -178,5 +215,117 @@ export function tecnicosPorDia(
       total: doDia.length,
       conflito: doDia.some((v) => v.conflict),
     }
+  })
+}
+
+export interface PontoInstrumento {
+  id: number
+  /** Nome de `pwa_instrumento_options`; `Instrumento #<id>` quando o id não
+   *  está nas opções — NUNCA pareado com `instrument_list`, que pode estar
+   *  desalinhado com `instrument_ids` (ver cabeçalho de `instrumentosPorDia`). */
+  name: string
+  cor: string
+  /** Quantas visitas do dia usam este instrumento. */
+  visitas: number
+}
+
+export interface PontosInstrumentoDia {
+  date: string
+  instrumentos: PontoInstrumento[]
+}
+
+/**
+ * Cor estável por id de instrumento, da mesma `PALETA` de `corDoTecnico`.
+ * Técnico e instrumento podem cair na mesma cor — o que separa os dois
+ * domínios na grade é a FORMA (bolinha x triângulo), não o matiz.
+ */
+export function corDoInstrumento(id: number): string {
+  return PALETA[id % PALETA.length]
+}
+
+/**
+ * ORDEM ÚNICA dos instrumentos, usada pela célula da grade E pela legenda.
+ *
+ * As duas metades da tela do Mês desenham o mesmo conjunto: se cada uma
+ * ordenasse do seu jeito, a célula desenharia os triângulos numa sequência e
+ * a legenda listaria noutra, e o leitor teria de casar por cor — que é
+ * justamente o portador que a a11y proíbe usar sozinho. Pior: como a célula
+ * CORTA a lista quando estoura o número de marcas (`_GradeMes`), a ordem
+ * decide quais triângulos sobrevivem.
+ *
+ * Regra:
+ * 1. Instrumentos conhecidos (id presente em `pwa_instrumento_options`)
+ *    primeiro, por nome, com colação NUMÉRICA pt-BR — sem
+ *    `{ numeric: true }`, "TAG-10" vem antes de "TAG-2" porque a comparação
+ *    é caractere a caractere.
+ * 2. Desconhecidos (`Instrumento #<id>`, instrumento arquivado ou sem
+ *    permissão de leitura) por último, em id crescente. Um identificador
+ *    fabricado não pode encabeçar a lista por ordem alfabética como se fosse
+ *    um nome de cadastro.
+ * 3. Empate de nome → id crescente, pra ordem nunca depender da ordem de
+ *    chegada.
+ */
+export function ordenarInstrumentos<T extends { id: number; name: string }>(
+  itens: T[],
+  conhecidos: ReadonlySet<number>,
+): T[] {
+  return itens.slice().sort((a, b) => {
+    const aConhecido = conhecidos.has(a.id)
+    const bConhecido = conhecidos.has(b.id)
+    if (aConhecido !== bConhecido) return aConhecido ? -1 : 1
+    if (!aConhecido) return a.id - b.id
+    const porNome = COLATOR_PT_BR_NUMERICO.compare(a.name, b.name)
+    return porNome !== 0 ? porNome : a.id - b.id
+  })
+}
+
+/**
+ * Um item por instrumento distinto usado no dia, na ordem de
+ * `ordenarInstrumentos` (nome com colação numérica; desconhecidos no fim por
+ * id) — a MESMA ordem da legenda, montada pela página com a mesma função.
+ *
+ * Até o fix final a ordem era a de `opcoes` (o `order="tag, id_number, name"`
+ * do servidor). Trocada de propósito: a legenda não recebe `opcoes` (ruling do
+ * controlador: `_VistaMes` só vê dado já agregado), então "ordem do servidor"
+ * era uma regra que só uma das duas metades conseguia aplicar.
+ *
+ * A contagem e o nome vêm de fontes diferentes de propósito: no servidor,
+ * `instrument_list` é `list(filter(None, ...mapped('name')))`, então um
+ * instrumento sem nome cadastrado some da lista mas permanece em
+ * `instrument_ids` — os dois arrays podem ficar DESALINHADOS em tamanho e
+ * posição. Pareando por índice, um instrumento roubaria o nome do outro.
+ * Por isso o nome vem sempre de `opcoes` (o parâmetro `pwa_instrumento_options`),
+ * nunca de `instrument_list`.
+ */
+export function instrumentosPorDia(
+  visitas: VisitaAgenda[],
+  dias: string[],
+  opcoes: InstrumentoOpcao[],
+): PontosInstrumentoDia[] {
+  const porData = agruparPorData(visitas)
+  const nomePorId = new Map(opcoes.map((o) => [o.id, o.name]))
+  // Fora do laço dos 42 dias: o conjunto de ids conhecidos é o mesmo em todos.
+  const conhecidos = new Set(nomePorId.keys())
+
+  return dias.map((date) => {
+    const doDia = porData.get(date) ?? []
+
+    // Conta visitas por id de instrumento, direto de `instrument_ids` — nunca
+    // de `instrument_list`, que pode estar desalinhada (ver comentário acima).
+    const contagem = new Map<number, number>()
+    for (const v of doDia) {
+      for (const id of v.instrument_ids) {
+        contagem.set(id, (contagem.get(id) ?? 0) + 1)
+      }
+    }
+
+    const instrumentos: PontoInstrumento[] = Array.from(contagem, ([id, visitas]) => ({
+      id,
+      name: nomePorId.get(id) ?? `Instrumento #${id}`,
+      cor: corDoInstrumento(id),
+      visitas,
+    }))
+
+    return { date, instrumentos: ordenarInstrumentos(instrumentos, conhecidos) }
   })
 }
