@@ -295,9 +295,23 @@ export default function AgendaPage() {
     () => (mes ? tecnicosPorDia(visitasVisiveis, gradeMes, roster) : []),
     [mes, visitasVisiveis, gradeMes, roster],
   )
+  // Sem NENHUMA das duas faixas restrita, `visitasVisiveis` devolve a mesma
+  // REFERÊNCIA de `visitas` (ver o early return do memo acima) — e aí esta
+  // agregação produziria byte a byte a mesma coisa que `pontosInstrumentoJanela`:
+  // Map sobre o catálogo, laço de 42 dias e um `sort` por dia, pagos duas
+  // vezes a cada troca de `visitas`, que é o caso COMUM (o filtro é
+  // opcional). O atalho pode vir antes das outras condições: com `!mes` ou
+  // catálogo em falha, `pontosInstrumentoJanela` já é `[]`, que é
+  // exatamente o que este memo devolveria. Compartilhar a referência é
+  // seguro porque ninguém ordena/muta esses arrays no lugar —
+  // `ordenarInstrumentos` faz `.slice().sort()` e `instrumentosDoDia` só
+  // mapeia.
   const pontosInstrumentoGrade = useMemo(
-    () => (mes && !instrumentosComFalha ? instrumentosPorDia(visitasVisiveis, gradeMes, opcoesInstrumento) : []),
-    [mes, instrumentosComFalha, visitasVisiveis, gradeMes, opcoesInstrumento],
+    () => {
+      if (visitasVisiveis === visitas) return pontosInstrumentoJanela
+      return mes && !instrumentosComFalha ? instrumentosPorDia(visitasVisiveis, gradeMes, opcoesInstrumento) : []
+    },
+    [mes, instrumentosComFalha, visitasVisiveis, visitas, pontosInstrumentoJanela, gradeMes, opcoesInstrumento],
   )
   // Legenda de instrumentos: os distintos da janela de 42 dias (mesmo escopo
   // da faixa de técnicos, que cobre a grade desenhada e não o mês estrito),
@@ -385,15 +399,24 @@ export default function AgendaPage() {
 
   // Rede de segurança (achado 1 da review da Task 1): o diálogo de
   // confirmação de DATA pendente (`dataPendente`) não pode sobreviver ao
-  // alvo deixar de estar visível. Cenário real: o Gestor arma o diálogo
-  // (toca um dia diferente, `dataPendente` fica setado); ANTES de tocar
-  // "Confirmar", um refetch em BACKGROUND (não uma navegação do próprio
-  // Gestor) traz a visita com outra `date` — ela continua no payload e
-  // `editable`, então o `useEffect` de cima (achado que só cobre "sumiu" ou
-  // "travou") não dispara, e sem este efeito o diálogo continuava aberto,
+  // alvo SAIR DA JANELA VISÍVEL. Cenário: o Gestor arma o diálogo (toca um
+  // dia diferente, `dataPendente` fica setado) e, antes de tocar
+  // "Confirmar", a visita deixa de estar à vista — seja porque ele navegou
+  // de mês/semana, seja porque um refetch em background a moveu para FORA
+  // dos 42 dias desenhados. Nos dois casos o diálogo continuava aberto,
   // pronto pra gravar num alvo que `alvoVisivel` existe justamente pra
-  // proibir (ver comentário dele acima). `confirmarData` abaixo repete o
-  // mesmo check por defesa em profundidade (mesmo clique, mesmo tick).
+  // proibir (ver comentário dele acima). O `useEffect` anterior não cobre
+  // isto: ele só olha "sumiu do payload" ou "travou".
+  //
+  // O que este efeito NÃO cobre, de propósito: um refetch que move a visita
+  // para outra data DENTRO da janela (17/09 → 25/09 com o diálogo armado
+  // para 19/09). `alvoVisivel` continua `true` e nada dispara — e não
+  // precisa: o texto do diálogo re-renderiza com a data nova, então o que o
+  // Gestor lê antes de confirmar é o que vai ser gravado. É autocorrigível,
+  // não um buraco.
+  //
+  // `confirmarData` abaixo repete o mesmo check por defesa em profundidade
+  // (mesmo clique, mesmo tick).
   useEffect(() => {
     if (dataPendente !== null && !alvoVisivel) {
       setDataPendente(null)

@@ -10,6 +10,22 @@ import type { AgendaPayload, InstrumentoOpcao, VisitaAgenda } from '@/lib/odoo/a
 
 const mutateUpdate = vi.fn()
 
+// Espia `instrumentosPorDia` sem trocá-la por um dublê: a agregação real
+// continua rodando (os outros testes deste arquivo leem o resultado dela na
+// grade), só passa a ser contável. `vi.hoisted` porque a fábrica do
+// `vi.mock` roda antes das declarações do módulo.
+const { espiaInstrumentosPorDia } = vi.hoisted(() => ({ espiaInstrumentosPorDia: vi.fn() }))
+vi.mock('../agenda/mes', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../agenda/mes')>()
+  return {
+    ...real,
+    instrumentosPorDia: (...args: Parameters<typeof real.instrumentosPorDia>) => {
+      espiaInstrumentosPorDia(...args)
+      return real.instrumentosPorDia(...args)
+    },
+  }
+})
+
 function visita(over: Partial<VisitaAgenda> = {}): VisitaAgenda {
   return {
     id: 7, date: '2026-09-17', time_start: 8, time_stop: 12, planned_hours: 4,
@@ -126,6 +142,7 @@ describe('Modo Mês', () => {
     mutateUpdate.mockReset().mockResolvedValue(visita())
     mockUseAgenda.mockClear()
     mockUseInstrumentoOptions.mockClear()
+    espiaInstrumentosPorDia.mockClear()
     // Mesma razão do `ModoSemana.test.tsx`: o store é singleton (zustand +
     // persist) e vaza entre testes sem reset explícito.
     useTecnicoSettings.setState({ modoAgenda: 'lista', filterMine: true })
@@ -1162,6 +1179,45 @@ describe('Modo Mês', () => {
     expect(
       screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
     ).toContain('Afonso')
+  })
+
+  it('com as duas faixas em "Todos", a agregação de instrumentos roda UMA vez por conjunto de visitas', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Sem restrição nenhuma, `visitasVisiveis` É `visitas` (mesma
+    // referência), então a agregação "da grade" produziria byte a byte a
+    // mesma coisa que a "da janela" — Map sobre o catálogo, laço de 42 dias
+    // e um sort por dia, pagos duas vezes a cada troca de payload.
+    //
+    // O número: entrar no Mês passa por DUAS rodadas de derivação (antes e
+    // depois de a âncora do mês existir, que é o que monta a grade de 42
+    // dias). O que este teste guarda é o CUSTO POR RODADA — uma agregação,
+    // não duas: eram 4 chamadas, agora são 2. Se a contagem cair para 1, a
+    // rodada extra sumiu e o teste deve ser relido, não afrouxado.
+    expect(espiaInstrumentosPorDia).toHaveBeenCalledTimes(2)
+    // E a grade continua mostrando o que a agregação diz.
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Q001')
+
+    // Com uma restrição ativa as duas listas DIVERGEM, e aí a segunda
+    // agregação é obrigatória — o atalho não pode engolir este caso.
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Técnicos:' })).getByRole('button', { name: 'Afonso' }),
+    )
+    expect(espiaInstrumentosPorDia).toHaveBeenCalledTimes(3)
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Q001')
   })
 
   it('a marca do chip desligado também perde o preenchimento — vira contorno (achado 2 da review final)', async () => {
