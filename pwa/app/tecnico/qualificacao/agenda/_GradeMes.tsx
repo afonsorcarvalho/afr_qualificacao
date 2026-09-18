@@ -62,6 +62,7 @@ function labelCelula(
   instrumentos: PontoInstrumento[],
   dentro: boolean,
   ehHoje: boolean,
+  conflitoDoDia: boolean,
 ): string {
   const prefixo = dentro ? '' : 'fora do mês, '
   const marca = ehHoje ? ', hoje' : ''
@@ -73,7 +74,16 @@ function labelCelula(
     : `${dia.total} ${dia.total === 1 ? 'visita' : 'visitas'}: ${nomes}`
   const parteInstrumentos =
     instrumentos.length > 0 ? `; instrumentos: ${instrumentos.map((i) => i.name).join(', ')}` : ''
-  const sufixo = dia.conflito ? ', com conflito' : ''
+  // Fonte NÃO FILTRADA (`conflitoDoDia`, de `conflitos: ReadonlySet<string>`),
+  // não mais `dia.conflito` (Task 1 da barra de estado). A barra vermelha da
+  // célula passou a valer para o DIA INTEIRO — se o sufixo continuasse preso
+  // ao conjunto filtrado, um dia com barra vermelha mas cujas visitas em
+  // conflito estão todas escondidas pelo filtro ficaria com cor sem
+  // equivalente textual, violando a Global Constraint #4 (cor nunca é o
+  // único portador). `dia.conflito` (filtrado) continua vivo só para o anel
+  // `ring-danger` do PONTINHO abaixo — esse marca qual VISITA VISÍVEL está em
+  // conflito, um fato diferente do "o dia tem conflito" que o sufixo afirma.
+  const sufixo = conflitoDoDia ? ', com conflito' : ''
   return `${prefixo}${rotuloDia(dia.date)}${marca}, ${corpo}${sufixo}${parteInstrumentos}`
 }
 
@@ -123,6 +133,7 @@ function repartirMarcas(
 export function GradeMes({
   dias,
   instrumentos,
+  conflitos,
   ancora,
   hoje,
   selecionado,
@@ -135,6 +146,17 @@ export function GradeMes({
    * chamador nunca é uma dependência real.
    */
   instrumentos: PontosInstrumentoDia[]
+  /**
+   * Datas (ISO) com ALGUM conflito na janela — fonte NÃO FILTRADA
+   * (`conflitosPorDia(visitas, ...)`, nunca `visitasVisiveis`), casada por
+   * `date`, nunca por posição (mesmo raciocínio de `instrumentos`). Governa
+   * a barra vermelha da célula e o sufixo ", com conflito" do `aria-label`
+   * — os dois têm de concordar, senão a cor da barra fica sem equivalente
+   * textual (Global Constraint #4). `dia.pontos`/`dia.total` (filtrados)
+   * continuam decidindo a barra VERDE e o corpo do label — as duas fontes
+   * são de propósito distintas (Task 1 da barra de estado).
+   */
+  conflitos: ReadonlySet<string>
   ancora: string
   hoje: string | null
   selecionado: string
@@ -171,16 +193,31 @@ export function GradeMes({
           )
           const pontosVisiveis = dia.pontos.slice(0, slotsTecnicos)
           const instrumentosVisiveis = instrumentosDoDia.slice(0, slotsInstrumentos)
+          // Fonte NÃO FILTRADA (`conflitos`), não `dia.conflito` — ver o
+          // comentário do parâmetro `conflitos` acima e o de `labelCelula`.
+          const conflitoDoDia = conflitos.has(dia.date)
+          // Estado da barra: conflito manda sobre visita (decisão fechada com
+          // o user, não reabrir) — `--danger` quando a data tem QUALQUER
+          // conflito na janela, mesmo que o filtro esconda as visitas que o
+          // causam; `--ok` só quando o dia FILTRADO tem visita e não há
+          // conflito nenhum; nenhuma cor quando o dia está vazio (`dia.total
+          // === 0`, filtrado) e sem conflito. Consequência aceita (brief): um
+          // dia pode ficar sem NENHUM pontinho visível (filtro escondeu todas
+          // as visitas) e ainda assim mostrar a barra vermelha — a barra e o
+          // sufixo do aria-label são a única afirmação que sobra sobre aquele
+          // dia nesse caso.
+          const corBarra: 'danger' | 'ok' | null =
+            conflitoDoDia ? 'danger' : dia.total > 0 ? 'ok' : null
 
           return (
             <button
               key={dia.date}
               type="button"
               aria-pressed={ehSelecionado}
-              aria-label={labelCelula(dia, instrumentosDoDia, dentro, ehHoje)}
+              aria-label={labelCelula(dia, instrumentosDoDia, dentro, ehHoje, conflitoDoDia)}
               onClick={() => onSelecionar(dia.date)}
               className={clsx(
-                'flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-md p-1',
+                'relative flex min-h-[44px] flex-col items-center justify-center gap-0.5 overflow-hidden rounded-md p-1',
                 // Tinta do dia selecionado: fundo SÓLIDO, não `bg-accent`
                 // (fix round 2, achado 4). A grade tinha herdado o
                 // `bg-accent` da `_FaixaDias`, mas sem o parceiro de
@@ -207,6 +244,41 @@ export function GradeMes({
                 ehHoje && (ehSelecionado ? 'ring-primary-foreground' : 'ring-primary'),
               )}
             >
+              {/* Barra de estado do dia (Task 1): 3px, largura total, na
+                  base da célula, ABAIXO das marcas (ordem de DOM antes delas,
+                  `absolute` tira do fluxo — a posição visual é o que "abaixo"
+                  quer dizer, não empilhamento por z-index). `aria-hidden`: o
+                  fato que ela carrega (dia tem visita / dia tem conflito) já
+                  está no `aria-label` do botão (`corpo`/`sufixo` de
+                  `labelCelula`), então a barra é reforço visual, não uma
+                  segunda fonte de informação.
+
+                  SUPRIMIDA no dia SELECIONADO (achado do fix de contraste
+                  desta task): `--ok` e `--danger` foram desenhados para
+                  serem TEXTO legível sobre `--card`/`--background` (a
+                  medição em `mes.test.ts` mede exatamente isso), não peça
+                  gráfica sobre `--primary` — sobre o fundo sólido do dia
+                  selecionado a razão medida é 1.77–2.63:1 nos dois tokens e
+                  nos dois temas, bem abaixo do piso de 3:1 da WCAG 1.4.11.
+                  Não existe tom fixo que limpe 3:1 contra `--card` E
+                  `--primary` ao mesmo tempo nos dois temas — os dois tokens
+                  ficam em extremos opostos de luminância de propósito (texto
+                  escuro sobre fundo claro no tema claro, e o inverso no
+                  escuro). A informação não se perde: o `aria-label` do dia
+                  selecionado carrega a mesma contagem e o mesmo sufixo de
+                  conflito de qualquer outro dia — a Global Constraint #4 exige
+                  que cor nunca seja o ÚNICO portador, não que todo fato tenha
+                  também um portador visual. */}
+              {corBarra && !ehSelecionado && (
+                <span
+                  data-testid="barra-estado"
+                  aria-hidden
+                  className={clsx(
+                    'pointer-events-none absolute inset-x-0 bottom-0 h-[3px]',
+                    corBarra === 'danger' ? 'bg-danger' : 'bg-ok',
+                  )}
+                />
+              )}
               <span
                 data-testid="numero"
                 className={clsx(
@@ -234,7 +306,14 @@ export function GradeMes({
                     className={clsx(
                       'h-1.5 w-1.5 shrink-0 rounded-full',
                       // Contorno de perigo além da cor: cor sozinha não
-                      // chega a quem não a distingue.
+                      // chega a quem não a distingue. Fonte FILTRADA
+                      // (`dia.conflito`), de propósito diferente da barra da
+                      // célula (que usa `conflitos`, não filtrada, Task 1): o
+                      // anel marca qual VISITA VISÍVEL está em conflito, a
+                      // barra marca "o dia tem conflito" — os dois podem
+                      // divergir quando o filtro esconde justamente a visita
+                      // em conflito (barra vermelha, nenhum ponto com anel,
+                      // porque o ponto em conflito nem está na tela).
                       dia.conflito && 'ring-1 ring-danger',
                     )}
                     style={{ backgroundColor: p.cor }}

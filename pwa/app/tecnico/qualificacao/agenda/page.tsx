@@ -15,7 +15,7 @@ import { PainelRecursos, type Dimensao } from './_PainelRecursos'
 import { VistaMes } from './_VistaMes'
 import { ConfirmarMudancaData } from './_ConfirmarMudancaData'
 import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, instrumentosDoDia, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
-import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia, ordenarInstrumentos, corDoTecnico, COR_SEM_TECNICO } from './mes'
+import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia, conflitosPorDia, ordenarInstrumentos, corDoTecnico, COR_SEM_TECNICO } from './mes'
 import type { PontoInstrumento } from './mes'
 
 function rotuloDia(iso: string): string {
@@ -315,6 +315,19 @@ export default function AgendaPage() {
   const pontosDiaGrade = useMemo(
     () => (mes ? tecnicosPorDia(visitasVisiveis, gradeMes, roster) : []),
     [mes, visitasVisiveis, gradeMes, roster],
+  )
+  // Barra de estado por dia (Task 1): fonte NÃO FILTRADA de propósito —
+  // `visitas`, nunca `visitasVisiveis`. O filtro das duas faixas de legenda
+  // altera só as MARCAS da grade (`pontosDiaGrade`/`pontosInstrumentoGrade`,
+  // acima); conflito é fato do dia inteiro e não pode ficar escondido só
+  // porque o Gestor restringiu técnico/instrumento (decisão fechada com o
+  // user, brief). `[]` fora do mês — mesmo raciocínio de `idsTecnicoNaJanela`
+  // — mas devolvendo sempre a mesma REFERÊNCIA (`Set` vazio memoizado por
+  // `useMemo`, não um literal por render) para não invalidar à toa quem
+  // consome esta prop.
+  const conflitosGrade = useMemo(
+    () => (mes ? conflitosPorDia(visitas, gradeMes) : new Set<string>()),
+    [mes, visitas, gradeMes],
   )
   // Sem NENHUMA das duas faixas restrita, `visitasVisiveis` devolve a mesma
   // REFERÊNCIA de `visitas` (ver o early return do memo acima) — e aí esta
@@ -835,6 +848,7 @@ export default function AgendaPage() {
           visitas={visitas}
           dias={pontosDiaGrade}
           instrumentos={pontosInstrumentoGrade}
+          conflitos={conflitosGrade}
           legendaTecnicos={legendaTecnicos}
           legendaInstrumentos={legendaInstrumentos}
           tecnicosSel={tecnicosSel}

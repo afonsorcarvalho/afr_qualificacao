@@ -1498,6 +1498,77 @@ describe('Modo Mês', () => {
     expect(screen.queryByText(/Movendo a visita/)).toBeNull()
     expect(mutateUpdate).not.toHaveBeenCalled()
   })
+
+  // --- Task 1 (plano "agenda-barra-estado-dia"): a barra e o aria-label
+  // sobrevivem ao filtro das duas faixas de legenda, porque as duas leem a
+  // fonte NÃO FILTRADA (`conflitosPorDia(visitas, ...)`, montada em `page.tsx`
+  // a partir de `visitas`, nunca `visitasVisiveis`) ---
+
+  describe('barra de estado do dia sobrevive ao filtro (fonte não filtrada)', () => {
+    it('filtro que esconde as visitas de um dia em conflito: o dia fica sem pontinhos, com barra vermelha, e o aria-label continua dizendo ", com conflito"', async () => {
+      // 20/09, NÃO 17/09 (`server_today`): o dia selecionado por default
+      // ganha fundo `--primary` e suprime a barra (achado de contraste desta
+      // task, ver `mes.test.ts`) — este teste teria que checar uma barra que
+      // não deveria estar lá por um motivo ALHEIO ao que ele prova.
+      payloadAtual = {
+        ...payload,
+        visitas: [
+          visita({
+            id: 7, date: '2026-09-20', tecnico_id: 441, tecnico_name: 'Afonso', conflict: true,
+          }),
+        ],
+      }
+      montar()
+      irParaMes()
+      await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+      const celulaAntes = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(celulaAntes.getAttribute('aria-label')).toContain(', com conflito')
+      expect(within(celulaAntes).getByTestId('barra-estado').className).toContain('bg-danger')
+
+      // Desliga o único técnico da faixa — a camada 1 do filtro (`page.tsx`)
+      // esconde a visita inteira das marcas, mas `conflitosGrade` não muda:
+      // ela nunca leu `visitasVisiveis`.
+      const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+      fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+      const celula = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(within(celula).queryAllByTestId('ponto')).toHaveLength(0)
+      // O sufixo continua — a data segue no `Set` não filtrado.
+      expect(celula.getAttribute('aria-label')).toContain(', com conflito')
+      // E a barra continua vermelha — nunca vira `--ok` nem some, mesmo sem
+      // nenhum pontinho visível (consequência aceita no brief).
+      expect(within(celula).getByTestId('barra-estado').className).toContain('bg-danger')
+    })
+
+    it('filtro que esconde as visitas de um dia SEM conflito: o dia perde a barra verde junto com os pontinhos', async () => {
+      // Mesmo raciocínio acima: 20/09, não o dia selecionado por default.
+      payloadAtual = {
+        ...payload,
+        visitas: [
+          visita({
+            id: 7, date: '2026-09-20', tecnico_id: 441, tecnico_name: 'Afonso', conflict: false,
+          }),
+        ],
+      }
+      montar()
+      irParaMes()
+      await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+      const celulaAntes = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(within(celulaAntes).getByTestId('barra-estado').className).toContain('bg-ok')
+
+      const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+      fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+      const celula = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(within(celula).queryAllByTestId('ponto')).toHaveLength(0)
+      // Sem conflito na janela e sem visita FILTRADA sobrando: a barra some
+      // por inteiro — não vira `--danger` (não há conflito) nem continua
+      // `--ok` (a camada 1 do filtro esvaziou o dia filtrado).
+      expect(within(celula).queryByTestId('barra-estado')).not.toBeInTheDocument()
+    })
+  })
 })
 
 // --- Task 1 (isolar recurso): toque longo num chip da faixa ---

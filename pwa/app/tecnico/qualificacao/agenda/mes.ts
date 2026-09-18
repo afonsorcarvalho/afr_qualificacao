@@ -218,6 +218,29 @@ export function tecnicosPorDia(
   })
 }
 
+/**
+ * Datas (ISO) da janela em que ALGUMA visita está em conflito — sobre a
+ * lista NÃO filtrada (`visitas`, nunca `visitasVisiveis`), porque o filtro
+ * das duas faixas de legenda não pode esconder conflito (Task 1 do plano da
+ * barra de estado): um conflito de agenda é fato do dia inteiro, não do
+ * subconjunto de técnicos/instrumentos que o Gestor decidiu olhar agora.
+ *
+ * Varredura O(nº de visitas) — uma passada por `visitas`, não 42×visitas: a
+ * mesma otimização de `agruparPorData`, só que aqui o resultado é um `Set` de
+ * datas, não um índice de arrays.
+ */
+export function conflitosPorDia(
+  visitas: VisitaAgenda[],
+  dias: string[],
+): Set<string> {
+  const diasValidos = new Set(dias)
+  const conflitos = new Set<string>()
+  for (const v of visitas) {
+    if (v.conflict && diasValidos.has(v.date)) conflitos.add(v.date)
+  }
+  return conflitos
+}
+
 export interface PontoInstrumento {
   id: number
   /** Nome de `pwa_instrumento_options`; `Instrumento #<id>` quando o id não

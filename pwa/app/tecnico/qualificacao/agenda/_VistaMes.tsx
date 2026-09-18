@@ -527,6 +527,7 @@ export function VistaMes({
   visitas,
   dias,
   instrumentos,
+  conflitos,
   legendaTecnicos,
   legendaInstrumentos,
   tecnicosSel,
@@ -562,6 +563,14 @@ export function VistaMes({
   /** Instrumentos usados por dia, nos 42 dias da grade — também já FILTRADO
    *  pelas duas faixas (mesmo raciocínio de `dias` acima). */
   instrumentos: PontosInstrumentoDia[]
+  /**
+   * Datas (ISO) com conflito na janela — fonte NÃO FILTRADA
+   * (`conflitosPorDia(visitas, ...)`, a página monta a partir de `visitas`,
+   * nunca `visitasVisiveis`). Governa a barra vermelha da célula e o sufixo
+   * ", com conflito" do `aria-label`: o filtro das duas faixas não pode
+   * esconder conflito (Task 1 da barra de estado por dia).
+   */
+  conflitos: ReadonlySet<string>
   /**
    * Itens da faixa "Técnicos:" — TODOS os técnicos com visita na janela
    * visível (os 42 dias da grade), ligados ou desligados no filtro: a faixa
@@ -635,6 +644,7 @@ export function VistaMes({
       <GradeMes
         dias={dias}
         instrumentos={instrumentos}
+        conflitos={conflitos}
         ancora={ancora}
         hoje={hoje}
         selecionado={diaSel}

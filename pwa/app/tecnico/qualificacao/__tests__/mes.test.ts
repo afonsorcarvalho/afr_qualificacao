@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes,
   corDoTecnico, tecnicosPorDia, PALETA, COR_SEM_TECNICO,
-  corDoInstrumento, instrumentosPorDia,
+  corDoInstrumento, instrumentosPorDia, conflitosPorDia,
 } from '../agenda/mes'
 import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
@@ -386,5 +386,110 @@ describe('PALETA', () => {
         }
       }
     }
+  })
+})
+
+/**
+ * Guarda de contraste da barra de estado do dia (Task 1). Mesmo método da
+ * guarda da `PALETA` logo acima (hsl→rgb + razão WCAG), só que medindo os
+ * TOKENS `--ok`/`--danger` em vez da paleta hex de técnico.
+ *
+ * Só DOIS fundos aqui, não os quatro que o brief original pedia
+ * (`--card`/`--primary` × claro/escuro): medido com este mesmo método,
+ * `--ok` e `--danger` passam 3:1 sobre `--card` nos dois temas (6.94–9.93:1),
+ * mas caem para 1.77–2.63:1 sobre `--primary` nos dois temas — bem abaixo do
+ * piso. A razão é estrutural, não um valor mal escolhido: `--ok`/`--danger`
+ * foram calibrados (ver comentário no topo de `globals.css`) para serem TEXTO
+ * legível sobre `--card`/`--background`, e não existe tom fixo que limpe 3:1
+ * contra `--card` E `--primary` ao mesmo tempo nos dois temas — os dois
+ * tokens sentam em extremos opostos de luminância de propósito (claro no
+ * tema claro é `--card` quase branco e `--primary` quase preto; o inverso no
+ * escuro).
+ *
+ * A saída (decidida com o advisor desta task, não um token novo inventado em
+ * silêncio): a barra NÃO renderiza no dia SELECIONADO — o único dia com fundo
+ * `--primary` — e o `aria-label` continua carregando a mesma informação
+ * (contagem, nomes, sufixo de conflito) nesse dia, então a Global Constraint
+ * #4 ("cor nunca é o único portador") continua respeitada; só o portador
+ * VISUAL fica ausente ali, não a informação. Ver `GradeMes.tsx` (prop
+ * `conflitos`, supressão `!ehSelecionado`) e o describe "barra de estado do
+ * dia" em `GradeMes.test.tsx`, que pina essa supressão — sem aquele teste,
+ * a redução de escopo desta guarda para dois fundos ficaria sem lastro (
+ * alguém poderia reintroduzir a barra no dia selecionado e esta guarda
+ * continuaria verde).
+ */
+describe('barra de estado do dia: --ok/--danger legíveis sobre --card nos dois temas', () => {
+  it('--ok e --danger passam 3:1 sobre --card no claro e no escuro', () => {
+    const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
+    for (const tema of [':root', ':root.dark']) {
+      const card = tokenDe(css, tema, 'card')
+      expect(card, `--card ausente em ${tema}`).not.toBeNull()
+      const bg = hsl2rgb(card!)
+      for (const papel of ['ok', 'danger']) {
+        const token = tokenDe(css, tema, papel)
+        expect(token, `--${papel} ausente em ${tema}`).not.toBeNull()
+        expect(
+          contraste(hsl2rgb(token!), bg),
+          `--${papel} sobre --card em ${tema}`,
+        ).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+})
+
+describe('conflitosPorDia', () => {
+  const dias = ['2026-09-17', '2026-09-18']
+
+  it('devolve só as datas com alguma visita em conflito', () => {
+    const r = conflitosPorDia(
+      [
+        v({ id: 1, date: '2026-09-17', conflict: true }),
+        v({ id: 2, date: '2026-09-18', conflict: false }),
+      ],
+      dias,
+    )
+    expect(r).toEqual(new Set(['2026-09-17']))
+  })
+
+  it('data com conflito fora da janela (`dias`) não entra', () => {
+    // O filtro NÃO é sobre as visitas passadas (que continuam sendo TODAS as
+    // da janela em modo Mês, não filtradas pelas duas faixas) — é sobre a
+    // grade de dias recebida: uma visita de conflito fora dos 42 dias
+    // pedidos (o que hoje não acontece em produção, já que `visitas` vem do
+    // fetch ancorado na própria grade) não deve poder vazar para o `Set`.
+    const r = conflitosPorDia(
+      [v({ id: 1, date: '2026-08-01', conflict: true })],
+      dias,
+    )
+    expect(r).toEqual(new Set())
+  })
+
+  it('dia sem visita não entra; lista vazia devolve conjunto vazio', () => {
+    expect(conflitosPorDia([], dias)).toEqual(new Set())
+    expect(conflitosPorDia([v({ date: '2026-09-17', conflict: false })], dias)).toEqual(new Set())
+  })
+
+  it('fonte é a lista completa, não filtrada — o filtro das duas faixas não pode esconder conflito', () => {
+    // `conflitosPorDia` não sabe nada sobre técnico/instrumento — recebe
+    // sempre a `visitas` que o chamador decidir passar. Este teste documenta
+    // a intenção do lado de `page.tsx`: a função em si só varre o que
+    // recebe, então uma visita de qualquer técnico/instrumento entra desde
+    // que `conflict` seja `true` e a data esteja em `dias`.
+    const r = conflitosPorDia(
+      [v({ id: 1, date: '2026-09-17', tecnico_id: 9, instrument_ids: [999], conflict: true })],
+      dias,
+    )
+    expect(r).toEqual(new Set(['2026-09-17']))
+  })
+
+  it('duas visitas em conflito no mesmo dia rendem uma única entrada no Set', () => {
+    const r = conflitosPorDia(
+      [
+        v({ id: 1, date: '2026-09-17', conflict: true }),
+        v({ id: 2, date: '2026-09-17', conflict: true }),
+      ],
+      dias,
+    )
+    expect(r.size).toBe(1)
   })
 })
