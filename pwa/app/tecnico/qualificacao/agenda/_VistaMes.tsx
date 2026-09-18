@@ -234,9 +234,36 @@ function FaixaLegenda<T extends number | false>({
     if (!estado || estado.pointerId !== evento.pointerId) return
     // Só limpa o TIMER (caso o toque tenha sido curto e ele ainda não tenha
     // disparado) — `suprimirCliqueRef` é independente deste objeto e
-    // sobrevive por conta própria até o `onClick` consumi-la (ver
-    // comentário dela acima).
+    // sobrevive por conta própria até o `onClick` consumi-la: um
+    // `pointerup` NORMAL é sempre seguido por um `click` (real ou
+    // suprimido, ver comentário de `suprimirCliqueRef` acima), que é quem
+    // decide se a consome. `cancelarToqueLongo`, abaixo, é quem trata o
+    // caso em que esse `click` NUNCA vem.
     clearTimeout(estado.timer)
+  }
+
+  function cancelarToqueLongo(evento: React.PointerEvent<HTMLButtonElement>) {
+    const estado = toqueRef.current
+    if (!estado || estado.pointerId !== evento.pointerId) return
+    clearTimeout(estado.timer)
+    // `pointercancel`, ao contrário de `pointerup`, GARANTE (spec de
+    // Pointer Events) que nenhum `click` vem depois pra ESTE gesto — o
+    // sistema interrompeu o toque antes de completar (rolagem detectada
+    // tarde, notificação, etc.). Deixar `suprimirCliqueRef` armada até o
+    // PRÓXIMO `click` qualquer (round 1) suprimia até um clique de
+    // PONTEIRO legítimo e sem nenhuma relação, no primeiro chip que
+    // alguém tocasse depois — o gate `evento.detail === 0` do round 1
+    // protege só o caminho de TECLADO (`detail` sempre 0 ali), nunca este
+    // (um clique de ponteiro real tem `detail >= 1`, então passava direto
+    // pela checagem) — achado da review final, fix round 4. Zerar AQUI,
+    // onde temos certeza de que não sobra nada a suprimir, fecha esse
+    // buraco sem reabrir os das reviews anteriores: um toque longo
+    // bem-sucedido que termina em `pointerup` normal nunca passa por esta
+    // função, então o clique-fantasma DELE continua protegido (requisito
+    // a); o gate de teclado (b), a independência de `toqueRef`/`pointerId`
+    // da corrida de dois dedos do round 2 (c) e a captura de ponteiro do
+    // round 3 (d) — nenhum dos três é tocado por esta função.
+    suprimirCliqueRef.current = false
   }
 
   /**
@@ -357,7 +384,7 @@ function FaixaLegenda<T extends number | false>({
             onPointerDown={(evento) => iniciarToqueLongo(item.id, evento)}
             onPointerMove={moverToqueLongo}
             onPointerUp={soltarToqueLongo}
-            onPointerCancel={soltarToqueLongo}
+            onPointerCancel={cancelarToqueLongo}
             className={clsx(
               // `select-none` + `touch-manipulation`: suprime a seleção de
               // texto e o menu de contexto que o toque longo dispara nativo

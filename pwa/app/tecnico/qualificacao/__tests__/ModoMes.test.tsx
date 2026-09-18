@@ -1874,4 +1874,38 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
 
     expect(status).toHaveTextContent('Mostrando 2 de 3 técnicos')
   })
+
+  it('pointercancel libera suprimirCliqueRef: um clique de PONTEIRO legítimo noutro chip da faixa volta a alternar normalmente (achado da review final, fix round 4)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Toque longo em Afonso isola — mas o SISTEMA interrompe o toque com
+    // `pointercancel` em vez do `pointerup` normal (rolagem detectada
+    // tarde, notificação, etc.): por spec, nenhum `click` vem depois pra
+    // ESTE gesto.
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerCancel(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    // Interação seguinte é um toque simples REAL (ponteiro, não teclado)
+    // num chip DIFERENTE, sem nenhuma relação com o gesto de Afonso.
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+    fireEvent.click(chipBruno, { detail: 1 })
+
+    // Bruno precisa ligar (alternar normal). Antes do fix, a flag de
+    // supressão ficava presa do `pointercancel` de Afonso — o gate
+    // `detail === 0` do round 1 protege só cliques de TECLADO, nunca este
+    // (um clique de ponteiro real tem `detail: 1`) — e este clique era
+    // engolido em silêncio, mesmo sem nenhuma relação com o gesto abortado.
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
 })
