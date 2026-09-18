@@ -868,6 +868,11 @@ describe('Modo Mês', () => {
     const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
     expect(celula.getAttribute('aria-label')).toContain('Afonso')
     expect(celula.getAttribute('aria-label')).not.toContain('Bruno')
+    // O TRIÂNGULO também é filtrado, não só a bolinha: `pontosInstrumentoGrade`
+    // é código novo sem cobertura própria — sem esta asserção, Q002
+    // continuando no trecho "; instrumentos: ..." passaria batido.
+    expect(celula.getAttribute('aria-label')).toContain('Q001')
+    expect(celula.getAttribute('aria-label')).not.toContain('Q002')
   })
 
   it('consequência aceita: com a faixa de instrumentos restrita, a visita sem instrumento nenhum perde a bolinha do técnico', async () => {
@@ -945,6 +950,134 @@ describe('Modo Mês', () => {
     expect(celula.getAttribute('aria-label')).toContain('Bruno')
   })
 
+  it('restringir instrumentos e navegar para um mês sem NENHUMA visita instrumentada: a faixa continua com "Todos" visível, e a restrição do mês anterior não suprime as marcas de lá (achado 1, fix round 1)', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Restringe a Q001 — antes de navegar, mesma mecânica dos testes acima.
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Bruno')
+
+    // Outubro: uma visita, NENHUM instrumento usado em lugar nenhum da
+    // janela — sem catálogo em falha, só um mês onde a faixa não tem nada
+    // pra mostrar (`legendaInstrumentos` fica `[]` igual à falha, mas por
+    // outro motivo).
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 9, date: '2026-10-05', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [],
+      })],
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Próximo período' }))
+    await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
+
+    // A faixa "Instrumentos:" continua na tela com "Todos" — mesmo sem
+    // nenhum chip de item pra mostrar — porque `instrumentosSel` ainda não
+    // é `null` (o Gestor nunca tocou "Todos"); sem isto a restrição de
+    // setembro ficaria escondida e sem controle nenhum pra limpar.
+    const grupoInstrumentosOutubro = screen.getByRole('group', { name: 'Instrumentos:' })
+    const badgeTodosOutubro = within(grupoInstrumentosOutubro).getByRole('button', { name: 'Todos' })
+    expect(badgeTodosOutubro).toHaveAttribute('aria-pressed', 'false')
+
+    // E a restrição de Q001/Q002 — que não tem contra o que ser aplicada
+    // num mês sem nenhum instrumento usado — não suprime a bolinha de
+    // Afonso em outubro.
+    expect(
+      screen.getByRole('button', { name: /^5 de outubro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
+  it('as duas faixas restritas ao mesmo tempo combinam por interseção (E), não união', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        // Afonso + Q001: bate as duas faixas restritas — deve sobreviver.
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+        }),
+        // Afonso + Q002: técnico bate, instrumento não — some.
+        visita({
+          id: 8, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [102],
+        }),
+        // Bruno + Q001: instrumento bate, técnico não — some.
+        visita({
+          id: 9, date: '2026-09-17', tecnico_id: 9, tecnico_name: 'Bruno', instrument_ids: [101],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Restringe técnico a Afonso (desliga Bruno)...
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Bruno' }))
+    // ...e instrumento a Q001 (desliga Q002).
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q002/ }))
+
+    // União deixaria as três visitas (qualquer uma bate uma das duas
+    // faixas); interseção só deixa a 7 (Afonso E Q001).
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const label = celula.getAttribute('aria-label') ?? ''
+    expect(label).toContain('1 visita')
+    expect(label).toContain('Afonso')
+    expect(label).not.toContain('Bruno')
+    expect(label).toContain('Q001')
+    expect(label).not.toContain('Q002')
+  })
+
+  it('desligar todos os chips de uma faixa sem usar "Todos" deixa um Set vazio (não null): nada passa naquela camada, mas "Todos" continua visível como saída', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Único técnico da janela é Afonso — desligá-lo (sem tocar "Todos")
+    // deixa `tecnicosSel` num `Set` vazio, não `null`.
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).not.toContain('Afonso')
+    // A saída continua lá, ligável a qualquer momento.
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos' })
+    expect(badgeTodos).toBeInTheDocument()
+    expect(badgeTodos).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(badgeTodos)
+    expect(
+      screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
+    ).toContain('Afonso')
+  })
+
   it('"Todos" restaura a faixa e o próprio badge reflete aria-pressed corretamente', async () => {
     payloadAtual = {
       ...payload,
@@ -993,6 +1126,40 @@ describe('Modo Mês', () => {
     expect(
       screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
     ).toContain('Afonso')
+  })
+
+  it('chip ligado é o preenchido (tem o peso); desligado fica apagado — nunca o contrário (achado 2, fix round 1)', async () => {
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso' })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupoTecnicos).getByRole('button', { name: 'Afonso' })
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos' })
+
+    // Estado inicial ("Todos" ativo, Afonso ligado por herança): os dois
+    // usam o MESMO vocabulário de peso — preenchido, sem contorno
+    // tracejado.
+    expect(badgeTodos.className).toMatch(/bg-accent/)
+    expect(chipAfonso.className).toMatch(/bg-accent/)
+    expect(chipAfonso.className).not.toMatch(/border-dashed/)
+
+    fireEvent.click(chipAfonso)
+
+    // Desligado: sem preenchimento, com contorno tracejado — a validação em
+    // navegador achou o oposto (desligado com MAIS peso visual que ligado,
+    // o olho lia o destacado como "selecionado"). Desligar um chip
+    // específico sai do estado "Todos" (vira um `Set` restrito), então o
+    // próprio badge "Todos" segue o MESMO vocabulário: também perde o
+    // preenchimento.
+    expect(chipAfonso.className).not.toMatch(/bg-accent/)
+    expect(chipAfonso.className).toMatch(/border-dashed/)
+    expect(badgeTodos.className).not.toMatch(/bg-accent/)
+    expect(badgeTodos.className).toMatch(/border-dashed/)
   })
 
   it('trocar de modo e voltar ao Mês zera o filtro', async () => {
