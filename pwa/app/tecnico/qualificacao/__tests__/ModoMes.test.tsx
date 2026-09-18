@@ -1699,4 +1699,51 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
       })
     }).not.toThrow()
   })
+
+  // --- Fix round 2 (re-review): corrida de dois dedos ---
+
+  it('clique-fantasma do dedo 1 não desliga o item isolado quando o dedo 2 já tocou outro chip antes do click chegar', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 (pointerId 1): toque longo em Afonso, isola, solta normalmente
+    // (pointerup, não pointercancel — o `click` real ainda vai vir).
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    // Dedo 2 (pointerId 2) toca Bruno ANTES do `click` do dedo 1 chegar —
+    // a janela assíncrona real entre o `pointerup` e o `click` que o
+    // navegador dispara depois. Sem a correção, o `pointerdown` do dedo 2
+    // sobrescreve `toqueRef.current` inteiro, levando junto a supressão que
+    // o `click` do dedo 1 ainda precisa consumir.
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+
+    // Só AGORA chega o `click` do dedo 1 (detail: 1 — click de ponteiro
+    // real). Precisa continuar suprimido: sem isto, cairia no `onAlternar`
+    // e desligaria Afonso, que acabou de ser isolado com sucesso.
+    fireEvent.click(chipAfonso, { detail: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+
+    // (b) o segundo gesto continua funcionando normalmente: completa o
+    // toque longo em Bruno (isola, derrubando Afonso) e o próprio `click`
+    // fantasma DELE também é suprimido corretamente — a correção não pode
+    // ter comprometido o ciclo de supressão do gesto que a sucedeu.
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+    fireEvent.click(chipBruno, { detail: 1 })
+
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+  })
 })
