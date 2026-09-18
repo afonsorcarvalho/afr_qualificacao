@@ -1402,9 +1402,14 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
       { id: 101, name: 'Q001', validade: '2027-01-01' },
       { id: 102, name: 'Q002', validade: '2027-01-01' },
     ]
-    montar()
+    // Retorna os utils do `render` (fix round 1, achado 3): o teste de
+    // desmontagem com o timer armado precisa do `unmount` desta MESMA
+    // instância — um `montar()` novo criaria uma árvore sem relação com o
+    // toque já em andamento na primeira.
+    const utils = montar()
     irParaMes()
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+    return utils
   }
 
   /** Simula o gesto completo até o limiar de 500ms, SEM soltar o ponteiro
@@ -1486,7 +1491,12 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
     // O `click` que o navegador dispara em seguida a um toque real (pointerup
     // -> click) não pode "desfazer" o isolar reaplicando o alternar.
-    fireEvent.click(chipAfonso)
+    // `detail: 1` é o que marca este `click` como vindo de um PONTEIRO real
+    // (mouse/toque) — sem isto, o padrão de `MouseEvent` sintético é
+    // `detail: 0`, o mesmo valor de um `click` ativado por teclado, e o
+    // teste não provaria nada sobre o caminho que a correção do achado 1
+    // precisa distinguir.
+    fireEvent.click(chipAfonso, { detail: 1 })
 
     expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
   })
@@ -1505,7 +1515,10 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
       vi.advanceTimersByTime(500)
     })
     fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
-    fireEvent.click(chipAfonso)
+    // `detail: 1`: é um click de ponteiro real que está sendo suprimido
+    // aqui (arrasto), não um click de teclado passando pelo atalho do
+    // achado 1 — os dois caminhos de supressão são independentes.
+    fireEvent.click(chipAfonso, { detail: 1 })
 
     // Nada mudou: nem isolou (Bruno continuaria ligado, único sinal visível
     // de um isolar bem-sucedido), nem alternou (Afonso continua ligado).
@@ -1566,5 +1579,124 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     expect(badgeTodosTecnicos).toHaveAttribute('aria-pressed', 'true')
     expect(within(grupoTecnicos).getByRole('button', { name: 'Afonso' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(grupoTecnicos).getByRole('button', { name: 'Bruno' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('Alt+Espaço isola pelo teclado', async () => {
+    await montarNoMes()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    fireEvent.keyDown(chipAfonso, { key: ' ', altKey: true })
+
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  // --- Fix round 1 (review) ---
+
+  it('gesto abortado por pointercancel não engole um Enter legítimo de teclado noutro chip (achado 1 importante)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Toque longo em Afonso isola — mas o SISTEMA interrompe o toque com
+    // `pointercancel` em vez do `pointerup` normal (rolagem detectada
+    // tarde, notificação, etc.): nenhum `click` vem depois pra consumir a
+    // flag de supressão, que fica presa no `toqueRef`.
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerCancel(chipAfonso, { pointerId: 1 })
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'false')
+
+    // Interação seguinte na faixa é só por TECLADO, num chip diferente, sem
+    // nenhum `pointerdown` antes (Tab até lá + Enter) — o `click`
+    // sintetizado por essa ativação tem `detail: 0`. Sem a checagem de
+    // `detail` antes de `suprimirClique`, este clique legítimo seria
+    // engolido pela flag que sobrou do gesto abortado de Afonso.
+    fireEvent.click(chipBruno, { detail: 0 })
+
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('pointerup de um dedo não cancela o toque longo em andamento de outro chip da mesma faixa (achado 2)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    // Dedo 1 (pointerId 1) toca Afonso e solta rápido, sem isolar.
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    // Dedo 2 (pointerId 2) toca Bruno e continua pressionado — o
+    // `pointerdown` dele já assume o `toqueRef` da faixa (só um toque longo
+    // em andamento por vez é o comportamento aceito, ver comentário do
+    // componente).
+    fireEvent.pointerDown(chipBruno, { pointerId: 2, clientX: 0, clientY: 0 })
+    // O `pointerup` do dedo 1 chega DEPOIS do `pointerdown` do dedo 2 — sem
+    // conferir o `pointerId`, isto cancelaria por engano o timer que já
+    // pertence ao dedo 2.
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    fireEvent.pointerUp(chipBruno, { pointerId: 2 })
+
+    // O toque longo do dedo 2 (Bruno) precisa ter completado normalmente —
+    // Afonso desligado é o único sinal visível de que Bruno isolou de
+    // verdade (sem isolar nenhum, os dois continuariam com "Todos", os dois
+    // ligados).
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('desmontar com o toque longo armado limpa o timer (cleanup) — nada sobra pra chamar onIsolar depois (achado 3)', async () => {
+    const { unmount } = await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+
+    // Contagem de timers pendentes ANTES do gesto — não pode ser 0 fixo
+    // como baseline: o React Query e outros hooks da página já podem ter
+    // timers próprios em voo, e um `toBe(0)` cravado seria frágil. O que
+    // prova o cleanup é a DELTA: +1 no pointerdown, de volta ao mesmo
+    // número na desmontagem.
+    const timersAntes = vi.getTimerCount()
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
+    expect(vi.getTimerCount()).toBe(timersAntes + 1)
+
+    // Desmonta a árvore inteira (troca de mês/modo real desmontaria só a
+    // `VistaMes`, mas também reseta o filtro — mascararia exatamente o que
+    // este teste quer provar) ANTES dos 500ms, com o timer do toque longo
+    // ainda armado.
+    unmount()
+
+    // Sem o `useEffect` de limpeza, este timer sobreviveria à desmontagem e
+    // dispararia `onIsolar` (que chama `setTecnicosSel`) num componente que
+    // não existe mais — a armadilha do timer solto que o brief pede pra
+    // fechar. O `toqueRef` (e o próprio componente) não existem mais pra
+    // consultar `onIsolar` diretamente, então a prova aqui é que o TIMER em
+    // si não sobra na fila: nada existe mais que possa chamá-lo.
+    expect(vi.getTimerCount()).toBe(timersAntes)
+
+    // Avançar o relógio depois da desmontagem não pode lançar nem deixar
+    // nada pendurado.
+    expect(() => {
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+    }).not.toThrow()
   })
 })
