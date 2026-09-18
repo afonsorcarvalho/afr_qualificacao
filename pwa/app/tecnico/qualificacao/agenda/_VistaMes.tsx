@@ -1,13 +1,25 @@
 'use client'
+import { clsx } from 'clsx'
 import { VisitaCard } from '../_components/VisitaCard'
 import { GradeMes } from './_GradeMes'
-import { corDoTecnico, COR_SEM_TECNICO } from './mes'
 import type { PontosDia, PontosInstrumentoDia, PontoInstrumento } from './mes'
 import type { InstrumentoDoDia } from './carga'
-import type { VisitaAgenda, VisitaVals, Opcao } from '@/lib/odoo/agenda'
+import type { VisitaAgenda, VisitaVals } from '@/lib/odoo/agenda'
+
+/** Item de uma faixa de legenda/filtro: marca + nome + o `id` que participa
+ *  do `Set` de seleção (número, ou `false` para "sem técnico"). `chave` é
+ *  só a key do React — precisa ser distinta de `id` porque `false` não é
+ *  chave válida. */
+interface ItemLegenda<T extends number | false> {
+  chave: string | number
+  id: T
+  cor: string
+  nome: string
+}
 
 /**
- * Uma faixa de legenda: rótulo curto + lista de itens com a marca da frente.
+ * Uma faixa de legenda/filtro: rótulo curto + badge "Todos" + um botão por
+ * item, cada um alternando se aquele recurso entra no filtro da grade.
  *
  * As duas faixas (técnico e instrumento) eram ~55 linhas de JSX quase
  * idêntico num componente de 232 — diferiam só no id do rótulo, no texto e na
@@ -22,48 +34,85 @@ import type { VisitaAgenda, VisitaVals, Opcao } from '@/lib/odoo/agenda'
  * grupos era ambígua sem ele.
  *
  * Faixa sem item não renderiza nada: rótulo órfão ("Instrumentos:" seguido de
- * vazio) é ruído que afirma o que não há (brief 3b).
+ * vazio) é ruído que afirma o que não há (brief 3b) — o badge "Todos" também
+ * some junto, faixa vazia não tem o que filtrar.
+ *
+ * Estado ligado/desligado nunca é só cor: `aria-pressed` carrega o estado
+ * pra leitor de tela, e visualmente é borda/contorno (tracejado quando
+ * desligado) + opacidade do FUNDO — nunca opacidade sobre o texto do nome,
+ * que ficaria abaixo do piso de contraste (`temaTokens.test.ts` proíbe
+ * `opacity-N` nu na mesma linha de um token de texto).
  */
-function FaixaLegenda({
+function FaixaLegenda<T extends number | false>({
   id,
   rotulo,
   itens,
   marca,
+  selecionado,
+  onAlternar,
+  onTodos,
 }: {
   /** Id do `<span>` do rótulo, alvo do `aria-labelledby` do grupo. */
   id: string
   rotulo: string
-  itens: { chave: string | number; cor: string; nome: string }[]
+  itens: ItemLegenda<T>[]
   /** Bolinha = técnico, triângulo = instrumento — a FORMA é o que separa os
    *  dois domínios na grade, e a legenda repete a mesma convenção. */
   marca: 'bolinha' | 'triangulo'
+  /** `null` = "Todos" (faixa sem restrição, nada desligado). */
+  selecionado: Set<T> | null
+  onAlternar: (id: T) => void
+  onTodos: () => void
 }) {
   if (itens.length === 0) return null
   return (
     <div
       role="group"
       aria-labelledby={id}
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground"
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-xs text-muted-foreground"
     >
       <span id={id} className="font-medium text-foreground">
         {rotulo}
       </span>
-      {itens.map((item) => (
-        <span key={item.chave} className="flex items-center gap-1.5">
-          {marca === 'bolinha' ? (
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: item.cor }}
-              aria-hidden
-            />
-          ) : (
-            <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
-              <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={item.cor} />
-            </svg>
-          )}
-          {item.nome}
-        </span>
-      ))}
+      <button
+        type="button"
+        aria-pressed={selecionado === null}
+        onClick={onTodos}
+        className={clsx(
+          'flex min-h-[44px] items-center rounded-md border px-2 font-medium text-foreground',
+          selecionado === null ? 'border-transparent bg-accent' : 'border-dashed border-border bg-muted/40',
+        )}
+      >
+        Todos
+      </button>
+      {itens.map((item) => {
+        const ligado = selecionado === null || selecionado.has(item.id)
+        return (
+          <button
+            key={item.chave}
+            type="button"
+            aria-pressed={ligado}
+            onClick={() => onAlternar(item.id)}
+            className={clsx(
+              'flex min-h-[44px] items-center gap-1.5 rounded-md border px-2',
+              ligado ? 'border-transparent' : 'border-dashed border-border bg-muted/40',
+            )}
+          >
+            {marca === 'bolinha' ? (
+              <span
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: item.cor }}
+                aria-hidden
+              />
+            ) : (
+              <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
+                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={item.cor} />
+              </svg>
+            )}
+            {item.nome}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -80,13 +129,19 @@ export function VistaMes({
   visitas,
   dias,
   instrumentos,
+  legendaTecnicos,
   legendaInstrumentos,
+  tecnicosSel,
+  instrumentosSel,
+  onAlternarTecnico,
+  onAlternarInstrumento,
+  onTodosTecnicos,
+  onTodosInstrumentos,
   instrumentosDoDia,
   ancora,
   hoje,
   diaSel,
   onSelecionarDia,
-  roster,
   podeAjustar,
   emAjuste,
   alvoAtivo,
@@ -96,30 +151,55 @@ export function VistaMes({
   onSelecionarVisita,
 }: {
   visitas: VisitaAgenda[]
+  /**
+   * Marcas da grade (bolinhas) JÁ FILTRADAS pelas duas faixas — a página
+   * calcula esta lista a partir de `visitasVisiveis`, não de `visitas`. A
+   * faixa de legenda abaixo usa uma fonte SEPARADA (`legendaTecnicos`, não
+   * filtrada) — senão desligar um técnico o tiraria da própria faixa, e não
+   * haveria como religá-lo (Task 2).
+   */
   dias: PontosDia[]
-  /** Instrumentos usados por dia, nos 42 dias da grade (`instrumentosPorDia`). */
+  /** Instrumentos usados por dia, nos 42 dias da grade — também já FILTRADO
+   *  pelas duas faixas (mesmo raciocínio de `dias` acima). */
   instrumentos: PontosInstrumentoDia[]
+  /**
+   * Itens da faixa "Técnicos:" — TODOS os técnicos com visita na janela
+   * visível (os 42 dias da grade), ligados ou desligados no filtro: a faixa
+   * lista o universo inteiro, senão não haveria como religar quem foi
+   * desligado (Task 2). Inclui "Sem técnico" (`id: false`) quando alguma
+   * visita da janela não tem `tecnico_id`.
+   */
+  legendaTecnicos: { chave: string | number; id: number | false; cor: string; nome: string }[]
   /**
    * Instrumentos distintos da janela de 42 dias, deduplicados e já ordenados
    * pela página com a MESMA função que ordena a célula (`ordenarInstrumentos`)
    * — legenda e grade não podem listar o mesmo conjunto em sequências
    * diferentes, senão só a cor casaria as duas, e cor sozinha não carrega
-   * informação (Global Constraint #4).
+   * informação (Global Constraint #4). Também não filtrado pelo `instrumentosSel`,
+   * mesmo raciocínio de `legendaTecnicos`.
    */
   legendaInstrumentos: PontoInstrumento[]
+  /** `null` = "Todos" (faixa de técnicos sem restrição). Estado em memória,
+   *  na página (Task 2) — troca de modo ou reload zera. */
+  tecnicosSel: Set<number | false> | null
+  /** `null` = "Todos" (faixa de instrumentos sem restrição). */
+  instrumentosSel: Set<number> | null
+  onAlternarTecnico: (id: number | false) => void
+  onAlternarInstrumento: (id: number) => void
+  onTodosTecnicos: () => void
+  onTodosInstrumentos: () => void
   /**
-   * Seção "Instrumentos do dia": derivada da entrada de `instrumentos`
-   * correspondente ao dia selecionado, acrescida dos usos. Mesma fonte da
-   * grade e da legenda de propósito — as três superfícies não podem
-   * discordar sobre quais instrumentos o dia tem.
+   * Seção "Instrumentos do dia": derivada da entrada correspondente ao dia
+   * selecionado, acrescida dos usos, a partir da lista de visitas COMPLETA
+   * (não filtrada pelas faixas) — o filtro altera só as marcas da grade
+   * (Task 2 brief), esta seção e os `VisitaCard`s abaixo continuam mostrando
+   * tudo.
    */
   instrumentosDoDia: InstrumentoDoDia[]
   ancora: string
   hoje: string | null
   diaSel: string
   onSelecionarDia: (date: string) => void
-  /** Roster já unificado (`rosterTecnicos`) — fonte da legenda. */
-  roster: Opcao[]
   podeAjustar: boolean
   /** Visita em ajuste, já resincronizada com o payload (ou `null`). */
   emAjuste: VisitaAgenda | null
@@ -140,17 +220,6 @@ export function VistaMes({
   erroAjuste: string
   onSelecionarVisita: (visita: VisitaAgenda) => void
 }) {
-  // Legenda: só técnico com visita na janela visível (os 42 dias da
-  // grade) — o roster inteiro pode ter gente sem nenhuma visita na janela, e
-  // um chip por cada um deles é ruído puro, não informação (brief 3d).
-  // "Sem técnico" entra à parte, no fim, só quando alguma visita DA JANELA
-  // (os 42 dias, inclusive o transbordo esmaecido pros meses vizinhos que a
-  // própria grade desenha) não tem `tecnico_id` — mesmo escopo dos chips
-  // de técnico acima, não só o mês estrito.
-  const idsNaJanela = new Set(dias.flatMap((d) => d.pontos.map((p) => p.id)))
-  const legenda = roster.filter((t) => idsNaJanela.has(t.id))
-  const temSemTecnico = idsNaJanela.has(false)
-
   const doDia = visitas.filter((v) => v.date === diaSel)
 
   return (
@@ -164,28 +233,31 @@ export function VistaMes({
         onSelecionar={(date) => (alvoAtivo ? onAjustar({ date }) : onSelecionarDia(date))}
       />
 
-      {/* Duas faixas, mesma mecânica (`FaixaLegenda`): a de técnicos leva
-          "Sem técnico" no fim quando alguma visita DA JANELA (os 42 dias,
-          inclusive o transbordo esmaecido pros meses vizinhos que a própria
-          grade desenha) não tem `tecnico_id` — mesmo escopo dos chips acima,
-          não só o mês estrito. */}
+      {/* Duas faixas, mesma mecânica (`FaixaLegenda`): cada chip é um botão
+          de filtro (`aria-pressed`) que liga/desliga aquele recurso nas
+          marcas da grade acima — a faixa de técnicos inclui "Sem técnico"
+          (`id: false`) quando alguma visita DA JANELA (os 42 dias, inclusive
+          o transbordo esmaecido pros meses vizinhos que a própria grade
+          desenha) não tem `tecnico_id`; ele participa do filtro como os
+          demais. */}
       <FaixaLegenda
         id="legenda-mes-tecnicos"
         rotulo="Técnicos:"
         marca="bolinha"
-        itens={[
-          ...legenda.map((t) => ({ chave: t.id, cor: corDoTecnico(t.id), nome: t.name })),
-          ...(temSemTecnico
-            ? [{ chave: 'sem-tecnico', cor: COR_SEM_TECNICO, nome: 'Sem técnico' }]
-            : []),
-        ]}
+        itens={legendaTecnicos}
+        selecionado={tecnicosSel}
+        onAlternar={onAlternarTecnico}
+        onTodos={onTodosTecnicos}
       />
 
       <FaixaLegenda
         id="legenda-mes-instrumentos"
         rotulo="Instrumentos:"
         marca="triangulo"
-        itens={legendaInstrumentos.map((i) => ({ chave: i.id, cor: i.cor, nome: i.name }))}
+        itens={legendaInstrumentos.map((i) => ({ chave: i.id, id: i.id, cor: i.cor, nome: i.name }))}
+        selecionado={instrumentosSel}
+        onAlternar={onAlternarInstrumento}
+        onTodos={onTodosInstrumentos}
       />
 
       {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
