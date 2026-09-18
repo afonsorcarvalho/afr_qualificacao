@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 /// <reference types="@testing-library/jest-dom" />
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AgendaPage from '../agenda/page'
 import { gradeDoMes } from '../agenda/mes'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
-import type { AgendaPayload, VisitaAgenda } from '@/lib/odoo/agenda'
+import type { AgendaPayload, InstrumentoOpcao, VisitaAgenda } from '@/lib/odoo/agenda'
 
 const mutateUpdate = vi.fn()
 
@@ -48,6 +48,14 @@ let isLoadingAtual = false
 // pré-requisito do teste do achado 1.
 let erroAtual: Error | null = null
 
+// Task 3: `instrumentoOptionsAtual` deixa cada teste controlar o
+// `pwa_instrumento_options` que chega, e `mockUseInstrumentoOptions` (um
+// `vi.fn` que preserva o argumento, mesmo raciocínio do `mockUseAgenda`
+// acima) permite provar que o modo Mês liga o hook com `enabled=true`
+// (brief 3a) sem depender de string mágica nenhuma.
+let instrumentoOptionsAtual: InstrumentoOpcao[] = []
+const mockUseInstrumentoOptions = vi.fn((_enabled: boolean) => ({ data: instrumentoOptionsAtual }))
+
 // Mesmo raciocínio do `ModoSemana.test.tsx`: `vi.fn` que NÃO descarta os
 // argumentos — é o que permite provar a faixa de datas pedida (`date_from`/
 // `date_to` = grade[0]/grade[41]) e o `onlyMine`.
@@ -69,7 +77,7 @@ vi.mock('@/lib/hooks/useAgenda', () => ({
   useDeleteVisita: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useTecnicoOptions: () => ({ data: [{ id: 441, name: 'Afonso' }, { id: 9, name: 'Bruno' }] }),
   useOsOptions: () => ({ data: [] }),
-  useInstrumentoOptions: () => ({ data: [] }),
+  useInstrumentoOptions: (enabled: boolean) => mockUseInstrumentoOptions(enabled),
 }))
 
 function montar() {
@@ -89,8 +97,10 @@ describe('Modo Mês', () => {
     payloadAtual = payload
     isLoadingAtual = false
     erroAtual = null
+    instrumentoOptionsAtual = []
     mutateUpdate.mockReset().mockResolvedValue(visita())
     mockUseAgenda.mockClear()
+    mockUseInstrumentoOptions.mockClear()
     // Mesma razão do `ModoSemana.test.tsx`: o store é singleton (zustand +
     // persist) e vaza entre testes sem reset explícito.
     useTecnicoSettings.setState({ modoAgenda: 'lista', filterMine: true })
@@ -371,5 +381,115 @@ describe('Modo Mês', () => {
     // A mesma armadilha atravessa modos: a tarja mora FORA dos ramos de
     // modo justamente por isso.
     expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
+  })
+
+  // --- Task 3: legenda e lista do dia de instrumentos ---
+
+  it('useInstrumentoOptions é habilitado no modo Mês', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    expect(mockUseInstrumentoOptions).toHaveBeenCalledWith(true)
+  })
+
+  it('legenda mostra o instrumento usado na janela e não mostra o instrumento das opções que ninguém usa', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    // A visita usa só Q001, e cai num dia DIFERENTE do selecionado por
+    // default (hoje, 17) — isola a legenda (janela inteira) da seção do
+    // dia (só o dia selecionado), que este teste não cobre.
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-20', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    expect(screen.getByText('Q001')).toBeInTheDocument()
+    expect(screen.queryByText('Q002')).toBeNull()
+    // A faixa carrega um rótulo textual próprio, não só a forma do
+    // triângulo — cor e forma nunca são o único portador (Global
+    // Constraint de a11y); sem isto, um leitor de tela ouviria "Afonso,
+    // Q001" como um único grupo indistinto.
+    expect(screen.getByText('Instrumentos:')).toBeInTheDocument()
+  })
+
+  it('sem instrumento usado na janela, a faixa de instrumentos não é renderizada', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    // Payload default: a única visita não usa nenhum instrumento
+    // (`instrument_ids: []`).
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    expect(screen.queryByText('Q001')).toBeNull()
+    expect(screen.queryByText('Instrumentos:')).toBeNull()
+  })
+
+  it('tocar num dia com instrumento mostra a seção "Instrumentos do dia" com nome, OS e faixa de horário', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-20', instrument_ids: [101],
+        time_start: 8, time_stop: 12, os_name: 'OS26-02', tecnico_name: 'Afonso',
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^20 de setembro,/ }))
+
+    // O `VisitaCard` do dia também mostra "08:00–12:00" e "OS26-02" no
+    // corpo — escopar a busca à seção evita casar com o card em vez da
+    // seção de instrumentos.
+    const titulo = screen.getByText('Instrumentos do dia')
+    const secao = titulo.closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+    expect(within(secao).getByText(/08:00–12:00/)).toBeInTheDocument()
+    expect(within(secao).getByText(/OS26-02\/Afonso/)).toBeInTheDocument()
+  })
+
+  it('tocar num dia sem instrumento não mostra a seção "Instrumentos do dia"', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-20', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Dia selecionado por default é "hoje" (17), sem instrumento.
+    expect(screen.queryByText('Instrumentos do dia')).toBeNull()
+
+    // Tocar num dia vazio (18) também não mostra a seção.
+    fireEvent.click(screen.getByRole('button', { name: /^18 de setembro,/ }))
+    expect(screen.queryByText('Instrumentos do dia')).toBeNull()
+  })
+
+  it('nenhum texto de "vencido" aparece, mesmo com validade vencida — guarda do escopo acordado', async () => {
+    instrumentoOptionsAtual = [
+      // Validade no passado: se algum código reintroduzisse o aviso de
+      // certificado vencido, este seria o caso que o dispararia.
+      { id: 101, name: 'Q001', validade: '2020-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-20', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^20 de setembro,/ }))
+    expect(screen.getByText('Instrumentos do dia')).toBeInTheDocument()
+
+    expect(screen.queryByText(/vencid/i)).toBeNull()
   })
 })

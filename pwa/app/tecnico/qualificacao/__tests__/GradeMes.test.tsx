@@ -448,6 +448,73 @@ describe('GradeMes', () => {
     expect(within(cel).getByTestId('mais')).toHaveTextContent('+5')
   })
 
+  // --- Task 3 (review da Task 2): bordas de `repartirMarcas` ---
+
+  it('total === 4 marcas (2 técnicos + 2 instrumentos) mostra as 4, sem +N', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 2,
+        pontos: [ponto({ id: 1, name: 'Ana Silva' }), ponto({ id: 2, name: 'João Lima' })],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    expect(within(cel).getAllByTestId('ponto')).toHaveLength(2)
+    expect(within(cel).getAllByTestId('triangulo')).toHaveLength(2)
+    expect(within(cel).queryByTestId('mais')).not.toBeInTheDocument()
+  })
+
+  it('empate com estouro (3 técnicos + 3 instrumentos): o slot extra vai para os técnicos', () => {
+    const dias = montarDias({
+      '2026-09-17': {
+        total: 3,
+        pontos: [
+          ponto({ id: 1, name: 'Ana Silva' }),
+          ponto({ id: 2, name: 'Bruno' }),
+          ponto({ id: 3, name: 'Carla' }),
+        ],
+      },
+    })
+    const instrumentos = montarInstrumentos({
+      '2026-09-17': [
+        instrumento({ id: 101, name: 'Q001' }),
+        instrumento({ id: 102, name: 'Q002' }),
+        instrumento({ id: 103, name: 'Q003' }),
+      ],
+    })
+    render(
+      <GradeMes
+        dias={dias}
+        instrumentos={instrumentos}
+        ancora={ANCORA}
+        hoje={null}
+        selecionado="2026-09-01"
+        onSelecionar={vi.fn()}
+      />,
+    )
+    const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+    // 6 marcas ao todo, só 3 cabem soltas: 1 slot garantido pra cada grupo
+    // + o 3º (o do empate) vai para os técnicos, não para os instrumentos.
+    expect(within(cel).getAllByTestId('ponto')).toHaveLength(2)
+    expect(within(cel).getAllByTestId('triangulo')).toHaveLength(1)
+    expect(within(cel).getByTestId('mais')).toHaveTextContent('+3')
+  })
+
   it('dia com 5 instrumentos e nenhum técnico mostra 3 triângulos e +2', () => {
     const instrumentos = montarInstrumentos({
       '2026-09-17': [

@@ -1,8 +1,9 @@
 'use client'
 import { VisitaCard } from '../_components/VisitaCard'
 import { GradeMes } from './_GradeMes'
-import { corDoTecnico, COR_SEM_TECNICO } from './mes'
-import type { PontosDia } from './mes'
+import { corDoTecnico, corDoInstrumento, COR_SEM_TECNICO } from './mes'
+import type { PontosDia, PontosInstrumentoDia, PontoInstrumento } from './mes'
+import type { UsoInstrumento } from './carga'
 import type { VisitaAgenda, VisitaVals, Opcao } from '@/lib/odoo/agenda'
 
 /**
@@ -16,6 +17,8 @@ import type { VisitaAgenda, VisitaVals, Opcao } from '@/lib/odoo/agenda'
 export function VistaMes({
   visitas,
   dias,
+  instrumentos,
+  usoInstrumentosDia,
   ancora,
   hoje,
   diaSel,
@@ -31,6 +34,15 @@ export function VistaMes({
 }: {
   visitas: VisitaAgenda[]
   dias: PontosDia[]
+  /** Instrumentos usados por dia, nos 42 dias da grade (`instrumentosPorDia`). */
+  instrumentos: PontosInstrumentoDia[]
+  /**
+   * Usos do instrumento no dia SELECIONADO, já filtrados para quem tem uso
+   * (`usoPorInstrumento` de `carga.ts`, a mesma agregação do painel da
+   * Semana) — a seção "Instrumentos do dia" só lista quem está de fato
+   * marcado, ao contrário do painel da Semana, que também mostra "livre".
+   */
+  usoInstrumentosDia: UsoInstrumento[]
   ancora: string
   hoje: string | null
   diaSel: string
@@ -66,17 +78,31 @@ export function VistaMes({
   const legenda = roster.filter((t) => idsNaJanela.has(t.id))
   const temSemTecnico = idsNaJanela.has(false)
 
+  // Legenda de instrumentos: mesmo critério da de técnicos, "usado nos 42
+  // dias da janela", não o mês estrito. Sem `roster` equivalente pra
+  // instrumento (a página não passa `pwa_instrumento_options` cru pra cá —
+  // ruling do controlador, este componente só recebe dados já agregados),
+  // a lista distinta sai de `instrumentos` mesmo: primeiro id visto em cada
+  // dia (ordem cronológica da grade) entra na legenda, sem duplicar —
+  // nome e cor já são estáveis por id (`corDoInstrumento`), então dedupar
+  // por id não perde nem embaralha informação.
+  const legendaInstrumentos: PontoInstrumento[] = []
+  const idsInstrumentoNaLegenda = new Set<number>()
+  for (const d of instrumentos) {
+    for (const inst of d.instrumentos) {
+      if (idsInstrumentoNaLegenda.has(inst.id)) continue
+      idsInstrumentoNaLegenda.add(inst.id)
+      legendaInstrumentos.push(inst)
+    }
+  }
+
   const doDia = visitas.filter((v) => v.date === diaSel)
 
   return (
     <>
       <GradeMes
         dias={dias}
-        // Task 3 substitui por `instrumentosPorDia(...)`, calculado na
-        // page.tsx a partir de `pwa_instrumento_options` — este componente
-        // ainda não recebe essa fonte, então nenhum triângulo aparece por
-        // ora.
-        instrumentos={[]}
+        instrumentos={instrumentos}
         ancora={ancora}
         hoje={hoje}
         selecionado={diaSel}
@@ -108,7 +134,64 @@ export function VistaMes({
         </div>
       )}
 
+      {/* Segunda faixa, só de instrumento — mesma regra da de técnico:
+          nada de rótulo órfão quando nenhum instrumento tem uso na janela
+          visível (brief 3b). Forma (triângulo) em vez de bolinha é o
+          diferenciador visual, mas forma sozinha não chega a quem não a
+          resolve num alvo de 8px nem a quem usa leitor de tela (o
+          `aria-hidden` do triângulo é decorativo, igual ao da bolinha) —
+          por isso o rótulo textual "Instrumentos:" abre a faixa, o mesmo
+          papel que "; instrumentos: ..." já cumpre dentro do aria-label
+          da célula (Global Constraint de a11y: cor E forma nunca são o
+          único portador). */}
+      {legendaInstrumentos.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Instrumentos:</span>
+          {legendaInstrumentos.map((inst) => (
+            <span key={inst.id} className="flex items-center gap-1.5">
+              <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
+                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={inst.cor} />
+              </svg>
+              {inst.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {erroAjuste && <p className="text-sm text-danger">{erroAjuste}</p>}
+
+      {/* "Instrumentos do dia" (brief 3c): acima dos `VisitaCard`s, uma
+          linha por instrumento com uso no dia selecionado, com o triângulo
+          da cor, o nome e os usos (OS + faixa de horário) — reusa
+          `usoPorInstrumento` de `carga.ts`, já filtrado pela página pra só
+          quem tem uso. Sem instrumento no dia, a seção nem aparece: o
+          "Nenhuma visita neste dia." abaixo já cobre o dia vazio.
+          Deliberadamente sem aviso de calibração vencida, mesmo que
+          `UsoInstrumento.vencido` esteja disponível — fora de escopo por
+          escolha do usuário (brief). */}
+      {usoInstrumentosDia.length > 0 && (
+        <div className="space-y-1 rounded-lg border border-border bg-card p-2">
+          <h3 className="px-1 text-xs font-semibold uppercase text-muted-foreground">
+            Instrumentos do dia
+          </h3>
+          {usoInstrumentosDia.map((i) => (
+            <div key={i.id} className="flex min-h-[44px] items-start gap-2 px-1 py-1 text-sm">
+              <svg aria-hidden className="mt-1.5 h-2 w-2 shrink-0" viewBox="0 0 10 10">
+                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={corDoInstrumento(i.id)} />
+              </svg>
+              <span className="w-20 shrink-0 truncate font-medium">{i.name}</span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-xs text-muted-foreground">
+                {i.usos.map((u) => (
+                  <span key={u.visitaId} className="flex min-w-0 items-baseline gap-1">
+                    <span className="shrink-0">{u.faixa}</span>
+                    <span className="min-w-0 truncate">· {u.osName}/{u.tecnicoName}</span>
+                  </span>
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {doDia.map((v) => (
         <VisitaCard

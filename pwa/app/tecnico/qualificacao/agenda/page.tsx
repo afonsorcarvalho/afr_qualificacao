@@ -14,7 +14,7 @@ import { FaixaDias } from './_FaixaDias'
 import { PainelRecursos, type Dimensao } from './_PainelRecursos'
 import { VistaMes } from './_VistaMes'
 import { cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana, rosterTecnicos, picoDaSemana } from './carga'
-import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia } from './mes'
+import { primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes, tecnicosPorDia, instrumentosPorDia } from './mes'
 
 function rotuloDia(iso: string): string {
   const [a, m, d] = iso.split('-').map(Number)
@@ -66,9 +66,14 @@ export default function AgendaPage() {
   const [erroAjuste, setErroAjuste] = useState('')
   const update = useUpdateVisita()
   const tecnicos = useTecnicoOptions(visaoEquipe)
-  // O painel de instrumentos só existe na Semana — o mês não tem painel de
-  // recursos, só a legenda de técnicos.
-  const instrumentos = useInstrumentoOptions(semana && dimensao === 'instrumento')
+  // `pwa_instrumento_options` alimenta três telas distintas: o painel de
+  // recursos da Semana (só quando a dimensão é "instrumento", pra não gastar
+  // fetch enquanto o Gestor olha "Técnico"), e a legenda + lista do dia do
+  // Mês (task 3), que precisam da lista inteira sempre que o mês está
+  // aberto — daí a expressão única em vez de espalhar `|| mes` pelos sítios
+  // que já checavam `semana`.
+  const querInstrumentos = mes || (semana && dimensao === 'instrumento')
+  const instrumentos = useInstrumentoOptions(querInstrumentos)
 
   // Rede de segurança: se a visita em ajuste sumir do payload (apagada em
   // outro lugar, saiu da janela) OU continuar lá mas ter travado (outro
@@ -158,6 +163,10 @@ export default function AgendaPage() {
   // spinner continua sendo o `isLoading` cru.
   const carregando = mes ? mesCarregando : isLoading
   const pontosDia = mes ? tecnicosPorDia(visitas, gradeMes, roster) : []
+  // Instrumentos da grade do mês — mesma fonte (`pwa_instrumento_options`)
+  // que alimenta o painel da Semana, mas aqui cobrindo os 42 dias da janela
+  // visível de uma vez, pros triângulos da `_GradeMes` e pra legenda.
+  const pontosInstrumentoDia = mes ? instrumentosPorDia(visitas, gradeMes, instrumentos.data ?? []) : []
   // Dia default quando não há seleção válida na grade: primeiro tenta
   // `hoje` (server_today) — mesmo critério da Semana, que nasce ancorada
   // em `data.date_from` = hoje — e só cai no 1º dia do mês quando "hoje"
@@ -168,6 +177,14 @@ export default function AgendaPage() {
   const diaSelMes = diaSel && gradeMes.includes(diaSel)
     ? diaSel
     : (hoje && gradeMes.includes(hoje) ? hoje : (ancoraMes ?? ''))
+  // "Instrumentos do dia" (brief 3c): reusa `usoPorInstrumento` (a mesma
+  // agregação do painel da Semana) sobre o dia selecionado do mês, filtrando
+  // pra só quem tem uso — ao contrário do painel da Semana, que lista todo
+  // instrumento (inclusive "livre") pra mostrar quem está disponível, a
+  // seção do Mês é só um resumo do que o dia já tem marcado.
+  const usoInstrumentosDia = mes
+    ? usoPorInstrumento(visitas, diaSelMes, instrumentos.data ?? []).filter((u) => u.usos.length > 0)
+    : []
   // `emAjuste` guarda a visita como ela estava ao ser selecionada. Depois de
   // cada gravação bem-sucedida, o `onSuccess` do `useUpdateVisita` invalida a
   // busca e o payload volta atualizado — mas `emAjuste` continua com a cópia
@@ -409,6 +426,8 @@ export default function AgendaPage() {
         <VistaMes
           visitas={visitas}
           dias={pontosDia}
+          instrumentos={pontosInstrumentoDia}
+          usoInstrumentosDia={usoInstrumentosDia}
           ancora={ancoraMes ?? ''}
           hoje={hoje}
           diaSel={diaSelMes}
