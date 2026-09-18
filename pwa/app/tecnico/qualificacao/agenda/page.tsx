@@ -327,12 +327,35 @@ export default function AgendaPage() {
   // seguro porque ninguém ordena/muta esses arrays no lugar —
   // `ordenarInstrumentos` faz `.slice().sort()` e `instrumentosDoDia` só
   // mapeia.
+  //
+  // CAMADA 2 (bugfix): a camada 1, acima, já decide quais VISITAS sobrevivem
+  // — mas uma visita sobrevivente pode usar vários instrumentos, alguns
+  // ligados e outros desligados (ex. Q001 e Q002 na mesma visita, só Q001
+  // desligado), e até este fix `instrumentosPorDia` desenhava TODOS eles.
+  // `ligadosNaGrade` só restringe quando há restrição ativa E ela tem contra
+  // o que valer nesta janela (`!semInstrumentoNaJanela`, mesma condição da
+  // camada 1 logo acima) — nos outros casos é `undefined`, e
+  // `instrumentosPorDia` se comporta como sempre.
+  const ligadosNaGrade = instrumentosSel !== null && !semInstrumentoNaJanela ? instrumentosSel : undefined
   const pontosInstrumentoGrade = useMemo(
     () => {
-      if (visitasVisiveis === visitas) return pontosInstrumentoJanela
-      return mes && !instrumentosComFalha ? instrumentosPorDia(visitasVisiveis, gradeMes, opcoesInstrumento) : []
+      // `&& !ligadosNaGrade` é hoje inalcançável (`ligadosNaGrade` truthy
+      // exige `instrumentosSel !== null`, e nesse caso `visitasVisiveis`
+      // NUNCA é a mesma referência de `visitas` — o early return do memo
+      // acima só devolve a própria `visitas` quando as duas faixas estão em
+      // "Todos"). Fica como guarda explícita da invariante, não como atalho
+      // que hoje dispara: se a lógica de `visitasVisiveis` mudar um dia e
+      // parar de garantir isso, este `if` evita voltar a mostrar o universo
+      // inteiro (sem camada 2) por engano.
+      if (visitasVisiveis === visitas && !ligadosNaGrade) return pontosInstrumentoJanela
+      return mes && !instrumentosComFalha
+        ? instrumentosPorDia(visitasVisiveis, gradeMes, opcoesInstrumento, ligadosNaGrade)
+        : []
     },
-    [mes, instrumentosComFalha, visitasVisiveis, visitas, pontosInstrumentoJanela, gradeMes, opcoesInstrumento],
+    [
+      mes, instrumentosComFalha, visitasVisiveis, visitas, pontosInstrumentoJanela, gradeMes, opcoesInstrumento,
+      ligadosNaGrade,
+    ],
   )
   // Legenda de instrumentos: os distintos da janela de 42 dias (mesmo escopo
   // da faixa de técnicos, que cobre a grade desenhada e não o mês estrito),

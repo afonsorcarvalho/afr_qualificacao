@@ -918,6 +918,107 @@ describe('Modo Mês', () => {
     expect(celula.getAttribute('aria-label')).not.toContain('Q002')
   })
 
+  it('camada 2: UMA visita com dois instrumentos, um deles desligado, desenha só o triângulo do ligado', async () => {
+    // Bug relatado pelo user: diferente do teste de interseção acima (cada
+    // visita usa UM instrumento só, e a camada 1 já basta pra sumir com
+    // ela inteira), aqui a MESMA visita usa os dois — sobrevive à camada 1
+    // (tem ao menos um instrumento ligado), mas `pontosInstrumentoGrade`
+    // não filtrava os instrumentos dela própria, e o desligado continuava
+    // virando triângulo e citado no aria-label.
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso',
+          instrument_ids: [101, 102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Desliga Q001 — a visita continua valendo pela camada 1 (ainda usa
+    // Q002, que está ligado).
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q001/ }))
+
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const label = celula.getAttribute('aria-label') ?? ''
+    // A visita (Afonso) continua — camada 1 não mexe nisso.
+    expect(label).toContain('Afonso')
+    // Mas o Q001 desligado não pode aparecer mais — nem o triângulo (via
+    // `data-testid="triangulo"`), nem o aria-label.
+    expect(label).toContain('Q002')
+    expect(label).not.toContain('Q001')
+    expect(within(celula).queryAllByTestId('triangulo')).toHaveLength(1)
+  })
+
+  it('a legenda e a seção "Instrumentos do dia" continuam listando os dois instrumentos mesmo com um desligado na grade', async () => {
+    // NÃO pode regredir: a legenda (pra dar pra religar) e a seção do dia
+    // (que é sempre não-filtrada, por brief) usam `pontosInstrumentoJanela`,
+    // que este fix não pode tocar.
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso',
+          instrument_ids: [101, 102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q001/ }))
+
+    // Legenda continua com os dois chips (Q001 desligado, mas presente).
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).getByText('Q002')).toBeInTheDocument()
+
+    // Seção "Instrumentos do dia" do dia selecionado (17, default via
+    // server_today) — não filtrada, lista os dois.
+    const titulo = screen.getByText('Instrumentos do dia')
+    const secao = titulo.closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+    expect(within(secao).getByText('Q002')).toBeInTheDocument()
+  })
+
+  it('não-regressão: sem nenhuma restrição de instrumento ativa, uma visita com dois instrumentos continua desenhando os dois', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso',
+          instrument_ids: [101, 102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const label = celula.getAttribute('aria-label') ?? ''
+    expect(label).toContain('Q001')
+    expect(label).toContain('Q002')
+    expect(within(celula).queryAllByTestId('triangulo')).toHaveLength(2)
+  })
+
   it('consequência aceita: com a faixa de instrumentos restrita, a visita sem instrumento nenhum perde a bolinha do técnico', async () => {
     instrumentoOptionsAtual = [
       { id: 101, name: 'Q001', validade: '2027-01-01' },

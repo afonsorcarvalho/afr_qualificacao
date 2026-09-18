@@ -295,6 +295,51 @@ describe('instrumentosPorDia', () => {
     const dia = r.find((d) => d.date === '2026-09-17')!
     expect(dia.instrumentos.map((i) => i.name)).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
   })
+
+  describe('parâmetro `ligados` (camada 2 do filtro — Task 2 bugfix)', () => {
+    // A camada 1 (`visitasVisiveis` em `page.tsx`) já decide QUAIS visitas
+    // sobrevivem; dentro de uma visita sobrevivente, `ligados` decide quais
+    // dos SEUS instrumentos ainda viram marca. Sem isso, uma visita com dois
+    // instrumentos (um ligado, um desligado) desenhava os dois — o bug
+    // relatado (Q001 desligado continuava no aria-label da célula de 1/out).
+    it('sem `ligados` (undefined), comportamento idêntico ao de antes — todo instrumento usado vira item', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes,
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos.map((i) => i.id)).toEqual([5, 8])
+    })
+
+    it('com `ligados` restrito, instrumento fora do conjunto não vira item nem entra na contagem', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes, new Set([5]),
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos).toEqual([
+        { id: 5, name: 'Multímetro', cor: corDoInstrumento(5), visitas: 1 },
+      ])
+    })
+
+    it('`ligados` vazio (Set sem nenhum id) zera os instrumentos do dia, sem quebrar a célula', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes, new Set(),
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos).toEqual([])
+    })
+
+    it('`ligados: null` (mesmo sentido de undefined — sem restrição) não filtra nada', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes, null,
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos.map((i) => i.id)).toEqual([5, 8])
+    })
+  })
 })
 
 /**
