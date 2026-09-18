@@ -54,10 +54,22 @@ interface ItemLegenda<T extends number | false> {
  * é o "token puro" que `temaTokens.test.ts` pede no lugar de opacidade — a
  * regra da guarda continua sendo respeitada porque nenhuma classe daqui é
  * `opacity-N` nu.
+ *
+ * A MARCA (bolinha/triângulo) obedece ao mesmo vocabulário, e isso não era
+ * verdade até a review final (achado 2): ela ficava na cor cheia do recurso
+ * mesmo com o chip desligado — e a marca é o elemento visual DOMINANTE do
+ * chip, então o chip apagado continuava lendo como ligado, o mesmo defeito
+ * que o fix round 1 corrigiu no fundo e na borda. Desligado, a marca vira
+ * CONTORNO (bolinha sem preenchimento, triângulo com `fill="none"` e traço):
+ * é a extensão natural do "ligado = preenchido", e não um segundo
+ * vocabulário — dessaturar por filtro (`grayscale`) introduziria um. A cor
+ * do contorno continua sendo a do recurso porque ela nunca foi o único
+ * portador de identidade aqui: o nome vai em texto puro ao lado.
  */
 function FaixaLegenda<T extends number | false>({
   id,
   rotulo,
+  rotuloTodos,
   itens,
   marca,
   selecionado,
@@ -67,6 +79,16 @@ function FaixaLegenda<T extends number | false>({
   /** Id do `<span>` do rótulo, alvo do `aria-labelledby` do grupo. */
   id: string
   rotulo: string
+  /**
+   * Nome ACESSÍVEL do badge "Todos" desta faixa ("Todos os técnicos"). O
+   * texto visível continua o "Todos" curto — a faixa é estreita e o rótulo
+   * do grupo está ao lado. O nome longo existe porque as duas faixas
+   * convivem na mesma tela: `role="group"` + `aria-labelledby` separa as
+   * duas na leitura em FLUXO, mas a navegação por LISTA de botões (o rotor
+   * do leitor de tela) anuncia só o nome do botão, e dois "Todos" ali são
+   * indistinguíveis (review final, achado 5).
+   */
+  rotuloTodos: string
   itens: ItemLegenda<T>[]
   /** Bolinha = técnico, triângulo = instrumento — a FORMA é o que separa os
    *  dois domínios na grade, e a legenda repete a mesma convenção. */
@@ -88,6 +110,7 @@ function FaixaLegenda<T extends number | false>({
       </span>
       <button
         type="button"
+        aria-label={rotuloTodos}
         aria-pressed={selecionado === null}
         onClick={onTodos}
         className={clsx(
@@ -114,15 +137,26 @@ function FaixaLegenda<T extends number | false>({
                 : 'border-dashed border-border text-muted-foreground',
             )}
           >
+            {/* A marca segue o MESMO vocabulário de peso do chip: cheia
+                quando ligado, só contorno quando desligado. Ver o bloco de
+                comentário do componente. */}
             {marca === 'bolinha' ? (
               <span
-                className="h-2 w-2 shrink-0 rounded-full"
-                style={{ backgroundColor: item.cor }}
+                className="h-2 w-2 shrink-0 rounded-full border"
+                style={{
+                  backgroundColor: ligado ? item.cor : 'transparent',
+                  borderColor: item.cor,
+                }}
                 aria-hidden
               />
             ) : (
               <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 10 10">
-                <polygon points="5,0.5 9.5,9.5 0.5,9.5" fill={item.cor} />
+                <polygon
+                  points="5,0.5 9.5,9.5 0.5,9.5"
+                  fill={ligado ? item.cor : 'none'}
+                  stroke={item.cor}
+                  strokeWidth={ligado ? 0 : 1.5}
+                />
               </svg>
             )}
             {item.nome}
@@ -259,6 +293,7 @@ export function VistaMes({
       <FaixaLegenda
         id="legenda-mes-tecnicos"
         rotulo="Técnicos:"
+        rotuloTodos="Todos os técnicos"
         marca="bolinha"
         itens={legendaTecnicos}
         selecionado={tecnicosSel}
@@ -269,6 +304,7 @@ export function VistaMes({
       <FaixaLegenda
         id="legenda-mes-instrumentos"
         rotulo="Instrumentos:"
+        rotuloTodos="Todos os instrumentos"
         marca="triangulo"
         itens={legendaInstrumentos.map((i) => ({ chave: i.id, id: i.id, cor: i.cor, nome: i.name }))}
         selecionado={instrumentosSel}

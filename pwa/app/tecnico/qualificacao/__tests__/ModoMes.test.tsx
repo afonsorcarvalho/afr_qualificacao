@@ -995,7 +995,7 @@ describe('Modo Mês', () => {
     // é `null` (o Gestor nunca tocou "Todos"); sem isto a restrição de
     // setembro ficaria escondida e sem controle nenhum pra limpar.
     const grupoInstrumentosOutubro = screen.getByRole('group', { name: 'Instrumentos:' })
-    const badgeTodosOutubro = within(grupoInstrumentosOutubro).getByRole('button', { name: 'Todos' })
+    const badgeTodosOutubro = within(grupoInstrumentosOutubro).getByRole('button', { name: 'Todos os instrumentos' })
     expect(badgeTodosOutubro).toHaveAttribute('aria-pressed', 'false')
 
     // E a restrição de Q001/Q002 — que não tem contra o que ser aplicada
@@ -1050,6 +1050,42 @@ describe('Modo Mês', () => {
     expect(label).not.toContain('Q002')
   })
 
+  it('os dois badges "Todos" têm nomes acessíveis distintos, um por faixa', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Busca no escopo da TELA, não dentro do grupo: `getByRole` falha se
+    // houver mais de um botão com o mesmo nome — é essa ambiguidade que o
+    // teste guarda. O `role="group"` + `aria-labelledby` já separava as duas
+    // faixas na leitura em FLUXO, mas a navegação por LISTA de botões (o
+    // rotor do leitor de tela) anuncia só o nome, e eram dois "Todos"
+    // indistinguíveis na mesma tela.
+    const todosTecnicos = screen.getByRole('button', { name: 'Todos os técnicos' })
+    const todosInstrumentos = screen.getByRole('button', { name: 'Todos os instrumentos' })
+    expect(
+      within(screen.getByRole('group', { name: 'Técnicos:' }))
+        .getByRole('button', { name: 'Todos os técnicos' }),
+    ).toBe(todosTecnicos)
+    expect(
+      within(screen.getByRole('group', { name: 'Instrumentos:' }))
+        .getByRole('button', { name: 'Todos os instrumentos' }),
+    ).toBe(todosInstrumentos)
+
+    // O texto VISÍVEL continua o "Todos" curto: a faixa é estreita e o
+    // rótulo do grupo está do lado. O nome longo é só para quem lê o botão
+    // fora do contexto dele.
+    expect(todosTecnicos).toHaveTextContent('Todos')
+    expect(todosInstrumentos).toHaveTextContent('Todos')
+  })
+
   it('desligar todos os chips de uma faixa sem usar "Todos" deixa um Set vazio (não null): nada passa naquela camada, mas "Todos" continua visível como saída', async () => {
     payloadAtual = {
       ...payload,
@@ -1068,7 +1104,7 @@ describe('Modo Mês', () => {
       screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
     ).not.toContain('Afonso')
     // A saída continua lá, ligável a qualquer momento.
-    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos' })
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
     expect(badgeTodos).toBeInTheDocument()
     expect(badgeTodos).toHaveAttribute('aria-pressed', 'false')
 
@@ -1088,7 +1124,7 @@ describe('Modo Mês', () => {
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
 
     const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
-    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos' })
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
     expect(badgeTodos).toHaveAttribute('aria-pressed', 'true')
 
     fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
@@ -1128,6 +1164,46 @@ describe('Modo Mês', () => {
     ).toContain('Afonso')
   })
 
+  it('a marca do chip desligado também perde o preenchimento — vira contorno (achado 2 da review final)', async () => {
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01' }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({
+        id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso', instrument_ids: [101],
+      })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const chipAfonso = within(screen.getByRole('group', { name: 'Técnicos:' }))
+      .getByRole('button', { name: 'Afonso' })
+    const chipQ001 = within(screen.getByRole('group', { name: 'Instrumentos:' }))
+      .getByRole('button', { name: /Q001/ })
+    // As marcas são `aria-hidden` (decoração — o nome do recurso está em
+    // texto puro ao lado), então não têm papel pra consultar: a busca é
+    // estrutural, mesmo precedente do teste de peso acima.
+    const bolinha = () => chipAfonso.querySelector('span[aria-hidden]') as HTMLElement
+    const triangulo = () => chipQ001.querySelector('polygon') as SVGPolygonElement
+
+    // Ligado: marca CHEIA, na cor do recurso.
+    expect(bolinha().style.backgroundColor).not.toBe('')
+    expect(bolinha().style.backgroundColor).not.toBe('transparent')
+    expect(triangulo().getAttribute('fill')).not.toBe('none')
+
+    fireEvent.click(chipAfonso)
+    fireEvent.click(chipQ001)
+
+    // Desligado: só contorno. A marca é o elemento visual DOMINANTE do chip
+    // — mantê-la saturada enquanto o resto do chip apaga fazia o chip
+    // desligado continuar lendo como ligado, que é o mesmo defeito que o
+    // fix round 1 corrigiu no fundo e na borda e deixou passar na marca.
+    expect(bolinha().style.backgroundColor).toBe('transparent')
+    expect(bolinha().style.borderColor).not.toBe('')
+    expect(triangulo().getAttribute('fill')).toBe('none')
+    expect(Number(triangulo().getAttribute('stroke-width'))).toBeGreaterThan(0)
+  })
+
   it('chip ligado é o preenchido (tem o peso); desligado fica apagado — nunca o contrário (achado 2, fix round 1)', async () => {
     payloadAtual = {
       ...payload,
@@ -1139,7 +1215,7 @@ describe('Modo Mês', () => {
 
     const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
     const chipAfonso = within(grupoTecnicos).getByRole('button', { name: 'Afonso' })
-    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos' })
+    const badgeTodos = within(grupoTecnicos).getByRole('button', { name: 'Todos os técnicos' })
 
     // Estado inicial ("Todos" ativo, Afonso ligado por herança): os dois
     // usam o MESMO vocabulário de peso — preenchido, sem contorno
@@ -1183,7 +1259,7 @@ describe('Modo Mês', () => {
 
     // Voltar ao Mês: o badge "Todos" está de novo ativo e a bolinha voltou.
     const grupoTecnicosDepois = screen.getByRole('group', { name: 'Técnicos:' })
-    expect(within(grupoTecnicosDepois).getByRole('button', { name: 'Todos' }))
+    expect(within(grupoTecnicosDepois).getByRole('button', { name: 'Todos os técnicos' }))
       .toHaveAttribute('aria-pressed', 'true')
     expect(
       screen.getByRole('button', { name: /^17 de setembro,/ }).getAttribute('aria-label'),
