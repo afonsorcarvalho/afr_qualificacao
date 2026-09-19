@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   primeiroDiaDoMes, deslocarMes, gradeDoMes, noMes, rotuloMes,
   corDoTecnico, tecnicosPorDia, PALETA, COR_SEM_TECNICO,
-  corDoInstrumento, instrumentosPorDia,
+  corDoInstrumento, instrumentosPorDia, conflitosPorDia,
 } from '../agenda/mes'
 import type { VisitaAgenda, Opcao, InstrumentoOpcao } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
@@ -295,6 +295,51 @@ describe('instrumentosPorDia', () => {
     const dia = r.find((d) => d.date === '2026-09-17')!
     expect(dia.instrumentos.map((i) => i.name)).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
   })
+
+  describe('parâmetro `ligados` (camada 2 do filtro — Task 2 bugfix)', () => {
+    // A camada 1 (`visitasVisiveis` em `page.tsx`) já decide QUAIS visitas
+    // sobrevivem; dentro de uma visita sobrevivente, `ligados` decide quais
+    // dos SEUS instrumentos ainda viram marca. Sem isso, uma visita com dois
+    // instrumentos (um ligado, um desligado) desenhava os dois — o bug
+    // relatado (Q001 desligado continuava no aria-label da célula de 1/out).
+    it('sem `ligados` (undefined), comportamento idêntico ao de antes — todo instrumento usado vira item', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes,
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos.map((i) => i.id)).toEqual([5, 8])
+    })
+
+    it('com `ligados` restrito, instrumento fora do conjunto não vira item nem entra na contagem', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes, new Set([5]),
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos).toEqual([
+        { id: 5, name: 'Multímetro', cor: corDoInstrumento(5), visitas: 1 },
+      ])
+    })
+
+    it('`ligados` vazio (Set sem nenhum id) zera os instrumentos do dia, sem quebrar a célula', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes, new Set(),
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos).toEqual([])
+    })
+
+    it('`ligados: null` (mesmo sentido de undefined — sem restrição) não filtra nada', () => {
+      const r = instrumentosPorDia(
+        [v({ id: 1, date: '2026-09-17', instrument_ids: [5, 8] })],
+        dias, opcoes, null,
+      )
+      const dia = r.find((d) => d.date === '2026-09-17')!
+      expect(dia.instrumentos.map((i) => i.id)).toEqual([5, 8])
+    })
+  })
 })
 
 /**
@@ -341,5 +386,131 @@ describe('PALETA', () => {
         }
       }
     }
+  })
+})
+
+/**
+ * Guarda de contraste da barra de estado do dia (Task 1). Mesmo método da
+ * guarda da `PALETA` logo acima (hsl→rgb + razão WCAG), só que medindo os
+ * TOKENS `--ok`/`--danger`/`--primary-foreground` em vez da paleta hex de
+ * técnico.
+ *
+ * Duas medições, dois papéis diferentes na barra:
+ *
+ * 1. `--ok`/`--danger` contra `--card` (o fundo da célula NÃO selecionada,
+ *    nos dois temas): 6.94–9.93:1, folgado. É essa dupla que pinta o
+ *    PREENCHIMENTO da barra sempre — inclusive no dia selecionado, onde o
+ *    preenchimento sozinho mede só 1.77–2.63:1 contra `--primary` (medido no
+ *    fix round 1, abaixo do piso de 3:1).
+ * 2. `--primary-foreground` contra `--primary` (o par que já pinta o TEXTO
+ *    do dia selecionado, `text-primary-foreground`): 14.17:1 (claro) e
+ *    18.23:1 (escuro) — é essa dupla que sustenta o CONTORNO de 1px que a
+ *    barra ganha só no dia selecionado (`ring-1 ring-inset
+ *    ring-primary-foreground` em `_GradeMes.tsx`).
+ *
+ * A saída (fix round 1, decidida com o coordinator desta task depois que a
+ * primeira versão — suprimir a barra inteira no dia selecionado — se provou
+ * errada no navegador: o dia default nasce SELECIONADO e é frequentemente o
+ * que mais precisa da barra): a WCAG 1.4.11 mede o contraste do LIMITE
+ * (boundary) de um elemento gráfico de estado, não do preenchimento inteiro
+ * — e o limite pode usar um token diferente do preenchimento. Por isso a
+ * barra continua sempre visível (preenchimento `--ok`/`--danger`, o mesmo
+ * token do dia não selecionado — o MATIZ nunca muda) e ganha só um contorno
+ * de 1px em `--primary-foreground` quando o dia está selecionado, cumprindo
+ * 1.4.11 pelo contorno sem precisar de um token de preenchimento novo.
+ *
+ * Não existe tom de PREENCHIMENTO fixo que limpe 3:1 contra `--card` E
+ * `--primary` ao mesmo tempo nos dois temas — os dois fundos sentam em
+ * extremos opostos de luminância de propósito (claro no tema claro é
+ * `--card` quase branco e `--primary` quase preto; o inverso no escuro) — daí
+ * o contorno, não uma terceira cor de preenchimento inventada.
+ */
+describe('barra de estado do dia: --ok/--danger sobre --card, e --primary-foreground sobre --primary (contorno do dia selecionado)', () => {
+  it('--ok e --danger passam 3:1 sobre --card no claro e no escuro (preenchimento da barra)', () => {
+    const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
+    for (const tema of [':root', ':root.dark']) {
+      const card = tokenDe(css, tema, 'card')
+      expect(card, `--card ausente em ${tema}`).not.toBeNull()
+      const bg = hsl2rgb(card!)
+      for (const papel of ['ok', 'danger']) {
+        const token = tokenDe(css, tema, papel)
+        expect(token, `--${papel} ausente em ${tema}`).not.toBeNull()
+        expect(
+          contraste(hsl2rgb(token!), bg),
+          `--${papel} sobre --card em ${tema}`,
+        ).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+
+  it('--primary-foreground passa 3:1 sobre --primary no claro e no escuro (contorno da barra no dia selecionado)', () => {
+    const css = readFileSync(join(__dirname, '..', '..', '..', '..', 'app/globals.css'), 'utf8')
+    for (const tema of [':root', ':root.dark']) {
+      const primary = tokenDe(css, tema, 'primary')
+      const primaryFg = tokenDe(css, tema, 'primary-foreground')
+      expect(primary, `--primary ausente em ${tema}`).not.toBeNull()
+      expect(primaryFg, `--primary-foreground ausente em ${tema}`).not.toBeNull()
+      expect(
+        contraste(hsl2rgb(primaryFg!), hsl2rgb(primary!)),
+        `--primary-foreground sobre --primary em ${tema}`,
+      ).toBeGreaterThanOrEqual(3)
+    }
+  })
+})
+
+describe('conflitosPorDia', () => {
+  const dias = ['2026-09-17', '2026-09-18']
+
+  it('devolve só as datas com alguma visita em conflito', () => {
+    const r = conflitosPorDia(
+      [
+        v({ id: 1, date: '2026-09-17', conflict: true }),
+        v({ id: 2, date: '2026-09-18', conflict: false }),
+      ],
+      dias,
+    )
+    expect(r).toEqual(new Set(['2026-09-17']))
+  })
+
+  it('data com conflito fora da janela (`dias`) não entra', () => {
+    // O filtro NÃO é sobre as visitas passadas (que continuam sendo TODAS as
+    // da janela em modo Mês, não filtradas pelas duas faixas) — é sobre a
+    // grade de dias recebida: uma visita de conflito fora dos 42 dias
+    // pedidos (o que hoje não acontece em produção, já que `visitas` vem do
+    // fetch ancorado na própria grade) não deve poder vazar para o `Set`.
+    const r = conflitosPorDia(
+      [v({ id: 1, date: '2026-08-01', conflict: true })],
+      dias,
+    )
+    expect(r).toEqual(new Set())
+  })
+
+  it('dia sem visita não entra; lista vazia devolve conjunto vazio', () => {
+    expect(conflitosPorDia([], dias)).toEqual(new Set())
+    expect(conflitosPorDia([v({ date: '2026-09-17', conflict: false })], dias)).toEqual(new Set())
+  })
+
+  it('fonte é a lista completa, não filtrada — o filtro das duas faixas não pode esconder conflito', () => {
+    // `conflitosPorDia` não sabe nada sobre técnico/instrumento — recebe
+    // sempre a `visitas` que o chamador decidir passar. Este teste documenta
+    // a intenção do lado de `page.tsx`: a função em si só varre o que
+    // recebe, então uma visita de qualquer técnico/instrumento entra desde
+    // que `conflict` seja `true` e a data esteja em `dias`.
+    const r = conflitosPorDia(
+      [v({ id: 1, date: '2026-09-17', tecnico_id: 9, instrument_ids: [999], conflict: true })],
+      dias,
+    )
+    expect(r).toEqual(new Set(['2026-09-17']))
+  })
+
+  it('duas visitas em conflito no mesmo dia rendem uma única entrada no Set', () => {
+    const r = conflitosPorDia(
+      [
+        v({ id: 1, date: '2026-09-17', conflict: true }),
+        v({ id: 2, date: '2026-09-17', conflict: true }),
+      ],
+      dias,
+    )
+    expect(r.size).toBe(1)
   })
 })

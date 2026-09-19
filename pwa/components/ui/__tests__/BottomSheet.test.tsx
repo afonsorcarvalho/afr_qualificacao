@@ -20,9 +20,18 @@ import { BottomSheet } from '../BottomSheet'
  * disparado direto (`fireEvent.keyDown(document, …)`), que é o mesmo evento
  * que o navegador entrega.
  */
-function Folha({ open, onClose = vi.fn() }: { open: boolean; onClose?: () => void }) {
+function Folha({
+  open,
+  onClose = vi.fn(),
+  posicao,
+}: {
+  open: boolean
+  onClose?: () => void
+  /** Sem valor = usa o padrão do componente (`'inferior'`). */
+  posicao?: 'inferior' | 'centro'
+}) {
   return (
-    <BottomSheet open={open} title="Folha de teste" onClose={onClose}>
+    <BottomSheet open={open} title="Folha de teste" onClose={onClose} posicao={posicao}>
       <button type="button">Cancelar</button>
       <button type="button">Confirmar</button>
     </BottomSheet>
@@ -149,6 +158,98 @@ describe('BottomSheet: foco', () => {
     rerender(<Folha open={false} onClose={onClose} />)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(atalhoDoFundo).toHaveBeenCalledTimes(1)
+
+    window.removeEventListener('keydown', atalhoDoFundo)
+  })
+})
+
+/**
+ * Variante de posição (`posicao`). `VisitaSheet` (criar/editar visita)
+ * continua de baixo — não passa a prop, então o padrão `'inferior'` tem de
+ * preservar as classes de hoje. `ConfirmarMudancaData` passa `'centro'`: o
+ * pedido é diálogo centralizado nos dois eixos, cantos arredondados nos
+ * quatro lados (a folha de baixo arredonda só em cima) e rolável se o
+ * conteúdo passar da altura da viewport — sem cortar sem scroll.
+ */
+describe('BottomSheet: variante de posição', () => {
+  it('padrão (sem prop) é a folha de baixo — encostada embaixo, arredonda só em cima', () => {
+    render(<Folha open />)
+    const dialogo = screen.getByRole('dialog', { name: 'Folha de teste' })
+    const moldura = dialogo.parentElement as HTMLElement
+
+    expect(moldura.className).toContain('items-end')
+    expect(dialogo.className).toContain('rounded-t-2xl')
+    expect(dialogo.className).not.toContain('rounded-2xl')
+  })
+
+  it("posicao='inferior' explícito tem o mesmo resultado do padrão", () => {
+    render(<Folha open posicao="inferior" />)
+    const dialogo = screen.getByRole('dialog', { name: 'Folha de teste' })
+    const moldura = dialogo.parentElement as HTMLElement
+
+    expect(moldura.className).toContain('items-end')
+    expect(dialogo.className).toContain('rounded-t-2xl')
+  })
+
+  it("posicao='centro' centraliza nos dois eixos e arredonda os quatro cantos", () => {
+    render(<Folha open posicao="centro" />)
+    const dialogo = screen.getByRole('dialog', { name: 'Folha de teste' })
+    const moldura = dialogo.parentElement as HTMLElement
+
+    // Centralizado nos dois eixos: o eixo cruzado do flex (vertical) e o
+    // principal (horizontal, já `justify-center` nas duas variantes).
+    expect(moldura.className).toContain('items-center')
+    expect(moldura.className).toContain('justify-center')
+    // Arredondamento nos quatro lados — não usa o corte de cima só (`-t-`)
+    // da folha inferior.
+    expect(dialogo.className).toMatch(/(?:^|\s)rounded-2xl(?:\s|$)/)
+    expect(dialogo.className).not.toContain('rounded-t-2xl')
+  })
+
+  it("posicao='centro' dá margem lateral (telas pequenas, ex. 390px) via padding na moldura", () => {
+    render(<Folha open posicao="centro" />)
+    const dialogo = screen.getByRole('dialog', { name: 'Folha de teste' })
+    const moldura = dialogo.parentElement as HTMLElement
+
+    expect(moldura.className).toMatch(/(?:^|\s)p(?:x)?-\d/)
+  })
+
+  it("posicao='centro' rola internamente em vez de cortar quando o conteúdo passa da viewport", () => {
+    render(<Folha open posicao="centro" />)
+    const dialogo = screen.getByRole('dialog', { name: 'Folha de teste' })
+
+    expect(dialogo.className).toContain('overflow-y-auto')
+    expect(dialogo.className).toMatch(/max-h-/)
+  })
+
+  it("posicao='centro' mantém o foco indo para o diálogo ao abrir (mesma mecânica da folha inferior)", () => {
+    const { rerender } = render(<Folha open={false} posicao="centro" />)
+    rerender(<Folha open posicao="centro" />)
+
+    expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Folha de teste' }))
+  })
+
+  it("posicao='centro' mantém o trap do Tab (último volta pro primeiro)", () => {
+    render(<Folha open posicao="centro" />)
+    const fechar = screen.getByRole('button', { name: 'Fechar' })
+    const confirmar = screen.getByRole('button', { name: 'Confirmar' })
+
+    confirmar.focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+
+    expect(document.activeElement).toBe(fechar)
+  })
+
+  it("posicao='centro' mantém Escape fechando e parando a propagação para o atalho global", () => {
+    const onClose = vi.fn()
+    const atalhoDoFundo = vi.fn()
+    window.addEventListener('keydown', atalhoDoFundo)
+
+    render(<Folha open posicao="centro" onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(atalhoDoFundo).not.toHaveBeenCalled()
 
     window.removeEventListener('keydown', atalhoDoFundo)
   })

@@ -218,6 +218,29 @@ export function tecnicosPorDia(
   })
 }
 
+/**
+ * Datas (ISO) da janela em que ALGUMA visita está em conflito — sobre a
+ * lista NÃO filtrada (`visitas`, nunca `visitasVisiveis`), porque o filtro
+ * das duas faixas de legenda não pode esconder conflito (Task 1 do plano da
+ * barra de estado): um conflito de agenda é fato do dia inteiro, não do
+ * subconjunto de técnicos/instrumentos que o Gestor decidiu olhar agora.
+ *
+ * Varredura O(nº de visitas) — uma passada por `visitas`, não 42×visitas: a
+ * mesma otimização de `agruparPorData`, só que aqui o resultado é um `Set` de
+ * datas, não um índice de arrays.
+ */
+export function conflitosPorDia(
+  visitas: VisitaAgenda[],
+  dias: string[],
+): Set<string> {
+  const diasValidos = new Set(dias)
+  const conflitos = new Set<string>()
+  for (const v of visitas) {
+    if (v.conflict && diasValidos.has(v.date)) conflitos.add(v.date)
+  }
+  return conflitos
+}
+
 export interface PontoInstrumento {
   id: number
   /** Nome de `pwa_instrumento_options`; `Instrumento #<id>` quando o id não
@@ -296,11 +319,24 @@ export function ordenarInstrumentos<T extends { id: number; name: string }>(
  * posição. Pareando por índice, um instrumento roubaria o nome do outro.
  * Por isso o nome vem sempre de `opcoes` (o parâmetro `pwa_instrumento_options`),
  * nunca de `instrument_list`.
+ *
+ * `ligados` é a CAMADA 2 do filtro da faixa de instrumentos (bugfix): a
+ * camada 1 (`visitasVisiveis`, montada pelo chamador) já decide QUAIS
+ * visitas sobrevivem — mas uma visita sobrevivente pode usar vários
+ * instrumentos, alguns ligados e outros desligados, e sem este parâmetro
+ * TODOS eles viravam marca. `undefined`/`null` (o default, usado por
+ * `pontosInstrumentoJanela` em `page.tsx`) preserva o comportamento de
+ * sempre — universo inteiro, sem filtro —, porque a legenda e a seção
+ * "Instrumentos do dia" precisam continuar mostrando todo instrumento da
+ * janela (senão não haveria como religar um chip desligado). Só a
+ * agregação que alimenta as marcas da GRADE (`pontosInstrumentoGrade`)
+ * passa um `Set`.
  */
 export function instrumentosPorDia(
   visitas: VisitaAgenda[],
   dias: string[],
   opcoes: InstrumentoOpcao[],
+  ligados?: ReadonlySet<number> | null,
 ): PontosInstrumentoDia[] {
   const porData = agruparPorData(visitas)
   const nomePorId = new Map(opcoes.map((o) => [o.id, o.name]))
@@ -312,9 +348,13 @@ export function instrumentosPorDia(
 
     // Conta visitas por id de instrumento, direto de `instrument_ids` — nunca
     // de `instrument_list`, que pode estar desalinhada (ver comentário acima).
+    // `ligados` (camada 2) descarta o id ANTES de entrar na contagem: um
+    // instrumento desligado não pode virar marca nem aparecer no
+    // `aria-label`, então nem entra no Map.
     const contagem = new Map<number, number>()
     for (const v of doDia) {
       for (const id of v.instrument_ids) {
+        if (ligados && !ligados.has(id)) continue
         contagem.set(id, (contagem.get(id) ?? 0) + 1)
       }
     }

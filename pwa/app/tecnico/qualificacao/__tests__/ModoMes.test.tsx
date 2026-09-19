@@ -918,6 +918,107 @@ describe('Modo Mês', () => {
     expect(celula.getAttribute('aria-label')).not.toContain('Q002')
   })
 
+  it('camada 2: UMA visita com dois instrumentos, um deles desligado, desenha só o triângulo do ligado', async () => {
+    // Bug relatado pelo user: diferente do teste de interseção acima (cada
+    // visita usa UM instrumento só, e a camada 1 já basta pra sumir com
+    // ela inteira), aqui a MESMA visita usa os dois — sobrevive à camada 1
+    // (tem ao menos um instrumento ligado), mas `pontosInstrumentoGrade`
+    // não filtrava os instrumentos dela própria, e o desligado continuava
+    // virando triângulo e citado no aria-label.
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso',
+          instrument_ids: [101, 102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Desliga Q001 — a visita continua valendo pela camada 1 (ainda usa
+    // Q002, que está ligado).
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q001/ }))
+
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const label = celula.getAttribute('aria-label') ?? ''
+    // A visita (Afonso) continua — camada 1 não mexe nisso.
+    expect(label).toContain('Afonso')
+    // Mas o Q001 desligado não pode aparecer mais — nem o triângulo (via
+    // `data-testid="triangulo"`), nem o aria-label.
+    expect(label).toContain('Q002')
+    expect(label).not.toContain('Q001')
+    expect(within(celula).queryAllByTestId('triangulo')).toHaveLength(1)
+  })
+
+  it('a legenda e a seção "Instrumentos do dia" continuam listando os dois instrumentos mesmo com um desligado na grade', async () => {
+    // NÃO pode regredir: a legenda (pra dar pra religar) e a seção do dia
+    // (que é sempre não-filtrada, por brief) usam `pontosInstrumentoJanela`,
+    // que este fix não pode tocar.
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso',
+          instrument_ids: [101, 102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const grupoInstrumentos = screen.getByRole('group', { name: 'Instrumentos:' })
+    fireEvent.click(within(grupoInstrumentos).getByRole('button', { name: /Q001/ }))
+
+    // Legenda continua com os dois chips (Q001 desligado, mas presente).
+    expect(within(grupoInstrumentos).getByText('Q001')).toBeInTheDocument()
+    expect(within(grupoInstrumentos).getByText('Q002')).toBeInTheDocument()
+
+    // Seção "Instrumentos do dia" do dia selecionado (17, default via
+    // server_today) — não filtrada, lista os dois.
+    const titulo = screen.getByText('Instrumentos do dia')
+    const secao = titulo.closest('div') as HTMLElement
+    expect(within(secao).getByText('Q001')).toBeInTheDocument()
+    expect(within(secao).getByText('Q002')).toBeInTheDocument()
+  })
+
+  it('não-regressão: sem nenhuma restrição de instrumento ativa, uma visita com dois instrumentos continua desenhando os dois', async () => {
+    instrumentoOptionsAtual = [
+      { id: 101, name: 'Q001', validade: '2027-01-01' },
+      { id: 102, name: 'Q002', validade: '2027-01-01' },
+    ]
+    payloadAtual = {
+      ...payload,
+      visitas: [
+        visita({
+          id: 7, date: '2026-09-17', tecnico_id: 441, tecnico_name: 'Afonso',
+          instrument_ids: [101, 102],
+        }),
+      ],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    const celula = screen.getByRole('button', { name: /^17 de setembro,/ })
+    const label = celula.getAttribute('aria-label') ?? ''
+    expect(label).toContain('Q001')
+    expect(label).toContain('Q002')
+    expect(within(celula).queryAllByTestId('triangulo')).toHaveLength(2)
+  })
+
   it('consequência aceita: com a faixa de instrumentos restrita, a visita sem instrumento nenhum perde a bolinha do técnico', async () => {
     instrumentoOptionsAtual = [
       { id: 101, name: 'Q001', validade: '2027-01-01' },
@@ -1397,6 +1498,77 @@ describe('Modo Mês', () => {
     expect(screen.queryByText(/Movendo a visita/)).toBeNull()
     expect(mutateUpdate).not.toHaveBeenCalled()
   })
+
+  // --- Task 1 (plano "agenda-barra-estado-dia"): a barra e o aria-label
+  // sobrevivem ao filtro das duas faixas de legenda, porque as duas leem a
+  // fonte NÃO FILTRADA (`conflitosPorDia(visitas, ...)`, montada em `page.tsx`
+  // a partir de `visitas`, nunca `visitasVisiveis`) ---
+
+  describe('barra de estado do dia sobrevive ao filtro (fonte não filtrada)', () => {
+    it('filtro que esconde as visitas de um dia em conflito: o dia fica sem pontinhos, com barra vermelha, e o aria-label continua dizendo ", com conflito"', async () => {
+      // 20/09, NÃO 17/09 (`server_today`): o dia selecionado por default
+      // ganha fundo `--primary` e suprime a barra (achado de contraste desta
+      // task, ver `mes.test.ts`) — este teste teria que checar uma barra que
+      // não deveria estar lá por um motivo ALHEIO ao que ele prova.
+      payloadAtual = {
+        ...payload,
+        visitas: [
+          visita({
+            id: 7, date: '2026-09-20', tecnico_id: 441, tecnico_name: 'Afonso', conflict: true,
+          }),
+        ],
+      }
+      montar()
+      irParaMes()
+      await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+      const celulaAntes = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(celulaAntes.getAttribute('aria-label')).toContain(', com conflito')
+      expect(within(celulaAntes).getByTestId('barra-estado').className).toContain('bg-danger')
+
+      // Desliga o único técnico da faixa — a camada 1 do filtro (`page.tsx`)
+      // esconde a visita inteira das marcas, mas `conflitosGrade` não muda:
+      // ela nunca leu `visitasVisiveis`.
+      const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+      fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+      const celula = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(within(celula).queryAllByTestId('ponto')).toHaveLength(0)
+      // O sufixo continua — a data segue no `Set` não filtrado.
+      expect(celula.getAttribute('aria-label')).toContain(', com conflito')
+      // E a barra continua vermelha — nunca vira `--ok` nem some, mesmo sem
+      // nenhum pontinho visível (consequência aceita no brief).
+      expect(within(celula).getByTestId('barra-estado').className).toContain('bg-danger')
+    })
+
+    it('filtro que esconde as visitas de um dia SEM conflito: o dia perde a barra verde junto com os pontinhos', async () => {
+      // Mesmo raciocínio acima: 20/09, não o dia selecionado por default.
+      payloadAtual = {
+        ...payload,
+        visitas: [
+          visita({
+            id: 7, date: '2026-09-20', tecnico_id: 441, tecnico_name: 'Afonso', conflict: false,
+          }),
+        ],
+      }
+      montar()
+      irParaMes()
+      await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+      const celulaAntes = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(within(celulaAntes).getByTestId('barra-estado').className).toContain('bg-ok')
+
+      const grupoTecnicos = screen.getByRole('group', { name: 'Técnicos:' })
+      fireEvent.click(within(grupoTecnicos).getByRole('button', { name: 'Afonso' }))
+
+      const celula = screen.getByRole('button', { name: /^20 de setembro,/ })
+      expect(within(celula).queryAllByTestId('ponto')).toHaveLength(0)
+      // Sem conflito na janela e sem visita FILTRADA sobrando: a barra some
+      // por inteiro — não vira `--danger` (não há conflito) nem continua
+      // `--ok` (a camada 1 do filtro esvaziou o dia filtrado).
+      expect(within(celula).queryByTestId('barra-estado')).not.toBeInTheDocument()
+    })
+  })
 })
 
 // --- Task 1 (isolar recurso): toque longo num chip da faixa ---
@@ -1446,6 +1618,33 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     act(() => {
       vi.advanceTimersByTime(500)
     })
+  }
+
+  /**
+   * Estica as bounds do chip pra um retângulo real e previsível — o
+   * happy-dom não calcula layout, então `getBoundingClientRect()` sem este
+   * stub devolve `{ left: 0, top: 0, right: 0, bottom: 0 }` pra QUALQUER
+   * elemento. Isso é uma armadilha, não um placeholder inofensivo: com o
+   * retângulo zerado, um `pointerUp` disparado sem `clientX`/`clientY`
+   * explícitos (que também vêm a 0) SEMPRE cai "dentro" das bounds — o teste
+   * passaria mesmo se a checagem de posição em `soltarToqueLongo` estivesse
+   * quebrada ou ausente, só por acidente do stub. Os testes que exercitam a
+   * checagem de posição (dentro vs. fora) por isso `stubBounds` o chip ANTES
+   * do gesto e usam `clientX`/`clientY` explícitos e coerentes com o
+   * retângulo escolhido — nunca dependem do zero implícito.
+   */
+  function stubBounds(
+    chip: HTMLElement,
+    rect: { left: number; top: number; right: number; bottom: number },
+  ) {
+    vi.spyOn(chip, 'getBoundingClientRect').mockReturnValue({
+      ...rect,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top,
+      x: rect.left,
+      y: rect.top,
+      toJSON: () => rect,
+    } as DOMRect)
   }
 
   it('toque longo isola: só aquele chip fica ligado, os demais desligam (aria-pressed e marcas da grade)', async () => {
@@ -1513,8 +1712,19 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     const grupo = screen.getByRole('group', { name: 'Técnicos:' })
     const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
 
+    // Bounds explícitas e o `pointerUp` DENTRO delas — de propósito, não por
+    // acidente do retângulo zerado do happy-dom (que também leria "dentro"
+    // sem stub nenhum, já que um `pointerUp` sem `clientX`/`clientY`
+    // explícitos vem a 0,0). Este teste protege o invariante "só ARMA a
+    // flag, nunca desarma" de `soltarToqueLongo`: soltar DENTRO do chip — o
+    // caminho normal de um toque longo bem-sucedido — não pode limpar a
+    // supressão que o `setTimeout` de `iniciarToqueLongo` já armou. Com
+    // bounds explícitas, uma regressão que trocasse esse `if` por um
+    // `if/else` (limpando a flag quando "dentro") quebraria este teste de
+    // verdade, não só por coincidência de zeros.
+    stubBounds(chipAfonso, { left: 0, top: 0, right: 100, bottom: 44 })
     seguraAte500ms(chipAfonso)
-    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1, clientX: 50, clientY: 20 })
     // O `click` que o navegador dispara em seguida a um toque real (pointerup
     // -> click) não pode "desfazer" o isolar reaplicando o alternar.
     // `detail: 1` é o que marca este `click` como vindo de um PONTEIRO real
@@ -1527,7 +1737,7 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('arrastar além do limiar antes dos 500ms cancela o gesto: não isola nem alterna', async () => {
+  it('clique curto com tremida pequena (13px) DENTRO do chip alterna normalmente (fix: "às vezes o clique funciona, às vezes não")', async () => {
     await montarNoMes()
     vi.useFakeTimers()
 
@@ -1535,21 +1745,84 @@ describe('Modo Mês — isolar recurso (toque longo na faixa)', () => {
     const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
     const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
 
-    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 0, clientY: 0 })
-    fireEvent.pointerMove(chipAfonso, { pointerId: 1, clientX: 30, clientY: 0 })
+    // Chip de 100x44 — 13px de tremida no meio do caminho (> LIMIAR_ARRASTO_PX
+    // de 10) continua bem DENTRO do retângulo.
+    stubBounds(chipAfonso, { left: 0, top: 0, right: 100, bottom: 44 })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 10, clientY: 20 })
+    fireEvent.pointerMove(chipAfonso, { pointerId: 1, clientX: 23, clientY: 20 })
+    // Solto BEM antes dos 500ms — não é toque longo, é um toque curto comum
+    // com a mão tremendo no caminho. Reprodução do bug relatado: pointerdown,
+    // mover 13px, pointerup, sem nenhum arrasto de verdade.
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1, clientX: 23, clientY: 20 })
+    fireEvent.click(chipAfonso, { detail: 1 })
+
+    // O clique PRECISA valer — antes do fix, `moverToqueLongo` suprimia
+    // qualquer click depois de >10px de trajeto, sem olhar pra onde o dedo
+    // soltou, e este era exatamente o clique intermitentemente perdido.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('pressionar o chip, mover para FORA das bounds e soltar lá NÃO alterna (comportamento de botão nativo)', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    stubBounds(chipAfonso, { left: 0, top: 0, right: 100, bottom: 44 })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 50, clientY: 20 })
+    // Move pra fora do retângulo (right: 100) — bem além do limiar de
+    // arrasto, então o isolar pendente também é cancelado (não chega a
+    // 500ms aqui, mas não haveria isolar de qualquer forma).
+    fireEvent.pointerMove(chipAfonso, { pointerId: 1, clientX: 150, clientY: 20 })
+    // Solta FORA — `evento.currentTarget` continua sendo o botão graças à
+    // captura de ponteiro (`setPointerCapture`), então é a posição real
+    // (150, 20) que é comparada contra as bounds (0..100, 0..44).
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1, clientX: 150, clientY: 20 })
+    fireEvent.click(chipAfonso, { detail: 1 })
+
+    // Nenhum botão nativo alterna quando você aperta, arrasta pra fora e
+    // solta lá — o click é suprimido, Afonso continua ligado.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('arrastar além do limiar continua cancelando o isolar (o toque longo não dispara), mesmo soltando dentro do chip', async () => {
+    await montarNoMes()
+    vi.useFakeTimers()
+
+    const grupo = screen.getByRole('group', { name: 'Técnicos:' })
+    const chipAfonso = within(grupo).getByRole('button', { name: 'Afonso' })
+    const chipBruno = within(grupo).getByRole('button', { name: 'Bruno' })
+
+    stubBounds(chipAfonso, { left: 0, top: 0, right: 200, bottom: 44 })
+
+    fireEvent.pointerDown(chipAfonso, { pointerId: 1, clientX: 10, clientY: 20 })
+    // 70px — bem acima do limiar de 10px — mas ainda DENTRO do retângulo
+    // largo (0..200): isola o efeito do limiar (cancela o timer) do efeito
+    // da posição de soltura (que aqui não suprime, por estar dentro).
+    fireEvent.pointerMove(chipAfonso, { pointerId: 1, clientX: 80, clientY: 20 })
     act(() => {
       vi.advanceTimersByTime(500)
     })
-    fireEvent.pointerUp(chipAfonso, { pointerId: 1 })
-    // `detail: 1`: é um click de ponteiro real que está sendo suprimido
-    // aqui (arrasto), não um click de teclado passando pelo atalho do
-    // achado 1 — os dois caminhos de supressão são independentes.
+    fireEvent.pointerUp(chipAfonso, { pointerId: 1, clientX: 80, clientY: 20 })
     fireEvent.click(chipAfonso, { detail: 1 })
 
-    // Nada mudou: nem isolou (Bruno continuaria ligado, único sinal visível
-    // de um isolar bem-sucedido), nem alternou (Afonso continua ligado).
-    expect(chipAfonso).toHaveAttribute('aria-pressed', 'true')
+    // O sinal de isolar bem-sucedido é Bruno DESLIGAR (isolar apaga todos os
+    // outros) — não o badge "Todos", que também apaga num alternar comum a
+    // partir de "Todos" (o toggle vira um `Set` com todos MENOS o tocado,
+    // deixando de ser `null`; não é exclusivo de isolar). Bruno continua
+    // ligado: se o timer não tivesse sido cancelado pelo arrasto, `onIsolar`
+    // o teria desligado aos 500ms, com o dedo ainda no ar.
     expect(chipBruno).toHaveAttribute('aria-pressed', 'true')
+    // E o clique, por ter sido solto DENTRO do chip, ainda vale como toque
+    // simples comum — o arrasto cancelou o isolar, não o clique: Afonso
+    // alterna (desliga), sem isolar ninguém.
+    expect(chipAfonso).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('Alt+Enter isola pelo teclado', async () => {

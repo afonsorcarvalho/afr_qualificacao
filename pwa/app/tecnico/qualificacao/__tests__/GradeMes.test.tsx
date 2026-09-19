@@ -36,11 +36,23 @@ function montarInstrumentos(
   return GRADE.map((date) => ({ date, instrumentos: overrides[date] ?? [] }))
 }
 
+/**
+ * `Set` de datas (ISO) em conflito — a prop `conflitos`, fonte NÃO FILTRADA
+ * (Task 1 da barra de estado). Prop OBRIGATÓRIA em `GradeMes`, de propósito:
+ * sem default aqui, todo `render` deste arquivo precisa decidir e declarar
+ * o estado de conflito, em vez de um valor implícito que esconderia o dia
+ * `page.tsx` esquecer de passar a prop de verdade.
+ */
+function montarConflitos(...datas: string[]): Set<string> {
+  return new Set(datas)
+}
+
 describe('GradeMes', () => {
   it('renderiza 42 células, uma por dia da grade', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -56,6 +68,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -73,6 +86,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -102,6 +116,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -118,6 +133,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -131,16 +147,20 @@ describe('GradeMes', () => {
   })
 
   it('dia com conflito tem o sufixo ", com conflito" no aria-label', () => {
+    // `PontosDia.conflito` (filtrado) fica `false` de propósito — desde a
+    // Task 1 o sufixo lê `conflitos` (não filtrado), nunca mais este campo.
+    // Ver o par de testes dedicado a essa troca de fonte, no describe
+    // "barra de estado do dia" abaixo.
     const dias = montarDias({
       '2026-09-10': {
         total: 1,
-        conflito: true,
         pontos: [ponto({ id: 1, name: 'Ana Silva' })],
       },
     })
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos('2026-09-10')}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -165,6 +185,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -181,6 +202,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -196,6 +218,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje="2026-09-20"
@@ -216,6 +239,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje="2026-09-20"
@@ -237,6 +261,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -262,6 +287,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -285,6 +311,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -303,6 +330,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -340,6 +368,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje="2026-09-05"
@@ -357,6 +386,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -393,6 +423,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -429,6 +460,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -466,6 +498,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -500,6 +533,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -528,6 +562,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={montarDias()}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -557,6 +592,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -572,10 +608,11 @@ describe('GradeMes', () => {
   })
 
   it('conflito e instrumentos juntos: o sufixo de conflito fica colado nas visitas, antes de "instrumentos:"', () => {
+    // `PontosDia.conflito` fica `false` — o sufixo lê `conflitos` (não
+    // filtrado), ver o describe "barra de estado do dia".
     const dias = montarDias({
       '2026-09-19': {
         total: 1,
-        conflito: true,
         pontos: [ponto({ id: 1, name: 'Ana Silva' })],
       },
     })
@@ -585,6 +622,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos('2026-09-19')}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -609,6 +647,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={montarInstrumentos()}
         ancora={ANCORA}
         hoje={null}
@@ -631,6 +670,7 @@ describe('GradeMes', () => {
     render(
       <GradeMes
         dias={dias}
+        conflitos={montarConflitos()}
         instrumentos={instrumentos}
         ancora={ANCORA}
         hoje={null}
@@ -643,5 +683,244 @@ describe('GradeMes', () => {
     const triangulo1 = within(cel).getByTestId('triangulo')
     expect(ponto1.closest('[aria-hidden]')).not.toBeNull()
     expect(triangulo1).toHaveAttribute('aria-hidden')
+  })
+
+  // --- Task 1 (plano "agenda-barra-estado-dia"): barra de estado por dia ---
+
+  describe('barra de estado do dia', () => {
+    it('dia com visita e sem conflito mostra a barra --ok', () => {
+      const dias = montarDias({
+        '2026-09-17': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-ok')
+      expect(barra.className).not.toContain('bg-danger')
+    })
+
+    it('dia com conflito mostra a barra --danger, mesmo havendo visita (conflito manda sobre visita)', () => {
+      const dias = montarDias({
+        '2026-09-17': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos('2026-09-17')}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-danger')
+      expect(barra.className).not.toContain('bg-ok')
+    })
+
+    it('dia vazio (sem visita, sem conflito) não mostra barra nenhuma', () => {
+      render(
+        <GradeMes
+          dias={montarDias()}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-05"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: '17 de setembro, sem visitas' })
+      expect(within(cel).queryByTestId('barra-estado')).not.toBeInTheDocument()
+    })
+
+    it('conflito sem NENHUMA visita visível (filtro escondeu todas) ainda mostra a barra --danger — consequência aceita do brief', () => {
+      // `dia.total === 0` (filtrado) mas a data está em `conflitos` (não
+      // filtrado): o dia pode ficar sem nenhum pontinho e com barra vermelha
+      // mesmo assim — é a consequência que o brief pede para assumir.
+      render(
+        <GradeMes
+          dias={montarDias()}
+          conflitos={montarConflitos('2026-09-17')}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+      expect(within(cel).queryAllByTestId('ponto')).toHaveLength(0)
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-danger')
+    })
+
+    // --- fix round 1: a primeira versão suprimia a barra no dia
+    // selecionado (achado de contraste — --ok/--danger medem só 1.77–2.63:1
+    // sobre --primary). O coordinator achou no navegador que o dia default
+    // NASCE selecionado (hoje), e no banco de dev ele tinha conflito — o
+    // único dia sem barra era justamente o que mais precisava dela. A saída:
+    // a barra continua sempre visível (mesmo preenchimento --ok/--danger de
+    // qualquer outro dia — o matiz nunca muda) e ganha um CONTORNO de 1px em
+    // --primary-foreground só no dia selecionado, que mede 14.17:1 (claro) e
+    // 18.23:1 (escuro) contra --primary — WCAG 1.4.11 mede o contraste do
+    // LIMITE do elemento gráfico, não do preenchimento inteiro. Ver o
+    // describe "barra de estado do dia" em mes.test.ts.
+
+    it('dia SELECIONADO com conflito: barra --danger, agora com contorno --primary-foreground', () => {
+      const dias = montarDias({
+        '2026-09-05': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos('2026-09-05')}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-05"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getAllByRole('button', { pressed: true })[0]
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-danger')
+      expect(barra.className).toContain('ring-primary-foreground')
+      // A informação também continua no aria-label — o contorno reforça,
+      // não substitui.
+      expect(cel).toHaveAccessibleName(/5 de setembro, 1 visita: Ana Silva, com conflito/)
+    })
+
+    it('dia SELECIONADO com visita e sem conflito: barra --ok, com o mesmo contorno', () => {
+      const dias = montarDias({
+        '2026-09-05': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-05"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getAllByRole('button', { pressed: true })[0]
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-ok')
+      expect(barra.className).toContain('ring-primary-foreground')
+    })
+
+    it('dia NÃO selecionado não leva o contorno — só o dia selecionado ganha `ring-primary-foreground`', () => {
+      const dias = montarDias({
+        '2026-09-05': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: /^5 de setembro,/ })
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra.className).toContain('bg-ok')
+      expect(barra.className).not.toContain('ring-primary-foreground')
+    })
+
+    it('a barra é aria-hidden e não entra na árvore de acessibilidade', () => {
+      const dias = montarDias({
+        '2026-09-17': { total: 1, pontos: [ponto({ id: 1, name: 'Ana Silva' })] },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      const cel = screen.getByRole('button', { name: /^17 de setembro,/ })
+      const barra = within(cel).getByTestId('barra-estado')
+      expect(barra).toHaveAttribute('aria-hidden')
+    })
+  })
+
+  // --- Task 1, item 1c: a fonte do sufixo ", com conflito" mudou de
+  // `PontosDia.conflito` (filtrado) para `conflitos` (não filtrado). O par
+  // abaixo prova a troca de fonte especificamente — sem ele, reverter 1c
+  // (voltar a ler `dia.conflito`) deixaria a suíte inteira verde, porque os
+  // outros testes deste arquivo sempre mantêm as duas fontes consistentes. ---
+
+  describe('1c: fonte do sufixo ", com conflito" é `conflitos`, não `PontosDia.conflito`', () => {
+    it('PontosDia.conflito=true com `conflitos` vazio NÃO produz o sufixo', () => {
+      const dias = montarDias({
+        '2026-09-17': {
+          total: 1,
+          conflito: true,
+          pontos: [ponto({ id: 1, name: 'Ana Silva' })],
+        },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos()}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      expect(
+        screen.getByRole('button', { name: '17 de setembro, 1 visita: Ana Silva' }),
+      ).toBeInTheDocument()
+    })
+
+    it('PontosDia.conflito=false com a data em `conflitos` PRODUZ o sufixo', () => {
+      const dias = montarDias({
+        '2026-09-17': {
+          total: 1,
+          conflito: false,
+          pontos: [ponto({ id: 1, name: 'Ana Silva' })],
+        },
+      })
+      render(
+        <GradeMes
+          dias={dias}
+          conflitos={montarConflitos('2026-09-17')}
+          instrumentos={montarInstrumentos()}
+          ancora={ANCORA}
+          hoje={null}
+          selecionado="2026-09-01"
+          onSelecionar={vi.fn()}
+        />,
+      )
+      expect(
+        screen.getByRole('button', {
+          name: '17 de setembro, 1 visita: Ana Silva, com conflito',
+        }),
+      ).toBeInTheDocument()
+    })
   })
 })

@@ -38,12 +38,25 @@ export function BottomSheet({
   title,
   onClose,
   children,
+  posicao = 'inferior',
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: React.ReactNode
+  /**
+   * Onde o diálogo aparece. `'inferior'` (padrão, comportamento de sempre) é
+   * a folha subindo de baixo — a `VisitaSheet` (criar/editar visita) usa
+   * essa variante e não muda. `'centro'` é para diálogos de confirmação
+   * curtos (`ConfirmarMudancaData`): centralizado nos dois eixos, cantos
+   * arredondados nos quatro lados em vez de só em cima, e com rolagem
+   * própria se o conteúdo passar da altura da viewport. Toda a mecânica de
+   * foco/trap/Escape abaixo é a mesma nas duas — só as classes do wrapper e
+   * do container mudam.
+   */
+  posicao?: 'inferior' | 'centro'
 }) {
+  const centro = posicao === 'centro'
   const dialogoRef = useRef<HTMLDivElement>(null)
 
   // Escape (comportamento antigo, intocado) + trap do Tab. Continua com
@@ -122,7 +135,13 @@ export function BottomSheet({
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div
+      className={
+        centro
+          ? 'fixed inset-0 z-50 flex items-center justify-center p-4'
+          : 'fixed inset-0 z-50 flex items-end justify-center'
+      }
+    >
       <div
         className="absolute inset-0 bg-black/60"
         aria-hidden
@@ -138,7 +157,24 @@ export function BottomSheet({
         // foco em volta da folha INTEIRA não informa nada — o que o usuário
         // precisa ver é o anel do primeiro controle, um Tab depois.
         tabIndex={-1}
-        className="relative w-full max-w-[560px] rounded-t-2xl border-t border-border bg-card p-4 shadow-[0_-8px_24px_rgba(0,0,0,0.45)] outline-none"
+        // `max-h` + `overflow-y-auto` na variante `centro`: como o wrapper já
+        // ocupa a viewport inteira (`fixed inset-0`), limitar a altura do
+        // PRÓPRIO diálogo e deixá-lo rolar por dentro evita tanto o corte
+        // (conteúdo maior que a tela) quanto o efeito de "centralizar corta o
+        // topo" que `items-center` + scroll no wrapper causaria. A folha de
+        // baixo não precisa disso — ela já nasce encostada no rodapé.
+        className={
+          centro
+            // `90vh`, não um `calc()` com aritmética: dentro de `[...]` do
+            // Tailwind, `calc(100vh-2rem)` sem espaço ao redor do `-` é CSS
+            // inválido (e não há precedente de `calc` no resto do app pra
+            // confirmar que a versão instalada normaliza isso). `90vh` some
+            // a mesma folga de sobra sem depender de parser nenhum, e o
+            // `p-4` do wrapper cobre a margem lateral/vertical em telas
+            // pequenas.
+            ? 'relative max-h-[90vh] w-full max-w-[480px] overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-[0_8px_24px_rgba(0,0,0,0.45)] outline-none'
+            : 'relative w-full max-w-[560px] rounded-t-2xl border-t border-border bg-card p-4 shadow-[0_-8px_24px_rgba(0,0,0,0.45)] outline-none'
+        }
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">{title}</h2>

@@ -43,7 +43,11 @@ export function ConfirmarMudancaData({
   // avaliado estes `children`.
   if (!open) return null
   return (
-    <BottomSheet open={open} title="Mudar data da visita" onClose={onCancelar}>
+    // `posicao="centro"`: pedido do usuário — confirmação é uma interrupção
+    // curta, não uma folha de edição, então fica centralizada em vez de
+    // subir de baixo. A `VisitaSheet` usa o mesmo `BottomSheet` sem essa
+    // prop e continua subindo de baixo (padrão `'inferior'`).
+    <BottomSheet open={open} title="Mudar data da visita" onClose={onCancelar} posicao="centro">
       <p className="text-sm">
         Tem certeza que deseja mudar a data da visita {osName} de{' '}
         {formatarData(dataAtual)} para {formatarData(dataNova)}?
