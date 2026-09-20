@@ -538,6 +538,32 @@ describe('Modo Mês', () => {
     expect(screen.getByText(/Movendo a visita OS26-02/)).toBeInTheDocument()
   })
 
+  it('tarja "Movendo a visita" fica fixa no topo da área de rolagem enquanto o ajuste está armado', async () => {
+    // Bug medido a 390px: o botão "Ajustar" mora no `VisitaCard`, ABAIXO da
+    // grade — no celular, quando o técnico arma o ajuste, a tarja nasce num
+    // ponto da página já rolado pra fora da viewport (`top: -173px` medido).
+    // `sticky top-0` no mesmo container que já sustenta o cabeçalho do dia em
+    // modo Lista (`<main overflow-auto>`) resolve — sem isso, este teste
+    // falha porque a tarja não carrega nenhuma classe de fixação.
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+
+    const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
+    expect(tarja.className).toMatch(/\bsticky\b/)
+    expect(tarja.className).toMatch(/\btop-0\b/)
+  })
+
+  it('sem ajuste armado, a tarja "Movendo a visita" não existe (nada fixo fantasma cobrindo a grade)', async () => {
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+    expect(screen.queryByText(/Movendo a visita/)).toBeNull()
+  })
+
   // --- Task 3: legenda e lista do dia de instrumentos ---
 
   it('useInstrumentoOptions é habilitado no modo Mês', async () => {

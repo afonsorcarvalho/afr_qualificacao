@@ -116,6 +116,19 @@ describe('Modo Semana', () => {
     expect(ultimaChamadaLista?.[2]).toBe(true)
   })
 
+  it('tarja "Movendo a visita" fica fixa no topo enquanto o ajuste está armado (Semana)', () => {
+    // Mesma tarja da Vista Mês (vive fora dos ramos de modo) — cobertura
+    // aqui é só pra garantir que a classe de fixação não depende de nenhum
+    // wrapper específico do modo Semana.
+    montar()
+    irParaSemana()
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+
+    const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
+    expect(tarja.className).toMatch(/\bsticky\b/)
+    expect(tarja.className).toMatch(/\btop-0\b/)
+  })
+
   it('tocar num técnico com a visita em ajuste passa a visita para ele', async () => {
     montar()
     irParaSemana()

@@ -734,12 +734,24 @@ export default function AgendaPage() {
           pode depender do `VisitaCard`, que só é renderizado quando a visita
           cai no dia selecionado. Vale para Semana E Mês, e carrega o
           identificador da visita e uma saída explícita — nada aqui depende
-          de cor. */}
+          de cor.
+
+          `sticky top-0`: o botão "Ajustar" que arma o ajuste mora no
+          `VisitaCard`, ABAIXO da grade — no celular, onde a grade sozinha já
+          ocupa quase a tela, a tarja nascia num ponto da página que a rolagem
+          da grade já tinha deixado pra trás (medido a 390px: `top: -173px`,
+          fora da viewport). `<main overflow-auto>` (`layout.tsx`) é o único
+          ancestral com rolagem — o mesmo container que já sustenta o
+          cabeçalho de dia do modo Lista com `sticky top-0` mais abaixo — por
+          isso gruda aqui sem precisar de nenhum ajuste no layout. `z-20`
+          fica acima desse cabeçalho (`z-10`) pra nunca ficar por baixo das
+          células ao rolar, e `bg-muted` (já existente, cor sólida) garante o
+          fundo opaco. */}
       {emAjusteAtual && (
         <div
           ref={tarjaAjusteRef}
           tabIndex={-1}
-          className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2"
+          className="sticky top-0 z-20 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2"
         >
           <span className="min-w-0 text-sm">
             Movendo a visita {emAjusteAtual.os_name} de {rotuloDia(emAjusteAtual.date)}
