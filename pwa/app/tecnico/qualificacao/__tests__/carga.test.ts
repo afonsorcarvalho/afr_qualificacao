@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   cargaPorDia, cargaPorTecnico, usoPorInstrumento, diasDaSemana,
-  rosterTecnicos, picoDaSemana,
+  rosterTecnicos, picoDaSemana, horasDaVisita,
 } from '../agenda/carga'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
@@ -37,14 +37,42 @@ describe('diasDaSemana', () => {
   })
 })
 
+describe('horasDaVisita', () => {
+  it('rende a duração da janela mesmo com planned_hours zerado — é o bug do usuário: card 08:00–12:00 com o painel acusando "livre"', () => {
+    expect(horasDaVisita(v({ time_start: 8, time_stop: 12, planned_hours: 0 }))).toBe(4)
+  })
+
+  it('ignora planned_hours quando diverge da janela — a janela manda', () => {
+    expect(horasDaVisita(v({ time_start: 8, time_stop: 12, planned_hours: 6 }))).toBe(4)
+  })
+
+  it('virada de dia com overflow e time_stop > 24 (onchange clássico time_start + planned_hours, sem cap): conta o valor cheio, sem truncar — a continuação ainda não existe como visita separada', () => {
+    expect(horasDaVisita(v({ time_start: 20, time_stop: 26, overflow: true }))).toBe(6)
+  })
+
+  it('virada de dia com overflow e time_stop <= time_start (par digitado "ao contrário", sem como saber quanto passa da meia-noite): conta o que cabe até o fim do dia (24 - time_start), nunca negativo', () => {
+    // time_stop (2h, já do dia seguinte) é menor que time_start (22h). O
+    // backend marca `overflow_next_day = true` até a divisão acontecer.
+    expect(horasDaVisita(v({ time_start: 22, time_stop: 2, overflow: true }))).toBe(2)
+  })
+
+  it('janela não-crescente sem overflow sinalizado: dado inconsistente vira 0h, nunca negativo', () => {
+    expect(horasDaVisita(v({ time_start: 22, time_stop: 2, overflow: false }))).toBe(0)
+  })
+
+  it('janela igual (time_stop === time_start) sem overflow: 0h', () => {
+    expect(horasDaVisita(v({ time_start: 8, time_stop: 8, overflow: false }))).toBe(0)
+  })
+})
+
 describe('cargaPorDia', () => {
   const dias = ['2026-09-17', '2026-09-18', '2026-09-19']
 
-  it('soma as horas previstas de cada dia', () => {
+  it('soma as horas previstas de cada dia, pela JANELA — não pelo campo planned_hours (divergente de propósito, para provar isso)', () => {
     const r = cargaPorDia(
-      [v({ id: 1, date: '2026-09-17', planned_hours: 4 }),
-       v({ id: 2, date: '2026-09-17', planned_hours: 2.5 }),
-       v({ id: 3, date: '2026-09-19', planned_hours: 8 })],
+      [v({ id: 1, date: '2026-09-17', time_start: 8, time_stop: 12, planned_hours: 0 }),
+       v({ id: 2, date: '2026-09-17', time_start: 13, time_stop: 15.5, planned_hours: 0 }),
+       v({ id: 3, date: '2026-09-19', time_start: 8, time_stop: 16, planned_hours: 0 })],
       dias,
     )
     expect(r.map((d) => d.horas)).toEqual([6.5, 0, 8])
@@ -85,6 +113,14 @@ describe('cargaPorTecnico', () => {
       '2026-09-17', tecnicos,
     )
     expect(r[0].horas).toBe(0)
+  })
+
+  it('soma pela janela, não pelo campo — planned_hours divergente (6) não muda o resultado da janela 08:00–12:00 (4h)', () => {
+    const r = cargaPorTecnico(
+      [v({ tecnico_id: 441, date: '2026-09-17', time_start: 8, time_stop: 12, planned_hours: 6 })],
+      '2026-09-17', tecnicos,
+    )
+    expect(r[0].horas).toBe(4)
   })
 })
 
@@ -137,8 +173,11 @@ describe('picoDaSemana', () => {
 
   it('é o maior técnico-dia de TODOS os dias da semana, não só de um', () => {
     const r = picoDaSemana(
-      [v({ id: 1, date: '2026-09-17', tecnico_id: 441, planned_hours: 4 }),
-       v({ id: 2, date: '2026-09-18', tecnico_id: 441, planned_hours: 12 })],
+      // A carga vem da janela, não de `planned_hours` (Task fix): o dia 18
+      // precisa de uma janela de 12h de verdade (08:00–20:00) para valer
+      // como pico — antes do fix, `planned_hours: 12` bastava sozinho.
+      [v({ id: 1, date: '2026-09-17', tecnico_id: 441, time_start: 8, time_stop: 12, planned_hours: 4 }),
+       v({ id: 2, date: '2026-09-18', tecnico_id: 441, time_start: 8, time_stop: 20, planned_hours: 12 })],
       dias, tecnicos,
     )
     expect(r).toBe(12)
