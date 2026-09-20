@@ -43,7 +43,8 @@ não estava no pedido, e é a operação menos reversível do conjunto.
 | Arquivo | Papel |
 |---|---|
 | `lib/llm/client.ts` | `chatCompletion(messages, {baseUrl, key, model, tools})`. Generaliza o cliente OpenAI-compatível que hoje vive em `lib/groq/client.ts` (timeout, mapeamento de erro). `lib/groq/client.ts` passa a delegar para ele, preservando `GroqError` e seus testes. |
-| `lib/chat/tools.ts` | Registro das ferramentas: JSON Schema de cada uma, marca `read`/`write`, e o dispatch para as funções de `lib/odoo/agenda.ts`. |
+| `lib/chat/toolDefs.ts` | Só os JSON Schemas e a marca `read`/`write`. Fica separado do dispatch porque a rota precisa importá-lo sem ganhar acesso ao Odoo. |
+| `lib/chat/tools.ts` | O dispatch: nome de ferramenta → função de `lib/odoo/agenda.ts`. |
 | `lib/chat/prompt.ts` | O system prompt, montado a partir de `server_today`, do roster de técnicos e da janela visível. Fica em arquivo próprio porque é load-bearing (instrução pt-BR, regra de id, regra de ambiguidade) e precisa ser versionado e testável, não inline num componente. |
 | `lib/chat/machine.ts` | O loop. Sem React: recebe transcript, devolve próximo estado. Executa ferramentas de leitura, PARA nas de escrita. |
 | `app/api/chat/route.ts` | Stateless. `{messages, tools}` → um turno do OpenRouter. **O bloco `provider` (filtro de treino + `require_parameters`) e a cadeia de modelos são injetados aqui, no servidor** — é política, o cliente não pode sobrescrever. Não importa nada de `lib/odoo`. |
@@ -135,8 +136,11 @@ Nenhum otimizador é construído — o servidor já calcula o conflito.
   freio de emergência e virou o principal regulador da capacidade diária.
   Quatro voltas cobrem o fluxo mais longo previsto (listar técnicos →
   buscar agenda → propor → confirmar); o típico é 2 a 3.
-- **20 requisições por minuto**, limite do OpenRouter por conta. Em rajada
-  o cliente recebe `429`: a UI enfileira e avisa, não repete em laço.
+- **20 requisições por minuto**, limite do OpenRouter por conta. O chat
+  serializa os pedidos (um de cada vez, entrada travada enquanto processa),
+  o que já mantém um usuário humano abaixo do limite; se ainda assim vier
+  `429`, a cadeia de fallback tenta o próximo modelo e, esgotada, a
+  mensagem de indisponibilidade aparece na conversa. Nunca repetir em laço.
 
 A chave vive só no servidor, em `pwa/.env.local` (que ainda não existe
 neste checkout). Nunca em `NEXT_PUBLIC_*`.
