@@ -46,7 +46,7 @@ export const TOOL_DEFS: LlmToolDef[] = [
     function: {
       name: 'listar_os',
       description:
-        'Lista as ordens de serviço de qualificação que aceitam visita nova, com id e nome.',
+        'Lista as ordens de serviço de qualificação ativas (não concluídas nem canceladas). Aviso: nem todas as OSes listadas aceitam criação de visita nova — o servidor rejeita as que já estão em execução ou aprovadas, e só cria visitas nas que estão em rascunho ou agendadas.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -55,7 +55,7 @@ export const TOOL_DEFS: LlmToolDef[] = [
     function: {
       name: 'criar_visita',
       description:
-        'Cria uma visita nova para uma OS, com técnico e data. Esta ação grava: será mostrada ao gestor para confirmação antes de executar.',
+        'Cria uma visita nova para uma OS, com técnico e data. Esta ação grava: será mostrada ao gestor para confirmação antes de executar. O servidor pode recusar a OS se seu estado não permitir novas visitas; comunique o erro ao gestor em vez de tentar novamente.',
       parameters: {
         type: 'object',
         properties: {
