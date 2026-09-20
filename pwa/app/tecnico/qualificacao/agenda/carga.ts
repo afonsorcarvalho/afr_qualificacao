@@ -68,6 +68,52 @@ export function diasDaSemana(inicio: string): string[] {
   })
 }
 
+/**
+ * Horas de UMA visita, a partir do par início/fim — nunca de `planned_hours`.
+ *
+ * `planned_hours` é um float comum do backend (`os_visita.py`), preenchido
+ * só por onchange no form clássico do Odoo. `pwa_visita_create` cria a
+ * visita com `planned_hours = 0` (não está na lista de campos do create), e
+ * embora `pwa_visita_update` já recalcule o campo quando o par início/fim
+ * muda, a visita nasce zerada e alguns fluxos (ex. edição pelo board, fora
+ * do PWA) podem gravar o par sem tocar `planned_hours`. Resultado visto pelo
+ * usuário: cards com horário 08:00–12:00 e o painel de recursos acusando
+ * "livre" — o card lê o horário, o painel lia o campo. Calculando os dois a
+ * partir da MESMA janela, painel e card nunca podem discordar de novo.
+ *
+ * Caso de virada de dia (`overflow_next_day` do backend, exposto como
+ * `overflow`): a visita ainda NÃO foi dividida pelo botão "Dividir em 2
+ * dias" (`_split_overflow`) e o turno atravessa a meia-noite. Duas formas
+ * chegam ao PWA, e cada uma cai num ramo diferente daqui:
+ *
+ * - `time_stop > 24` (o onchange clássico do form, `time_start +
+ *   planned_hours`, não é limitado a 24h): cai no primeiro `if` como
+ *   qualquer janela normal e devolve o valor cheio (ex. 20h–26h → 6h). É o
+ *   caso certo a contar assim: antes da divisão não existe AINDA a visita-
+ *   continuação do dia seguinte, e truncar aqui faria 2h sumirem da semana
+ *   sem aparecer em lugar nenhum — o card mostra a mesma faixa 20:00–02:00,
+ *   então a carga tem que bater com o que o card promete.
+ * - `time_stop <= time_start` (ex. 22h–2h, quando o horário já foi digitado
+ *   "ao contrário" e não há como saber quanto passa da meia-noite só pelo
+ *   par): sem como recuperar as horas reais, contamos o que cabe até o fim
+ *   do dia — `24 - time_start` (sempre ≥ 0, pois `time_start` é hora do
+ *   dia) — em vez de inventar uma duração.
+ *
+ * Em ambos, a eventual continuação (dia seguinte) é OUTRA visita na lista,
+ * com sua própria janela normal, e soma as horas dela por conta própria —
+ * sem dupla contagem aqui. Sem o sinal de overflow, uma janela não-crescente
+ * é dado inconsistente sem regra conhecida (ex. edição direta malformada
+ * fora do PWA): 0h, para nunca inflar nem subtrair carga de ninguém por um
+ * dado quebrado, e nunca devolver um número negativo.
+ */
+export function horasDaVisita(
+  v: Pick<VisitaAgenda, 'time_start' | 'time_stop' | 'overflow'>,
+): number {
+  if (v.time_stop > v.time_start) return v.time_stop - v.time_start
+  if (v.overflow) return Math.max(0, 24 - v.time_start)
+  return 0
+}
+
 export function cargaPorDia(
   visitas: VisitaAgenda[],
   dias: string[],
@@ -76,7 +122,7 @@ export function cargaPorDia(
     const doDia = visitas.filter((v) => v.date === date)
     return {
       date,
-      horas: doDia.reduce((s, v) => s + (v.planned_hours || 0), 0),
+      horas: doDia.reduce((s, v) => s + horasDaVisita(v), 0),
       conflito: doDia.some((v) => v.conflict),
     }
   })
@@ -96,7 +142,7 @@ export function cargaPorTecnico(
     name: t.name,
     horas: visitas
       .filter((v) => v.date === dia && v.tecnico_id === t.id)
-      .reduce((s, v) => s + (v.planned_hours || 0), 0),
+      .reduce((s, v) => s + horasDaVisita(v), 0),
   }))
 }
 
