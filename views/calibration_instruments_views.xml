@@ -11,6 +11,7 @@
         <field name="arch" type="xml">
             <field name="modelo" position="after">
                 <field name="tag" optional="hide"/>
+                <field name="color" widget="color_picker" optional="hide"/>
                 <field name="has_valid_certificate" widget="boolean_toggle" readonly="1"/>
             </field>
         </field>
@@ -25,6 +26,9 @@
         <field name="model">engc.calibration.instruments</field>
         <field name="inherit_id" ref="engc_os.calibration_instruments_form"/>
         <field name="arch" type="xml">
+            <xpath expr="//field[@name='tag']" position="after">
+                <field name="color" widget="color_picker"/>
+            </xpath>
             <xpath expr="//h2[1]" position="before">
                 <div class="oe_button_box" name="qualif_button_box">
                     <field name="has_valid_certificate" invisible="1"/>
