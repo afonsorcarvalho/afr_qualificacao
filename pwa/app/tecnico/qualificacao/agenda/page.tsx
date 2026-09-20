@@ -80,14 +80,26 @@ export default function AgendaPage() {
    * efeito `[open]` dele devolve o foco, síncrono, à célula que abriu o
    * diálogo — mas se a gravação muda `ancoraMes` (a visita foi pra fora do
    * mês visível), as 42 células são re-chaveadas por `date` e a célula
-   * recém-focada desmonta: o foco cai pro `<body>` sem aviso nenhum. A
-   * tarja "Movendo a visita" continua montada através da troca de mês
-   * (`emAjusteAtual` não depende de qual mês está visível), então é um
-   * alvo estável pra devolver o foco de propósito depois da gravação —
-   * ao contrário de focar a célula nova, que ainda não existe no DOM no
-   * momento em que `ajustar` resolve.
+   * recém-focada desmonta: o foco cai pro `<body>` sem aviso nenhum.
+   *
+   * Antes, o alvo era a própria tarja "Movendo a visita" — ela sobrevivia à
+   * troca de mês porque não dependia de `ancoraMes`. Isso parou de valer
+   * quando a gravação de DATA pelo diálogo passou a encerrar o ajuste sozinha
+   * (pedido do usuário: "não precisa clicar mais lá embaixo o botão salvar"):
+   * `encerrarAjuste()` zera `emAjuste` no MESMO lote de estado que muda
+   * `ancoraMes`, então a tarja desmonta junto — focar nela só adiaria a queda
+   * pro `<body>` em vez de evitar. Por isso o alvo agora é a barra de
+   * navegação de período (◀ nome do mês ▶, sempre montada, fora de QUALQUER
+   * gate de modo/carregamento/erro — inclusive `mesCarregando`, que pode virar
+   * `true` no mesmo render em que `ancoraMes` muda, se o mês de destino ainda
+   * não estiver em cache): ela não é rechaveada por data, não depende de
+   * `emAjusteAtual` nem de `mesCarregando`, e ainda é semanticamente ligada ao
+   * que aconteceu — o Gestor acabou de ser levado para o mês que o rótulo
+   * agora mostra. O container da grade (`_GradeMes`) foi cogitado e
+   * descartado: ele SOME da árvore sempre que `mesCarregando` fica `true`, e
+   * nada garante que o mês de destino já esteja em cache no momento da troca.
    */
-  const tarjaAjusteRef = useRef<HTMLDivElement>(null)
+  const navegacaoRef = useRef<HTMLDivElement>(null)
   // Badges de filtro das duas faixas de legenda do Mês (Task 2). `null` =
   // "Todos" (sem restrição naquela faixa). Em memória só — nunca persistido,
   // nunca enviado ao servidor: alteram SÓ as marcas da grade (`pontosDiaGrade`/
@@ -578,9 +590,24 @@ export default function AgendaPage() {
           // devolvido pelo `BottomSheet` ao fechar) está prestes a
           // desmontar — as 42 células da grade nova são outras (achado
           // minor, review final). Sem isto, o foco cai pro `<body>` assim
-          // que este re-render troca a grade pro mês novo.
-          tarjaAjusteRef.current?.focus()
+          // que este re-render troca a grade pro mês novo. Alvo é a barra
+          // de navegação (`navegacaoRef`), não a tarja — ver o comentário
+          // dela: a tarja está prestes a desmontar NESTE MESMO lote, pelo
+          // `encerrarAjuste()` logo abaixo.
+          navegacaoRef.current?.focus()
         }
+        // Pedido do usuário: confirmar a mudança de DATA pelo diálogo já é
+        // "aplicar o ajuste" — não faz sentido exigir mais um toque em
+        // "Concluir" só pra desarmar. Encerra sozinho, mesmo efeito de
+        // `encerrarAjuste()` (tarja e "Concluir" somem). SÓ este caminho:
+        // técnico e instrumento (`onTocarTecnico`/`onTocarInstrumento`) nunca
+        // passam `vals.date`, e continuam armados de propósito — são toques
+        // sucessivos por natureza, o Gestor liga vários instrumentos em
+        // sequência sem procurar "Concluir" a cada um. E só no SUCESSO: se
+        // `mutateAsync` rejeitar, o `catch` abaixo roda no lugar deste bloco
+        // — a visita continua armada e a tarja de erro do servidor continua
+        // visível, pra tentar outro dia.
+        encerrarAjuste()
       }
     } catch (e) {
       setErroAjuste(e instanceof Error && e.message ? e.message : mensagemDeFalha(e))
@@ -661,7 +688,15 @@ export default function AgendaPage() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2 py-1">
+      {/* `ref={navegacaoRef}` + `tabIndex={-1}`: alvo de foco depois de um
+          "Confirmar" de data que muda de mês (ver comentário de
+          `navegacaoRef` acima) — nunca entra no ciclo de Tab normal, só
+          recebe foco por `.focus()` imperativo. */}
+      <div
+        ref={navegacaoRef}
+        tabIndex={-1}
+        className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2 py-1"
+      >
         <button
           type="button"
           aria-label="Período anterior"
@@ -746,13 +781,23 @@ export default function AgendaPage() {
           isso gruda aqui sem precisar de nenhum ajuste no layout. `z-20`
           fica acima desse cabeçalho (`z-10`) pra nunca ficar por baixo das
           células ao rolar, e `bg-muted` (já existente, cor sólida) garante o
-          fundo opaco. */}
+          fundo opaco.
+
+          `border-2 border-info` (pedido do usuário): a tarja precisa chamar
+          mais atenção. `--info` (não uma cor crua) já existe nos dois temas —
+          cyan-800 no claro, `#22d3ee` no escuro — e mede bem contra
+          `bg-muted`: 6.55:1 no claro, 10.08:1 no escuro (calculado com
+          `hsl2rgb`/`contraste` de `tests/contraste.ts`, mesmo utilitário do
+          guard `temaTokens.test.ts` — bem acima do piso de 3:1 da WCAG
+          1.4.11 pra contorno de componente). A cor NUNCA é o único
+          portador aqui — o texto "Movendo a visita {OS} de {data}" continua
+          dizendo o que está acontecendo; a borda só chama o olho pra tarja.
+          `border-2` em vez de `border` (mais grossa, pedido do usuário) não
+          desloca nada ao redor: a tarja monta/desmonta inteira com
+          `emAjusteAtual`, nunca troca de espessura de borda enquanto já está
+          na tela. */}
       {emAjusteAtual && (
-        <div
-          ref={tarjaAjusteRef}
-          tabIndex={-1}
-          className="sticky top-0 z-20 flex items-center justify-between gap-2 rounded-lg border border-border bg-muted px-3 py-2"
-        >
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-2 rounded-lg border-2 border-info bg-muted px-3 py-2">
           <span className="min-w-0 text-sm">
             Movendo a visita {emAjusteAtual.os_name} de {rotuloDia(emAjusteAtual.date)}
             <span className="block text-xs text-muted-foreground">

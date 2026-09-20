@@ -127,6 +127,10 @@ describe('Modo Semana', () => {
     const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
     expect(tarja.className).toMatch(/\bsticky\b/)
     expect(tarja.className).toMatch(/\btop-0\b/)
+    // Pedido do usuário: a tarja precisa chamar mais atenção — borda no
+    // token `--info` (nunca cor crua), não a `border-border` neutra que o
+    // resto dos cartões usa.
+    expect(tarja.className).toMatch(/\bborder-info\b/)
   })
 
   it('tocar num técnico com a visita em ajuste passa a visita para ele', async () => {
@@ -184,7 +188,7 @@ describe('Modo Semana', () => {
     expect(mutateUpdate).not.toHaveBeenCalled()
   })
 
-  it('ajuste de técnico e de instrumento continuam sem diálogo de confirmação (guarda de escopo: só data pede confirmação)', async () => {
+  it('ajuste de técnico e de instrumento continuam sem diálogo de confirmação e SEM encerrar a visita armada (guarda de escopo: só data pelo diálogo encerra)', async () => {
     montar()
     irParaSemana()
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
@@ -193,6 +197,10 @@ describe('Modo Semana', () => {
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { tecnico_id: 9 } }),
     )
     expect(screen.queryByRole('dialog')).toBeNull()
+    // Toques sucessivos por natureza — técnico e instrumento gravam direto e
+    // MANTÊM a visita armada, ao contrário da data pelo diálogo (Task 1).
+    expect(screen.getByText(/Movendo a visita/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
 
     mutateUpdate.mockClear()
     fireEvent.click(screen.getByRole('button', { name: /^Instrumento$/ }))
@@ -201,6 +209,8 @@ describe('Modo Semana', () => {
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [1] } }),
     )
     expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText(/Movendo a visita/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
   })
 
   it('rede de segurança: visita em ajuste que SOME do payload fecha o diálogo pendente de confirmação de data', async () => {
@@ -216,7 +226,7 @@ describe('Modo Semana', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('depois de mover a visita, a vista segue e a seleção continua (não fica presa)', async () => {
+  it('depois de mover a visita, a vista segue o destino — e o ajuste encerra sozinho (pedido do usuário: confirmar já aplica, sem precisar de "Concluir")', async () => {
     const { rerender, qc } = montar()
     irParaSemana()
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
@@ -225,6 +235,10 @@ describe('Modo Semana', () => {
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { date: '2026-09-19' } }),
     )
+    // A tarja e o "Concluir" já somem antes mesmo do refetch — o encerramento
+    // é síncrono com o sucesso da gravação, não depende do payload voltar.
+    expect(screen.queryByText(/Movendo a visita/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /Concluir/ })).toBeNull()
     // Simula o refetch (real, depois do `onSuccess`) trazendo a visita já
     // com a data nova.
     payloadAtual = { ...payload, visitas: [visita({ date: '2026-09-19' })] }
@@ -233,9 +247,10 @@ describe('Modo Semana', () => {
     )
     // (a) a faixa passou a mostrar o dia novo como selecionado
     expect(screen.getByRole('button', { name: /^sáb 19/i })).toHaveAttribute('aria-pressed', 'true')
-    // (b) o card continua visível e ainda em ajuste — "Concluir", não "Ajustar"
-    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Ajustar$/ })).toBeNull()
+    // (b) o card volta a mostrar "Ajustar" — o ajuste está encerrado, não é
+    // mais preciso um segundo toque pra desarmar.
+    expect(screen.getByRole('button', { name: /^Ajustar$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Concluir/ })).toBeNull()
   })
 
   it('ligar Q001, depois ligar Q002 (Q001 continua ligado), depois desligar Q001', async () => {

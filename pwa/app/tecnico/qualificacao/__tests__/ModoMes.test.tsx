@@ -333,9 +333,14 @@ describe('Modo Mês', () => {
     // seleção ficaria presa olhando pro mês errado.
     await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
 
+    // O ajuste encerra sozinho assim que a gravação de data (pelo diálogo)
+    // teve sucesso — pedido do usuário, Task 1. A tarja já some antes do
+    // refetch simulado abaixo.
+    expect(screen.queryByText(/Movendo a visita/)).toBeNull()
+
     // Simula o refetch (real, depois do `onSuccess`) trazendo a visita já
-    // com a data nova — a vista continua mostrando o card, ainda em ajuste
-    // ("Concluir", não "Ajustar").
+    // com a data nova — o ajuste já está encerrado, então o card volta a
+    // mostrar "Ajustar" (não "Concluir").
     payloadAtual = { ...payload, visitas: [visita({ date: '2026-10-03' })] }
     rerender(
       <QueryClientProvider client={qc}><AgendaPage /></QueryClientProvider>,
@@ -343,11 +348,11 @@ describe('Modo Mês', () => {
     // A âncora já avançou pra outubro (checado acima) — "3 de outubro"
     // agora é uma célula DENTRO do mês visível, sem o prefixo "fora do mês".
     expect(screen.getByRole('button', { name: /^3 de outubro,/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Ajustar$/ })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Ajustar$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Concluir/ })).toBeNull()
   })
 
-  it('foco não cai pro <body> depois de um "Confirmar" que muda de mês — vai pra tarja "Movendo a visita" (achado minor, review final)', async () => {
+  it('foco não cai pro <body> depois de um "Confirmar" que muda de mês — vai pra barra de navegação de período (a tarja já encerrou junto com o ajuste, Task 1)', async () => {
     montar()
     irParaMes()
     await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
@@ -369,8 +374,17 @@ describe('Modo Mês', () => {
     // tinha o foco desmonta.
     await waitFor(() => expect(screen.getByText('outubro de 2026')).toBeInTheDocument())
 
-    const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
-    expect(tarja).toHaveFocus()
+    // A tarja não é mais o alvo: ela encerra junto com o ajuste (Task 1) no
+    // MESMO lote de estado que troca de mês, então focar nela só adiaria a
+    // queda pro `<body>`. O alvo estável agora é a barra de navegação de
+    // período — sempre montada, nunca rechaveada por data.
+    expect(screen.queryByText(/Movendo a visita/)).toBeNull()
+    const barraNavegacao = screen.getByText('outubro de 2026').closest('div') as HTMLElement
+    // Pina o nó certo: sem isto, `toHaveFocus()` sozinho poderia passar por
+    // uma resolução de `closest('div')` acidentalmente diferente do nó que
+    // carrega `navegacaoRef` — o `tabIndex={-1}` é exclusivo dele.
+    expect(barraNavegacao).toHaveAttribute('tabindex', '-1')
+    expect(barraNavegacao).toHaveFocus()
   })
 
   it('não-gestor (can_manage: false) não vê o gesto de ajuste', async () => {
@@ -555,6 +569,30 @@ describe('Modo Mês', () => {
     const tarja = screen.getByText(/Movendo a visita/).closest('div') as HTMLElement
     expect(tarja.className).toMatch(/\bsticky\b/)
     expect(tarja.className).toMatch(/\btop-0\b/)
+    // Pedido do usuário: borda no token `--info` (nunca cor crua) pra chamar
+    // mais atenção pra tarja.
+    expect(tarja.className).toMatch(/\bborder-info\b/)
+  })
+
+  it('gravação de data que FALHA no diálogo de confirmação (Mês) mantém a visita armada e mostra o erro — o encerramento automático é só no sucesso', async () => {
+    mutateUpdate.mockRejectedValueOnce(
+      new Error('Não é possível programar uma visita para uma data passada'),
+    )
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /^17 de setembro,/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^19 de setembro,/ }))
+    const dialogo = screen.getByRole('dialog', { name: 'Mudar data da visita' })
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() => expect(screen.getByText(/data passada/)).toBeInTheDocument())
+    // A visita continua armada — a falha não pode encerrar o ajuste; o
+    // Gestor precisa poder tentar outro dia sem recomeçar.
+    expect(screen.getByText(/Movendo a visita/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Concluir/ })).toBeInTheDocument()
   })
 
   it('sem ajuste armado, a tarja "Movendo a visita" não existe (nada fixo fantasma cobrindo a grade)', async () => {
