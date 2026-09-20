@@ -1,0 +1,8 @@
+// app/api/chat/status/route.ts
+import { NextResponse } from 'next/server'
+
+export const dynamic = 'force-dynamic'
+
+export async function GET() {
+  return NextResponse.json({ enabled: !!process.env.OPENROUTER_API_KEY })
+}
