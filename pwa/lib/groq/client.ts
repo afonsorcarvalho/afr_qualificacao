@@ -1,5 +1,5 @@
 // lib/groq/client.ts
-import { llmChat, LlmError, type LlmMessage } from '@/lib/llm/client'
+import { llmChat, LlmError, readError, type LlmMessage } from '@/lib/llm/client'
 
 export class GroqError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -35,15 +35,6 @@ function requireKey(): string {
   return key
 }
 
-async function readError(res: Response): Promise<string> {
-  try {
-    const j = await res.json()
-    return j?.error?.message || res.statusText
-  } catch {
-    return res.statusText
-  }
-}
-
 export async function groqChat(
   messages: ChatMessage[],
   opts: ChatOpts,
@@ -51,7 +42,7 @@ export async function groqChat(
   try {
     const turn = await llmChat(messages as LlmMessage[], {
       baseUrl: BASE_URL,
-      apiKey: process.env.GROQ_API_KEY ?? '',
+      apiKey: requireKey(),
       model: opts.model,
       temperature: opts.temperature,
       max_tokens: opts.max_tokens,

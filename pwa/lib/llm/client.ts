@@ -49,7 +49,7 @@ export interface LlmTurn {
   tool_calls: LlmToolCall[]
 }
 
-async function readError(res: Response): Promise<string> {
+export async function readError(res: Response): Promise<string> {
   try {
     const j = await res.json()
     return j?.error?.message || res.statusText
