@@ -10,7 +10,7 @@ vi.mock('@/lib/odoo/agenda', () => ({
 }))
 
 import * as agenda from '@/lib/odoo/agenda'
-import { runTool, ToolNotFoundError } from './tools'
+import { runTool, ToolNotFoundError, ToolArgumentError } from './tools'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -62,5 +62,53 @@ describe('runTool', () => {
   it('não existe caminho para deleteVisita', async () => {
     const mod = await import('./tools')
     expect(JSON.stringify(Object.keys(mod))).not.toContain('delete')
+  })
+
+  // Fix round 1: type coercion and validation
+  it('atualizar_visita coerce strings para números em time_start e tecnico_id', async () => {
+    vi.mocked(agenda.updateVisita).mockResolvedValue({ id: 87 } as never)
+    await runTool('atualizar_visita', { visita_id: 87, time_start: '8.5', tecnico_id: '3' })
+    expect(agenda.updateVisita).toHaveBeenCalledWith(87, { time_start: 8.5, tecnico_id: 3 })
+  })
+
+  it('criar_visita com os_id ausente lança ToolArgumentError e NÃO chama createVisita', async () => {
+    await expect(
+      runTool('criar_visita', { tecnico_id: 3, date: '2026-10-20' }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  it('atualizar_visita com visita_id inválido lança ToolArgumentError e NÃO chama updateVisita', async () => {
+    await expect(
+      runTool('atualizar_visita', { visita_id: 'abc', date: '2026-10-16' }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.updateVisita).not.toHaveBeenCalled()
+  })
+
+  it('buscar_agenda sem date_from lança ToolArgumentError e NÃO chama fetchAgenda', async () => {
+    await expect(runTool('buscar_agenda', { date_to: '2026-10-18' })).rejects.toBeInstanceOf(
+      ToolArgumentError,
+    )
+    expect(agenda.fetchAgenda).not.toHaveBeenCalled()
+  })
+
+  it('atualizar_visita com apenas chaves não-whitelisted lança ToolArgumentError', async () => {
+    await expect(
+      runTool('atualizar_visita', { visita_id: 87, planned_hours: 9, state: 'done' }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.updateVisita).not.toHaveBeenCalled()
+  })
+
+  it('atualizar_visita com instrument_ids como string lança ToolArgumentError', async () => {
+    await expect(
+      runTool('atualizar_visita', { visita_id: 87, instrument_ids: '123' }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.updateVisita).not.toHaveBeenCalled()
+  })
+
+  it('atualizar_visita coerce instrument_ids array de strings para números', async () => {
+    vi.mocked(agenda.updateVisita).mockResolvedValue({ id: 87 } as never)
+    await runTool('atualizar_visita', { visita_id: 87, instrument_ids: ['1', '2', '3'] })
+    expect(agenda.updateVisita).toHaveBeenCalledWith(87, { instrument_ids: [1, 2, 3] })
   })
 })

@@ -19,6 +19,13 @@ export class ToolNotFoundError extends Error {
   }
 }
 
+export class ToolArgumentError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ToolArgumentError'
+  }
+}
+
 /** Espelha `_PWA_WRITABLE_FIELDS` do servidor. Chave fora disto é descartada. */
 const CAMPOS_GRAVAVEIS = [
   'date', 'time_start', 'time_stop', 'tecnico_id', 'note', 'instrument_ids',
@@ -27,7 +34,35 @@ const CAMPOS_GRAVAVEIS = [
 function montarVals(args: Record<string, unknown>): VisitaVals {
   const vals: Record<string, unknown> = {}
   for (const campo of CAMPOS_GRAVAVEIS) {
-    if (args[campo] !== undefined) vals[campo] = args[campo]
+    if (args[campo] === undefined) continue
+
+    // Coerção de tipos para garantir shape correto de VisitaVals
+    if (campo === 'date' || campo === 'note') {
+      vals[campo] = String(args[campo])
+    } else if (campo === 'time_start' || campo === 'time_stop' || campo === 'tecnico_id') {
+      const num = Number(args[campo])
+      if (!Number.isFinite(num)) {
+        throw new ToolArgumentError(
+          `atualizar_visita: "${campo}" precisa ser um número inteiro; recebi "${args[campo]}"`,
+        )
+      }
+      vals[campo] = num
+    } else if (campo === 'instrument_ids') {
+      if (!Array.isArray(args[campo])) {
+        throw new ToolArgumentError(
+          `atualizar_visita: "instrument_ids" precisa ser uma lista; recebi "${typeof args[campo]}"`,
+        )
+      }
+      vals[campo] = (args[campo] as unknown[]).map((id) => {
+        const num = Number(id)
+        if (!Number.isFinite(num)) {
+          throw new ToolArgumentError(
+            `atualizar_visita: "instrument_ids" contém um valor inválido: "${id}"`,
+          )
+        }
+        return num
+      })
+    }
   }
   return vals as VisitaVals
 }
@@ -37,28 +72,71 @@ export async function runTool(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   switch (name) {
-    case 'buscar_agenda':
+    case 'buscar_agenda': {
       // `only_mine` é sempre false: o chat é do Gestor, que enxerga a
       // equipe inteira. A ACL do servidor continua decidindo o que volta.
-      return fetchAgenda(
-        String(args.date_from ?? ''),
-        String(args.date_to ?? ''),
-        false,
-      )
+      const dateFrom = String(args.date_from ?? '').trim()
+      const dateTo = String(args.date_to ?? '').trim()
+      if (!dateFrom) {
+        throw new ToolArgumentError(
+          'buscar_agenda: "date_from" é obrigatório; recebi vazio ou ausente',
+        )
+      }
+      if (!dateTo) {
+        throw new ToolArgumentError(
+          'buscar_agenda: "date_to" é obrigatório; recebi vazio ou ausente',
+        )
+      }
+      return fetchAgenda(dateFrom, dateTo, false)
+    }
     case 'listar_tecnicos':
       return listTecnicoOptions()
     case 'listar_os':
       return listOsOptions()
     case 'listar_instrumentos':
       return listInstrumentoOptions()
-    case 'criar_visita':
-      return createVisita(
-        Number(args.os_id),
-        Number(args.tecnico_id),
-        String(args.date),
-      )
-    case 'atualizar_visita':
-      return updateVisita(Number(args.visita_id), montarVals(args))
+    case 'criar_visita': {
+      const osId = Number(args.os_id)
+      const tecnicoId = Number(args.tecnico_id)
+      const date = String(args.date ?? '').trim()
+
+      if (!Number.isFinite(osId)) {
+        throw new ToolArgumentError(
+          `criar_visita: "os_id" precisa ser um número inteiro; recebi "${args.os_id}"`,
+        )
+      }
+      if (!Number.isFinite(tecnicoId)) {
+        throw new ToolArgumentError(
+          `criar_visita: "tecnico_id" precisa ser um número inteiro; recebi "${args.tecnico_id}"`,
+        )
+      }
+      if (!date) {
+        throw new ToolArgumentError(
+          'criar_visita: "date" é obrigatório; recebi vazio ou ausente',
+        )
+      }
+
+      return createVisita(osId, tecnicoId, date)
+    }
+    case 'atualizar_visita': {
+      const visitaId = Number(args.visita_id)
+      if (!Number.isFinite(visitaId)) {
+        throw new ToolArgumentError(
+          `atualizar_visita: "visita_id" precisa ser um número inteiro; recebi "${args.visita_id}"`,
+        )
+      }
+
+      const vals = montarVals(args)
+
+      // Verifica se há algo para atualizar após filtrar a whitelist
+      if (Object.keys(vals).length === 0) {
+        throw new ToolArgumentError(
+          'atualizar_visita: nenhum campo gravável foi fornecido',
+        )
+      }
+
+      return updateVisita(visitaId, vals)
+    }
     default:
       throw new ToolNotFoundError(name)
   }
