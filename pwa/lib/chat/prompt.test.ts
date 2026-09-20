@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, resumirVisitas } from './prompt'
+import { buildSystemPrompt, resumirVisitas, hora } from './prompt'
 
 const ctx = {
   serverToday: '2026-10-14',
@@ -29,7 +29,10 @@ describe('buildSystemPrompt', () => {
   })
 
   it('manda perguntar quando houver ambiguidade, em vez de escolher', () => {
-    expect(buildSystemPrompt(ctx)).toMatch(/pergunte/i)
+    const p = buildSystemPrompt(ctx)
+    expect(p).toMatch(/pergunte/i)
+    // Deve cobrir todos os quatro tipos de entidade: visita, técnico, OS, instrumento
+    expect(p).toMatch(/visita.*técnico.*os.*instrumento/is)
   })
 
   it('lista os técnicos com id e nome', () => {
@@ -69,5 +72,11 @@ describe('resumirVisitas', () => {
       tecnico_name: 'João Silva', partner_name: 'Hospital Central',
       time_start: 8, time_stop: 17,
     }])
+  })
+})
+
+describe('hora', () => {
+  it('formata horas fracionárias em HH:MM', () => {
+    expect(hora(8.5)).toBe('08:30')
   })
 })
