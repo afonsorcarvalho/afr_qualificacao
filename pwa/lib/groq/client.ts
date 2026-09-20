@@ -1,4 +1,6 @@
 // lib/groq/client.ts
+import { llmChat, LlmError, type LlmMessage } from '@/lib/llm/client'
+
 export class GroqError extends Error {
   constructor(message: string, public readonly status: number) {
     super(message)
@@ -46,41 +48,29 @@ export async function groqChat(
   messages: ChatMessage[],
   opts: ChatOpts,
 ): Promise<{ content: string }> {
-  const key = requireKey()
-  const controller = new AbortController()
-  const t = setTimeout(() => controller.abort(), 30_000)
   try {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: opts.model,
-        messages,
-        temperature: opts.temperature ?? 0.3,
-        max_tokens: opts.max_tokens ?? 1500,
-        ...(opts.response_format ? { response_format: opts.response_format } : {}),
-      }),
+    const turn = await llmChat(messages as LlmMessage[], {
+      baseUrl: BASE_URL,
+      apiKey: process.env.GROQ_API_KEY ?? '',
+      model: opts.model,
+      temperature: opts.temperature,
+      max_tokens: opts.max_tokens,
+      response_format: opts.response_format,
     })
-    if (!res.ok) {
-      throw new GroqError(await readError(res), res.status)
-    }
-    const data = await res.json()
-    const content = data?.choices?.[0]?.message?.content
-    if (typeof content !== 'string') {
+    if (typeof turn.content !== 'string') {
       throw new GroqError('Resposta Groq sem content', 502)
     }
-    return { content }
+    return { content: turn.content }
   } catch (e) {
-    if ((e as { name?: string } | null)?.name === 'AbortError') {
-      throw new GroqError('Timeout — IA demorou demais', 504)
+    // A superfície pública deste módulo é `GroqError`; os chamadores
+    // (review, summary) ramificam nela. Converter aqui evita mexer neles.
+    if (e instanceof LlmError) {
+      throw new GroqError(
+        e.status === 503 ? 'GROQ_API_KEY não configurada' : e.message,
+        e.status,
+      )
     }
     throw e
-  } finally {
-    clearTimeout(t)
   }
 }
 
