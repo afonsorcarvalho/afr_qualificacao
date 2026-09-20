@@ -165,6 +165,29 @@ describe('rosterTecnicos', () => {
     const r = rosterTecnicos(oficiais, [v({ tecnico_id: false })])
     expect(r).toHaveLength(2)
   })
+
+  // Propagação da cor configurada (Task 2, plano cor-por-recurso): a união
+  // preserva o `color` de quem veio do roster oficial — é o campo que
+  // `tecnicosPorDia`/a legenda em `page.tsx` usam para vencer a cor
+  // automática.
+  it('preserva o color do roster oficial na união', () => {
+    const r = rosterTecnicos(
+      [{ id: 441, name: 'Afonso', color: 6 }, { id: 9, name: 'Bruno' }],
+      [],
+    )
+    expect(r.find((t) => t.id === 441)).toEqual({ id: 441, name: 'Afonso', color: 6 })
+    expect(r.find((t) => t.id === 9)).toEqual({ id: 9, name: 'Bruno' })
+  })
+
+  it('técnico vindo só das visitas (sem índice) não ganha color nenhum — cai na cor automática', () => {
+    const r = rosterTecnicos(
+      oficiais,
+      [v({ tecnico_id: 55, tecnico_name: 'Carlos (sem flag)' })],
+    )
+    const carlos = r.find((t) => t.id === 55)
+    expect(carlos).toEqual({ id: 55, name: 'Carlos (sem flag)' })
+    expect(carlos?.color).toBeUndefined()
+  })
 })
 
 describe('picoDaSemana', () => {

@@ -57,6 +57,13 @@ export interface VisitaVals {
 export interface Opcao {
   id: number
   name: string
+  /**
+   * Índice do seletor de cor nativo do Odoo (0 = "sem cor" = cor automática
+   * na agenda). Opcional porque `rosterTecnicos` (`carga.ts`) une este roster
+   * oficial com técnicos vindos das visitas, que não têm índice nenhum —
+   * ausente cai na mesma regra de "sem cor" (ver `corDoTecnico` em `mes.ts`).
+   */
+  color?: number
 }
 
 export async function fetchAgenda(
@@ -121,6 +128,13 @@ export interface InstrumentoOpcao {
   name: string
   /** Maior `validate_calibration` dos certificados; `false` se não há nenhum. */
   validade: string | false
+  /**
+   * Índice do seletor de cor nativo do Odoo (0 = "sem cor" = cor automática
+   * na agenda). Mesmo papel do `color` de `Opcao`, mas aqui sempre vem do
+   * servidor (`pwa_instrumento_options`) — opcional só para não travar
+   * construções de teste que montam o objeto à mão.
+   */
+  color?: number
 }
 
 export async function listInstrumentoOptions(): Promise<InstrumentoOpcao[]> {

@@ -131,15 +131,43 @@ export const PALETA: string[] = [
 export const COR_SEM_TECNICO = '#6b7280' // gray-500
 
 /**
- * Cor estável por id de técnico. `false` (visita sem técnico) devolve o
- * cinza neutro. A estabilidade é por id, não por posição no roster: o
- * roster muda de tamanho entre janelas (ver `rosterTecnicos` em
+ * Índice configurado no Odoo (`color` de `hr.employee` /
+ * `engc.calibration.instruments`, espelhado em `Opcao`/`InstrumentoOpcao`)
+ * vence a cor automática quando é um índice VÁLIDO da `PALETA`.
+ *
+ * Mapeamento índice → tom: o índice do seletor nativo do Odoo vira índice
+ * DIRETO da `PALETA` (1 → `PALETA[1]`, 2 → `PALETA[2]`, ...), sem indireção
+ * nenhuma — é o mapeamento mais simples que existe, e não há razão de
+ * negócio pra preferir outro. O seletor do Odoo numera de 0 a 11 (12
+ * posições), mas 0 significa "sem cor" (decisão do plano: quem não configura
+ * nada não pode ver diferença), então só 1..11 chegam aqui como configuração
+ * de verdade — o `PALETA[0]` fica fora do alcance da configuração manual e só
+ * a cor automática (`id % PALETA.length`) pode cair nele. Consequência aceita
+ * no plano, não bug.
+ *
+ * `undefined` (roster de visita sem `pwa_tecnico_options`, ver
+ * `rosterTecnicos`), `0` ("sem cor") e qualquer índice fora de
+ * `[1, PALETA.length - 1]` devolvem `undefined` — o chamador cai na cor
+ * automática, EXATAMENTE o comportamento de antes desta task.
+ */
+function corConfigurada(color: number | undefined): string | undefined {
+  if (typeof color !== 'number') return undefined
+  if (!Number.isInteger(color) || color < 1 || color >= PALETA.length) return undefined
+  return PALETA[color]
+}
+
+/**
+ * Cor de um técnico: a configurada no Odoo quando houver (`color`), senão a
+ * estável por id. `false` (visita sem técnico) devolve sempre o cinza
+ * neutro, ignorando `color` — não há técnico configurável nesse caso. A
+ * estabilidade por id (ramo automático) é por id, não por posição no
+ * roster: o roster muda de tamanho entre janelas (ver `rosterTecnicos` em
  * `carga.ts`) e cores que dançam a cada troca de mês mentem sobre quem é
  * quem na grade.
  */
-export function corDoTecnico(id: number | false): string {
+export function corDoTecnico(id: number | false, color?: number): string {
   if (id === false) return COR_SEM_TECNICO
-  return PALETA[id % PALETA.length]
+  return corConfigurada(color) ?? PALETA[id % PALETA.length]
 }
 
 /**
@@ -194,7 +222,7 @@ export function tecnicosPorDia(
       pontos.push({
         id: t.id,
         name: t.name,
-        cor: corDoTecnico(t.id),
+        cor: corDoTecnico(t.id, t.color),
         visitas: visitasCount,
       })
     }
@@ -258,12 +286,14 @@ export interface PontosInstrumentoDia {
 }
 
 /**
- * Cor estável por id de instrumento, da mesma `PALETA` de `corDoTecnico`.
- * Técnico e instrumento podem cair na mesma cor — o que separa os dois
- * domínios na grade é a FORMA (bolinha x triângulo), não o matiz.
+ * Cor de um instrumento: a configurada no Odoo quando houver (`color`),
+ * senão a estável por id, da mesma `PALETA` de `corDoTecnico` — mesma regra
+ * de `corConfigurada` documentada lá. Técnico e instrumento podem cair na
+ * mesma cor — o que separa os dois domínios na grade é a FORMA (bolinha x
+ * triângulo), não o matiz.
  */
-export function corDoInstrumento(id: number): string {
-  return PALETA[id % PALETA.length]
+export function corDoInstrumento(id: number, color?: number): string {
+  return corConfigurada(color) ?? PALETA[id % PALETA.length]
 }
 
 /**
@@ -340,6 +370,9 @@ export function instrumentosPorDia(
 ): PontosInstrumentoDia[] {
   const porData = agruparPorData(visitas)
   const nomePorId = new Map(opcoes.map((o) => [o.id, o.name]))
+  // Cor configurada por id (Task 2, plano cor-por-recurso) — mesmo raciocínio
+  // de `nomePorId`: um Map fora do laço dos 42 dias, montado uma vez.
+  const corPorId = new Map(opcoes.map((o) => [o.id, o.color]))
   // Fora do laço dos 42 dias: o conjunto de ids conhecidos é o mesmo em todos.
   const conhecidos = new Set(nomePorId.keys())
 
@@ -362,7 +395,7 @@ export function instrumentosPorDia(
     const instrumentos: PontoInstrumento[] = Array.from(contagem, ([id, visitas]) => ({
       id,
       name: nomePorId.get(id) ?? `Instrumento #${id}`,
-      cor: corDoInstrumento(id),
+      cor: corDoInstrumento(id, corPorId.get(id)),
       visitas,
     }))
 

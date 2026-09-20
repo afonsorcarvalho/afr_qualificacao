@@ -411,7 +411,7 @@ export default function AgendaPage() {
   const legendaTecnicos = useMemo(() => {
     const itens: { chave: string | number; id: number | false; cor: string; nome: string }[] = roster
       .filter((t) => idsTecnicoNaJanela.has(t.id))
-      .map((t) => ({ chave: t.id, id: t.id as number | false, cor: corDoTecnico(t.id), nome: t.name }))
+      .map((t) => ({ chave: t.id, id: t.id as number | false, cor: corDoTecnico(t.id, t.color), nome: t.name }))
     if (idsTecnicoNaJanela.has(false)) {
       itens.push({ chave: 'sem-tecnico', id: false, cor: COR_SEM_TECNICO, nome: 'Sem técnico' })
     }

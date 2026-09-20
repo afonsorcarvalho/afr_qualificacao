@@ -158,14 +158,19 @@ export function rosterTecnicos(
   oficiais: Opcao[],
   visitas: VisitaAgenda[],
 ): Opcao[] {
-  const porId = new Map<number, string>()
-  for (const t of oficiais) porId.set(t.id, t.name)
+  // Guarda o `Opcao` inteiro, não só o nome: `color` (Task 2, plano
+  // cor-por-recurso) precisa sobreviver à união pra alimentar
+  // `corDoTecnico` em `tecnicosPorDia` e na legenda de `page.tsx`. Quem
+  // entra só pela visita (ramo abaixo) nasce sem `color` — cai na cor
+  // automática, de propósito: não tem índice configurado nenhum.
+  const porId = new Map<number, Opcao>()
+  for (const t of oficiais) porId.set(t.id, t)
   for (const v of visitas) {
     if (v.tecnico_id !== false && !porId.has(v.tecnico_id)) {
-      porId.set(v.tecnico_id, v.tecnico_name)
+      porId.set(v.tecnico_id, { id: v.tecnico_id, name: v.tecnico_name })
     }
   }
-  return Array.from(porId, ([id, name]) => ({ id, name }))
+  return Array.from(porId.values())
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
 }
 
