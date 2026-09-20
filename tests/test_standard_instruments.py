@@ -136,3 +136,23 @@ class TestStandardInstruments(AfrQualificacaoTestCommon):
         self._set_block_flag(True)
         self.qualif.action_mark_approved()
         self.assertEqual(self.qualif.state, "approved")
+
+
+@tagged("afr_qualificacao", "standards", "post_install", "-at_install")
+class TestInstrumentColor(AfrQualificacaoTestCommon):
+    """Cor configurável do instrumento (triângulos da agenda do PWA).
+
+    Índice inteiro do seletor nativo do Odoo — mesmo papel do `color` que já
+    existe em `hr.employee` para o técnico. `0` = "sem cor": a agenda cai na
+    cor automática derivada do id (ver plano 2026-09-20-cor-por-tecnico-e-
+    instrumento.md)."""
+
+    def test_color_nasce_em_zero(self):
+        inst = self.env["engc.calibration.instruments"].create({"name": "Termo-Cor"})
+        self.assertEqual(inst.color, 0)
+
+    def test_color_aceita_indice(self):
+        inst = self.env["engc.calibration.instruments"].create({
+            "name": "Termo-Cor-2", "color": 5,
+        })
+        self.assertEqual(inst.color, 5)

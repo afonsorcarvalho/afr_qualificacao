@@ -120,6 +120,68 @@ describe('corDoTecnico', () => {
   it('nenhuma cor da paleta coincide com a cor de "sem técnico"', () => {
     expect(PALETA).not.toContain(COR_SEM_TECNICO)
   })
+
+  // Cor configurada (Task 2, plano cor-por-recurso): o índice do seletor
+  // nativo do Odoo vira índice direto da PALETA — 1 -> PALETA[1], 2 ->
+  // PALETA[2] etc. — quando é um índice válido (1..PALETA.length - 1).
+  it('índice configurado (>= 1) vence a cor automática, indexando direto a PALETA', () => {
+    expect(corDoTecnico(441, 3)).toBe(PALETA[3])
+  })
+
+  it('NÃO-REGRESSÃO: sem color, o resultado é idêntico ao de hoje — `PALETA[id % PALETA.length]`, a fórmula anterior a esta task', () => {
+    expect(corDoTecnico(441)).toBe(PALETA[441 % PALETA.length])
+    expect(corDoTecnico(441, undefined)).toBe(PALETA[441 % PALETA.length])
+  })
+
+  it('color === 0 ("sem cor" no Odoo) mantém a cor automática — quem não configurou nada não vê diferença', () => {
+    expect(corDoTecnico(441, 0)).toBe(corDoTecnico(441))
+  })
+
+  it('color fora da faixa (>= PALETA.length) não quebra e cai na cor automática', () => {
+    expect(corDoTecnico(441, PALETA.length)).toBe(corDoTecnico(441))
+    expect(corDoTecnico(441, 999)).toBe(corDoTecnico(441))
+  })
+
+  it('color negativo não quebra e cai na cor automática', () => {
+    expect(corDoTecnico(441, -1)).toBe(corDoTecnico(441))
+  })
+
+  it('dois técnicos com o MESMO índice configurado ficam com a MESMA cor — esperado, não defeito: é o que a configuração manual permite', () => {
+    // ids escolhidos de propósito para NÃO colidirem na cor automática
+    // (1 % 12 = 1, 2 % 12 = 2 -> tons distintos sem configuração): se o
+    // teste comparasse dois ids que já colidem sozinhos, passaria mesmo
+    // ignorando `color` por completo.
+    expect(corDoTecnico(1)).not.toBe(corDoTecnico(2))
+    expect(corDoTecnico(1, 5)).toBe(PALETA[5])
+    expect(corDoTecnico(2, 5)).toBe(PALETA[5])
+    expect(corDoTecnico(1, 5)).toBe(corDoTecnico(2, 5))
+  })
+
+  it('id === false ignora color e devolve sempre a cor neutra de "sem técnico"', () => {
+    expect(corDoTecnico(false, 5)).toBe(COR_SEM_TECNICO)
+  })
+
+  // Vetores REAIS da RPC não tipada (fix round 3, achado 3) — `color?:
+  // number` é a assinatura TypeScript, não uma garantia de runtime. Os casos
+  // acima só cobrem 0, undefined, negativo e estouro; `null`/`false`/string/
+  // float são o que de fato chega de um payload sem tipagem — em especial
+  // `false`, sentinela clássica do Odoo pra "sem valor" nos campos JSON-RPC.
+  // Todos caem na cor automática, sem exceção.
+  it('color null (RPC não tipada) cai na cor automática', () => {
+    expect(corDoTecnico(441, null as any)).toBe(corDoTecnico(441))
+  })
+
+  it('color false (RPC não tipada) cai na cor automática', () => {
+    expect(corDoTecnico(441, false as any)).toBe(corDoTecnico(441))
+  })
+
+  it('color string (RPC não tipada) cai na cor automática, mesmo parecendo um índice válido', () => {
+    expect(corDoTecnico(441, '5' as any)).toBe(corDoTecnico(441))
+  })
+
+  it('color float/não-inteiro (RPC não tipada) cai na cor automática', () => {
+    expect(corDoTecnico(441, 3.5 as any)).toBe(corDoTecnico(441))
+  })
 })
 
 describe('tecnicosPorDia', () => {
@@ -190,6 +252,31 @@ describe('tecnicosPorDia', () => {
     const dia = r.find((d) => d.date === '2026-09-17')!
     expect(dia.pontos.map((p) => p.id)).toEqual([441, 9, false])
   })
+
+  // Propagação da cor configurada (Task 2): o roster carrega `color` (via
+  // `rosterTecnicos`, testado em carga.test.ts) e o ponto usa exatamente a
+  // mesma regra de `corDoTecnico`.
+  it('usa a cor configurada do técnico no roster quando presente', () => {
+    const rosterComCor: Opcao[] = [
+      { id: 441, name: 'Afonso', color: 6 },
+      { id: 9, name: 'Bruno' },
+    ]
+    const r = tecnicosPorDia(
+      [v({ id: 1, date: '2026-09-17', tecnico_id: 441 })],
+      dias, rosterComCor,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.pontos[0].cor).toBe(PALETA[6])
+  })
+
+  it('técnico sem color no roster mantém a cor automática (não-regressão)', () => {
+    const r = tecnicosPorDia(
+      [v({ id: 1, date: '2026-09-17', tecnico_id: 441 })],
+      dias, roster,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.pontos[0].cor).toBe(corDoTecnico(441))
+  })
 })
 
 describe('corDoInstrumento', () => {
@@ -199,6 +286,54 @@ describe('corDoInstrumento', () => {
 
   it('vem da mesma PALETA usada por corDoTecnico', () => {
     expect(PALETA).toContain(corDoInstrumento(3))
+  })
+
+  // Mesma regra de `corDoTecnico`: índice configurado vence, mesma indexação
+  // direta na PALETA.
+  it('índice configurado (>= 1) vence a cor automática, indexando direto a PALETA', () => {
+    expect(corDoInstrumento(3, 7)).toBe(PALETA[7])
+  })
+
+  it('NÃO-REGRESSÃO: sem color, o resultado é idêntico ao de hoje — `PALETA[id % PALETA.length]`, a fórmula anterior a esta task', () => {
+    expect(corDoInstrumento(3)).toBe(PALETA[3 % PALETA.length])
+    expect(corDoInstrumento(3, undefined)).toBe(PALETA[3 % PALETA.length])
+  })
+
+  it('color === 0 mantém a cor automática', () => {
+    expect(corDoInstrumento(3, 0)).toBe(corDoInstrumento(3))
+  })
+
+  it('color fora da faixa não quebra e cai na cor automática', () => {
+    expect(corDoInstrumento(3, PALETA.length)).toBe(corDoInstrumento(3))
+    expect(corDoInstrumento(3, -5)).toBe(corDoInstrumento(3))
+  })
+
+  it('dois instrumentos com o MESMO índice configurado ficam com a MESMA cor — esperado', () => {
+    // ids escolhidos de propósito para NÃO colidirem na cor automática
+    // (1 % 12 = 1, 5 % 12 = 5 -> tons distintos sem configuração).
+    expect(corDoInstrumento(1)).not.toBe(corDoInstrumento(5))
+    expect(corDoInstrumento(1, 4)).toBe(PALETA[4])
+    expect(corDoInstrumento(5, 4)).toBe(PALETA[4])
+    expect(corDoInstrumento(1, 4)).toBe(corDoInstrumento(5, 4))
+  })
+
+  // Mesmos vetores não-numéricos de `corDoTecnico` — `corConfigurada` é
+  // compartilhada pelas duas funções, mas a cobertura tem que existir dos
+  // dois lados independentemente.
+  it('color null (RPC não tipada) cai na cor automática', () => {
+    expect(corDoInstrumento(3, null as any)).toBe(corDoInstrumento(3))
+  })
+
+  it('color false (RPC não tipada) cai na cor automática', () => {
+    expect(corDoInstrumento(3, false as any)).toBe(corDoInstrumento(3))
+  })
+
+  it('color string (RPC não tipada) cai na cor automática, mesmo parecendo um índice válido', () => {
+    expect(corDoInstrumento(3, '5' as any)).toBe(corDoInstrumento(3))
+  })
+
+  it('color float/não-inteiro (RPC não tipada) cai na cor automática', () => {
+    expect(corDoInstrumento(3, 3.5 as any)).toBe(corDoInstrumento(3))
   })
 })
 
@@ -296,6 +431,31 @@ describe('instrumentosPorDia', () => {
     expect(dia.instrumentos.map((i) => i.name)).toEqual(['TAG-2', 'TAG-3', 'TAG-10'])
   })
 
+  // Propagação da cor configurada (Task 2, plano cor-por-recurso): `opcoes`
+  // carrega `color` (vindo de `pwa_instrumento_options`) e o item usa
+  // exatamente a mesma regra de `corDoInstrumento`.
+  it('usa a cor configurada do instrumento em `opcoes` quando presente', () => {
+    const opcoesComCor: InstrumentoOpcao[] = [
+      { id: 5, name: 'Multímetro', validade: '2027-01-01', color: 9 },
+      { id: 8, name: 'Termômetro', validade: false },
+    ]
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [5] })],
+      dias, opcoesComCor,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos[0].cor).toBe(PALETA[9])
+  })
+
+  it('instrumento sem color em `opcoes` mantém a cor automática (não-regressão)', () => {
+    const r = instrumentosPorDia(
+      [v({ id: 1, date: '2026-09-17', instrument_ids: [5] })],
+      dias, opcoes,
+    )
+    const dia = r.find((d) => d.date === '2026-09-17')!
+    expect(dia.instrumentos[0].cor).toBe(corDoInstrumento(5))
+  })
+
   describe('parâmetro `ligados` (camada 2 do filtro — Task 2 bugfix)', () => {
     // A camada 1 (`visitasVisiveis` em `page.tsx`) já decide QUAIS visitas
     // sobrevivem; dentro de uma visita sobrevivente, `ligados` decide quais
@@ -354,6 +514,30 @@ describe('PALETA', () => {
   it('tem pelo menos 12 tons, todos distintos', () => {
     expect(PALETA.length).toBeGreaterThanOrEqual(12)
     expect(new Set(PALETA).size).toBe(PALETA.length)
+  })
+
+  // Trava de CONTEÚDO (fix round 3, achado 2): os testes acima e os de
+  // `corDoTecnico`/`corDoInstrumento` fixam a FÓRMULA (`PALETA[id %
+  // PALETA.length]`), não os valores — reordenar dois tons "pra ficar mais
+  // bonito", ou trocar um tom por outro que ainda passe o contraste, segue
+  // verde em todos eles, e todo recurso não configurado muda de cor em
+  // silêncio. Hex literais e ORDEM aqui, de propósito: qualquer reordenação
+  // ou substituição de tom tem que quebrar este teste.
+  it('TRAVA DE CONTEÚDO: os 12 tons são exatamente estes, nesta ordem', () => {
+    expect(PALETA).toEqual([
+      '#db2777', // pink-600
+      '#059669', // emerald-600
+      '#8b5cf6', // violet-500
+      '#ea580c', // orange-600
+      '#0284c7', // sky-600
+      '#f43f5e', // rose-500
+      '#0d9488', // teal-600
+      '#c026d3', // fuchsia-600
+      '#16a34a', // green-600
+      '#3b82f6', // blue-500
+      '#dc2626', // red-600
+      '#0891b2', // cyan-600
+    ])
   })
 
   it('ids que colidiam na paleta de 8 (3 e 11) recebem cores diferentes', () => {

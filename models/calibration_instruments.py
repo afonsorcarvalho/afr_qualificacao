@@ -138,6 +138,16 @@ class EngcCalibrationInstrumentsCertificates(models.Model):
 class EngcCalibrationInstruments(models.Model):
     _inherit = "engc.calibration.instruments"
 
+    color = fields.Integer(
+        string="Cor",
+        default=0,
+        help=(
+            "Cor deste instrumento na agenda do PWA (triângulos). Usa a "
+            "paleta fixa do seletor nativo do Odoo — 0 (\"sem cor\") mantém "
+            "a cor automática derivada do id, sem configuração manual."
+        ),
+    )
+
     # F10 — papéis, capacidade e setup para o plano de recursos.
     function_ids = fields.Many2many(
         comodel_name="afr.qualificacao.instrument.function",
