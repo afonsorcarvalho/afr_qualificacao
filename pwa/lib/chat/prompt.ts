@@ -33,7 +33,7 @@ export function resumirVisitas(visitas: VisitaAgenda[]): VisitaResumo[] {
   }))
 }
 
-export function hora(f: number): string {
+function hora(f: number): string {
   const h = Math.floor(f)
   const m = Math.round((f - h) * 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -62,7 +62,7 @@ Esta data vem do servidor. Nunca deduza a data de hoje por conta própria e nunc
 
 REGRA DE IDENTIFICADORES: nunca invente um id. Só use os ids de visita, técnico, OS ou instrumento que apareceram no contexto abaixo ou no resultado de uma ferramenta que você já chamou nesta conversa. Se precisar de um id que não tem, chame a ferramenta de consulta primeiro.
 
-AMBIGUIDADE: se o pedido puder se referir a mais de uma visita, técnico, OS ou instrumento, pergunte qual, citando os dados que diferenciam as opções (data, cliente, OS, cidade). Nunca escolha por conta própria.
+AMBIGUIDADE: se o pedido puder se referir a mais de uma visita, técnico, OS ou instrumento, pergunte qual, citando os dados que diferenciam as opções (nome, data, cliente, OS, instrumento). Nunca escolha por conta própria.
 
 CONFLITOS: buscar_agenda devolve campos de conflito (técnico ocupado, deslocamento, instrumento, calibração vencida). Ao sugerir data ou horário, prefira o que não gera conflito. Se o gestor pedir um horário conflitante, proponha assim mesmo e avise do conflito na sua resposta.
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, resumirVisitas, hora } from './prompt'
+import { buildSystemPrompt, resumirVisitas } from './prompt'
 
 const ctx = {
   serverToday: '2026-10-14',
@@ -30,9 +30,14 @@ describe('buildSystemPrompt', () => {
 
   it('manda perguntar quando houver ambiguidade, em vez de escolher', () => {
     const p = buildSystemPrompt(ctx)
-    expect(p).toMatch(/pergunte/i)
-    // Deve cobrir todos os quatro tipos de entidade: visita, técnico, OS, instrumento
-    expect(p).toMatch(/visita.*técnico.*os.*instrumento/is)
+    // Extrai a cláusula AMBIGUIDADE para evitar false positives da REGRA DE IDENTIFICADORES
+    const ambiguidadeMatch = p.match(/AMBIGUIDADE:.*?\.\n/)
+    expect(ambiguidadeMatch).toBeTruthy()
+    const ambiguidadeClause = ambiguidadeMatch![0]
+
+    expect(ambiguidadeClause).toMatch(/pergunte/i)
+    // Deve cobrir todos os quatro tipos de entidade dentro da cláusula AMBIGUIDADE
+    expect(ambiguidadeClause).toMatch(/visita.*técnico.*os.*instrumento/is)
   })
 
   it('lista os técnicos com id e nome', () => {
@@ -54,6 +59,20 @@ describe('buildSystemPrompt', () => {
     expect(p).toContain('2026-10-14')
     expect(p).toMatch(/nenhuma visita/i)
   })
+
+  it('formata horas fracionárias em HH:MM no prompt (leitura do gestor)', () => {
+    const ctxComFracionaria = {
+      serverToday: '2026-10-14',
+      tecnicos: [{ id: 1, name: 'Ana' }],
+      visitas: [{
+        id: 99, date: '2026-10-16', os_name: 'OS26-06-0099',
+        tecnico_name: 'Ana', partner_name: 'Clínica', time_start: 8.5, time_stop: 16.75,
+      }],
+    }
+    const p = buildSystemPrompt(ctxComFracionaria)
+    expect(p).toContain('08:30')
+    expect(p).toContain('16:45')
+  })
 })
 
 describe('resumirVisitas', () => {
@@ -72,11 +91,5 @@ describe('resumirVisitas', () => {
       tecnico_name: 'João Silva', partner_name: 'Hospital Central',
       time_start: 8, time_stop: 17,
     }])
-  })
-})
-
-describe('hora', () => {
-  it('formata horas fracionárias em HH:MM', () => {
-    expect(hora(8.5)).toBe('08:30')
   })
 })
