@@ -160,6 +160,28 @@ describe('corDoTecnico', () => {
   it('id === false ignora color e devolve sempre a cor neutra de "sem técnico"', () => {
     expect(corDoTecnico(false, 5)).toBe(COR_SEM_TECNICO)
   })
+
+  // Vetores REAIS da RPC não tipada (fix round 3, achado 3) — `color?:
+  // number` é a assinatura TypeScript, não uma garantia de runtime. Os casos
+  // acima só cobrem 0, undefined, negativo e estouro; `null`/`false`/string/
+  // float são o que de fato chega de um payload sem tipagem — em especial
+  // `false`, sentinela clássica do Odoo pra "sem valor" nos campos JSON-RPC.
+  // Todos caem na cor automática, sem exceção.
+  it('color null (RPC não tipada) cai na cor automática', () => {
+    expect(corDoTecnico(441, null as any)).toBe(corDoTecnico(441))
+  })
+
+  it('color false (RPC não tipada) cai na cor automática', () => {
+    expect(corDoTecnico(441, false as any)).toBe(corDoTecnico(441))
+  })
+
+  it('color string (RPC não tipada) cai na cor automática, mesmo parecendo um índice válido', () => {
+    expect(corDoTecnico(441, '5' as any)).toBe(corDoTecnico(441))
+  })
+
+  it('color float/não-inteiro (RPC não tipada) cai na cor automática', () => {
+    expect(corDoTecnico(441, 3.5 as any)).toBe(corDoTecnico(441))
+  })
 })
 
 describe('tecnicosPorDia', () => {
@@ -293,6 +315,25 @@ describe('corDoInstrumento', () => {
     expect(corDoInstrumento(1, 4)).toBe(PALETA[4])
     expect(corDoInstrumento(5, 4)).toBe(PALETA[4])
     expect(corDoInstrumento(1, 4)).toBe(corDoInstrumento(5, 4))
+  })
+
+  // Mesmos vetores não-numéricos de `corDoTecnico` — `corConfigurada` é
+  // compartilhada pelas duas funções, mas a cobertura tem que existir dos
+  // dois lados independentemente.
+  it('color null (RPC não tipada) cai na cor automática', () => {
+    expect(corDoInstrumento(3, null as any)).toBe(corDoInstrumento(3))
+  })
+
+  it('color false (RPC não tipada) cai na cor automática', () => {
+    expect(corDoInstrumento(3, false as any)).toBe(corDoInstrumento(3))
+  })
+
+  it('color string (RPC não tipada) cai na cor automática, mesmo parecendo um índice válido', () => {
+    expect(corDoInstrumento(3, '5' as any)).toBe(corDoInstrumento(3))
+  })
+
+  it('color float/não-inteiro (RPC não tipada) cai na cor automática', () => {
+    expect(corDoInstrumento(3, 3.5 as any)).toBe(corDoInstrumento(3))
   })
 })
 
@@ -473,6 +514,30 @@ describe('PALETA', () => {
   it('tem pelo menos 12 tons, todos distintos', () => {
     expect(PALETA.length).toBeGreaterThanOrEqual(12)
     expect(new Set(PALETA).size).toBe(PALETA.length)
+  })
+
+  // Trava de CONTEÚDO (fix round 3, achado 2): os testes acima e os de
+  // `corDoTecnico`/`corDoInstrumento` fixam a FÓRMULA (`PALETA[id %
+  // PALETA.length]`), não os valores — reordenar dois tons "pra ficar mais
+  // bonito", ou trocar um tom por outro que ainda passe o contraste, segue
+  // verde em todos eles, e todo recurso não configurado muda de cor em
+  // silêncio. Hex literais e ORDEM aqui, de propósito: qualquer reordenação
+  // ou substituição de tom tem que quebrar este teste.
+  it('TRAVA DE CONTEÚDO: os 12 tons são exatamente estes, nesta ordem', () => {
+    expect(PALETA).toEqual([
+      '#db2777', // pink-600
+      '#059669', // emerald-600
+      '#8b5cf6', // violet-500
+      '#ea580c', // orange-600
+      '#0284c7', // sky-600
+      '#f43f5e', // rose-500
+      '#0d9488', // teal-600
+      '#c026d3', // fuchsia-600
+      '#16a34a', // green-600
+      '#3b82f6', // blue-500
+      '#dc2626', // red-600
+      '#0891b2', // cyan-600
+    ])
   })
 
   it('ids que colidiam na paleta de 8 (3 e 11) recebem cores diferentes', () => {
