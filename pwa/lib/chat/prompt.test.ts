@@ -37,7 +37,7 @@ describe('buildSystemPrompt', () => {
 
     expect(ambiguidadeClause).toMatch(/pergunte/i)
     // Deve cobrir todos os quatro tipos de entidade dentro da cláusula AMBIGUIDADE
-    expect(ambiguidadeClause).toMatch(/visita.*técnico.*os.*instrumento/is)
+    expect(ambiguidadeClause).toMatch(/visita[\s\S]*técnico[\s\S]*os[\s\S]*instrumento/i)
   })
 
   it('lista os técnicos com id e nome', () => {

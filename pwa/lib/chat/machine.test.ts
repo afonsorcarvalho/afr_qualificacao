@@ -40,7 +40,7 @@ describe('coletarIds', () => {
   it('coleta id de objeto, de lista aninhada e de instrument_ids', () => {
     const s = new Set<number>()
     coletarIds({ visitas: [{ id: 87, tecnico_id: 3, instrument_ids: [11, 12] }] }, s)
-    expect([...s].sort((a, b) => a - b)).toEqual([3, 11, 12, 87])
+    expect(Array.from(s).sort((a, b) => a - b)).toEqual([3, 11, 12, 87])
   })
   it('ignora valores não numéricos', () => {
     const s = new Set<number>()
