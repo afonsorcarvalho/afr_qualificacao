@@ -90,10 +90,24 @@ function validar(
   return null
 }
 
+/** Mostra o valor, ou um aviso em pt-BR em vez do literal "undefined". */
+function ouFalta(v: unknown, campo: string): unknown {
+  return v !== undefined ? v : `(${campo} não informado)`
+}
+
+// O card montado a partir deste texto é a última coisa que o gestor vê
+// antes de confirmar uma escrita: nunca deixar "undefined" vazar para lá,
+// mesmo quando o modelo omite um argumento obrigatório — a validação de
+// obrigatoriedade só acontece depois, em runTool, que não roda para
+// escritas dentro de runTurn.
 function resumir(name: string, args: Record<string, unknown>): string {
   if (name === 'criar_visita') {
-    return `Criar visita para a OS ${args.os_id} em ${args.date}, técnico ${args.tecnico_id}.`
+    const os = ouFalta(args.os_id, 'id da OS')
+    const data = ouFalta(args.date, 'data')
+    const tecnico = ouFalta(args.tecnico_id, 'técnico')
+    return `Criar visita para a OS ${os} em ${data}, técnico ${tecnico}.`
   }
+  const visita = ouFalta(args.visita_id, 'id da visita')
   const partes: string[] = []
   if (args.date !== undefined) partes.push(`data → ${args.date}`)
   if (args.time_start !== undefined) partes.push(`início → ${args.time_start}`)
@@ -103,7 +117,7 @@ function resumir(name: string, args: Record<string, unknown>): string {
     partes.push(`instrumentos → ${JSON.stringify(args.instrument_ids)}`)
   }
   if (args.note !== undefined) partes.push('observação alterada')
-  return `Alterar a visita ${args.visita_id}: ${partes.join(', ') || 'sem mudança'}.`
+  return `Alterar a visita ${visita}: ${partes.join(', ') || 'sem mudança'}.`
 }
 
 function parseArgs(call: LlmToolCall): Record<string, unknown> | null {
@@ -152,7 +166,8 @@ export async function runTurn(
     atual = [...atual, msgAssistente(turn)]
     let propostaPendente: Proposta | null = null
 
-    for (const call of turn.tool_calls) {
+    for (let i = 0; i < turn.tool_calls.length; i++) {
+      const call = turn.tool_calls[i]
       const args = parseArgs(call)
       if (!args) {
         atual = [...atual, msgFerramenta(
@@ -173,6 +188,19 @@ export async function runTurn(
           name: call.function.name,
           args,
           resumo: resumir(call.function.name, args),
+        }
+        // O modelo pode ter pedido várias ferramentas nesta mesma volta
+        // (gemma-4-31b-it suporta tool calls paralelas). A API exige uma
+        // resposta "tool" para cada tool_call_id da mensagem assistant
+        // anterior, senão a próxima chamada ao modelo é rejeitada — então
+        // as chamadas depois da escrita, que não vão rodar agora, recebem
+        // uma resposta explicando por quê, em vez de ficar sem resposta.
+        for (let j = i + 1; j < turn.tool_calls.length; j++) {
+          const restante = turn.tool_calls[j]
+          atual = [...atual, msgFerramenta(
+            restante.id,
+            'Não executada: a alteração anterior está aguardando confirmação do gestor; refaça esta chamada depois se ainda for necessária.',
+          )]
         }
         break
       }

@@ -13,6 +13,16 @@ function chamada(name: string, args: unknown, id = 'c1'): LlmTurn {
     tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
   }
 }
+function chamadas(...specs: Array<{ id: string; name: string; args: unknown }>): LlmTurn {
+  return {
+    content: null,
+    tool_calls: specs.map((s) => ({
+      id: s.id,
+      type: 'function' as const,
+      function: { name: s.name, arguments: JSON.stringify(s.args) },
+    })),
+  }
+}
 function deps(turns: LlmTurn[], runTool = vi.fn().mockResolvedValue({ ok: true })) {
   const callModel = vi.fn()
   turns.forEach((t) => callModel.mockResolvedValueOnce(t))
@@ -82,6 +92,67 @@ describe('runTurn', () => {
     }
   })
 
+  it('turno [leitura, escrita, leitura]: a leitura anterior executa, a escrita para o loop, e a leitura seguinte ainda recebe resposta tool', async () => {
+    const runTool = vi.fn().mockResolvedValue({ ok: true })
+    const d = deps([
+      chamadas(
+        { id: 'c1', name: 'buscar_agenda', args: { date_from: '2026-10-12', date_to: '2026-10-18' } },
+        { id: 'c2', name: 'atualizar_visita', args: { visita_id: 87, date: '2026-10-16' } },
+        { id: 'c3', name: 'listar_tecnicos', args: {} },
+      ),
+    ], runTool)
+    d.idsVistos.add(87)
+    const r = await runTurn(inicio, d)
+    // A leitura antes da escrita realmente rodou; a leitura depois, não.
+    expect(runTool).toHaveBeenCalledTimes(1)
+    expect(runTool).toHaveBeenCalledWith('buscar_agenda', { date_from: '2026-10-12', date_to: '2026-10-18' })
+    expect(r.kind).toBe('proposal')
+    const respostaC3 = r.messages.find((m) => m.role === 'tool' && m.tool_call_id === 'c3')
+    expect(respostaC3).toBeTruthy()
+    expect(respostaC3?.content).toMatch(/aguardando confirmação/i)
+  })
+
+  it('turno [escrita, escrita]: a primeira vira proposta, a segunda recebe placeholder, runTool nunca chamado', async () => {
+    const runTool = vi.fn()
+    const d = deps([
+      chamadas(
+        { id: 'c1', name: 'atualizar_visita', args: { visita_id: 87, date: '2026-10-16' } },
+        { id: 'c2', name: 'criar_visita', args: { os_id: 5, tecnico_id: 3, date: '2026-10-17' } },
+      ),
+    ], runTool)
+    d.idsVistos.add(87)
+    d.idsVistos.add(5)
+    d.idsVistos.add(3)
+    const r = await runTurn(inicio, d)
+    expect(runTool).not.toHaveBeenCalled()
+    expect(r.kind).toBe('proposal')
+    if (r.kind === 'proposal') expect(r.proposta.toolCallId).toBe('c1')
+    const respostaC2 = r.messages.find((m) => m.role === 'tool' && m.tool_call_id === 'c2')
+    expect(respostaC2).toBeTruthy()
+
+    // Invariante: toda tool_call_id da mensagem assistant, exceto a que
+    // virou proposta (ainda pendente do gestor), tem exatamente uma
+    // resposta "tool" — senão a próxima chamada ao modelo é rejeitada
+    // pela API.
+    const assistente = r.messages.find((m) => m.role === 'assistant' && m.tool_calls)
+    const idsRespondidos = r.messages.filter((m) => m.role === 'tool').map((m) => m.tool_call_id)
+    for (const call of assistente!.tool_calls!) {
+      if (r.kind === 'proposal' && call.id === r.proposta.toolCallId) continue
+      expect(idsRespondidos.filter((id) => id === call.id).length).toBe(1)
+    }
+  })
+
+  it('resumo da proposta não imprime "undefined" quando falta um argumento obrigatório', async () => {
+    const d = deps([chamada('criar_visita', { date: '2026-10-16', tecnico_id: 3 })])
+    d.idsVistos.add(3)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('proposal')
+    if (r.kind === 'proposal') {
+      expect(r.proposta.resumo).not.toMatch(/undefined/)
+      expect(r.proposta.resumo).toMatch(/não informad/i)
+    }
+  })
+
   it('escrita com id nunca visto não vira proposta; o erro volta ao modelo', async () => {
     const d = deps([
       chamada('atualizar_visita', { visita_id: 999, date: '2026-10-16' }),
@@ -134,6 +205,12 @@ describe('runTurn', () => {
   })
 
   it('respeita o teto de voltas', async () => {
+    // Literal, não `MAX_TOOL_ROUNDS`: comparar o símbolo consigo mesmo não
+    // pegaria uma regressão do valor. 4 é uma decisão de capacidade
+    // deliberada — o tier gratuito dá 50 requisições/dia e cada volta gasta
+    // uma, então subir para 8 cortaria pela metade as mensagens diárias do
+    // gestor.
+    expect(MAX_TOOL_ROUNDS).toBe(4)
     const callModel = vi.fn().mockResolvedValue(
       chamada('buscar_agenda', { date_from: '2026-10-12', date_to: '2026-10-18' }),
     )
