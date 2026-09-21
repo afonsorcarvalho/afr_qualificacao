@@ -21,7 +21,7 @@ do João de quinta pra sexta" e ver aquilo acontecer.
 | Histórico | Client-side (`sessionStorage`). Nenhum modelo novo no Odoo. |
 | Voz | Reusa `/api/groq/transcribe`. |
 | Sugestão | O modelo lê os campos de conflito já serializados e propõe slot livre. |
-| Cota | Tier gratuito puro, sem compra de crédito. Teto de ~5-16 mensagens/dia aceito: é prova de conceito, não uso diário. |
+| Cota | Tier gratuito puro, sem compra de crédito. ~16 mensagens/dia no caminho típico (pior caso real bem menor, ver "Cota" abaixo) aceito: é prova de conceito, não uso diário. |
 
 ## Constraint central: nenhuma RPC de escrita nova
 
@@ -348,14 +348,37 @@ Os limites do OpenRouter são globais por conta (chaves ou contas extras não
 mudam nada): **20 req/min** sempre, e **50 requisições/dia** com menos de
 US$ 10 de crédito vitalício comprado — contra 1000/dia acima disso.
 
-O teto que importa é por requisição *upstream*, e cada mensagem do gestor
-gasta 2 a 5 delas:
+O teto que importa é por requisição *upstream*. No caminho feliz (sem
+fallback, sem escrita confirmada) cada mensagem do gestor gasta de 2 a 5:
 
-| Requisições por mensagem | Mensagens/dia no tier free |
-|---|---|
-| 2 (consulta simples) | 25 |
-| 3 (típico) | 16 |
-| 5 (teto: 4 voltas + resposta final) | 10 |
+| Requisições por mensagem | Cenário | Mensagens/dia no tier free |
+|---|---|---|
+| 2 (consulta simples) | melhor caso | 25 |
+| 3 (típico) | típico | 16 |
+| 5 (teto ingênuo: 4 voltas + resposta final, sem fallback) | teto sem fallback | 10 |
+| até 24 (pior caso real, ver abaixo) | pior caso | ~2 |
+
+**O pior caso real é bem mais alto que 5, por dois multiplicadores que a
+tabela acima ignora:**
+
+1. **A cadeia de fallback multiplica por até 3.** `route.ts:140-167`
+   avança para o próximo modelo em `OPENROUTER_MODELS` a cada `429`/`5xx`
+   (`vaiTentarOutro`) — o padrão tem 3 modelos. Cada uma das 4 voltas do
+   `MAX_TOOL_ROUNDS` de `runTurn` pode, portanto, custar até 3 requisições
+   upstream, não 1: até 4 × 3 = 12 por `runTurn`. E o multiplicador morde
+   mais forte exatamente quando a cota já está apertada — `429` é o
+   sintoma do próprio throttling que estamos tentando não estourar.
+2. **`confirmarEscrita` abre um segundo orçamento completo.**
+   `lib/chat/machine.ts` despacha a escrita e então chama `runTurn` de
+   novo para a narração final, com seu próprio teto de 4 voltas do zero.
+   Uma mensagem que termina em escrita confirmada pode gastar as até 12
+   requisições da consulta inicial **mais** até 12 da leva pós-confirmação.
+
+Multiplicando os dois: até 4 × 3 (consulta) + 4 × 3 (confirmação) = **24
+requisições upstream numa única mensagem do gestor**, não 5. É o pior caso
+raro — exige fallback repetido, não uma vez só —, mas é o número certo
+para dimensionar a cota; os 2 a 5 do caminho feliz continuam válidos para
+estimar o uso típico.
 
 O limite de 20 req/min também morde: são 4 a 6 mensagens por minuto no
 melhor caso, o que é folgado para uso humano mas não para teste automatizado.

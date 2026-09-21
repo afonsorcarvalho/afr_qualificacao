@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, MessageCircle } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
+import { ChatAgenda } from './_ChatAgenda'
+import { useChatStatus } from '@/lib/hooks/useChatStatus'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { useAgenda, useAgendaDisponivel, useTecnicoOptions, useInstrumentoOptions, useUpdateVisita } from '@/lib/hooks/useAgenda'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
@@ -60,6 +62,8 @@ export default function AgendaPage() {
   // passar `filterMine` aqui mostraria uma faixa de dias que contradiz o
   // painel/grade logo abaixo.
   const { data, isLoading, error } = useAgenda(dateFrom, dateTo, visaoEquipe ? false : filterMine, disponivel.data !== false)
+  const [chatAberto, setChatAberto] = useState(false)
+  const chatIA = useChatStatus()
   const [selecionada, setSelecionada] = useState<VisitaAgenda | null>(null)
   const [criando, setCriando] = useState(false)
   // Muda a cada abertura: sem isto, os `useState` internos da folha em modo
@@ -960,6 +964,30 @@ export default function AgendaPage() {
           <Plus className="h-5 w-5" aria-hidden />
           Nova visita
         </button>
+      )}
+
+      {data?.can_manage && chatIA.enabled && (
+        <>
+          <button
+            type="button"
+            aria-label="Agendar por conversa"
+            onClick={() => setChatAberto(true)}
+            // Empilha ACIMA do FAB "Nova visita" (`bottom-20 ... z-40`, linha
+            // 963, intocado): mesmo `right-4` e `z-40` (a ordem no JSX já
+            // garante que este fica por cima em empate de z-index), e
+            // `bottom-40` — 80px de diferença de offset em relação aos 80px
+            // do outro, folga de 24px livre acima do topo dele (56px de
+            // altura), bem acima dos 56px mínimos pra não sobrepor.
+            className="fixed bottom-40 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+          >
+            <MessageCircle className="h-6 w-6" />
+          </button>
+          <ChatAgenda
+            open={chatAberto}
+            onClose={() => setChatAberto(false)}
+            payload={data}
+          />
+        </>
       )}
 
       <VisitaSheet
