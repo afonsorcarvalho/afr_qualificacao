@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   runTurn, confirmarEscrita, coletarIds, isDataIso, MAX_TOOL_ROUNDS,
+  resumirResultadoLeitura,
 } from './machine'
 import type { LlmTurn, LlmMessage } from '@/lib/llm/client'
 
@@ -355,5 +356,190 @@ describe('confirmarEscrita', () => {
     const tool = r.messages.find((m) => m.role === 'tool')
     expect(tool?.content).toContain('Visita já realizada')
     expect(r.kind).toBe('text')
+  })
+})
+
+describe('resumirResultadoLeitura', () => {
+  it('buscar_agenda: conta e amostra até 3 ids, com reticências quando há mais', () => {
+    const resultado = { visitas: Array.from({ length: 7 }, (_, i) => ({ id: 100 + i })) }
+    expect(resumirResultadoLeitura('buscar_agenda', resultado)).toBe('7 visitas (100, 101, 102…)')
+  })
+
+  it('buscar_agenda: sem reticências quando cabe tudo em 3', () => {
+    const resultado = { visitas: [{ id: 1 }, { id: 2 }] }
+    expect(resumirResultadoLeitura('buscar_agenda', resultado)).toBe('2 visitas (1, 2)')
+  })
+
+  it('listar_tecnicos: array direto, rótulo próprio', () => {
+    const resultado = [{ id: 3, name: 'Bruno' }, { id: 7, name: 'Maria' }]
+    expect(resumirResultadoLeitura('listar_tecnicos', resultado)).toBe('2 técnicos (3, 7)')
+  })
+
+  it('listar_instrumentos e listar_os têm rótulos próprios', () => {
+    expect(resumirResultadoLeitura('listar_instrumentos', [{ id: 1 }])).toBe('1 instrumentos (1)')
+    expect(resumirResultadoLeitura('listar_os', [{ id: 9 }])).toBe('1 OS (9)')
+  })
+
+  it('lista vazia: sem parênteses vazios', () => {
+    expect(resumirResultadoLeitura('buscar_agenda', { visitas: [] })).toBe('0 visitas')
+  })
+
+  it('formato inesperado (nem array nem {visitas}) cai em "ok" sem quebrar', () => {
+    expect(resumirResultadoLeitura('buscar_agenda', { ok: true })).toBe('ok')
+    expect(resumirResultadoLeitura('buscar_agenda', null)).toBe('ok')
+  })
+})
+
+describe('runTurn — tracos (painel de debug)', () => {
+  it('uma volta de leitura + uma volta final de texto: dois tracos, resumo nunca cru', async () => {
+    const runTool = vi.fn().mockResolvedValue({ visitas: [{ id: 87 }, { id: 88 }] })
+    const d = deps([
+      { ...chamada('buscar_agenda', { date_from: '2026-10-12', date_to: '2026-10-18' }), model: 'modelo/a', usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } },
+      { ...texto('achei'), model: 'modelo/a', usage: { prompt_tokens: 50, completion_tokens: 5, total_tokens: 55 } },
+    ], runTool)
+    const r = await runTurn(inicio, d)
+    expect(r.tracos).toHaveLength(2)
+
+    const volta1 = r.tracos![0]
+    expect(volta1.modelo).toBe('modelo/a')
+    expect(volta1.usage).toEqual({ prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 })
+    expect(volta1.duracaoMs).toBeGreaterThanOrEqual(0)
+    expect(volta1.chamadas).toEqual([{
+      nome: 'buscar_agenda',
+      argumentos: JSON.stringify({ date_from: '2026-10-12', date_to: '2026-10-18' }),
+      resultado: '2 visitas (87, 88)',
+    }])
+    // Nunca o payload cru na trace — só o resumo.
+    expect(JSON.stringify(volta1)).not.toMatch(/"id":87/)
+
+    const volta2 = r.tracos![1]
+    expect(volta2.modelo).toBe('modelo/a')
+    expect(volta2.chamadas).toEqual([{ nome: 'texto' }])
+  })
+
+  it('escrita vira proposta: a chamada correspondente registra "aguardando confirmação", e a Proposta carrega os mesmos tracos', async () => {
+    const d = deps([chamada('atualizar_visita', { visita_id: 87, date: '2026-10-16' })])
+    d.idsVistos.add(87)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('proposal')
+    expect(r.tracos).toHaveLength(1)
+    expect(r.tracos![0].chamadas).toEqual([{
+      nome: 'atualizar_visita',
+      argumentos: JSON.stringify({ visita_id: 87, date: '2026-10-16' }),
+      resultado: 'aguardando confirmação do gestor',
+    }])
+    if (r.kind === 'proposal') {
+      expect(r.proposta.tracos).toEqual(r.tracos)
+    }
+  })
+
+  it('turno [leitura, escrita, leitura]: a leitura pulada também vira um item no traço, marcada como não executada', async () => {
+    const runTool = vi.fn().mockResolvedValue({ ok: true })
+    const d = deps([
+      chamadas(
+        { id: 'c1', name: 'buscar_agenda', args: { date_from: '2026-10-12', date_to: '2026-10-18' } },
+        { id: 'c2', name: 'atualizar_visita', args: { visita_id: 87, date: '2026-10-16' } },
+        { id: 'c3', name: 'listar_tecnicos', args: {} },
+      ),
+    ], runTool)
+    d.idsVistos.add(87)
+    const r = await runTurn(inicio, d)
+    expect(r.tracos).toHaveLength(1)
+    expect(r.tracos![0].chamadas.map((c) => c.nome)).toEqual(['buscar_agenda', 'atualizar_visita', 'listar_tecnicos'])
+    const c3 = r.tracos![0].chamadas[2]
+    expect(c3.resultado).toMatch(/não executada/i)
+  })
+
+  it('JSON inválido: o traço guarda o argumento cru (mesmo sem parse) e o erro como resultado', async () => {
+    const callModel = vi.fn()
+      .mockResolvedValueOnce({
+        content: null,
+        tool_calls: [{ id: 'c1', type: 'function', function: { name: 'buscar_agenda', arguments: '{nao é json' } }],
+      })
+      .mockResolvedValueOnce(texto('ok'))
+    const d = { callModel, runTool: vi.fn(), idsVistos: new Set<number>() }
+    const r = await runTurn(inicio, d)
+    expect(r.tracos![0].chamadas[0]).toEqual({
+      nome: 'buscar_agenda',
+      argumentos: '{nao é json',
+      resultado: expect.stringMatching(/argumentos/i),
+    })
+  })
+
+  it('validação (data não-ISO): traço registra a mesma mensagem de erro devolvida ao modelo', async () => {
+    const d = deps([
+      chamada('buscar_agenda', { date_from: 'quinta', date_to: '2026-10-18' }),
+      texto('corrigindo'),
+    ])
+    const r = await runTurn(inicio, d)
+    expect(r.tracos![0].chamadas[0].resultado).toMatch(/AAAA-MM-DD/)
+  })
+
+  it('erro de ferramenta (throw): traço registra a mensagem de erro, não trava', async () => {
+    const runTool = vi.fn().mockRejectedValue(new Error('OS em execução (approved).'))
+    const d = deps([
+      chamada('buscar_agenda', { date_from: '2026-10-12', date_to: '2026-10-18' }),
+      texto('a OS está travada'),
+    ], runTool)
+    const r = await runTurn(inicio, d)
+    expect(r.tracos![0].chamadas[0].resultado).toContain('OS em execução')
+  })
+
+  it('teto de voltas: o erro final ainda carrega os tracos acumulados nas voltas anteriores', async () => {
+    const callModel = vi.fn().mockResolvedValue(
+      chamada('buscar_agenda', { date_from: '2026-10-12', date_to: '2026-10-18' }),
+    )
+    const d = { callModel, runTool: vi.fn().mockResolvedValue({}), idsVistos: new Set<number>() }
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('error')
+    expect(r.tracos).toHaveLength(MAX_TOOL_ROUNDS)
+  })
+
+  it('erro do modelo (callModel rejeita na segunda volta): o resultado de erro preserva o traço da primeira volta', async () => {
+    const callModel = vi.fn()
+      .mockResolvedValueOnce({
+        content: null,
+        tool_calls: [{ id: 'c1', type: 'function' as const, function: { name: 'buscar_agenda', arguments: '{}' } }],
+      })
+      .mockRejectedValueOnce(new Error('IA indisponível'))
+    const runTool = vi.fn().mockResolvedValue({ visitas: [] })
+    const d = { callModel, runTool, idsVistos: new Set<number>() }
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('error')
+    // A primeira volta (buscar_agenda, executada) já tinha traço; a segunda
+    // (que rejeitou) não some com ele.
+    expect(r.tracos).toHaveLength(1)
+    expect(r.tracos![0].chamadas[0].nome).toBe('buscar_agenda')
+  })
+})
+
+describe('confirmarEscrita — tracos', () => {
+  it('a escrita confirmada vira o primeiro traço (resultado "ok"), seguido dos tracos do runTurn seguinte', async () => {
+    const runTool = vi.fn().mockResolvedValue({ id: 87, date: '2026-10-16' })
+    const d = deps([texto('pronto, remarcada')], runTool)
+    const proposta = {
+      toolCallId: 'c1', name: 'atualizar_visita',
+      args: { visita_id: 87, date: '2026-10-16' }, resumo: 'r',
+    }
+    const msgs: LlmMessage[] = [...inicio, {
+      role: 'assistant', content: null,
+      tool_calls: [{ id: 'c1', type: 'function', function: { name: 'atualizar_visita', arguments: '{}' } }],
+    }]
+    const r = await confirmarEscrita(msgs, proposta, d)
+    expect(r.tracos).toHaveLength(2)
+    expect(r.tracos![0].chamadas).toEqual([{
+      nome: 'atualizar_visita',
+      argumentos: JSON.stringify(proposta.args),
+      resultado: 'ok',
+    }])
+    expect(r.tracos![1].chamadas).toEqual([{ nome: 'texto' }])
+  })
+
+  it('escrita que falha: traço registra a mensagem de erro no lugar de "ok"', async () => {
+    const runTool = vi.fn().mockRejectedValue(new Error('Visita já realizada.'))
+    const d = deps([texto('não deu')], runTool)
+    const proposta = { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' }
+    const r = await confirmarEscrita([...inicio], proposta, d)
+    expect(r.tracos![0].chamadas[0].resultado).toBe('Visita já realizada.')
   })
 })

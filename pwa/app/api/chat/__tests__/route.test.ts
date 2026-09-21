@@ -124,6 +124,34 @@ describe('POST /api/chat', () => {
     expect(body.reasoning).toEqual({ enabled: false })
   })
 
+  it('pede usage.include para o OpenRouter devolver tokens (e custo, quando o provedor manda)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok({ content: 'oi', tool_calls: null }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { POST } = await import('../route')
+    await POST(req(corpoValido, 'test') as never)
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.usage).toEqual({ include: true })
+  })
+
+  it('repassa usage (tokens/custo) da resposta do provedor pro cliente, junto do model', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: 'oi', tool_calls: null } }],
+        usage: { prompt_tokens: 21, completion_tokens: 2, total_tokens: 23, cost: 2.78e-6 },
+      }), { status: 200 }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { POST } = await import('../route')
+    const res = await POST(req(corpoValido, 'test') as never)
+
+    expect(await res.json()).toMatchObject({
+      content: 'oi',
+      model: 'modelo/a:free',
+      usage: { prompt_tokens: 21, completion_tokens: 2, total_tokens: 23, cost: 2.78e-6 },
+    })
+  })
+
   it('cai para o próximo modelo da cadeia em 429 e informa qual respondeu', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'rate' } }), { status: 429 }))

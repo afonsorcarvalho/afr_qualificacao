@@ -501,4 +501,114 @@ describe('ChatAgenda', () => {
     await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
     expect(await screen.findByText(/IA indisponível/)).toBeTruthy()
   })
+
+  describe('painel de debug (tokens e chamadas da IA)', () => {
+    it('a resposta do assistente traz um dobrável fechado com os argumentos crus da ferramenta chamada', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [], text: 'Você tem 7 visitas.',
+        tracos: [
+          {
+            modelo: 'gemma-4-31b-it', duracaoMs: 2000,
+            usage: { prompt_tokens: 4000, completion_tokens: 150, total_tokens: 4150 },
+            chamadas: [{
+              nome: 'buscar_agenda',
+              argumentos: '{"date_from":"2026-09-23","date_to":"2026-09-30"}',
+              resultado: '7 visitas (2126, 2128, 2130…)',
+            }],
+          },
+          { modelo: 'gemma-4-31b-it', duracaoMs: 1400, chamadas: [{ nome: 'texto' }] },
+        ],
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'o que tenho essa semana?')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText(/7 visitas\./)
+
+      const details = container.querySelector('details')
+      expect(details).toBeTruthy()
+      expect(details?.hasAttribute('open')).toBe(false)
+      // Fechado ou não, o conteúdo estrutural existe no DOM (o navegador
+      // que decide o que fica visível) — os argumentos crus que provam se
+      // o modelo mandou a data certa têm que estar lá.
+      expect(container.textContent).toContain('{"date_from":"2026-09-23","date_to":"2026-09-30"}')
+    })
+
+    it('o card de proposta também mostra o painel de debug com os argumentos que geraram a proposta', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'proposal', messages: [],
+        proposta: {
+          toolCallId: 'c1', name: 'atualizar_visita',
+          args: { visita_id: 87, date: '2026-10-16' }, resumo: 'r',
+          tracos: [{
+            modelo: 'gemma-4-31b-it', duracaoMs: 900,
+            chamadas: [{
+              nome: 'atualizar_visita',
+              argumentos: '{"visita_id":87,"date":"2026-10-16"}',
+              resultado: 'aguardando confirmação do gestor',
+            }],
+          }],
+        },
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'remarca pra sexta')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByRole('button', { name: /confirmar/i })
+      expect(container.querySelector('details')).toBeTruthy()
+      expect(container.textContent).toContain('{"visita_id":87,"date":"2026-10-16"}')
+    })
+
+    it('o rodapé da sessão acumula chamadas e tokens ao longo de várias mensagens', async () => {
+      runTurnMock
+        .mockResolvedValueOnce({
+          kind: 'text', messages: [], text: 'primeira resposta',
+          tracos: [{ duracaoMs: 100, usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 }, chamadas: [{ nome: 'texto' }] }],
+        })
+        .mockResolvedValueOnce({
+          kind: 'text', messages: [], text: 'segunda resposta',
+          tracos: [{ duracaoMs: 100, usage: { prompt_tokens: 50, completion_tokens: 5, total_tokens: 55 }, chamadas: [{ nome: 'texto' }] }],
+        })
+      montar()
+      // Sem rodapé antes da primeira resposta.
+      expect(screen.queryByText(/chamadas ·/)).toBeNull()
+
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'oi')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText('primeira resposta')
+      expect(await screen.findByText(/1 chamada ·/)).toBeTruthy()
+
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'e agora?')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText('segunda resposta')
+      // 100+50 = 150 entrada, 10+5 = 15 saída → 165 tokens no total.
+      expect(await screen.findByText(/2 chamadas · 165 tokens/)).toBeTruthy()
+    })
+
+    it('rodapé mostra custo só quando alguma volta trouxe usage.cost; sem isso, só tokens', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [], text: 'resposta',
+        tracos: [{ duracaoMs: 100, usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 }, chamadas: [{ nome: 'texto' }] }],
+      })
+      montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'oi')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText('resposta')
+      expect(screen.queryByText(/US\$/)).toBeNull()
+    })
+
+    it('rodapé mostra o custo acumulado, com casas suficientes pra não sumir em "0,0000"', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [], text: 'resposta',
+        tracos: [{
+          duracaoMs: 100,
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 2.78e-6 },
+          chamadas: [{ nome: 'texto' }],
+        }],
+      })
+      montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'oi')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText('resposta')
+      expect(await screen.findByText(/US\$ 0\.000003/)).toBeTruthy()
+    })
+  })
 })

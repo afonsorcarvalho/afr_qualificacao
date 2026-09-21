@@ -113,4 +113,47 @@ describe('llmChat', () => {
     const e = new LlmError('x', 500)
     expect(e.status).toBe(500)
   })
+
+  it('repassa usage (tokens e custo) quando o provedor devolve', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      respond({
+        choices: [{ message: { content: 'ok', tool_calls: null } }],
+        usage: { prompt_tokens: 21, completion_tokens: 2, total_tokens: 23, cost: 2.78e-6 },
+      }),
+    ) as unknown as typeof fetch
+
+    const turn = await llmChat([{ role: 'user', content: 'oi' }], {
+      baseUrl: 'https://x/v1', apiKey: 'k', model: 'm',
+    })
+    expect(turn.usage).toEqual({
+      prompt_tokens: 21, completion_tokens: 2, total_tokens: 23, cost: 2.78e-6,
+    })
+  })
+
+  it('usage ausente na resposta não aparece no turno (nem todo provedor manda)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      respond({ choices: [{ message: { content: 'ok', tool_calls: null } }] }),
+    ) as unknown as typeof fetch
+
+    const turn = await llmChat([{ role: 'user', content: 'oi' }], {
+      baseUrl: 'https://x/v1', apiKey: 'k', model: 'm',
+    })
+    expect(turn.usage).toBeUndefined()
+    expect('usage' in turn).toBe(false)
+  })
+
+  it('usage sem cost (provedor sem o campo) não inventa custo', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      respond({
+        choices: [{ message: { content: 'ok', tool_calls: null } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }),
+    ) as unknown as typeof fetch
+
+    const turn = await llmChat([{ role: 'user', content: 'oi' }], {
+      baseUrl: 'https://x/v1', apiKey: 'k', model: 'm',
+    })
+    expect(turn.usage).toEqual({ prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 })
+    expect(turn.usage?.cost).toBeUndefined()
+  })
 })

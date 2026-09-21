@@ -149,6 +149,12 @@ export async function POST(request: NextRequest) {
           // Gemma 4 tem thinking opt-in; deixar explícito evita pagar
           // ~4,6x em latência caso um provedor mude o default.
           reasoning: { enabled: false },
+          // Sem isto o OpenRouter devolve `usage` sem `cost` — verificado
+          // empiricamente contra a API real (não é doc, é comportamento).
+          // Alimenta o painel de debug (tokens e custo por resposta,
+          // `lib/chat/machine.ts`); nem todo provedor da cadeia devolve
+          // `cost` mesmo assim, daí `LlmUsage.cost` ser opcional.
+          usage: { include: true },
         },
       })
       return NextResponse.json({ ...turn, model })

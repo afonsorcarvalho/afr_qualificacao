@@ -6,22 +6,46 @@
 // tiver aparecido em algum resultado de ferramenta desta conversa. Quando
 // uma delas barra, o erro volta ao modelo como resultado de ferramenta e
 // ele se corrige na volta seguinte.
-import type { LlmMessage, LlmTurn, LlmToolCall } from '@/lib/llm/client'
+import type { LlmMessage, LlmTurn, LlmToolCall, LlmUsage } from '@/lib/llm/client'
 import { isWriteTool } from './toolDefs'
 
 export const MAX_TOOL_ROUNDS = 4
+
+/**
+ * Um item do painel de debug: uma ferramenta chamada nesta volta (com
+ * argumentos crus e resultado RESUMIDO) ou o marcador `'texto'` quando a
+ * volta terminou em resposta de texto, sem ferramenta nenhuma.
+ */
+export interface TracoChamada {
+  nome: string
+  /** JSON cru, exatamente como o modelo mandou. Ausente quando `nome === 'texto'`. */
+  argumentos?: string
+  /** Resumo — nunca o payload cru (ver `resumirResultadoLeitura`). Ausente quando `nome === 'texto'`. */
+  resultado?: string
+}
+
+/** Uma volta = uma chamada ao modelo, mais o que aconteceu com o(s) tool_call(s) dela. */
+export interface TracoVolta {
+  modelo?: string
+  usage?: LlmUsage
+  duracaoMs: number
+  chamadas: TracoChamada[]
+}
 
 export interface Proposta {
   toolCallId: string
   name: string
   args: Record<string, unknown>
   resumo: string
+  /** Mesmos tracos do `PassoResultado` que gerou esta proposta — o card de
+   * confirmação precisa deles porque uma proposta não gera bolha de texto. */
+  tracos?: TracoVolta[]
 }
 
 export type PassoResultado =
-  | { kind: 'text'; messages: LlmMessage[]; text: string }
-  | { kind: 'proposal'; messages: LlmMessage[]; proposta: Proposta }
-  | { kind: 'error'; messages: LlmMessage[]; erro: string }
+  | { kind: 'text'; messages: LlmMessage[]; text: string; tracos?: TracoVolta[] }
+  | { kind: 'proposal'; messages: LlmMessage[]; proposta: Proposta; tracos?: TracoVolta[] }
+  | { kind: 'error'; messages: LlmMessage[]; erro: string; tracos?: TracoVolta[] }
 
 export interface MachineDeps {
   callModel: (messages: LlmMessage[]) => Promise<LlmTurn>
@@ -193,6 +217,47 @@ function serializarResultadoFerramenta(resultado: unknown): string {
   return bruto.slice(0, LIMITE_RESULTADO_FERRAMENTA) + MARCA_TRUNCAMENTO
 }
 
+const RESULTADO_ROTULO: Record<string, string> = {
+  buscar_agenda: 'visitas',
+  listar_tecnicos: 'técnicos',
+  listar_instrumentos: 'instrumentos',
+  listar_os: 'OS',
+}
+
+function idDoItem(item: unknown): number | null {
+  if (!item || typeof item !== 'object') return null
+  const id = (item as Record<string, unknown>).id
+  return typeof id === 'number' ? id : null
+}
+
+/**
+ * Resumo de um resultado de LEITURA pro painel de debug — nunca o payload
+ * cru (pode chegar a ~345000 caracteres numa janela larga de
+ * `buscar_agenda`, ver `serializarResultadoFerramenta` acima). Conta os
+ * itens e amostra até 3 ids; formato inesperado (escrita, erro do próprio
+ * Odoo devolvido como objeto solto, etc.) cai em `'ok'` sem quebrar — este
+ * helper é só cosmético, nunca deve ser o motivo de um traço faltar.
+ */
+export function resumirResultadoLeitura(name: string, resultado: unknown): string {
+  let arr: unknown[] | null = null
+  if (name === 'buscar_agenda' && resultado && typeof resultado === 'object') {
+    const v = (resultado as Record<string, unknown>).visitas
+    if (Array.isArray(v)) arr = v
+  } else if (Array.isArray(resultado)) {
+    arr = resultado
+  }
+  if (!arr) return 'ok'
+
+  const rotulo = RESULTADO_ROTULO[name] ?? 'itens'
+  const ids = arr.map(idDoItem).filter((n): n is number => n !== null)
+  const amostra = ids.slice(0, 3).join(', ')
+  const reticencias = ids.length > 3 ? '…' : ''
+  return amostra ? `${arr.length} ${rotulo} (${amostra}${reticencias})` : `${arr.length} ${rotulo}`
+}
+
+const AGUARDANDO_CONFIRMACAO = 'aguardando confirmação do gestor'
+const NAO_EXECUTADA_TRACO = 'não executada (proposta anterior pendente nesta volta)'
+
 /**
  * Roda o loop até o modelo responder em texto, propor uma escrita, ou
  * esbarrar no teto. Nunca lança: erro vira resultado.
@@ -202,35 +267,49 @@ export async function runTurn(
   deps: MachineDeps,
 ): Promise<PassoResultado> {
   let atual = [...messages]
+  // Um traço por volta (chamada ao modelo), acumulado pro turno inteiro —
+  // é o que alimenta o painel de debug (▸ detalhes) da MUDANÇA B. Nunca
+  // guarda payload cru de ferramenta, só resumo (ver `resumirResultadoLeitura`).
+  const tracos: TracoVolta[] = []
+
   for (let volta = 0; volta < MAX_TOOL_ROUNDS; volta++) {
+    const inicioVolta = Date.now()
     let turn: LlmTurn
     try {
       turn = await deps.callModel(atual)
     } catch (e) {
-      return { kind: 'error', messages: atual, erro: mensagemDeErro(e) }
+      // Esta volta não produziu traço (o modelo nem respondeu) — as
+      // anteriores continuam valendo pro painel de debug.
+      return { kind: 'error', messages: atual, erro: mensagemDeErro(e), tracos }
     }
+    const duracaoMs = Date.now() - inicioVolta
 
     if (!turn.tool_calls.length) {
       atual = [...atual, msgAssistente(turn)]
-      return { kind: 'text', messages: atual, text: turn.content ?? '' }
+      tracos.push({
+        modelo: turn.model, usage: turn.usage, duracaoMs,
+        chamadas: [{ nome: 'texto' }],
+      })
+      return { kind: 'text', messages: atual, text: turn.content ?? '', tracos }
     }
 
     atual = [...atual, msgAssistente(turn)]
     let propostaPendente: Proposta | null = null
+    const chamadasDaVolta: TracoChamada[] = []
 
     for (let i = 0; i < turn.tool_calls.length; i++) {
       const call = turn.tool_calls[i]
       const args = parseArgs(call)
       if (!args) {
-        atual = [...atual, msgFerramenta(
-          call.id,
-          'Não consegui ler os argumentos: não são um objeto JSON válido. Repita a chamada com JSON bem formado.',
-        )]
+        const erroArgs = 'Não consegui ler os argumentos: não são um objeto JSON válido. Repita a chamada com JSON bem formado.'
+        atual = [...atual, msgFerramenta(call.id, erroArgs)]
+        chamadasDaVolta.push({ nome: call.function.name, argumentos: call.function.arguments, resultado: erroArgs })
         continue
       }
       const erro = validar(call.function.name, args, deps.idsVistos)
       if (erro) {
         atual = [...atual, msgFerramenta(call.id, erro)]
+        chamadasDaVolta.push({ nome: call.function.name, argumentos: call.function.arguments, resultado: erro })
         continue
       }
       if (isWriteTool(call.function.name)) {
@@ -241,6 +320,10 @@ export async function runTurn(
           args,
           resumo: resumir(call.function.name, args),
         }
+        chamadasDaVolta.push({
+          nome: call.function.name, argumentos: call.function.arguments,
+          resultado: AGUARDANDO_CONFIRMACAO,
+        })
         // O modelo pode ter pedido várias ferramentas nesta mesma volta
         // (gemma-4-31b-it suporta tool calls paralelas). A API exige uma
         // resposta "tool" para cada tool_call_id da mensagem assistant
@@ -253,6 +336,7 @@ export async function runTurn(
             restante.id,
             'Não executada: a alteração anterior está aguardando confirmação do gestor; refaça esta chamada depois se ainda for necessária.',
           )]
+          chamadasDaVolta.push({ nome: restante.function.name, argumentos: restante.function.arguments, resultado: NAO_EXECUTADA_TRACO })
         }
         break
       }
@@ -263,19 +347,35 @@ export async function runTurn(
         // porque caiu na parte cortada da serialização abaixo.
         coletarIds(resultado, deps.idsVistos)
         atual = [...atual, msgFerramenta(call.id, serializarResultadoFerramenta(resultado))]
+        chamadasDaVolta.push({
+          nome: call.function.name, argumentos: call.function.arguments,
+          resultado: resumirResultadoLeitura(call.function.name, resultado),
+        })
       } catch (e) {
-        atual = [...atual, msgFerramenta(call.id, mensagemDeErro(e))]
+        const msgErro = mensagemDeErro(e)
+        atual = [...atual, msgFerramenta(call.id, msgErro)]
+        chamadasDaVolta.push({ nome: call.function.name, argumentos: call.function.arguments, resultado: msgErro })
       }
     }
 
+    tracos.push({ modelo: turn.model, usage: turn.usage, duracaoMs, chamadas: chamadasDaVolta })
+
     if (propostaPendente) {
-      return { kind: 'proposal', messages: atual, proposta: propostaPendente }
+      // Cópia própria (não a mesma referência de array) pra proposta poder
+      // ser lida independente de `tracos` continuar mutando (não deveria,
+      // já que a função retorna aqui, mas evita acoplar por referência).
+      return {
+        kind: 'proposal', messages: atual,
+        proposta: { ...propostaPendente, tracos: [...tracos] },
+        tracos,
+      }
     }
   }
   return {
     kind: 'error',
     messages: atual,
     erro: `A IA excedeu ${MAX_TOOL_ROUNDS} voltas de consulta sem concluir. Tente reformular o pedido.`,
+    tracos,
   }
 }
 
@@ -286,12 +386,22 @@ export async function confirmarEscrita(
   deps: MachineDeps,
 ): Promise<PassoResultado> {
   let atual = [...messages]
+  const inicio = Date.now()
+  let resultadoTraco: string
   try {
     const resultado = await deps.runTool(proposta.name, proposta.args)
     coletarIds(resultado, deps.idsVistos)
     atual = [...atual, msgFerramenta(proposta.toolCallId, JSON.stringify(resultado))]
+    resultadoTraco = 'ok'
   } catch (e) {
-    atual = [...atual, msgFerramenta(proposta.toolCallId, mensagemDeErro(e))]
+    const msgErro = mensagemDeErro(e)
+    atual = [...atual, msgFerramenta(proposta.toolCallId, msgErro)]
+    resultadoTraco = msgErro
   }
-  return runTurn(atual, deps)
+  const tracoEscrita: TracoVolta = {
+    duracaoMs: Date.now() - inicio,
+    chamadas: [{ nome: proposta.name, argumentos: JSON.stringify(proposta.args), resultado: resultadoTraco }],
+  }
+  const proximo = await runTurn(atual, deps)
+  return { ...proximo, tracos: [tracoEscrita, ...(proximo.tracos ?? [])] }
 }

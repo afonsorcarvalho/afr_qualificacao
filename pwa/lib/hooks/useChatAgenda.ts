@@ -4,14 +4,35 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { LlmMessage, LlmTurn } from '@/lib/llm/client'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
-import { runTurn, confirmarEscrita, coletarIds, type Proposta, type PassoResultado } from '@/lib/chat/machine'
+import {
+  runTurn, confirmarEscrita, coletarIds,
+  type Proposta, type PassoResultado, type TracoVolta,
+} from '@/lib/chat/machine'
 import { runTool } from '@/lib/chat/tools'
 import { buildSystemPrompt, resumirVisitas } from '@/lib/chat/prompt'
 
 export interface Bolha {
   autor: 'user' | 'assistente' | 'erro'
   texto: string
+  /** Painel de debug desta resposta (ferramentas chamadas, tokens, tempo).
+   * Ausente pras bolhas do próprio gestor (`autor === 'user'`). */
+  tracos?: TracoVolta[]
 }
+
+/** Total de tokens/chamadas/custo acumulado pela conversa inteira — não
+ * reseta a cada pergunta, só quando a tela desmonta (mesmo ciclo de vida
+ * de `idsVistos`/`historico`). */
+export interface TotaisSessao {
+  chamadas: number
+  entrada: number
+  saida: number
+  custo: number
+  /** `false` quando nenhuma volta da sessão trouxe `usage.cost` — o
+   * OpenRouter só manda em parte dos provedores mesmo com `usage.include`. */
+  temCusto: boolean
+}
+
+const TOTAIS_ZERADOS: TotaisSessao = { chamadas: 0, entrada: 0, saida: 0, custo: 0, temCusto: false }
 
 async function chamarModelo(messages: LlmMessage[]) {
   const res = await fetch('/api/chat', {
@@ -42,6 +63,7 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
   const [bolhas, setBolhas] = useState<Bolha[]>([])
   const [proposta, setProposta] = useState<Proposta | null>(null)
   const [ocupado, setOcupado] = useState(false)
+  const [totais, setTotais] = useState<TotaisSessao>(TOTAIS_ZERADOS)
   const historico = useRef<LlmMessage[]>([])
   // O conjunto de ids vive pela conversa inteira, não por pedido: um id
   // visto na primeira pergunta continua válido na terceira.
@@ -77,18 +99,39 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
     setBolhas((antigas) => [...antigas, b])
   }, [])
 
+  // Cada volta gasta uma chamada real ao modelo — some ao total mesmo
+  // quando o resultado é uma `proposal` (ainda não confirmada) ou um
+  // `error`: os tokens já foram gastos de qualquer jeito.
+  const acumularTotais = useCallback((tracos: TracoVolta[]) => {
+    if (!tracos.length) return
+    setTotais((antes) => {
+      let { chamadas, entrada, saida, custo, temCusto } = antes
+      for (const t of tracos) {
+        chamadas += 1
+        if (t.usage?.prompt_tokens !== undefined) entrada += t.usage.prompt_tokens
+        if (t.usage?.completion_tokens !== undefined) saida += t.usage.completion_tokens
+        if (t.usage?.cost !== undefined) {
+          custo += t.usage.cost
+          temCusto = true
+        }
+      }
+      return { chamadas, entrada, saida, custo, temCusto }
+    })
+  }, [])
+
   const aplicar = useCallback((r: PassoResultado) => {
     historico.current = r.messages
+    if (r.tracos?.length) acumularTotais(r.tracos)
     if (r.kind === 'text') {
       setProposta(null)
-      if (r.text) empilhar({ autor: 'assistente', texto: r.text })
+      if (r.text) empilhar({ autor: 'assistente', texto: r.text, tracos: r.tracos })
     } else if (r.kind === 'proposal') {
       setProposta(r.proposta)
     } else {
       setProposta(null)
-      empilhar({ autor: 'erro', texto: r.erro })
+      empilhar({ autor: 'erro', texto: r.erro, tracos: r.tracos })
     }
-  }, [empilhar])
+  }, [empilhar, acumularTotais])
 
   const deps = useMemo(
     () => ({ callModel: chamarModelo, runTool, idsVistos: idsVistos.current }),
@@ -158,5 +201,5 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
     empilhar({ autor: 'erro', texto: 'Alteração cancelada.' })
   }, [descartarPropostaPendente, empilhar])
 
-  return { bolhas, proposta, ocupado, enviar, confirmar, cancelar }
+  return { bolhas, proposta, ocupado, enviar, confirmar, cancelar, totais }
 }
