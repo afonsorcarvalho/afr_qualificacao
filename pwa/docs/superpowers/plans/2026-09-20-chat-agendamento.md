@@ -597,7 +597,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `lib/chat/tools.test.ts`
 
 **Interfaces:**
-- Consumes: `TOOL_DEFS`, `TOOL_KINDS` de `lib/chat/toolDefs.ts`; `fetchAgenda`, `updateVisita`, `createVisita`, `listTecnicoOptions`, `listOsOptions`, `listInstrumentoOptions` de `lib/odoo/agenda.ts`.
+- Consumes: `fetchAgenda`, `updateVisita`, `createVisita`, `listTecnicoOptions`, `listOsOptions`, `listInstrumentoOptions`, `type VisitaVals` de `lib/odoo/agenda.ts`. **Não importa `toolDefs`** — o `switch` é a fonte da verdade do dispatch; os schemas servem só ao modelo.
 - Produces: `runTool(name: string, args: Record<string, unknown>): Promise<unknown>`, `ToolNotFoundError`.
 
 - [ ] **Step 1: Write the failing test**
