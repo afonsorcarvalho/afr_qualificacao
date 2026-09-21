@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -64,9 +64,25 @@ function montar(props: Partial<React.ComponentProps<typeof ChatAgenda>> = {}, qc
   )
 }
 
+// O teste de ditado abaixo substitui `fetch`, `MediaRecorder` e
+// `navigator.mediaDevices` em `globalThis` para simular o fluxo de
+// gravação. `vi.clearAllMocks()` só limpa histórico de chamadas — não
+// desfaz essas atribuições — então sem restaurar aqui os testes
+// seguintes do arquivo herdariam um `fetch` mockado e passariam por
+// motivo errado (ou quebrariam sem relação com o que testam).
+const fetchOriginal = globalThis.fetch
+const mediaDevicesOriginal = (globalThis as any).navigator.mediaDevices
+const mediaRecorderOriginal = (globalThis as any).MediaRecorder
+
 beforeEach(() => {
   vi.clearAllMocks()
   globalThis.sessionStorage?.clear()
+})
+
+afterEach(() => {
+  globalThis.fetch = fetchOriginal
+  ;(globalThis as any).navigator.mediaDevices = mediaDevicesOriginal
+  ;(globalThis as any).MediaRecorder = mediaRecorderOriginal
 })
 
 describe('ChatAgenda', () => {
