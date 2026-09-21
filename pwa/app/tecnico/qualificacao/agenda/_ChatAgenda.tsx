@@ -7,6 +7,7 @@ import { useDitado } from '@/lib/hooks/useDitado'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
 import { montarCardProposta } from '@/lib/chat/card'
 import { DetalhesTraco, formatarNumero, formatarCusto } from './_DetalhesTraco'
+import { MarkdownAssistente } from './_MarkdownAssistente'
 
 export function ChatAgenda({
   open,
@@ -70,7 +71,15 @@ export function ChatAgenda({
                   : 'self-start rounded-lg bg-muted px-3 py-2 text-sm'
             }
           >
-            {b.texto}
+            {b.autor === 'assistente' ? (
+              // Só a bolha do assistente passa por markdown — texto do
+              // gestor e das bolhas de erro é montado pelo nosso código,
+              // não pelo modelo, e fica em texto puro de propósito (ver
+              // `_MarkdownAssistente.tsx`).
+              <MarkdownAssistente texto={b.texto} />
+            ) : (
+              b.texto
+            )}
             {b.tracos && <DetalhesTraco tracos={b.tracos} />}
           </div>
         ))}

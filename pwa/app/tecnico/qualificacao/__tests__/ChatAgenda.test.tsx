@@ -502,6 +502,92 @@ describe('ChatAgenda', () => {
     expect(await screen.findByText(/IA indisponível/)).toBeTruthy()
   })
 
+  describe('markdown na bolha do assistente', () => {
+    it('**negrito** vira elemento de negrito de verdade, sem asterisco visível', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [], text: 'Isso é **importante** para você.',
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      // Precisa achar um ELEMENTO de negrito de verdade (não só o texto
+      // "importante" solto) — um teste que só checasse presença de texto
+      // passaria igual sem nenhuma renderização de markdown.
+      const negrito = await screen.findByText('importante')
+      expect(negrito.tagName).toBe('STRONG')
+      expect(container.textContent).not.toContain('*')
+    })
+
+    it('lista com marcador e lista numerada viram listas de verdade (<ul>/<ol>/<li>)', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [],
+        text: '- primeiro item\n- segundo item\n\n1. passo um\n2. passo dois',
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText('primeiro item')
+      const ul = container.querySelector('ul')
+      const ol = container.querySelector('ol')
+      expect(ul).toBeTruthy()
+      expect(ol).toBeTruthy()
+      expect(ul?.querySelectorAll('li').length).toBe(2)
+      expect(ol?.querySelectorAll('li').length).toBe(2)
+      // Marcador/numeração real, não texto cru "- primeiro item".
+      expect(container.textContent).not.toContain('- primeiro item')
+      expect(container.textContent).not.toContain('1. passo um')
+    })
+
+    it('a bolha do PRÓPRIO GESTOR não passa por markdown: os asteriscos continuam visíveis', async () => {
+      // Manda **x** como mensagem do usuário (não do modelo) e afirma que
+      // vira texto cru na tela — se algum dia a bolha do gestor passar a
+      // ser renderizada como markdown por engano, este teste quebra.
+      runTurnMock.mockResolvedValue({ kind: 'text', messages: [], text: 'ok' })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), '**x**')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      expect(await screen.findByText('**x**')).toBeTruthy()
+      // Nenhum <strong> na tela pode ter vindo da bolha do gestor — a
+      // resposta mockada do assistente ("ok") não tem markdown nenhum, então
+      // qualquer <strong> encontrado só poderia vir de uma renderização
+      // indevida da bolha do próprio gestor.
+      expect(container.querySelector('strong')).toBeNull()
+    })
+
+    it('link em markdown NÃO vira âncora — teste de segurança', async () => {
+      // Este é o teste que tem que quebrar de verdade se alguém reabilitar
+      // links depois: afirma ausência de QUALQUER elemento <a> na bolha,
+      // não presença de texto (que passaria mesmo com um <a> renderizado).
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [],
+        text: 'Veja mais em [clique aqui](https://exemplo.com/malicioso).',
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText(/clique aqui/)
+      expect(container.querySelector('a')).toBeNull()
+    })
+
+    it('HTML cru no texto do modelo aparece escapado, não interpretado', async () => {
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [],
+        text: 'Antes <script>alert(1)</script> e <b>depois</b>.',
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await waitFor(() => expect(container.textContent).toContain('depois'))
+      // Nenhum elemento real criado a partir do HTML cru.
+      expect(container.querySelector('script')).toBeNull()
+      expect(container.querySelector('b')).toBeNull()
+      // O texto continua visível na tela, só não interpretado — os
+      // ângulos aparecem como texto literal, não como tag.
+      expect(container.textContent).toContain('<script>alert(1)</script>')
+      expect(container.textContent).toContain('<b>depois</b>')
+    })
+  })
+
   describe('painel de debug (tokens e chamadas da IA)', () => {
     it('a resposta do assistente traz um dobrável fechado com os argumentos crus da ferramenta chamada', async () => {
       runTurnMock.mockResolvedValue({
