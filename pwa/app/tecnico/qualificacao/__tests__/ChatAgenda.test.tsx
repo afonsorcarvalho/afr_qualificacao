@@ -190,6 +190,48 @@ describe('ChatAgenda', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['tecnico-os'] })
   })
 
+  it('tem botão de ditar que não envia sozinho', async () => {
+    montar()
+    const mic = screen.getByRole('button', { name: /ditar/i })
+    expect(mic).toBeTruthy()
+    expect(runTurnMock).not.toHaveBeenCalled()
+  })
+
+  it('texto ditado cai no campo mas não dispara envio automático', async () => {
+    // O teste acima só confere que o botão existe e que montar a tela não
+    // dispara `runTurn` — isso seria verdade mesmo se o callback de ditado
+    // chamasse `enviar()` por engano, porque nenhuma transcrição rodou.
+    // Este aqui aciona o fluxo de ditado de ponta a ponta (grava, para,
+    // transcreve) e prova que o texto chega ao `<input>` sem `runTurn` ser
+    // chamado.
+    class FakeRecorder {
+      ondataavailable: ((e: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      constructor(public stream: unknown) {}
+      start() {}
+      stop() {
+        this.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+        this.onstop?.()
+      }
+    }
+    ;(globalThis as any).MediaRecorder = FakeRecorder
+    ;(globalThis as any).navigator.mediaDevices = {
+      getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
+    }
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 }),
+    ) as unknown as typeof fetch
+
+    montar()
+    const mic = screen.getByRole('button', { name: /ditar/i })
+    await userEvent.click(mic) // inicia gravação
+    await userEvent.click(await screen.findByRole('button', { name: /parar gravação/i })) // para e transcreve
+
+    const input = screen.getByPlaceholderText(/escreva/i) as HTMLInputElement
+    await waitFor(() => expect(input.value).toBe('remarca a visita do João'))
+    expect(runTurnMock).not.toHaveBeenCalled()
+  })
+
   it('erro da máquina aparece na conversa sem derrubar a tela', async () => {
     runTurnMock.mockResolvedValue({
       kind: 'error', messages: [], erro: 'IA indisponível no momento — use a agenda manual.',

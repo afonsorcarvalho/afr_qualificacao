@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
-import { Send } from 'lucide-react'
+import { Send, Mic } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
+import { useDitado } from '@/lib/hooks/useDitado'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
 
 /** Contexto da visita alvo, para o gestor conferir antes de confirmar. */
@@ -24,6 +25,7 @@ export function ChatAgenda({
   const [texto, setTexto] = useState('')
   const { bolhas, proposta, ocupado, enviar, confirmar, cancelar } =
     useChatAgenda(payload)
+  const ditado = useDitado((t) => setTexto((antes) => (antes ? `${antes} ${t}` : t)))
 
   if (!payload?.can_manage) return null
 
@@ -102,6 +104,17 @@ export function ChatAgenda({
           onChange={(e) => setTexto(e.target.value)}
           disabled={ocupado}
         />
+        <button
+          type="button"
+          aria-label={ditado.gravando ? 'Parar gravação' : 'Ditar'}
+          onClick={ditado.alternar}
+          disabled={ocupado || ditado.transcrevendo}
+          className={`min-h-[44px] min-w-[44px] rounded-md border border-border ${
+            ditado.gravando ? 'bg-destructive text-destructive-foreground' : ''
+          }`}
+        >
+          <Mic className="mx-auto h-4 w-4" />
+        </button>
         <button
           type="submit"
           aria-label="Enviar"
