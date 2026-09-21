@@ -2,7 +2,7 @@
 // UM turno do modelo, sem estado. Esta rota não importa o dispatch das
 // ferramentas: o servidor não tem como gravar no Odoo nem se o prompt for
 // subvertido. As ferramentas executam no cliente.
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { llmChat, LlmError, type LlmMessage } from '@/lib/llm/client'
 import { TOOL_DEFS } from '@/lib/chat/toolDefs'
 
@@ -32,6 +32,13 @@ const MODELOS_PADRAO = [
   'qwen/qwen3.8-27b:free',
 ]
 
+// Limites para proteger a quota diária compartilhada (50 requisições/dia),
+// não para aplicar regra de negócio. Cada mensagem do usuário pode gastar
+// de 2 a 5 requisições de fallback se os primeiros modelos falharem.
+const MAX_MENSAGENS = 40
+const MAX_CHARS_CONTEUDO = 8000
+const ROLES_VALIDOS = ['system', 'user', 'assistant', 'tool'] as const
+
 export function modelosConfigurados(): string[] {
   const bruto = process.env.OPENROUTER_MODELS
   if (!bruto) return MODELOS_PADRAO
@@ -47,10 +54,29 @@ function vaiTentarOutro(status: number): boolean {
 function corpoValido(b: unknown): b is { messages: LlmMessage[] } {
   if (!b || typeof b !== 'object') return false
   const m = (b as Record<string, unknown>).messages
-  return Array.isArray(m) && m.every((x) => x && typeof x === 'object')
+  if (!Array.isArray(m) || m.length === 0 || m.length > MAX_MENSAGENS) {
+    return false
+  }
+  return m.every((x) => {
+    if (!x || typeof x !== 'object') return false
+    const msg = x as Record<string, unknown>
+    const role = msg.role
+    if (typeof role !== 'string' || !ROLES_VALIDOS.includes(role as any)) {
+      return false
+    }
+    const content = msg.content
+    if (typeof content === 'string' && content.length > MAX_CHARS_CONTEUDO) {
+      return false
+    }
+    return true
+  })
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const session = request.cookies.get('session_id')?.value
+  if (!session) {
+    return NextResponse.json({ error: 'Sessão expirada' }, { status: 401 })
+  }
   if (!process.env.OPENROUTER_API_KEY) {
     return NextResponse.json({ error: 'IA não configurada' }, { status: 503 })
   }
@@ -81,7 +107,14 @@ export async function POST(request: Request) {
       })
       return NextResponse.json({ ...turn, model })
     } catch (e) {
-      if (!(e instanceof LlmError)) throw e
+      if (!(e instanceof LlmError)) {
+        // Erro genérico (TypeError, network error, etc.) — retornar JSON
+        // em vez do default 500 de Next, mantendo consistência com erro path
+        return NextResponse.json(
+          { error: 'Falha na conexão com a IA' },
+          { status: 502 },
+        )
+      }
       ultimo = e
       if (!vaiTentarOutro(e.status)) break
     }
