@@ -37,6 +37,14 @@ export interface Proposta {
   name: string
   args: Record<string, unknown>
   resumo: string
+  /**
+   * `call.function.arguments` cru, exatamente como o modelo mandou —
+   * NUNCA `JSON.stringify(args)`. `confirmarEscrita` usa isto pro traço da
+   * escrita confirmada; reserializar perderia espaçamento/ordem de chave
+   * originais bem no ponto que o gestor mais vai querer auditar ("o que
+   * exatamente foi gravado?"). Ver `TracoChamada.argumentos`.
+   */
+  argumentosBrutos: string
   /** Mesmos tracos do `PassoResultado` que gerou esta proposta — o card de
    * confirmação precisa deles porque uma proposta não gera bolha de texto. */
   tracos?: TracoVolta[]
@@ -319,6 +327,7 @@ export async function runTurn(
           name: call.function.name,
           args,
           resumo: resumir(call.function.name, args),
+          argumentosBrutos: call.function.arguments,
         }
         chamadasDaVolta.push({
           nome: call.function.name, argumentos: call.function.arguments,
@@ -400,7 +409,7 @@ export async function confirmarEscrita(
   }
   const tracoEscrita: TracoVolta = {
     duracaoMs: Date.now() - inicio,
-    chamadas: [{ nome: proposta.name, argumentos: JSON.stringify(proposta.args), resultado: resultadoTraco }],
+    chamadas: [{ nome: proposta.name, argumentos: proposta.argumentosBrutos, resultado: resultadoTraco }],
   }
   const proximo = await runTurn(atual, deps)
   return { ...proximo, tracos: [tracoEscrita, ...(proximo.tracos ?? [])] }

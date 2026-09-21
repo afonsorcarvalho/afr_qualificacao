@@ -6,6 +6,7 @@ import type { Proposta } from './machine'
 function proposta(over: Partial<Proposta> = {}): Proposta {
   return {
     toolCallId: 'c1', name: 'atualizar_visita', args: {}, resumo: 'r',
+    argumentosBrutos: '{}',
     ...over,
   }
 }
@@ -112,11 +113,11 @@ describe('montarCardProposta — atualizar_visita', () => {
     ])
   })
 
-  it('instrumentos mudam: ids (não nomes — ver nota de alinhamento no relatório)', () => {
+  it('instrumentos mudam: ids (não nomes — ver nota de alinhamento no relatório), e o rótulo avisa que são ids', () => {
     const p = proposta({ args: { visita_id: 2126, instrument_ids: [2, 9, 11] } })
     const card = montarCardProposta(payload, p)
     expect(card.linhas).toEqual([
-      { rotulo: 'Instrumentos', de: '2, 5', para: '2, 9, 11' },
+      { rotulo: 'Instrumentos (ids)', de: '2, 5', para: '2, 9, 11' },
     ])
   })
 
@@ -134,7 +135,7 @@ describe('montarCardProposta — atualizar_visita', () => {
       },
     })
     const card = montarCardProposta(payload, p)
-    expect(card.linhas.map((l) => l.rotulo)).toEqual(['Data', 'Técnico', 'Instrumentos', 'Observação'])
+    expect(card.linhas.map((l) => l.rotulo)).toEqual(['Data', 'Técnico', 'Instrumentos (ids)', 'Observação'])
     expect(card.titulo).toBe('Remarcar visita da OS26-08-0005-2')
   })
 
@@ -145,6 +146,23 @@ describe('montarCardProposta — atualizar_visita', () => {
     expect(card.subtitulo).toBeUndefined()
     // Sem alvo carregado não há "de" conhecido — só o que o modelo propôs.
     expect(card.linhas).toEqual([{ rotulo: 'Data', para: 'qui, 01/10/2026' }])
+  })
+
+  it('visita fora da janela + instrumentos: rótulo também avisa que são ids (mesma honestidade do caso com alvo)', () => {
+    const p = proposta({ args: { visita_id: 4242, instrument_ids: [2, 9] } })
+    const card = montarCardProposta(payload, p)
+    expect(card.linhas).toEqual([{ rotulo: 'Instrumentos (ids)', para: '2, 9' }])
+  })
+
+  it('visita fora da janela + técnico: resolve o nome pelo payload (não precisa do alvo pra isso), id cru só se não achar', () => {
+    // tecnico_id 3 = Maria Souza (visita 91 do payload) — `nomeTecnico`
+    // procura em TODAS as visitas do payload, não só na visita alvo, então
+    // funciona mesmo sem alvo carregado.
+    const comNomeConhecido = montarCardProposta(payload, proposta({ args: { visita_id: 4242, tecnico_id: 3 } }))
+    expect(comNomeConhecido.linhas).toEqual([{ rotulo: 'Técnico', para: 'Maria Souza' }])
+
+    const semNomeConhecido = montarCardProposta(payload, proposta({ args: { visita_id: 4242, tecnico_id: 999 } }))
+    expect(semNomeConhecido.linhas).toEqual([{ rotulo: 'Técnico', para: 'técnico 999' }])
   })
 
   it('visita_id como string coercionável (quirk do modelo) resolve o mesmo alvo', () => {

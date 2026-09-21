@@ -595,7 +595,7 @@ describe('ChatAgenda', () => {
       expect(screen.queryByText(/US\$/)).toBeNull()
     })
 
-    it('rodapé mostra o custo acumulado, com casas suficientes pra não sumir em "0,0000"', async () => {
+    it('rodapé mostra o custo acumulado com vírgula (pt-BR), não ponto — consistente com o resto do painel', async () => {
       runTurnMock.mockResolvedValue({
         kind: 'text', messages: [], text: 'resposta',
         tracos: [{
@@ -608,7 +608,9 @@ describe('ChatAgenda', () => {
       await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'oi')
       await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
       await screen.findByText('resposta')
-      expect(await screen.findByText(/US\$ 0\.000003/)).toBeTruthy()
+      // Vírgula, não ponto — e 6 casas pra não sumir em "0,0000".
+      expect(await screen.findByText(/US\$ 0,000003/)).toBeTruthy()
+      expect(screen.queryByText(/US\$ 0\.000003/)).toBeNull()
     })
   })
 })

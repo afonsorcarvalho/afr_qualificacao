@@ -6,7 +6,7 @@ import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
 import { useDitado } from '@/lib/hooks/useDitado'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
 import { montarCardProposta } from '@/lib/chat/card'
-import { DetalhesTraco, formatarNumero } from './_DetalhesTraco'
+import { DetalhesTraco, formatarNumero, formatarCusto } from './_DetalhesTraco'
 
 export function ChatAgenda({
   open,
@@ -123,11 +123,11 @@ export function ChatAgenda({
       {totais.chamadas > 0 && (
         <p className="mt-2 border-t border-border pt-2 text-center text-xs text-muted-foreground">
           {totais.chamadas} {totais.chamadas === 1 ? 'chamada' : 'chamadas'} · {formatarNumero(totais.entrada + totais.saida)} tokens
-          {/* Custo típico por chamada gira em torno de US$ 0,000003 (ver
-              relatório da task, chamada real de verificação) — 4 casas
-              arredondaria pra "US$ 0,0000" quase sempre. 6 casas mantém o
-              valor legível sem virar notação científica. */}
-          {totais.temCusto ? ` · US$ ${totais.custo.toFixed(6)}` : ''}
+          {/* `formatarCusto` usa vírgula, não ponto — mesma convenção de
+              `formatarSegundos` em `_DetalhesTraco.tsx`; achado de review:
+              este rodapé usava `.toFixed()` cru e destoava do resto do
+              painel. */}
+          {totais.temCusto ? ` · US$ ${formatarCusto(totais.custo)}` : ''}
         </p>
       )}
 

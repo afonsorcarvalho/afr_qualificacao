@@ -122,7 +122,7 @@ function linhasComAlvo(payload: AgendaPayload, alvo: VisitaAgenda, args: Record<
     // mostrar o instrumento errado. Id cru aqui é honesto; nome errado não
     // seria. Ver relatório da task para a evidência no backend.
     linhas.push({
-      rotulo: 'Instrumentos',
+      rotulo: 'Instrumentos (ids)',
       de: alvo.instrument_ids.join(', '),
       para: (args.instrument_ids as unknown[]).join(', '),
     })
@@ -139,7 +139,7 @@ function linhasComAlvo(payload: AgendaPayload, alvo: VisitaAgenda, args: Record<
 
 /** Mesmo formato de `linhasComAlvo`, mas sem nenhum "de" — usado quando a
  * visita não está na janela carregada e não há como saber o valor atual. */
-function linhasSemAlvo(args: Record<string, unknown>): LinhaCardProposta[] {
+function linhasSemAlvo(payload: AgendaPayload, args: Record<string, unknown>): LinhaCardProposta[] {
   const linhas: LinhaCardProposta[] = []
   if (typeof args.date === 'string') linhas.push({ rotulo: 'Data', para: formatarDataHumana(args.date) })
   if (args.time_start !== undefined || args.time_stop !== undefined) {
@@ -147,9 +147,15 @@ function linhasSemAlvo(args: Record<string, unknown>): LinhaCardProposta[] {
     const paraFim = args.time_stop !== undefined ? horaOdoo(Number(args.time_stop)) : '?'
     linhas.push({ rotulo: 'Horário', para: `${paraIni}–${paraFim}` })
   }
-  if (args.tecnico_id !== undefined) linhas.push({ rotulo: 'Técnico', para: String(args.tecnico_id) })
+  if (args.tecnico_id !== undefined) {
+    // `nomeTecnico` procura em TODAS as visitas do payload, não só na
+    // visita alvo (que aqui nem existe) — resolve o nome sempre que o
+    // técnico aparece em alguma visita da janela aberta na tela, mesmo sem
+    // o alvo. Id cru só sobra quando nem isso acha.
+    linhas.push({ rotulo: 'Técnico', para: nomeTecnico(payload, args.tecnico_id) })
+  }
   if (Array.isArray(args.instrument_ids)) {
-    linhas.push({ rotulo: 'Instrumentos', para: (args.instrument_ids as unknown[]).join(', ') })
+    linhas.push({ rotulo: 'Instrumentos (ids)', para: (args.instrument_ids as unknown[]).join(', ') })
   }
   if (args.note !== undefined) linhas.push({ rotulo: 'Observação', para: 'alterada' })
   return linhas
@@ -166,7 +172,7 @@ function cardAtualizarVisita(payload: AgendaPayload, args: Record<string, unknow
       aviso: id !== null
         ? `visita ${id} · fora do período aberto na agenda`
         : 'visita não identificada nesta conversa',
-      linhas: linhasSemAlvo(args),
+      linhas: linhasSemAlvo(payload, args),
     }
   }
 

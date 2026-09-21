@@ -13,6 +13,17 @@ export function formatarNumero(n: number): string {
 }
 
 /**
+ * 0.00000278 → "0,000003" — vírgula (pt-BR), não ponto, mesma regra de
+ * `formatarSegundos` acima. Exportada pro rodapé de sessão em
+ * `_ChatAgenda.tsx`. 6 casas: custo típico observado por chamada gira em
+ * torno de US$ 0,000003 (ver relatório da task, chamada real de
+ * verificação) — 4 casas arredondaria pra "0,0000" quase sempre.
+ */
+export function formatarCusto(v: number): string {
+  return v.toFixed(6).replace('.', ',')
+}
+
+/**
  * Painel de debug de UMA resposta do chat: o que a IA de fato chamou (nome,
  * argumentos CRUS — é o ponto central, para o gestor pegar uma data errada
  * que o modelo mandou — e um resumo do resultado, nunca o payload cru), o

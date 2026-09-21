@@ -337,6 +337,7 @@ describe('confirmarEscrita', () => {
     const proposta = {
       toolCallId: 'c1', name: 'atualizar_visita',
       args: { visita_id: 87, date: '2026-10-16' }, resumo: 'r',
+      argumentosBrutos: '{"visita_id":87,"date":"2026-10-16"}',
     }
     const msgs: LlmMessage[] = [...inicio, {
       role: 'assistant', content: null,
@@ -351,7 +352,7 @@ describe('confirmarEscrita', () => {
   it('UserError do Odoo volta ao modelo em vez de estourar', async () => {
     const runTool = vi.fn().mockRejectedValue(new Error('Visita já realizada.'))
     const d = deps([texto('não deu: a visita já foi realizada')], runTool)
-    const proposta = { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' }
+    const proposta = { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r', argumentosBrutos: '{"visita_id":87}' }
     const r = await confirmarEscrita([...inicio], proposta, d)
     const tool = r.messages.find((m) => m.role === 'tool')
     expect(tool?.content).toContain('Visita já realizada')
@@ -514,12 +515,20 @@ describe('runTurn — tracos (painel de debug)', () => {
 })
 
 describe('confirmarEscrita — tracos', () => {
-  it('a escrita confirmada vira o primeiro traço (resultado "ok"), seguido dos tracos do runTurn seguinte', async () => {
+  it('a escrita confirmada vira o primeiro traço com os argumentos CRUS (não reserializados), seguido dos tracos do runTurn seguinte', async () => {
     const runTool = vi.fn().mockResolvedValue({ id: 87, date: '2026-10-16' })
     const d = deps([texto('pronto, remarcada')], runTool)
+    // Espaçamento deliberadamente diferente do que `JSON.stringify(args)`
+    // produziria (`{"visita_id":87,...}`, sem espaço) — é o que distingue
+    // "argumento cru preservado" de "argumento reserializado a partir de
+    // `args`". Achado da rodada de revisão: em todo teste anterior,
+    // `JSON.stringify(proposta.args)` canônico coincidia por acaso com o
+    // cru, escondendo a reserialização que havia em `confirmarEscrita`.
+    const argumentosBrutos = '{"visita_id": 87, "date": "2026-10-16"}'
     const proposta = {
       toolCallId: 'c1', name: 'atualizar_visita',
       args: { visita_id: 87, date: '2026-10-16' }, resumo: 'r',
+      argumentosBrutos,
     }
     const msgs: LlmMessage[] = [...inicio, {
       role: 'assistant', content: null,
@@ -527,18 +536,20 @@ describe('confirmarEscrita — tracos', () => {
     }]
     const r = await confirmarEscrita(msgs, proposta, d)
     expect(r.tracos).toHaveLength(2)
+    // Byte a byte contra o cru — não contra `JSON.stringify(proposta.args)`.
     expect(r.tracos![0].chamadas).toEqual([{
       nome: 'atualizar_visita',
-      argumentos: JSON.stringify(proposta.args),
+      argumentos: argumentosBrutos,
       resultado: 'ok',
     }])
+    expect(r.tracos![0].chamadas[0].argumentos).not.toBe(JSON.stringify(proposta.args))
     expect(r.tracos![1].chamadas).toEqual([{ nome: 'texto' }])
   })
 
   it('escrita que falha: traço registra a mensagem de erro no lugar de "ok"', async () => {
     const runTool = vi.fn().mockRejectedValue(new Error('Visita já realizada.'))
     const d = deps([texto('não deu')], runTool)
-    const proposta = { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' }
+    const proposta = { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r', argumentosBrutos: '{"visita_id":87}' }
     const r = await confirmarEscrita([...inicio], proposta, d)
     expect(r.tracos![0].chamadas[0].resultado).toBe('Visita já realizada.')
   })
