@@ -46,7 +46,7 @@ export const TOOL_DEFS: LlmToolDef[] = [
     function: {
       name: 'listar_os',
       description:
-        'Lista as ordens de serviço de qualificação ativas (não concluídas nem canceladas). Aviso: nem todas as OSes listadas aceitam criação de visita nova — o servidor rejeita as que já estão em execução ou aprovadas, e só cria visitas nas que estão em rascunho ou agendadas.',
+        'Lista as ordens de serviço de qualificação que aceitam visita nova (rascunho ou agendada). Cada OS já vem com os equipamentos vinculados (equipment_list) e, quando o plano de recursos da OS já foi calculado, os instrumentos sugeridos (instrument_suggestions) — ambos com id e rótulo legível. Uma OS sem instrument_suggestions é normal (plano ainda não calculado); nesse caso use listar_instrumentos para escolher manualmente.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -55,15 +55,25 @@ export const TOOL_DEFS: LlmToolDef[] = [
     function: {
       name: 'criar_visita',
       description:
-        'Cria uma visita nova para uma OS, com técnico e data. Esta ação grava: será mostrada ao gestor para confirmação antes de executar. O servidor pode recusar a OS se seu estado não permitir novas visitas; comunique o erro ao gestor em vez de tentar novamente.',
+        'Cria uma visita nova para uma OS, com técnico, data, equipamentos e instrumentos — os quatro são obrigatórios. Esta ação grava: será mostrada ao gestor para confirmação antes de executar. O servidor pode recusar a OS se seu estado não permitir novas visitas; comunique o erro ao gestor em vez de tentar novamente.',
       parameters: {
         type: 'object',
         properties: {
           os_id: { type: 'integer', description: 'Id da OS, vindo de listar_os.' },
           tecnico_id: { type: 'integer', description: 'Id do técnico, vindo de listar_tecnicos.' },
           date: { type: 'string', description: `Data da visita. ${DATA}` },
+          equipment_ids: {
+            type: 'array',
+            items: { type: 'integer' },
+            description: 'Obrigatório, não pode ser vazio. Ids dos equipamentos da visita — tire do campo equipment_list da própria OS em listar_os (são os equipamentos vinculados a ela).',
+          },
+          instrument_ids: {
+            type: 'array',
+            items: { type: 'integer' },
+            description: 'Obrigatório, não pode ser vazio. Ids dos instrumentos da visita — prefira instrument_suggestions da OS em listar_os quando a lista não vier vazia; se vier vazia (plano de recursos ainda não calculado), escolha em listar_instrumentos.',
+          },
         },
-        required: ['os_id', 'tecnico_id', 'date'],
+        required: ['os_id', 'tecnico_id', 'date', 'equipment_ids', 'instrument_ids'],
       },
     },
   },

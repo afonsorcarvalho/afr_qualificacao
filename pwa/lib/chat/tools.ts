@@ -7,7 +7,7 @@ import {
   updateVisita,
   createVisita,
   listTecnicoOptions,
-  listOsOptions,
+  fetchOsOptions,
   listInstrumentoOptions,
   type VisitaVals,
   type VisitaAgenda,
@@ -120,6 +120,36 @@ function montarVals(args: Record<string, unknown>): VisitaVals {
   return vals as VisitaVals
 }
 
+/**
+ * Valida uma lista de ids OBRIGATÓRIA e não-vazia para `criar_visita`
+ * (equipment_ids/instrument_ids) — ao contrário de `instrument_ids` em
+ * `atualizar_visita`, que é opcional e aceita lista vazia (desliga todos).
+ * `ondeAchar` vai na mensagem porque quem lê o erro é o MODELO, não o
+ * gestor: ele precisa saber que ferramenta chamar a seguir, não só que
+ * errou.
+ */
+function paraListaDeIdsObrigatoria(
+  ferramenta: string,
+  campo: string,
+  valor: unknown,
+  ondeAchar: string,
+): number[] {
+  if (!Array.isArray(valor) || valor.length === 0) {
+    throw new ToolArgumentError(
+      `${ferramenta}: "${campo}" é obrigatório e não pode ser vazio — ${ondeAchar}.`,
+    )
+  }
+  return valor.map((id) => {
+    const num = Number(id)
+    if (!Number.isFinite(num)) {
+      throw new ToolArgumentError(
+        `${ferramenta}: "${campo}" contém um valor inválido: "${id}"`,
+      )
+    }
+    return num
+  })
+}
+
 export async function runTool(
   name: string,
   args: Record<string, unknown>,
@@ -150,7 +180,7 @@ export async function runTool(
     case 'listar_tecnicos':
       return listTecnicoOptions()
     case 'listar_os':
-      return listOsOptions()
+      return fetchOsOptions()
     case 'listar_instrumentos':
       return listInstrumentoOptions()
     case 'criar_visita': {
@@ -160,12 +190,12 @@ export async function runTool(
 
       if (!Number.isFinite(osId)) {
         throw new ToolArgumentError(
-          `criar_visita: "os_id" precisa ser um número inteiro; recebi "${args.os_id}"`,
+          `criar_visita: "os_id" precisa ser um número inteiro, vindo de listar_os; recebi "${args.os_id}"`,
         )
       }
       if (!Number.isFinite(tecnicoId)) {
         throw new ToolArgumentError(
-          `criar_visita: "tecnico_id" precisa ser um número inteiro; recebi "${args.tecnico_id}"`,
+          `criar_visita: "tecnico_id" precisa ser um número inteiro, vindo de listar_tecnicos; recebi "${args.tecnico_id}"`,
         )
       }
       if (!date) {
@@ -174,7 +204,20 @@ export async function runTool(
         )
       }
 
-      return createVisita(osId, tecnicoId, date)
+      // Trava dos dentes (não depender só do prompt): toda visita criada
+      // pelo chat precisa sair com técnico, equipamento(s) e instrumento(s)
+      // — ao contrário da folha manual, que o servidor deixa criar sem
+      // nenhum dos dois (`pwa_visita_create` continua permissivo).
+      const equipmentIds = paraListaDeIdsObrigatoria(
+        'criar_visita', 'equipment_ids', args.equipment_ids,
+        'tire do campo equipment_list da OS em listar_os',
+      )
+      const instrumentIds = paraListaDeIdsObrigatoria(
+        'criar_visita', 'instrument_ids', args.instrument_ids,
+        'use instrument_suggestions da OS em listar_os quando houver, senão escolha em listar_instrumentos',
+      )
+
+      return createVisita(osId, tecnicoId, date, equipmentIds, instrumentIds)
     }
     case 'atualizar_visita': {
       const visitaId = Number(args.visita_id)

@@ -56,4 +56,14 @@ describe('TOOL_DEFS', () => {
     expect(p.date_from.description).toContain('AAAA-MM-DD')
     expect(p.date_to.description).toContain('AAAA-MM-DD')
   })
+
+  it('criar_visita exige equipment_ids e instrument_ids no schema', () => {
+    const def = TOOL_DEFS.find((t) => t.function.name === 'criar_visita')!
+    const params = def.function.parameters as Record<string, any>
+    expect(params.required).toEqual(
+      expect.arrayContaining(['os_id', 'tecnico_id', 'date', 'equipment_ids', 'instrument_ids']),
+    )
+    expect(params.properties.equipment_ids.type).toBe('array')
+    expect(params.properties.instrument_ids.type).toBe('array')
+  })
 })

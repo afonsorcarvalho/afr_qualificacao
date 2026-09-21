@@ -101,8 +101,13 @@ export async function createVisita(
   osId: number,
   tecnicoId: number,
   date: string,
+  equipmentIds?: number[],
+  instrumentIds?: number[],
 ): Promise<VisitaAgenda> {
-  return odooClient.callKw<VisitaAgenda>(VISITA_MODEL, 'pwa_visita_create', [osId, tecnicoId, date])
+  return odooClient.callKw<VisitaAgenda>(
+    VISITA_MODEL, 'pwa_visita_create', [osId, tecnicoId, date],
+    { equipment_ids: equipmentIds, instrument_ids: instrumentIds },
+  )
 }
 
 export async function deleteVisita(id: number): Promise<boolean> {
@@ -119,8 +124,54 @@ export async function listTecnicoOptions(): Promise<Opcao[]> {
   return odooClient.callKw<Opcao[]>(VISITA_MODEL, 'pwa_tecnico_options', [])
 }
 
+export interface OsOptionItem {
+  id: number
+  /** Rótulo legível — `apelido or tag or name` (equipamento) / `tag or id_number or name` (instrumento); nunca o id cru. */
+  name: string
+}
+
+export interface OsOptionPwa {
+  id: number
+  /** Nome da própria OS (ex.: "QOS00005") — sem o cliente junto; use `partner_name` à parte. */
+  name: string
+  partner_name: string
+  city: string
+  state: string | false
+  /** Equipamentos vinculados à OS (subconjunto válido para `criar_visita`). */
+  equipment_list: OsOptionItem[]
+  /**
+   * Instrumentos sugeridos pelo plano de recursos (F10) da OS. Lista VAZIA
+   * é normal — nas OS de demo o plano ainda não foi calculado (deriva de
+   * pontos de medição que as qualificações de demo não têm). Trate como
+   * opcional, nunca como pré-requisito: sem sugestão, use
+   * `listInstrumentoOptions` para escolher manualmente.
+   */
+  instrument_suggestions: OsOptionItem[]
+}
+
+/**
+ * OS que aceitam visita nova — já filtrado a `_OS_UNLOCKED_STATES` no
+ * servidor (`pwa_os_options`), ao contrário de `board_os_options` (usado
+ * pelo board OWL do backend, que devolve toda OS ativa). Serve a folha
+ * manual "Nova visita" (via `listOsOptions`, abaixo) e a ferramenta
+ * `listar_os` do chat, que precisa do payload rico (equipamentos +
+ * sugestão de instrumentos) para poder exigi-los em `criar_visita`.
+ */
+export async function fetchOsOptions(): Promise<OsOptionPwa[]> {
+  return odooClient.callKw<OsOptionPwa[]>(VISITA_MODEL, 'pwa_os_options', [])
+}
+
+/**
+ * Formato enxuto `{id, name}` da folha manual "Nova visita" — o `<select>`
+ * só usa isso. `name` reconstrói o rótulo "OS - cliente" que
+ * `board_os_options` devolvia antes, pra não mudar o que aparece na tela.
+ */
 export async function listOsOptions(): Promise<Opcao[]> {
-  return odooClient.callKw<Opcao[]>(VISITA_MODEL, 'board_os_options', [])
+  const oss = await fetchOsOptions()
+  return oss.map((o) => ({
+    id: o.id,
+    name: o.partner_name ? `${o.name} - ${o.partner_name}` : o.name,
+  }))
 }
 
 export interface InstrumentoOpcao {

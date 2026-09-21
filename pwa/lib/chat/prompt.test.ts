@@ -113,6 +113,34 @@ describe('buildSystemPrompt — identificação na prosa (OS + data, nunca id)',
   })
 })
 
+describe('buildSystemPrompt — visita completa (técnico, equipamento e instrumento obrigatórios)', () => {
+  function clausulaVisitaCompleta(p: string): string {
+    const m = p.match(/VISITA COMPLETA:.*?\.\n/)
+    expect(m).toBeTruthy()
+    return m![0]
+  }
+
+  it('manda nunca criar visita sem técnico, equipamento e instrumento', () => {
+    const clausula = clausulaVisitaCompleta(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/técnico/i)
+    expect(clausula).toMatch(/equipamento/i)
+    expect(clausula).toMatch(/instrumento/i)
+    expect(clausula).toMatch(/nunca/i)
+  })
+
+  it('diz que os equipamentos vêm da própria OS (listar_os)', () => {
+    const clausula = clausulaVisitaCompleta(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/listar_os/)
+    expect(clausula).toMatch(/equipment_list/)
+  })
+
+  it('diz que os instrumentos vêm da sugestão do plano quando houver, senão de listar_instrumentos', () => {
+    const clausula = clausulaVisitaCompleta(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/instrument_suggestions/)
+    expect(clausula).toMatch(/listar_instrumentos/)
+  })
+})
+
 describe('resumirVisitas', () => {
   it('reduz a visita do payload ao que o prompt precisa', () => {
     const r = resumirVisitas([{

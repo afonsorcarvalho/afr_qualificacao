@@ -6,6 +6,7 @@ vi.mock('@/lib/odoo/agenda', () => ({
   createVisita: vi.fn(),
   listTecnicoOptions: vi.fn(),
   listOsOptions: vi.fn(),
+  fetchOsOptions: vi.fn(),
   listInstrumentoOptions: vi.fn(),
 }))
 
@@ -36,22 +37,33 @@ describe('runTool', () => {
     expect(agenda.updateVisita).toHaveBeenCalledWith(87, { note: 'x' })
   })
 
-  it('criar_visita repassa os três argumentos posicionais', async () => {
+  it('criar_visita repassa os cinco argumentos posicionais (equipamentos e instrumentos incluídos)', async () => {
     vi.mocked(agenda.createVisita).mockResolvedValue({ id: 99 } as never)
-    await runTool('criar_visita', { os_id: 4, tecnico_id: 3, date: '2026-10-20' })
-    expect(agenda.createVisita).toHaveBeenCalledWith(4, 3, '2026-10-20')
+    await runTool('criar_visita', {
+      os_id: 4, tecnico_id: 3, date: '2026-10-20',
+      equipment_ids: [10, 11], instrument_ids: [20],
+    })
+    expect(agenda.createVisita).toHaveBeenCalledWith(4, 3, '2026-10-20', [10, 11], [20])
   })
 
-  it('listar_* chamam as funções sem argumento', async () => {
+  it('listar_tecnicos e listar_instrumentos chamam as funções sem argumento', async () => {
     vi.mocked(agenda.listTecnicoOptions).mockResolvedValue([] as never)
-    vi.mocked(agenda.listOsOptions).mockResolvedValue([] as never)
     vi.mocked(agenda.listInstrumentoOptions).mockResolvedValue([] as never)
     await runTool('listar_tecnicos', {})
-    await runTool('listar_os', {})
     await runTool('listar_instrumentos', {})
     expect(agenda.listTecnicoOptions).toHaveBeenCalledWith()
-    expect(agenda.listOsOptions).toHaveBeenCalledWith()
     expect(agenda.listInstrumentoOptions).toHaveBeenCalledWith()
+  })
+
+  // `listar_os` do chat usa `fetchOsOptions` (payload rico: equipamentos +
+  // sugestão de instrumentos por OS), NÃO `listOsOptions` (que devolve só
+  // {id, name} pra folha manual "Nova visita"). São dois consumidores do
+  // mesmo `pwa_os_options`, cada um lendo o formato que precisa.
+  it('listar_os chama fetchOsOptions (payload rico), não listOsOptions', async () => {
+    vi.mocked(agenda.fetchOsOptions).mockResolvedValue([] as never)
+    await runTool('listar_os', {})
+    expect(agenda.fetchOsOptions).toHaveBeenCalledWith()
+    expect(agenda.listOsOptions).not.toHaveBeenCalled()
   })
 
   it('ferramenta desconhecida lança ToolNotFoundError', async () => {
@@ -74,7 +86,71 @@ describe('runTool', () => {
 
   it('criar_visita com os_id ausente lança ToolArgumentError e NÃO chama createVisita', async () => {
     await expect(
-      runTool('criar_visita', { tecnico_id: 3, date: '2026-10-20' }),
+      runTool('criar_visita', {
+        tecnico_id: 3, date: '2026-10-20', equipment_ids: [1], instrument_ids: [2],
+      }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  // Trava de dentes (item 8 da task): a obrigatoriedade de técnico,
+  // equipamento e instrumento não pode depender só do prompt — o dispatch
+  // recusa antes de chamar o Odoo, e a mensagem diz ao MODELO onde buscar
+  // cada coisa, porque quem lê o erro é ele, não o gestor.
+  const argsCompletos = {
+    os_id: 4, tecnico_id: 3, date: '2026-10-20',
+    equipment_ids: [10], instrument_ids: [20],
+  }
+
+  it('criar_visita sem tecnico_id lança ToolArgumentError apontando listar_tecnicos', async () => {
+    const { tecnico_id: _t, ...semTecnico } = argsCompletos
+    await expect(runTool('criar_visita', semTecnico)).rejects.toMatchObject({
+      message: expect.stringMatching(/listar_tecnicos/),
+    })
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  it('criar_visita sem equipment_ids lança ToolArgumentError apontando listar_os', async () => {
+    const { equipment_ids: _e, ...semEquip } = argsCompletos
+    await expect(runTool('criar_visita', semEquip)).rejects.toMatchObject({
+      message: expect.stringMatching(/listar_os/),
+    })
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  it('criar_visita com equipment_ids vazio lança ToolArgumentError', async () => {
+    await expect(
+      runTool('criar_visita', { ...argsCompletos, equipment_ids: [] }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  it('criar_visita sem instrument_ids lança ToolArgumentError apontando listar_instrumentos', async () => {
+    const { instrument_ids: _i, ...semInstr } = argsCompletos
+    await expect(runTool('criar_visita', semInstr)).rejects.toMatchObject({
+      message: expect.stringMatching(/listar_instrumentos/),
+    })
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  it('criar_visita com instrument_ids vazio lança ToolArgumentError', async () => {
+    await expect(
+      runTool('criar_visita', { ...argsCompletos, instrument_ids: [] }),
+    ).rejects.toBeInstanceOf(ToolArgumentError)
+    expect(agenda.createVisita).not.toHaveBeenCalled()
+  })
+
+  it('criar_visita coerce equipment_ids/instrument_ids de string para número', async () => {
+    vi.mocked(agenda.createVisita).mockResolvedValue({ id: 99 } as never)
+    await runTool('criar_visita', {
+      ...argsCompletos, equipment_ids: ['10', '11'], instrument_ids: ['20'],
+    })
+    expect(agenda.createVisita).toHaveBeenCalledWith(4, 3, '2026-10-20', [10, 11], [20])
+  })
+
+  it('criar_visita com equipment_ids não-lista lança ToolArgumentError', async () => {
+    await expect(
+      runTool('criar_visita', { ...argsCompletos, equipment_ids: 'abc' }),
     ).rejects.toBeInstanceOf(ToolArgumentError)
     expect(agenda.createVisita).not.toHaveBeenCalled()
   })
