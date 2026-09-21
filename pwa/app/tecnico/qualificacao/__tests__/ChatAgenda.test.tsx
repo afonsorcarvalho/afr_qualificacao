@@ -221,6 +221,7 @@ describe('ChatAgenda', () => {
     // transcreve) e prova que o texto chega ao `<input>` sem `runTurn` ser
     // chamado.
     class FakeRecorder {
+      static isTypeSupported() { return true }
       ondataavailable: ((e: { data: Blob }) => void) | null = null
       onstop: (() => void) | null = null
       constructor(public stream: unknown) {}
@@ -246,6 +247,48 @@ describe('ChatAgenda', () => {
     const input = screen.getByPlaceholderText(/escreva/i) as HTMLInputElement
     await waitFor(() => expect(input.value).toBe('remarca a visita do João'))
     expect(runTurnMock).not.toHaveBeenCalled()
+  })
+
+  it('fechar a folha do chat com o mic ligado descarta a gravação em andamento', async () => {
+    // `ChatAgenda` não desmonta quando a folha fecha — é o `BottomSheet`
+    // que se esconde por dentro. Sem parar a gravação nesse momento, o
+    // mic continuaria ligado atrás de uma tela invisível, sem nenhum
+    // controle visível pro gestor desligar. Fechar deve descartar, não
+    // transcrever: o gestor não pediu o texto, só fechou a tela.
+    class FakeRecorder {
+      static isTypeSupported() { return true }
+      ondataavailable: ((e: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      constructor(public stream: unknown) {}
+      start() {}
+      stop() {
+        this.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+        this.onstop?.()
+      }
+    }
+    ;(globalThis as any).MediaRecorder = FakeRecorder
+    const pararTrack = vi.fn()
+    ;(globalThis as any).navigator.mediaDevices = {
+      getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: pararTrack }] }),
+    }
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = montar({}, qc)
+
+    const mic = screen.getByRole('button', { name: /ditar/i })
+    await userEvent.click(mic) // inicia gravação, sem clicar em "parar"
+    await screen.findByRole('button', { name: /parar gravação/i })
+
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ChatAgenda open={false} onClose={() => {}} payload={payload as never} />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(pararTrack).toHaveBeenCalled())
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('erro da máquina aparece na conversa sem derrubar a tela', async () => {

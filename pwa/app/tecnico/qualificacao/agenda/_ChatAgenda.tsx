@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Send, Mic } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
@@ -26,6 +26,18 @@ export function ChatAgenda({
   const { bolhas, proposta, ocupado, enviar, confirmar, cancelar } =
     useChatAgenda(payload)
   const ditado = useDitado((t) => setTexto((antes) => (antes ? `${antes} ${t}` : t)))
+
+  // `ChatAgenda` nunca desmonta quando a folha fecha — é o `BottomSheet`
+  // que se esconde por dentro (ver o achado da review). Sem isto, fechar
+  // a folha com o mic ligado deixa a gravação correndo atrás de uma tela
+  // invisível, sem nenhum controle visível pro gestor parar. `open` vira
+  // `false` → descarta a gravação em andamento, nunca transcreve: o
+  // gestor fechou o chat, não pediu o texto.
+  useEffect(() => {
+    if (!open) {
+      ditado.pararEDescartar()
+    }
+  }, [open, ditado.pararEDescartar])
 
   if (!payload?.can_manage) return null
 
