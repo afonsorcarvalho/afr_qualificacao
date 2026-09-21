@@ -40,6 +40,18 @@ export function useDitado(onTexto: (t: string) => void) {
   // mesmo que o `onstop` (que também tenta parar as tracks, de forma
   // idempotente) só rode depois.
   const pararEDescartar = useCallback(() => {
+    // `descartarRef` significa "descarte o que está em voo agora". Sem
+    // nada em voo (nenhum início pendente, nenhum gravador, nenhum
+    // stream), não há o que descartar — e armar a flag mesmo assim é
+    // exatamente o bug que vazou pro PRÓXIMO clique legítimo no mic: o
+    // efeito de `_ChatAgenda.tsx` chama `pararEDescartar()` toda vez
+    // que `open` é `false`, inclusive na montagem inicial (folha
+    // fechada por padrão) e em qualquer fechamento com o chat ocioso.
+    // Sem esta guarda, a flag ficava setada, sobrevivia até o gestor
+    // finalmente tocar o mic, e o primeiro toque legítimo era
+    // descartado em silêncio — `gravando` nunca virava `true`, sem
+    // erro nenhum na tela.
+    if (!iniciando.current && !recorder.current && !streamRef.current) return
     descartarRef.current = true
     recorder.current?.stop()
     recorder.current = null

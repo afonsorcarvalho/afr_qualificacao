@@ -291,6 +291,51 @@ describe('ChatAgenda', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('sequência de produção — monta com a folha fechada, abre, e o primeiro toque no mic grava normalmente', async () => {
+    // `page.tsx` monta `ChatAgenda` com `chatAberto` inicial `false` —
+    // o componente nunca desmonta, só a folha some por dentro do
+    // BottomSheet. O efeito que observa `open` roda já na montagem
+    // (open=false) e chamava `pararEDescartar()` incondicionalmente;
+    // sem uma guarda de "nada em voo", isso armava a flag de descarte
+    // ANTES de qualquer gravação existir. O gestor então abria a
+    // folha e o PRIMEIRO toque legítimo no mic era descartado em
+    // silêncio — `gravando` nunca virava `true`, sem erro nenhum.
+    class FakeRecorder {
+      static isTypeSupported() { return true }
+      ondataavailable: ((e: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      constructor(public stream: unknown) {}
+      start() {}
+      stop() {
+        this.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+        this.onstop?.()
+      }
+    }
+    ;(globalThis as any).MediaRecorder = FakeRecorder
+    ;(globalThis as any).navigator.mediaDevices = {
+      getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
+    }
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 }),
+    ) as unknown as typeof fetch
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = montar({ open: false }, qc) // como em produção: monta fechado
+
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ChatAgenda open onClose={() => {}} payload={payload as never} />
+      </QueryClientProvider>,
+    )
+
+    const mic = screen.getByRole('button', { name: /ditar/i })
+    await userEvent.click(mic) // primeiro toque, depois de abrir
+    await userEvent.click(await screen.findByRole('button', { name: /parar gravação/i }))
+
+    const input = screen.getByPlaceholderText(/escreva/i) as HTMLInputElement
+    await waitFor(() => expect(input.value).toBe('remarca a visita do João'))
+  })
+
   it('erro da máquina aparece na conversa sem derrubar a tela', async () => {
     runTurnMock.mockResolvedValue({
       kind: 'error', messages: [], erro: 'IA indisponível no momento — use a agenda manual.',

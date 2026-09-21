@@ -158,4 +158,31 @@ describe('useDitado', () => {
     await act(async () => { await result.current.alternar() })
     expect(result.current.gravando).toBe(true)
   })
+
+  it('pararEDescartar() ocioso (nada gravando, nada pendente) não envenena a próxima gravação legítima', async () => {
+    // Reproduz a sequência de produção: `_ChatAgenda.tsx` chama
+    // `pararEDescartar()` toda vez que `open` é `false` — inclusive na
+    // montagem inicial, com a folha fechada e NADA acontecendo ainda.
+    // Sem uma guarda de "nada em voo", isso armava `descartarRef`
+    // incondicionalmente; a flag sobrevivia até o primeiro toque
+    // legítimo no mic, que era descartado em silêncio — `gravando`
+    // nunca virava `true`, sem nenhum erro na tela.
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    act(() => {
+      result.current.pararEDescartar() // ocioso: nada gravando, nada pendente
+    })
+    expect(result.current.gravando).toBe(false)
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 }),
+    ) as unknown as typeof fetch
+
+    await act(async () => { await result.current.alternar() })
+    expect(result.current.gravando).toBe(true)
+
+    await act(async () => { await result.current.alternar() }) // pára e transcreve
+    await waitFor(() => expect(onTexto).toHaveBeenCalledWith('remarca a visita do João'))
+  })
 })
