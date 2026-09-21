@@ -3,6 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { VisitaSheet } from '../_components/VisitaSheet'
+import { ChatAgenda } from './_ChatAgenda'
+import { useChatStatus } from '@/lib/hooks/useChatStatus'
+import { MessageCircle } from 'lucide-react'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { useAgenda, useAgendaDisponivel, useTecnicoOptions, useInstrumentoOptions, useUpdateVisita } from '@/lib/hooks/useAgenda'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
@@ -60,6 +63,8 @@ export default function AgendaPage() {
   // passar `filterMine` aqui mostraria uma faixa de dias que contradiz o
   // painel/grade logo abaixo.
   const { data, isLoading, error } = useAgenda(dateFrom, dateTo, visaoEquipe ? false : filterMine, disponivel.data !== false)
+  const [chatAberto, setChatAberto] = useState(false)
+  const chatIA = useChatStatus()
   const [selecionada, setSelecionada] = useState<VisitaAgenda | null>(null)
   const [criando, setCriando] = useState(false)
   // Muda a cada abertura: sem isto, os `useState` internos da folha em modo
@@ -960,6 +965,24 @@ export default function AgendaPage() {
           <Plus className="h-5 w-5" aria-hidden />
           Nova visita
         </button>
+      )}
+
+      {data?.can_manage && chatIA.enabled && (
+        <>
+          <button
+            type="button"
+            aria-label="Agendar por conversa"
+            onClick={() => setChatAberto(true)}
+            className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+          >
+            <MessageCircle className="h-6 w-6" />
+          </button>
+          <ChatAgenda
+            open={chatAberto}
+            onClose={() => setChatAberto(false)}
+            payload={data}
+          />
+        </>
       )}
 
       <VisitaSheet
