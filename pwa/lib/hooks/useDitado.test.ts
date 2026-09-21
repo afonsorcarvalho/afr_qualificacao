@@ -146,5 +146,16 @@ describe('useDitado', () => {
     expect(result.current.gravando).toBe(false)
     expect(pararTrack).toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
+
+    // Não basta descartar sem quebrar — o mic tem que continuar
+    // utilizável depois. Se `iniciando` não for limpo nesse ramo de
+    // descarte, o botão fica morto pra sempre depois de um único
+    // "fechar enquanto pedia permissão", em silêncio, sem nenhum dos
+    // outros testes deste arquivo notar.
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await act(async () => { await result.current.alternar() })
+    expect(result.current.gravando).toBe(true)
   })
 })
