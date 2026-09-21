@@ -49,6 +49,13 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
 
   const systemPrompt = useMemo(() => {
     if (!payload) return ''
+    // `coletarIds` muta `idsVistos.current` (um `Set`) aqui dentro de um
+    // `useMemo` — impuro de propósito, não descuido. É seguro porque
+    // `Set.add` é idempotente: React pode rodar este corpo mais de uma vez
+    // (StrictMode, remontagem) e o resultado do `Set` é o mesmo de qualquer
+    // jeito, nunca duplica nem perde id. Não virou `useEffect` porque isso
+    // atrasaria a disponibilidade dos ids para depois do primeiro render —
+    // e `enviar()` pode disparar antes desse efeito rodar.
     coletarIds(payload.visitas, idsVistos.current)
     return buildSystemPrompt({
       serverToday: payload.server_today,

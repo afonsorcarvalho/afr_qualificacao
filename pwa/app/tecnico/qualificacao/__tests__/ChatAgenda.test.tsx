@@ -29,6 +29,10 @@ const payload = {
   date_to: '2026-10-31',
   my_employee_id: 441 as number | false,
   can_manage: true,
+  // Duas visitas de propósito (id, os_name, partner_name e city diferentes
+  // em cada uma): com uma só, `alvoDaProposta` acertando por `find(id)` e
+  // uma regressão para `payload.visitas[0]` ficam indistinguíveis — as duas
+  // dão o mesmo resultado quando só existe um elemento.
   visitas: [{
     id: 87, date: '2026-10-15', time_start: 8, time_stop: 17, planned_hours: 9,
     os_id: 4, os_name: 'OS26-06-0002', os_state: 'draft',
@@ -37,11 +41,22 @@ const payload = {
     tecnico_name: 'João Silva', is_mine: false, state: 'draft', overflow: false,
     editable: true, lock_reason: false as const, conflict: false,
     conflict_msg: '', note: '',
+  }, {
+    id: 91, date: '2026-10-16', time_start: 9, time_stop: 16, planned_hours: 7,
+    os_id: 9, os_name: 'OS26-06-0009', os_state: 'draft',
+    partner_name: 'Clínica Oceano', city: 'Imperatriz', equipment_list: [],
+    instrument_ids: [], instrument_list: [], tecnico_id: 5,
+    tecnico_name: 'Maria Souza', is_mine: false, state: 'draft', overflow: false,
+    editable: true, lock_reason: false as const, conflict: false,
+    conflict_msg: '', note: '',
   }],
 }
 
-function montar(props: Partial<React.ComponentProps<typeof ChatAgenda>> = {}) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+// `qcExterno`: opcional, só para o teste de revalidação poder espionar
+// `invalidateQueries` no MESMO client que o componente usa — sem isso não
+// há como saber se `confirmar()` de fato notificou a agenda.
+function montar(props: Partial<React.ComponentProps<typeof ChatAgenda>> = {}, qcExterno?: QueryClient) {
+  const qc = qcExterno ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <ChatAgenda open onClose={() => {}} payload={payload as never} {...props} />
@@ -56,8 +71,12 @@ beforeEach(() => {
 
 describe('ChatAgenda', () => {
   it('não renderiza quando o payload diz que o usuário não gerencia', () => {
-    montar({ payload: { ...payload, can_manage: false } as never })
-    expect(screen.queryByPlaceholderText(/escreva/i)).toBeNull()
+    // `container` vazio, não só o `<input>` ausente: checar só o campo de
+    // texto passaria mesmo se um regressão deixasse escapar o título, o
+    // texto de intro ou as bolhas da folha — exatamente o vazamento que a
+    // spec proíbe (um técnico não pode ver ESTE chat, nem parcialmente).
+    const { container } = montar({ payload: { ...payload, can_manage: false } as never })
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('mostra a resposta de texto do assistente', async () => {
@@ -88,18 +107,24 @@ describe('ChatAgenda', () => {
   })
 
   it('o card mostra o contexto da visita alvo, não só o id', async () => {
+    // Alvo é a SEGUNDA visita (id 91) — com duas visitas no payload, um
+    // `find(id)` correto e uma regressão para `visitas[0]` (que pegaria a
+    // 87) divergem de verdade: a primeira mostra Clínica Oceano/Imperatriz,
+    // a segunda mostraria Hospital Central/São Luís por engano.
     runTurnMock.mockResolvedValue({
       kind: 'proposal', messages: [],
       proposta: {
         toolCallId: 'c1', name: 'atualizar_visita',
-        args: { visita_id: 87, date: '2026-10-16' }, resumo: 'Alterar a visita 87.',
+        args: { visita_id: 91, date: '2026-10-16' }, resumo: 'Alterar a visita 91.',
       },
     })
     montar()
     await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
     await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
-    expect(await screen.findByText(/OS26-06-0002/)).toBeTruthy()
-    expect(screen.getByText(/Hospital Central/)).toBeTruthy()
+    expect(await screen.findByText(/OS26-06-0009/)).toBeTruthy()
+    expect(screen.getByText(/Clínica Oceano/)).toBeTruthy()
+    expect(screen.queryByText(/OS26-06-0002/)).toBeNull()
+    expect(screen.queryByText(/Hospital Central/)).toBeNull()
   })
 
   it('Cancelar não executa a escrita', async () => {
@@ -142,6 +167,27 @@ describe('ChatAgenda', () => {
     resolverEscrita({ kind: 'text', messages: [], text: 'pronto' })
     await waitFor(() => expect(confirmarEscritaMock).toHaveBeenCalledTimes(1))
     expect(await screen.findByText(/pronto/)).toBeTruthy()
+  })
+
+  it('Confirmar revalida a agenda e as OS do técnico', async () => {
+    // Sem isso, o gestor confirma um reagendamento e o board continua
+    // mostrando a data velha — a mudança parece ter falhado. `confirmar()`
+    // já chama `qc.invalidateQueries` para os dois queryKeys; este teste
+    // espiona o QueryClient real do componente para provar que roda.
+    runTurnMock.mockResolvedValue({
+      kind: 'proposal', messages: [],
+      proposta: { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' },
+    })
+    confirmarEscritaMock.mockResolvedValue({ kind: 'text', messages: [], text: 'pronto' })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    montar({}, qc)
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /confirmar/i }))
+    await waitFor(() => expect(confirmarEscritaMock).toHaveBeenCalledTimes(1))
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['agenda'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['tecnico-os'] })
   })
 
   it('erro da máquina aparece na conversa sem derrubar a tela', async () => {
