@@ -175,6 +175,30 @@ describe('runTool', () => {
       expect(r.visitas[0]).toMatchObject({ id: 2138, os_name: 'OS26-08-0005', date: '2026-09-23' })
     })
 
+    it('visita sem OS vinculada (os_name vazio) não produz rótulo com separador solto no início', async () => {
+      // `os_id` é tipado `number | false` em `VisitaAgenda` — uma visita
+      // sem OS chega com `os_name` vazio. Sem o guard condicional (mesmo
+      // padrão já usado para `tecnico_name`), o rótulo virava
+      // `" · qua, 23/09/2026 · 08:00–12:00"`: separador solto no começo,
+      // exatamente o defeito que `juntarSubtitulo` (card.ts) já evita do
+      // outro lado da tela.
+      vi.mocked(agenda.fetchAgenda).mockResolvedValue({
+        visitas: [{
+          ...visitaBase, id: 2139, date: '2026-09-23', time_start: 8, time_stop: 12,
+          os_id: false, os_name: '', partner_name: 'Hospital Central', tecnico_name: 'Bruno Neves',
+        }],
+      } as never)
+
+      const r = (await runTool('buscar_agenda', {
+        date_from: '2026-09-21', date_to: '2026-09-25',
+      })) as { visitas: Array<{ rotulo: string }> }
+
+      const rotulo = r.visitas[0].rotulo
+      expect(rotulo).not.toMatch(/^\s*·/)
+      expect(rotulo.startsWith(' ·')).toBe(false)
+      expect(rotulo).toContain('sem OS')
+    })
+
     it('desambigua duas visitas da MESMA OS no MESMO dia (caso real: Bruno com id 2138 e 2140)', async () => {
       vi.mocked(agenda.fetchAgenda).mockResolvedValue({
         visitas: [

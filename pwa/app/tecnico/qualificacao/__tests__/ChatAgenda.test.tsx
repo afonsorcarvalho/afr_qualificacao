@@ -574,6 +574,23 @@ describe('ChatAgenda', () => {
       expect(container.querySelector('a')).toBeNull()
     })
 
+    it('imagem em markdown NÃO renderiza <img> — teste de segurança (espelha o de link acima)', async () => {
+      // A spec chama link E imagem de inegociáveis, mas só o de link tinha
+      // teste — assimetria: se `'img'` fosse acrescentado por engano a
+      // `ELEMENTOS_PERMITIDOS`, nada aqui acusaria. `alt` não vira texto
+      // visível quando `unwrapDisallowed` descarta a `img` (a tag não tem
+      // filho de texto), então a espera usa texto ao redor da imagem.
+      runTurnMock.mockResolvedValue({
+        kind: 'text', messages: [],
+        text: 'Veja a imagem: ![foto do equipamento](https://exemplo.com/malicioso.png) já anexada.',
+      })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText(/já anexada/)
+      expect(container.querySelector('img')).toBeNull()
+    })
+
     it('HTML cru no texto do modelo aparece escapado, não interpretado', async () => {
       runTurnMock.mockResolvedValue({
         kind: 'text', messages: [],

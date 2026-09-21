@@ -57,7 +57,13 @@ function montarRotulo(v: VisitaAgenda): string {
   const data = formatarDataHumana(v.date)
   const horario = `${horaOdoo(v.time_start)}–${horaOdoo(v.time_stop)}`
   const tecnico = v.tecnico_name ? `${v.tecnico_name} ${horario}` : horario
-  return `${v.os_name} · ${data} · ${tecnico}`
+  // Mesmo padrão condicional do técnico acima: `os_id` é tipado
+  // `number | false` (ver `lib/odoo/agenda.ts`) — uma visita sem OS
+  // vinculada chega com `os_name` vazio. Sem este guard o rótulo começava
+  // com `" · qua, ..."`, separador solto — o mesmo defeito que o card já
+  // evita do outro lado da tela (ver `juntarSubtitulo` em `card.ts`).
+  const os = v.os_name ? v.os_name : 'sem OS'
+  return `${os} · ${data} · ${tecnico}`
 }
 
 /** Espelha `_PWA_WRITABLE_FIELDS` do servidor. Chave fora disto é descartada. */
