@@ -75,6 +75,44 @@ describe('buildSystemPrompt', () => {
   })
 })
 
+describe('buildSystemPrompt — identificação na prosa (OS + data, nunca id)', () => {
+  // Extrai só a cláusula nova, mesma técnica do teste de AMBIGUIDADE acima —
+  // sem isso, um assert genérico por "visita"/"técnico"/"OS" passaria por
+  // causa da cláusula de AMBIGUIDADE, que já usa essas palavras, sem que a
+  // regra nova precisasse existir.
+  function clausulaIdentificacao(p: string): string {
+    const m = p.match(/IDENTIFICAÇÃO NA PROSA:.*?\.\n/)
+    expect(m).toBeTruthy()
+    return m![0]
+  }
+
+  it('manda identificar a visita por OS e data, não por id, ao falar com o gestor', () => {
+    const clausula = clausulaIdentificacao(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/OS/)
+    expect(clausula).toMatch(/data/i)
+    expect(clausula).toMatch(/nunca.*id interno/i)
+  })
+
+  it('manda desambiguar com técnico ou horário quando a OS repete no mesmo dia', () => {
+    const clausula = clausulaIdentificacao(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/mesma OS.*mesmo dia/i)
+    expect(clausula).toMatch(/técnico|horário/i)
+  })
+
+  it('aponta o campo "rotulo" de buscar_agenda como o texto pronto a usar', () => {
+    const clausula = clausulaIdentificacao(buildSystemPrompt(ctx))
+    expect(clausula).toContain('rotulo')
+    expect(clausula).toMatch(/buscar_agenda/)
+  })
+
+  it('reafirma que o id continua obrigatório nos argumentos de ferramenta', () => {
+    const clausula = clausulaIdentificacao(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/visita_id/)
+    expect(clausula).toMatch(/tecnico_id/)
+    expect(clausula).toMatch(/os_id/)
+  })
+})
+
 describe('resumirVisitas', () => {
   it('reduz a visita do payload ao que o prompt precisa', () => {
     const r = resumirVisitas([{

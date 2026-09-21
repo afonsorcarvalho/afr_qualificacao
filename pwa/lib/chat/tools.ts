@@ -10,7 +10,11 @@ import {
   listOsOptions,
   listInstrumentoOptions,
   type VisitaVals,
+  type VisitaAgenda,
+  type AgendaPayload,
 } from '@/lib/odoo/agenda'
+import { formatarDataHumana } from './card'
+import { horaOdoo } from '@/app/tecnico/qualificacao/_components/VisitaCard'
 
 export class ToolNotFoundError extends Error {
   constructor(name: string) {
@@ -24,6 +28,36 @@ export class ToolArgumentError extends Error {
     super(message)
     this.name = 'ToolArgumentError'
   }
+}
+
+/**
+ * Visita com um rótulo pronto pra prosa do modelo — ver regra "IDENTIFICAÇÃO
+ * NA PROSA" em `prompt.ts`. Estende `VisitaAgenda` (não substitui nenhum
+ * campo: `id`, `os_name`, `date` etc. continuam onde estavam) porque a
+ * máquina (`machine.ts`, trava de id) e o card de confirmação (`card.ts`)
+ * dependem do formato original.
+ */
+export interface VisitaComRotulo extends VisitaAgenda {
+  rotulo: string
+}
+
+export interface AgendaPayloadComRotulo extends Omit<AgendaPayload, 'visitas'> {
+  visitas: VisitaComRotulo[]
+}
+
+/**
+ * "OS26-08-0005 · qua, 23/09/2026 · Bruno Neves 08:00–12:00" — o texto que o
+ * modelo deve citar na prosa pro gestor em vez do id interno. Caso real que
+ * motivou isto: duas visitas da MESMA OS no MESMO dia, do MESMO técnico,
+ * diferenciadas só pelo horário (ver relatório da task). Por isso o rótulo
+ * sempre carrega técnico + horário, não só quando "parece" necessário —
+ * mais simples e nunca sub-desambigua.
+ */
+function montarRotulo(v: VisitaAgenda): string {
+  const data = formatarDataHumana(v.date)
+  const horario = `${horaOdoo(v.time_start)}–${horaOdoo(v.time_stop)}`
+  const tecnico = v.tecnico_name ? `${v.tecnico_name} ${horario}` : horario
+  return `${v.os_name} · ${data} · ${tecnico}`
 }
 
 /** Espelha `_PWA_WRITABLE_FIELDS` do servidor. Chave fora disto é descartada. */
@@ -100,7 +134,12 @@ export async function runTool(
           'buscar_agenda: "date_to" é obrigatório; recebi vazio ou ausente',
         )
       }
-      return fetchAgenda(dateFrom, dateTo, false)
+      const payload = await fetchAgenda(dateFrom, dateTo, false)
+      const comRotulo: AgendaPayloadComRotulo = {
+        ...payload,
+        visitas: payload.visitas.map((v) => ({ ...v, rotulo: montarRotulo(v) })),
+      }
+      return comRotulo
     }
     case 'listar_tecnicos':
       return listTecnicoOptions()

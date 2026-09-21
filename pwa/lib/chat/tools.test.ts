@@ -11,6 +11,7 @@ vi.mock('@/lib/odoo/agenda', () => ({
 
 import * as agenda from '@/lib/odoo/agenda'
 import { runTool, ToolNotFoundError, ToolArgumentError } from './tools'
+import { coletarIds } from './machine'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -136,5 +137,92 @@ describe('runTool', () => {
     await expect(
       runTool('atualizar_visita', { visita_id: 87, tecnico_id: 'joão' }),
     ).rejects.toMatchObject({ message: expect.stringMatching(/inteiro/i) })
+  })
+
+  // Caso real que motivou a mudança: o modelo respondeu ao gestor citando id
+  // interno ("cancelar a visita id 2140") porque não tinha outro jeito de
+  // diferenciar duas visitas da MESMA OS no mesmo dia (Bruno tinha as duas).
+  // buscar_agenda agora devolve um rótulo pronto — OS + data + técnico +
+  // horário — que resolve exatamente esse caso sem o modelo precisar montar
+  // a frase sozinho.
+  describe('buscar_agenda — rótulo pronto pra prosa (OS + data, desambigua por horário/técnico)', () => {
+    const visitaBase = {
+      os_id: 4, os_state: 'confirmed', city: 'São Luís',
+      equipment_list: [], instrument_list: [], instrument_ids: [],
+      tecnico_id: 9, is_mine: false, state: 'planned', overflow: false,
+      editable: true, lock_reason: false, conflict: true,
+      conflict_msg: 'Bruno Neves já tem visita nesse horário', note: '',
+    }
+
+    it('cada visita ganha um campo "rotulo" com OS, data e horário', async () => {
+      vi.mocked(agenda.fetchAgenda).mockResolvedValue({
+        visitas: [{
+          ...visitaBase, id: 2138, date: '2026-09-23', time_start: 8, time_stop: 12,
+          os_name: 'OS26-08-0005', partner_name: 'Hospital Central', tecnico_name: 'Bruno Neves',
+        }],
+      } as never)
+
+      const r = (await runTool('buscar_agenda', {
+        date_from: '2026-09-21', date_to: '2026-09-25',
+      })) as { visitas: Array<{ rotulo: string }> }
+
+      expect(r.visitas[0].rotulo).toContain('OS26-08-0005')
+      expect(r.visitas[0].rotulo).toContain('23/09/2026')
+      expect(r.visitas[0].rotulo).toContain('Bruno Neves')
+      expect(r.visitas[0].rotulo).toContain('08:00')
+      expect(r.visitas[0].rotulo).toContain('12:00')
+      // Campos que a máquina/ferramentas dependem continuam intactos.
+      expect(r.visitas[0]).toMatchObject({ id: 2138, os_name: 'OS26-08-0005', date: '2026-09-23' })
+    })
+
+    it('desambigua duas visitas da MESMA OS no MESMO dia (caso real: Bruno com id 2138 e 2140)', async () => {
+      vi.mocked(agenda.fetchAgenda).mockResolvedValue({
+        visitas: [
+          {
+            ...visitaBase, id: 2138, date: '2026-09-23', time_start: 8, time_stop: 12,
+            os_name: 'OS26-08-0005', partner_name: 'Hospital Central', tecnico_name: 'Bruno Neves',
+          },
+          {
+            ...visitaBase, id: 2140, date: '2026-09-23', time_start: 11, time_stop: 15,
+            os_name: 'OS26-08-0005', partner_name: 'Hospital Central', tecnico_name: 'Bruno Neves',
+          },
+        ],
+      } as never)
+
+      const r = (await runTool('buscar_agenda', {
+        date_from: '2026-09-21', date_to: '2026-09-25',
+      })) as { visitas: Array<{ rotulo: string }> }
+
+      const [rotuloA, rotuloB] = r.visitas.map((v) => v.rotulo)
+      expect(rotuloA).not.toEqual(rotuloB)
+      expect(rotuloA).toContain('08:00')
+      expect(rotuloB).toContain('11:00')
+    })
+
+    // O campo novo é um plano à parte (prosa); a trava de id em `machine.ts`
+    // (`coletarIds`) é outro plano e não pode ser afetada por ele. Prova
+    // direta: a mesma função que a máquina usa pra "id já apareceu nesta
+    // conversa" continua coletando os ids normalmente a partir do payload
+    // já com `rotulo` — nada foi substituído, só acrescentado.
+    it('não muda o que coletarIds (guard de ids da máquina) enxerga no payload', async () => {
+      vi.mocked(agenda.fetchAgenda).mockResolvedValue({
+        visitas: [
+          {
+            ...visitaBase, id: 2138, date: '2026-09-23', time_start: 8, time_stop: 12,
+            os_name: 'OS26-08-0005', partner_name: 'Hospital Central', tecnico_name: 'Bruno Neves',
+          },
+          {
+            ...visitaBase, id: 2140, date: '2026-09-23', time_start: 11, time_stop: 15,
+            os_name: 'OS26-08-0005', partner_name: 'Hospital Central', tecnico_name: 'Bruno Neves',
+          },
+        ],
+      } as never)
+
+      const r = await runTool('buscar_agenda', { date_from: '2026-09-21', date_to: '2026-09-25' })
+
+      const vistos = new Set<number>()
+      coletarIds(r, vistos)
+      expect(Array.from(vistos)).toEqual(expect.arrayContaining([2138, 2140, 4, 9]))
+    })
   })
 })
