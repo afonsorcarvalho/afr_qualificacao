@@ -20,8 +20,16 @@ const componentesEstilo: Components = {
       {children}
     </code>
   ),
+  // Um bloco de código (```) vira `<pre><code>...</code></pre>` — o mesmo
+  // componente `code` acima também é usado AQUI DENTRO. Sem neutralizar o
+  // fundo/padding/arredondamento do `code` aninhado, o bloco duplica o
+  // "quadradinho" do inline dentro do próprio fundo do bloco. `v10` do
+  // `react-markdown` tirou a prop `inline` que distinguia os dois — a
+  // seletor `[&_code]:...` resolve isso via CSS, sem precisar detectar
+  // contexto em JS (e funciona mesmo em bloco sem linguagem anotada, que
+  // não ganha `className` nenhuma do `code`).
   pre: ({ children }) => (
-    <pre className="mt-1 overflow-x-auto rounded bg-background/60 p-2 font-mono text-[0.85em]">
+    <pre className="mt-1 overflow-x-auto rounded bg-background/60 p-2 font-mono text-[0.85em] [&_code]:rounded-none [&_code]:bg-transparent [&_code]:p-0">
       {children}
     </pre>
   ),

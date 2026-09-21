@@ -515,7 +515,12 @@ describe('ChatAgenda', () => {
       // passaria igual sem nenhuma renderização de markdown.
       const negrito = await screen.findByText('importante')
       expect(negrito.tagName).toBe('STRONG')
-      expect(container.textContent).not.toContain('*')
+      // `**`, não `*` solto: um asterisco isolado pode legitimamente
+      // aparecer em copy futura (marcador de campo obrigatório etc.) sem
+      // relação nenhuma com este teste — checar o par é o que prova
+      // markdown cru sobrando, sem depender de nunca haver um `*` solto
+      // em lugar nenhum da tela.
+      expect(container.textContent).not.toContain('**')
     })
 
     it('lista com marcador e lista numerada viram listas de verdade (<ul>/<ol>/<li>)', async () => {
@@ -585,6 +590,26 @@ describe('ChatAgenda', () => {
       // ângulos aparecem como texto literal, não como tag.
       expect(container.textContent).toContain('<script>alert(1)</script>')
       expect(container.textContent).toContain('<b>depois</b>')
+    })
+
+    it('bloco de código não duplica o fundo do código inline (pre sobrescreve o code aninhado)', async () => {
+      // Achado de review: um bloco ``` vira `<pre><code>...</code></pre>` —
+      // o MESMO componente `code` usado pro código inline se aplica aqui
+      // dentro também. Sem neutralizar o fundo/padding dele dentro do
+      // `pre`, o bloco duplicava o "quadradinho" do inline dentro do fundo
+      // do próprio bloco.
+      runTurnMock.mockResolvedValue({ kind: 'text', messages: [], text: '```\nfoo bar\n```' })
+      const { container } = montar()
+      await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+      await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+      await screen.findByText('foo bar')
+      const pre = container.querySelector('pre')
+      const code = pre?.querySelector('code')
+      expect(pre).toBeTruthy()
+      expect(code).toBeTruthy()
+      // O `pre` precisa neutralizar via CSS descendente o fundo/padding do
+      // `code` aninhado — sem isso o fundo dobra visualmente.
+      expect(pre?.className).toContain('[&_code]:bg-transparent')
     })
   })
 
