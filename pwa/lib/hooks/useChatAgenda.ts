@@ -13,25 +13,6 @@ export interface Bolha {
   texto: string
 }
 
-const CHAVE_SESSAO = 'chat-agenda-transcript'
-
-function lerSessao(): Bolha[] {
-  try {
-    const cru = sessionStorage.getItem(CHAVE_SESSAO)
-    return cru ? (JSON.parse(cru) as Bolha[]) : []
-  } catch {
-    return []
-  }
-}
-
-function gravarSessao(bolhas: Bolha[]): void {
-  try {
-    sessionStorage.setItem(CHAVE_SESSAO, JSON.stringify(bolhas))
-  } catch {
-    // Janela anônima ou storage bloqueado: a conversa só não persiste.
-  }
-}
-
 async function chamarModelo(messages: LlmMessage[]) {
   const res = await fetch('/api/chat', {
     method: 'POST',
@@ -47,9 +28,18 @@ async function chamarModelo(messages: LlmMessage[]) {
 
 export function useChatAgenda(payload: AgendaPayload | undefined) {
   const qc = useQueryClient()
-  const [bolhas, setBolhas] = useState<Bolha[]>(() =>
-    typeof window === 'undefined' ? [] : lerSessao(),
-  )
+  // `useState` puro, sem `sessionStorage`: `ChatAgenda` fica montado o
+  // tempo todo que `can_manage && enabled` (a folha só esconde via `open`
+  // do `BottomSheet`), então fechar e reabrir já preserva a conversa sem
+  // precisar de storage — e um F5 limpa tudo de uma vez, transcript E
+  // memória do modelo juntos. Persistir só `bolhas` deixava as bolhas na
+  // tela sobreviverem ao F5 enquanto `historico.current`/`idsVistos`
+  // (que não persistem) voltavam a zero: um "remarca essa aí" depois de
+  // recarregar a página batia num modelo sem contexto nenhum, apesar da
+  // tela mostrar a pergunta anterior. Bônus: tira o risco de estourar a
+  // cota do `sessionStorage` com resultado de ferramenta grande (até
+  // 120000 caracteres, ver `MAX_CHARS_CONTEUDO_MAQUINA` em `app/api/chat`).
+  const [bolhas, setBolhas] = useState<Bolha[]>([])
   const [proposta, setProposta] = useState<Proposta | null>(null)
   const [ocupado, setOcupado] = useState(false)
   const historico = useRef<LlmMessage[]>([])
@@ -77,11 +67,7 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
   }, [payload])
 
   const empilhar = useCallback((b: Bolha) => {
-    setBolhas((antigas) => {
-      const novas = [...antigas, b]
-      gravarSessao(novas)
-      return novas
-    })
+    setBolhas((antigas) => [...antigas, b])
   }, [])
 
   const aplicar = useCallback((r: PassoResultado) => {

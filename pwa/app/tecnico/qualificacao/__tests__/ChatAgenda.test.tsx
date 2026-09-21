@@ -120,13 +120,26 @@ describe('ChatAgenda', () => {
       kind: 'proposal', messages: [],
       proposta: { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' },
     })
-    confirmarEscritaMock.mockResolvedValue({ kind: 'text', messages: [], text: 'pronto' })
+    // Promessa controlada à mão: sem isso, o mock resolve na mesma
+    // microtask e o `act()` do userEvent drena a escrita inteira (inclusive
+    // o desmonte do card) antes do segundo clique acontecer — o toque duplo
+    // nunca chegaria a correr CONCORRENTE com a escrita em trânsito, só em
+    // sequência com ela já terminada. Resolver só depois dos dois cliques
+    // dispachados é o que faz a corrida existir de verdade.
+    let resolverEscrita!: (v: unknown) => void
+    const escritaEmTransito = new Promise((resolve) => {
+      resolverEscrita = resolve
+    })
+    confirmarEscritaMock.mockReturnValue(escritaEmTransito)
     montar()
     await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
     await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
     const btn = await screen.findByRole('button', { name: /confirmar/i })
-    await userEvent.click(btn)
+    // Dois toques SEM aguardar a escrita da primeira resolver — a segunda
+    // dispara (ou tenta disparar) enquanto a primeira ainda está pendente.
+    userEvent.click(btn)
     await userEvent.click(btn).catch(() => {})
+    resolverEscrita({ kind: 'text', messages: [], text: 'pronto' })
     await waitFor(() => expect(confirmarEscritaMock).toHaveBeenCalledTimes(1))
     expect(await screen.findByText(/pronto/)).toBeTruthy()
   })

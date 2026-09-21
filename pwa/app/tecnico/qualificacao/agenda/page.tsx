@@ -973,7 +973,13 @@ export default function AgendaPage() {
             type="button"
             aria-label="Agendar por conversa"
             onClick={() => setChatAberto(true)}
-            className="fixed bottom-24 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+            // Empilha ACIMA do FAB "Nova visita" (`bottom-20 ... z-40`, linha
+            // 963, intocado): mesmo `right-4` e `z-40` (a ordem no JSX já
+            // garante que este fica por cima em empate de z-index), e
+            // `bottom-40` — 80px de diferença de offset em relação aos 80px
+            // do outro, folga de 24px livre acima do topo dele (56px de
+            // altura), bem acima dos 56px mínimos pra não sobrepor.
+            className="fixed bottom-40 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
           >
             <MessageCircle className="h-6 w-6" />
           </button>
