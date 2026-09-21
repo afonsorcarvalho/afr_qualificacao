@@ -170,6 +170,54 @@ describe('POST /api/chat', () => {
     expect(res.status).toBe(502)
     expect(await res.json()).toEqual({ error: 'Falha na conexão com a IA' })
   })
+
+  it('aceita tool result realista grande (~20000 chars)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok({ content: 'oi', tool_calls: null }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { POST } = await import('../route')
+    // Simular resultado de buscar_agenda com ~30 visitas (~20000 chars)
+    const largeToolResult = 'x'.repeat(20000)
+    const messages = [
+      { role: 'user', content: 'agenda do mês' },
+      { role: 'tool', content: largeToolResult },
+    ]
+    const res = await POST(req({ messages }, 'test') as never)
+    expect(res.status).toBe(200)
+  })
+
+  it('rejeita user message de 9000 caracteres', async () => {
+    const { POST } = await import('../route')
+    const messages = [{ role: 'user', content: 'x'.repeat(9000) }]
+    const res = await POST(req({ messages }, 'test') as never)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: /ultrapassa.*caracteres/ })
+  })
+
+  it('rejeita tool message de 130000 caracteres', async () => {
+    const { POST } = await import('../route')
+    const messages = [
+      { role: 'user', content: 'oi' },
+      { role: 'tool', content: 'x'.repeat(130000) },
+    ]
+    const res = await POST(req({ messages }, 'test') as never)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: /ultrapassa.*caracteres/ })
+  })
+
+  it('rejeita request com total de caracteres > 400000', async () => {
+    const { POST } = await import('../route')
+    // Criar várias mensagens que somam mais de 400000 caracteres
+    const messages = [
+      { role: 'user', content: 'x'.repeat(100000) },
+      { role: 'assistant', content: 'x'.repeat(100000) },
+      { role: 'user', content: 'x'.repeat(100000) },
+      { role: 'assistant', content: 'x'.repeat(100000) },
+      { role: 'user', content: 'x'.repeat(5000) }, // Total: 405000
+    ]
+    const res = await POST(req({ messages }, 'test') as never)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ error: /total ultrapassa/ })
+  })
 })
 
 describe('GET /api/chat/status', () => {

@@ -36,7 +36,20 @@ const MODELOS_PADRAO = [
 // não para aplicar regra de negócio. Cada mensagem do usuário pode gastar
 // de 2 a 5 requisições de fallback se os primeiros modelos falharem.
 const MAX_MENSAGENS = 40
-const MAX_CHARS_CONTEUDO = 8000
+
+// Cap por mensagem: conteúdo humano (user/system) deve ser conciso.
+const MAX_CHARS_CONTEUDO_HUMANO = 8000
+
+// Cap por mensagem: conteúdo máquina (tool/assistant) vem de nossas RPCs,
+// cujo fetch tem limite server-side. Este cap é um backstop contra payload
+// anômalo, não uma regra de negócio.
+const MAX_CHARS_CONTEUDO_MAQUINA = 120000
+
+// Cap total do request: soma de todos os `content` strings da conversa
+// não pode exceder isso. Protege a quota contra um padrão de uso abusivo
+// (muitas mensagens pequenas).
+const MAX_CHARS_TOTAL = 400000
+
 const ROLES_VALIDOS = ['system', 'user', 'assistant', 'tool'] as const
 
 export function modelosConfigurados(): string[] {
@@ -51,25 +64,56 @@ function vaiTentarOutro(status: number): boolean {
   return status === 429 || status >= 500
 }
 
-function corpoValido(b: unknown): b is { messages: LlmMessage[] } {
-  if (!b || typeof b !== 'object') return false
-  const m = (b as Record<string, unknown>).messages
-  if (!Array.isArray(m) || m.length === 0 || m.length > MAX_MENSAGENS) {
-    return false
+type ValidationResult = { valid: true } | { valid: false; error: string }
+
+function validarCorpo(b: unknown): ValidationResult {
+  if (!b || typeof b !== 'object') {
+    return { valid: false, error: 'Schema inválido' }
   }
-  return m.every((x) => {
-    if (!x || typeof x !== 'object') return false
+  const m = (b as Record<string, unknown>).messages
+  if (!Array.isArray(m)) {
+    return { valid: false, error: 'Schema inválido' }
+  }
+  if (m.length === 0) {
+    return { valid: false, error: 'Schema inválido' }
+  }
+  if (m.length > MAX_MENSAGENS) {
+    return { valid: false, error: `Máximo ${MAX_MENSAGENS} mensagens` }
+  }
+
+  let totalChars = 0
+  for (const x of m) {
+    if (!x || typeof x !== 'object') {
+      return { valid: false, error: 'Schema inválido' }
+    }
     const msg = x as Record<string, unknown>
     const role = msg.role
     if (typeof role !== 'string' || !ROLES_VALIDOS.includes(role as any)) {
-      return false
+      return { valid: false, error: 'Schema inválido' }
     }
     const content = msg.content
-    if (typeof content === 'string' && content.length > MAX_CHARS_CONTEUDO) {
-      return false
+    if (typeof content === 'string') {
+      const len = content.length
+      const ehMaquina = role === 'tool' || role === 'assistant'
+      const max = ehMaquina ? MAX_CHARS_CONTEUDO_MAQUINA : MAX_CHARS_CONTEUDO_HUMANO
+      if (len > max) {
+        return {
+          valid: false,
+          error: `Conteúdo de ${role} ultrapassa ${max} caracteres`,
+        }
+      }
+      totalChars += len
     }
-    return true
-  })
+  }
+
+  if (totalChars > MAX_CHARS_TOTAL) {
+    return {
+      valid: false,
+      error: `Conversa total ultrapassa ${MAX_CHARS_TOTAL} caracteres`,
+    }
+  }
+
+  return { valid: true }
 }
 
 export async function POST(request: NextRequest) {
@@ -86,14 +130,16 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
-  if (!corpoValido(body)) {
-    return NextResponse.json({ error: 'Schema inválido' }, { status: 400 })
+  const validacao = validarCorpo(body)
+  if (!validacao.valid) {
+    return NextResponse.json({ error: validacao.error }, { status: 400 })
   }
+  const { messages } = body as { messages: LlmMessage[] }
 
   let ultimo: LlmError | null = null
   for (const model of modelosConfigurados()) {
     try {
-      const turn = await llmChat(body.messages, {
+      const turn = await llmChat(messages, {
         baseUrl: OPENROUTER_BASE_URL,
         apiKey: process.env.OPENROUTER_API_KEY,
         model,
