@@ -39,7 +39,20 @@ function montarVals(args: Record<string, unknown>): VisitaVals {
     // Coerção de tipos para garantir shape correto de VisitaVals
     if (campo === 'date' || campo === 'note') {
       vals[campo] = String(args[campo])
-    } else if (campo === 'time_start' || campo === 'time_stop' || campo === 'tecnico_id') {
+    } else if (campo === 'time_start' || campo === 'time_stop') {
+      // Float, não inteiro: 8.5 é 08:30. Mensagem errada aqui manda o
+      // modelo truncar pra "8" e a visita grava com o horário errado —
+      // silenciosamente, porque o código já aceita float corretamente e só
+      // o texto do erro desviava. `tecnico_id` (abaixo) é o único inteiro
+      // de fato deste bloco.
+      const num = Number(args[campo])
+      if (!Number.isFinite(num)) {
+        throw new ToolArgumentError(
+          `atualizar_visita: "${campo}" precisa ser um número (use fração para minutos: 8.5 = 08:30); recebi "${args[campo]}"`,
+        )
+      }
+      vals[campo] = num
+    } else if (campo === 'tecnico_id') {
       const num = Number(args[campo])
       if (!Number.isFinite(num)) {
         throw new ToolArgumentError(

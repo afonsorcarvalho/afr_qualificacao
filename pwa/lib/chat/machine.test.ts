@@ -165,6 +165,68 @@ describe('runTurn', () => {
     expect(tool?.content).toMatch(/não apareceu/i)
   })
 
+  it('escrita com visita_id como string alucinado (nunca visto) não vira proposta', async () => {
+    // "999" (string), não 999 (number) — a quirk exata do achado 1: um
+    // modelo de tier gratuito que devolve id inteiro como string.
+    const d = deps([
+      chamada('atualizar_visita', { visita_id: '999', date: '2026-10-16' }),
+      texto('desculpe, vou buscar primeiro'),
+    ])
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('text')
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toContain('999')
+    expect(tool?.content).toMatch(/não apareceu/i)
+  })
+
+  it('escrita com visita_id como string cujo equivalente numérico já foi visto vira proposta', async () => {
+    const d = deps([chamada('atualizar_visita', { visita_id: '87', date: '2026-10-16' })])
+    d.idsVistos.add(87)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('proposal')
+    if (r.kind === 'proposal') {
+      // O guard coage para validar, mas não reescreve os args da proposta
+      // — quem coage para despacho é `tools.ts`. Fixar isto aqui evita que
+      // alguém "normalize" args dentro de `machine.ts` mais tarde e mova a
+      // responsabilidade de coerção para o lugar errado.
+      expect(r.proposta.args.visita_id).toBe('87')
+    }
+  })
+
+  it('visita_id não numérico (lixo de formato, não id alucinado) recebe erro específico, distinto de "não apareceu"', async () => {
+    const d = deps([
+      chamada('atualizar_visita', { visita_id: 'abc', date: '2026-10-16' }),
+      texto('corrigindo'),
+    ])
+    const r = await runTurn(inicio, d)
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toMatch(/não é um id inteiro válido/i)
+    expect(tool?.content).not.toMatch(/não apareceu/i)
+  })
+
+  it('instrument_ids com string alucinada (nunca vista) não vira proposta', async () => {
+    const d = deps([
+      chamada('atualizar_visita', { visita_id: 87, instrument_ids: ['11', '999'] }),
+      texto('vou conferir os instrumentos'),
+    ])
+    d.idsVistos.add(87)
+    d.idsVistos.add(11)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('text')
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toContain('999')
+    expect(tool?.content).toMatch(/não apareceu/i)
+  })
+
+  it('instrument_ids com strings cujos equivalentes numéricos já foram vistos vira proposta', async () => {
+    const d = deps([chamada('atualizar_visita', { visita_id: 87, instrument_ids: ['11', '12'] })])
+    d.idsVistos.add(87)
+    d.idsVistos.add(11)
+    d.idsVistos.add(12)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('proposal')
+  })
+
   it('data não-ISO é rejeitada antes de qualquer execução', async () => {
     const runTool = vi.fn()
     const d = deps([
@@ -176,6 +238,43 @@ describe('runTurn', () => {
     const tool = r.messages.find((m) => m.role === 'tool')
     expect(tool?.content).toMatch(/AAAA-MM-DD/)
     expect(r.kind).toBe('text')
+  })
+
+  it('resultado de leitura gigante (janela larga de buscar_agenda) é truncado com marca em pt-BR, e a mensagem fica sob o teto de 120000 da rota', async () => {
+    // Simula o cenário real: 500 "visitas" (teto do fetch server-side),
+    // bem acima do que cabe em `MAX_CHARS_CONTEUDO_MAQUINA` (120000, em
+    // app/api/chat/route.ts) depois de serializado.
+    const visitaGrande = {
+      id: 1, os_name: 'OS26-06-0002', partner_name: 'Hospital Central',
+      city: 'São Luís', note: 'x'.repeat(600),
+    }
+    const resultadoGigante = { visitas: Array.from({ length: 500 }, () => visitaGrande) }
+    const tamanhoBruto = JSON.stringify(resultadoGigante).length
+    expect(tamanhoBruto).toBeGreaterThan(120_000) // prova que o cenário é realista
+
+    const runTool = vi.fn().mockResolvedValue(resultadoGigante)
+    const d = deps([
+      chamada('buscar_agenda', { date_from: '2026-10-01', date_to: '2026-10-31' }),
+      texto('muita coisa'),
+    ], runTool)
+    const r = await runTurn(inicio, d)
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toBeTruthy()
+    expect(tool!.content!.length).toBeLessThan(120_000)
+    expect(tool?.content).toMatch(/truncado/i)
+    expect(tool?.content).toMatch(/refine a janela/i)
+  })
+
+  it('resultado de leitura pequeno não é truncado nem ganha marca', async () => {
+    const runTool = vi.fn().mockResolvedValue({ visitas: [{ id: 87 }] })
+    const d = deps([
+      chamada('buscar_agenda', { date_from: '2026-10-12', date_to: '2026-10-18' }),
+      texto('achei'),
+    ], runTool)
+    const r = await runTurn(inicio, d)
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toBe(JSON.stringify({ visitas: [{ id: 87 }] }))
+    expect(tool?.content).not.toMatch(/truncado/i)
   })
 
   it('erro de ferramenta vira role tool e o loop continua', async () => {

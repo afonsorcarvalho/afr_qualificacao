@@ -95,8 +95,36 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
     [],
   )
 
+  // Repara `historico.current` antes de descartar uma proposta pendente:
+  // a mensagem "assistant" que a gerou tem um `tool_calls` esperando por
+  // uma resposta "tool" com este `tool_call_id" — sem ela, o transcript
+  // fica malformado e, como `historico` é append-only (só cresce via
+  // `aplicar`), TODA mensagem seguinte reenvia o mesmo transcript quebrado
+  // e falha do mesmo jeito. Mesma obrigação que `machine.ts:198-204` já
+  // cumpre para as chamadas paralelas de uma mesma volta — aqui é a mesma
+  // invariante, só que pelo lado do cancelamento do gestor em vez do lado
+  // do loop do modelo. A mensagem de conteúdo também importa: sem ela, o
+  // modelo nunca fica sabendo que o gestor disse não, e pode narrar a
+  // mudança como feita no próximo turno.
+  const descartarPropostaPendente = useCallback((motivo: string) => {
+    if (!proposta) return
+    historico.current = [
+      ...historico.current,
+      { role: 'tool', content: motivo, tool_call_id: proposta.toolCallId },
+    ]
+    setProposta(null)
+  }, [proposta])
+
   const enviar = useCallback(async (texto: string) => {
     if (!texto.trim() || ocupado || !payload) return
+    // O card de proposta não bloqueia o campo de texto (redirecionar no
+    // meio de uma proposta é comportamento válido); mas mandar uma
+    // mensagem nova sem resolver a proposta pendente deixaria o mesmo
+    // `tool_calls` sem resposta que `cancelar` corrige — mesmo reparo,
+    // outro gatilho.
+    descartarPropostaPendente(
+      'O gestor enviou uma nova mensagem antes de confirmar; esta alteração foi cancelada e nada foi executado.',
+    )
     empilhar({ autor: 'user', texto })
     setOcupado(true)
     const base: LlmMessage[] = historico.current.length
@@ -107,7 +135,7 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
     } finally {
       setOcupado(false)
     }
-  }, [ocupado, payload, empilhar, systemPrompt, aplicar, deps])
+  }, [ocupado, payload, descartarPropostaPendente, empilhar, systemPrompt, aplicar, deps])
 
   const confirmar = useCallback(async () => {
     if (!proposta || ocupado) return
@@ -126,9 +154,9 @@ export function useChatAgenda(payload: AgendaPayload | undefined) {
   }, [proposta, ocupado, aplicar, deps, qc])
 
   const cancelar = useCallback(() => {
-    setProposta(null)
+    descartarPropostaPendente('O gestor cancelou esta alteração; nada foi executado.')
     empilhar({ autor: 'erro', texto: 'Alteração cancelada.' })
-  }, [empilhar])
+  }, [descartarPropostaPendente, empilhar])
 
   return { bolhas, proposta, ocupado, enviar, confirmar, cancelar }
 }

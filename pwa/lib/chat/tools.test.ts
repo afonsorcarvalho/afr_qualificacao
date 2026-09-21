@@ -111,4 +111,30 @@ describe('runTool', () => {
     await runTool('atualizar_visita', { visita_id: 87, instrument_ids: ['1', '2', '3'] })
     expect(agenda.updateVisita).toHaveBeenCalledWith(87, { instrument_ids: [1, 2, 3] })
   })
+
+  // Fix 4: a mensagem de erro de time_start/time_stop dizia "inteiro",
+  // mas o campo é float (8.5 = 08:30). Um modelo lendo "inteiro" manda 8
+  // em vez de 8.5 na próxima tentativa, e a visita grava num horário
+  // errado sem barulho nenhum — o código já aceitava float certo, só o
+  // texto empurrava o modelo pro valor errado.
+  it('atualizar_visita com time_start inválido orienta usar fração, não "inteiro"', async () => {
+    await expect(
+      runTool('atualizar_visita', { visita_id: 87, time_start: 'meio-dia' }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/fração/i) })
+    await expect(
+      runTool('atualizar_visita', { visita_id: 87, time_start: 'meio-dia' }),
+    ).rejects.toMatchObject({ message: expect.not.stringMatching(/inteiro/i) })
+  })
+
+  it('atualizar_visita com time_stop inválido orienta usar fração, não "inteiro"', async () => {
+    await expect(
+      runTool('atualizar_visita', { visita_id: 87, time_stop: 'meia-noite' }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/fração/i) })
+  })
+
+  it('atualizar_visita com tecnico_id inválido continua exigindo "inteiro" (não é campo de hora)', async () => {
+    await expect(
+      runTool('atualizar_visita', { visita_id: 87, tecnico_id: 'joão' }),
+    ).rejects.toMatchObject({ message: expect.stringMatching(/inteiro/i) })
+  })
 })

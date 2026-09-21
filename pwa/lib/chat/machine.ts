@@ -34,6 +34,12 @@ const CHAVES_DE_ID = new Set([
   'id', 'visita_id', 'tecnico_id', 'os_id', 'instrument_id',
 ])
 
+// Assimetria deliberada com `validar` abaixo: aqui só aceitamos `number`,
+// sem coagir string. Nossas próprias RPCs (`fetchAgenda`, `createVisita`,
+// `updateVisita`) sempre devolvem id como number — não há JSON de ida e
+// volta por um modelo de linguagem neste lado —, então não há caso real de
+// id-como-string para coletar. `validar` precisa coagir porque quem manda
+// o id ali é o modelo, que alterna formato; aqui não é o mesmo problema.
 export function coletarIds(valor: unknown, destino: Set<number>): void {
   if (Array.isArray(valor)) {
     for (const v of valor) coletarIds(v, destino)
@@ -75,14 +81,32 @@ function validar(
   if (!isWriteTool(name)) return null
   for (const campo of CAMPOS_DE_ID) {
     const v = args[campo]
-    if (typeof v === 'number' && !idsVistos.has(v)) {
-      return `O id ${v} em "${campo}" não apareceu em nenhuma consulta desta conversa. Chame a ferramenta de consulta adequada primeiro e use o id que ela devolver.`
+    // Coagir, não rejeitar: um modelo do tier gratuito manda id inteiro
+    // como string ("999") com frequência, e a cota é de 50 requisições/dia
+    // — rejeitar por formato custaria uma volta cara por uma frescura de
+    // tipo. `typeof v === 'number'` sozinho deixava "999" passar direto
+    // pela trava (nunca era `typeof === 'number'`) até virar `Number(v)`
+    // em `tools.ts`, já despachado contra o id errado.
+    if (typeof v !== 'number' && typeof v !== 'string') continue
+    const n = Number(v)
+    if (!Number.isInteger(n)) {
+      // Não é "id nunca visto" — é lixo de formato ("abc", 1.5, etc.).
+      // Erro diferente para o modelo não tentar "buscar de novo" à toa.
+      return `O campo "${campo}" veio como ${JSON.stringify(v)}, que não é um id inteiro válido.`
+    }
+    if (!idsVistos.has(n)) {
+      return `O id ${n} em "${campo}" não apareceu em nenhuma consulta desta conversa. Chame a ferramenta de consulta adequada primeiro e use o id que ela devolver.`
     }
   }
   const instrumentos = args.instrument_ids
   if (Array.isArray(instrumentos)) {
-    for (const n of instrumentos) {
-      if (typeof n === 'number' && !idsVistos.has(n)) {
+    for (const item of instrumentos) {
+      if (typeof item !== 'number' && typeof item !== 'string') continue
+      const n = Number(item)
+      if (!Number.isInteger(n)) {
+        return `O instrumento "${JSON.stringify(item)}" não é um id inteiro válido. Chame listar_instrumentos primeiro.`
+      }
+      if (!idsVistos.has(n)) {
         return `O instrumento de id ${n} não apareceu em nenhuma consulta desta conversa. Chame listar_instrumentos primeiro.`
       }
     }
@@ -139,6 +163,34 @@ function msgFerramenta(id: string, conteudo: string): LlmMessage {
 
 function mensagemDeErro(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+// `runTool` roda no navegador direto contra o Odoo — nada limita o
+// tamanho da resposta neste lado. `buscar_agenda` com janela larga pode
+// devolver até 500 visitas (teto do fetch server-side) a ~690 caracteres
+// cada quando serializada, ou seja, até ~345000 caracteres. O teto da rota
+// (`MAX_CHARS_CONTEUDO_MAQUINA` em `app/api/chat/route.ts`) é 120000 por
+// mensagem "tool"; sem cortar aqui, `route.ts` devolve 400, e como
+// `historico.current` é append-only (ver `useChatAgenda.aplicar`), TODA
+// mensagem seguinte reenvia o mesmo payload gigante e falha do mesmo
+// jeito — a conversa trava de vez a partir de um "como está o mês?" bem
+// plausível. 100000 deixa folga sob o teto de 120000 para a marca de corte
+// abaixo e para o resto da conversa (system prompt, histórico anterior).
+const LIMITE_RESULTADO_FERRAMENTA = 100_000
+const MARCA_TRUNCAMENTO = '\n… [resultado truncado; refine a janela de datas]'
+
+/**
+ * Serializa o resultado de uma ferramenta de LEITURA para a transcript,
+ * cortando se passar do limite. O corte carrega uma marca explícita em
+ * pt-BR em vez de só truncar o JSON em silêncio — o modelo lê a marca e
+ * pode se corrigir pedindo uma janela menor, o mesmo padrão das outras
+ * travas deste arquivo (erro volta como resultado de ferramenta, o loop
+ * continua).
+ */
+function serializarResultadoFerramenta(resultado: unknown): string {
+  const bruto = JSON.stringify(resultado)
+  if (bruto.length <= LIMITE_RESULTADO_FERRAMENTA) return bruto
+  return bruto.slice(0, LIMITE_RESULTADO_FERRAMENTA) + MARCA_TRUNCAMENTO
 }
 
 /**
@@ -206,8 +258,11 @@ export async function runTurn(
       }
       try {
         const resultado = await deps.runTool(call.function.name, args)
+        // Coletar ids ANTES de truncar, sobre o resultado inteiro: um id
+        // legítimo que o modelo já viu não pode desaparecer da trava só
+        // porque caiu na parte cortada da serialização abaixo.
         coletarIds(resultado, deps.idsVistos)
-        atual = [...atual, msgFerramenta(call.id, JSON.stringify(resultado))]
+        atual = [...atual, msgFerramenta(call.id, serializarResultadoFerramenta(resultado))]
       } catch (e) {
         atual = [...atual, msgFerramenta(call.id, mensagemDeErro(e))]
       }

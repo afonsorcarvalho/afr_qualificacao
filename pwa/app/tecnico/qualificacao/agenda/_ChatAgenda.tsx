@@ -6,10 +6,19 @@ import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
 import { useDitado } from '@/lib/hooks/useDitado'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
 
-/** Contexto da visita alvo, para o gestor conferir antes de confirmar. */
+/**
+ * Contexto da visita alvo, para o gestor conferir antes de confirmar.
+ *
+ * `visita_id` pode chegar como string do modelo (mesma quirk que o guard de
+ * `machine.ts` trata) — sem coagir aqui, o card perde a linha de
+ * OS/cliente/cidade bem na mensagem em que ela mais importa: um id
+ * alucinado do formato "999" em vez de 999.
+ */
 function alvoDaProposta(payload: AgendaPayload, args: Record<string, unknown>) {
-  const id = typeof args.visita_id === 'number' ? args.visita_id : null
-  if (id === null) return null
+  const bruto = args.visita_id
+  if (typeof bruto !== 'number' && typeof bruto !== 'string') return null
+  const id = Number(bruto)
+  if (!Number.isInteger(id)) return null
   return payload.visitas.find((v) => v.id === id) ?? null
 }
 
@@ -45,6 +54,11 @@ export function ChatAgenda({
 
   async function submeter(e: React.FormEvent) {
     e.preventDefault()
+    // Só limpar o campo se o envio for mesmo acontecer: `enviar` tem seu
+    // próprio guard (texto vazio, ocupado, sem payload) e retorna cedo
+    // sem mandar nada — limpar `texto` ANTES desse guard perde o que o
+    // gestor escreveu, sem enviar e sem devolver o texto pra tela.
+    if (ocupado || !texto.trim()) return
     const t = texto
     setTexto('')
     await enviar(t)

@@ -143,6 +143,103 @@ describe('ChatAgenda', () => {
     expect(screen.queryByText(/Hospital Central/)).toBeNull()
   })
 
+  it('o card mostra o contexto da visita alvo mesmo quando visita_id chega como string', async () => {
+    // Mesma quirk do achado 1: o modelo às vezes devolve id inteiro como
+    // string. Sem coagir em `alvoDaProposta`, o card perde a linha de
+    // OS/cliente/cidade — a única defesa do gestor contra um alvo errado —
+    // bem na mensagem em que ela mais importa.
+    runTurnMock.mockResolvedValue({
+      kind: 'proposal', messages: [],
+      proposta: {
+        toolCallId: 'c1', name: 'atualizar_visita',
+        args: { visita_id: '91', date: '2026-10-16' }, resumo: 'Alterar a visita 91.',
+      },
+    })
+    montar()
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    expect(await screen.findByText(/OS26-06-0009/)).toBeTruthy()
+    expect(screen.getByText(/Clínica Oceano/)).toBeTruthy()
+  })
+
+  // Transcript realista de uma proposta pendente: mensagem "assistant" com
+  // `tool_calls=[c1]` e SEM resposta "tool" para c1 — exatamente o shape
+  // que `runTurn` devolve quando para por causa de uma escrita (ver
+  // `machine.ts`, `propostaPendente`). Os testes de mock anteriores
+  // usavam `messages: []`, o que faria a asserção de invariante abaixo
+  // passar mesmo com o bug: iterar zero `tool_calls` não prova nada.
+  const transcriptComPropostaPendente = [
+    { role: 'system' as const, content: 's' },
+    { role: 'user' as const, content: 'remarca pra sexta' },
+    {
+      role: 'assistant' as const, content: null,
+      tool_calls: [{ id: 'c1', type: 'function' as const, function: { name: 'atualizar_visita', arguments: '{"visita_id":87}' } }],
+    },
+  ]
+
+  // Reaproveita a forma de asserção de `machine.test.ts:133-142`
+  // ("turno [escrita, escrita]"): toda `tool_call_id` de toda mensagem
+  // assistant no transcript enviado precisa ter exatamente uma resposta
+  // "tool" — senão a próxima chamada ao modelo é rejeitada pela API. O
+  // `toBeGreaterThan(0)` é a guarda anti-vácuo: sem ela, um transcript sem
+  // nenhuma tool_call faria o loop `for` não rodar e a asserção "passaria"
+  // sem checar nada.
+  function assertTranscriptBemFormado(mensagens: unknown[]) {
+    const assistentes = (mensagens as Array<{ role: string; tool_calls?: Array<{ id: string }> }>)
+      .filter((m) => m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0)
+    expect(assistentes.length).toBeGreaterThan(0)
+    for (const a of assistentes) {
+      for (const call of a.tool_calls!) {
+        const respostas = (mensagens as Array<{ role: string; tool_call_id?: string }>)
+          .filter((m) => m.role === 'tool' && m.tool_call_id === call.id)
+        expect(respostas.length).toBe(1)
+      }
+    }
+  }
+
+  it('Cancelar repara o transcript: a mensagem seguinte não carrega tool_call sem resposta', async () => {
+    runTurnMock.mockResolvedValueOnce({
+      kind: 'proposal', messages: transcriptComPropostaPendente,
+      proposta: { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' },
+    })
+    runTurnMock.mockResolvedValueOnce({ kind: 'text', messages: [], text: 'ok' })
+    montar()
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'remarca pra sexta')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /cancelar/i }))
+
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'e amanhã?')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+
+    await waitFor(() => expect(runTurnMock).toHaveBeenCalledTimes(2))
+    const enviados = runTurnMock.mock.calls[1][0]
+    assertTranscriptBemFormado(enviados)
+    // A mensagem de reparo também deve avisar o modelo do cancelamento —
+    // sem isso o modelo nunca sabe que o gestor disse não.
+    const respostaC1 = (enviados as Array<{ role: string; tool_call_id?: string; content?: string }>)
+      .find((m) => m.role === 'tool' && m.tool_call_id === 'c1')
+    expect(respostaC1?.content).toMatch(/cancel/i)
+  })
+
+  it('enviar nova mensagem com proposta pendente (sem clicar Cancelar) também repara o transcript', async () => {
+    runTurnMock.mockResolvedValueOnce({
+      kind: 'proposal', messages: transcriptComPropostaPendente,
+      proposta: { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'r' },
+    })
+    runTurnMock.mockResolvedValueOnce({ kind: 'text', messages: [], text: 'ok' })
+    montar()
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'remarca pra sexta')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    await screen.findByRole('button', { name: /confirmar/i }) // card pendente, NÃO clica em cancelar
+
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'esquece, marca pra outro dia')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+
+    await waitFor(() => expect(runTurnMock).toHaveBeenCalledTimes(2))
+    const enviados = runTurnMock.mock.calls[1][0]
+    assertTranscriptBemFormado(enviados)
+  })
+
   it('Cancelar não executa a escrita', async () => {
     runTurnMock.mockResolvedValue({
       kind: 'proposal', messages: [],
