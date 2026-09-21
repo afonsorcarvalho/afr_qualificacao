@@ -5,22 +5,7 @@ import { BottomSheet } from '@/components/ui/BottomSheet'
 import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
 import { useDitado } from '@/lib/hooks/useDitado'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
-
-/**
- * Contexto da visita alvo, para o gestor conferir antes de confirmar.
- *
- * `visita_id` pode chegar como string do modelo (mesma quirk que o guard de
- * `machine.ts` trata) — sem coagir aqui, o card perde a linha de
- * OS/cliente/cidade bem na mensagem em que ela mais importa: um id
- * alucinado do formato "999" em vez de 999.
- */
-function alvoDaProposta(payload: AgendaPayload, args: Record<string, unknown>) {
-  const bruto = args.visita_id
-  if (typeof bruto !== 'number' && typeof bruto !== 'string') return null
-  const id = Number(bruto)
-  if (!Number.isInteger(id)) return null
-  return payload.visitas.find((v) => v.id === id) ?? null
-}
+import { montarCardProposta } from '@/lib/chat/card'
 
 export function ChatAgenda({
   open,
@@ -50,7 +35,7 @@ export function ChatAgenda({
 
   if (!payload?.can_manage) return null
 
-  const alvo = proposta ? alvoDaProposta(payload, proposta.args) : null
+  const card = proposta ? montarCardProposta(payload, proposta) : null
 
   async function submeter(e: React.FormEvent) {
     e.preventDefault()
@@ -88,14 +73,24 @@ export function ChatAgenda({
           </div>
         ))}
 
-        {proposta && (
+        {proposta && card && (
           <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
-            <p className="text-sm font-medium">{proposta.resumo}</p>
-            {alvo && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {alvo.os_name} · {alvo.partner_name} · {alvo.city} · {alvo.date}
-                {alvo.tecnico_name ? ` · ${alvo.tecnico_name}` : ''}
-              </p>
+            <p className="text-sm font-medium">{card.titulo}</p>
+            {card.subtitulo && (
+              <p className="mt-1 text-xs text-muted-foreground">{card.subtitulo}</p>
+            )}
+            {card.aviso && (
+              <p className="mt-1 text-xs text-destructive">{card.aviso}</p>
+            )}
+            {card.linhas.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {card.linhas.map((l) => (
+                  <p key={l.rotulo} className="text-sm">
+                    <span className="text-muted-foreground">{l.rotulo}</span>{' '}
+                    {l.de ? `${l.de} → ${l.para}` : l.para}
+                  </p>
+                ))}
+              </div>
             )}
             <div className="mt-3 flex gap-2">
               <button

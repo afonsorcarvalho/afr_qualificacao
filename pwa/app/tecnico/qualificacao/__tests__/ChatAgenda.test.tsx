@@ -105,7 +105,7 @@ describe('ChatAgenda', () => {
     expect(await screen.findByText(/1 visita quinta-feira/i)).toBeTruthy()
   })
 
-  it('escrita proposta aparece como card com o resumo e dois botões', async () => {
+  it('escrita proposta aparece como card falando humano: título pela OS, não pelo id', async () => {
     runTurnMock.mockResolvedValue({
       kind: 'proposal', messages: [],
       proposta: {
@@ -117,7 +117,12 @@ describe('ChatAgenda', () => {
     montar()
     await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'remarca pra sexta')
     await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
-    expect(await screen.findByText(/Alterar a visita 87/)).toBeTruthy()
+    // Título fala a OS, não o id cru — o id "87" não pode aparecer sozinho
+    // na linha principal (é exatamente o achado do bug original).
+    expect(await screen.findByText(/Remarcar visita da OS26-06-0002/)).toBeTruthy()
+    expect(screen.queryByText(/^Alterar a visita 87/)).toBeNull()
+    // Data em pt-BR com dia da semana, "de → para".
+    expect(screen.getByText(/→ .*16\/10\/2026/)).toBeTruthy()
     expect(screen.getByRole('button', { name: /confirmar/i })).toBeTruthy()
     expect(screen.getByRole('button', { name: /cancelar/i })).toBeTruthy()
   })
@@ -160,6 +165,60 @@ describe('ChatAgenda', () => {
     await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
     expect(await screen.findByText(/OS26-06-0009/)).toBeTruthy()
     expect(screen.getByText(/Clínica Oceano/)).toBeTruthy()
+  })
+
+  it('visita fora da janela carregada: o card avisa explicitamente, não finge que informou', async () => {
+    runTurnMock.mockResolvedValue({
+      kind: 'proposal', messages: [],
+      proposta: {
+        toolCallId: 'c1', name: 'atualizar_visita',
+        args: { visita_id: 2126, date: '2026-10-16' }, resumo: 'Alterar a visita 2126.',
+      },
+    })
+    montar()
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    expect(await screen.findByText(/visita 2126.*fora do período/)).toBeTruthy()
+    // Nenhuma das duas visitas do payload é a 2126 — nada de OS/cliente
+    // inventado por engano.
+    expect(screen.queryByText(/OS26-06-0002/)).toBeNull()
+    expect(screen.queryByText(/OS26-06-0009/)).toBeNull()
+  })
+
+  it('quando só o horário muda, a linha Data aparece sem seta e a linha Horário aparece com seta', async () => {
+    runTurnMock.mockResolvedValue({
+      kind: 'proposal', messages: [],
+      proposta: {
+        toolCallId: 'c1', name: 'atualizar_visita',
+        args: { visita_id: 87, time_start: 9, time_stop: 12 }, resumo: 'r',
+      },
+    })
+    const { container } = montar()
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    await screen.findByRole('button', { name: /confirmar/i })
+    const linhas = Array.from(container.querySelectorAll('p')).map((p) => p.textContent ?? '')
+    const linhaData = linhas.find((t) => t.startsWith('Data'))
+    const linhaHorario = linhas.find((t) => t.startsWith('Horário'))
+    expect(linhaData).toBeTruthy()
+    expect(linhaData).not.toMatch(/→/)
+    expect(linhaHorario).toBeTruthy()
+    expect(linhaHorario).toMatch(/→/)
+  })
+
+  it('criar_visita mostra um card equivalente: OS resolvida, data em pt-BR e técnico', async () => {
+    runTurnMock.mockResolvedValue({
+      kind: 'proposal', messages: [],
+      proposta: {
+        toolCallId: 'c1', name: 'criar_visita',
+        args: { os_id: 9, tecnico_id: 5, date: '2026-10-16' }, resumo: 'r',
+      },
+    })
+    montar()
+    await userEvent.type(screen.getByPlaceholderText(/escreva/i), 'x')
+    await userEvent.click(screen.getByRole('button', { name: /enviar/i }))
+    expect(await screen.findByText(/Criar visita para OS26-06-0009/)).toBeTruthy()
+    expect(screen.getByText(/Maria Souza/)).toBeTruthy()
   })
 
   // Transcript realista de uma proposta pendente: mensagem "assistant" com
