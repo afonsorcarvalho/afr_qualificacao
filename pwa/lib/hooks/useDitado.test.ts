@@ -298,4 +298,211 @@ describe('useDitado', () => {
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  // O round 3 corrigiu a contaminação (A vazando pra transcrição), mas
+  // trocou um booleano único por um contador de geração — e um
+  // contador não distingue "existe uma tentativa mais nova" de "esta
+  // tentativa foi cancelada". `parar()` (segundo toque no mic, o
+  // gestor QUER a transcrição) não muda a geração, mas o próximo
+  // `alternar()` que começa do zero muda — então: A pára (pedido
+  // legítimo), o botão fica com cara de ocioso enquanto o `onstop`
+  // assíncrono de A ainda não chegou, o gestor toca de novo achando
+  // que nada aconteceu, B nasce e avança a geração, e quando o
+  // `onstop` de A finalmente chega, a checagem de geração descarta o
+  // áudio de A — mesmo ele tendo sido parado de propósito.
+  it('parar() legítimo transcreve o áudio de A mesmo com uma gravação nova (B) já em andamento quando o onstop atrasado de A chega', async () => {
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const respostas = ['texto de A', 'texto de B']
+    let chamadasFetch = 0
+    const fetchMock = vi.fn().mockImplementation(() => {
+      const texto = respostas[chamadasFetch] ?? 'resposta inesperada'
+      chamadasFetch += 1
+      return Promise.resolve(new Response(JSON.stringify({ text: texto }), { status: 200 }))
+    })
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    // A começa, recebe áudio, e é parada NORMALMENTE — o gestor quer a
+    // transcrição (não é `pararEDescartar()`, é o segundo toque no
+    // mic, via `alternar()`).
+    await act(async () => { await result.current.alternar() })
+    const mrA = FakeRecorderAtrasado.instancias[0]
+    mrA.ondataavailable?.({ data: new Blob(['audio de A'], { type: 'audio/webm' }) })
+    await act(async () => { await result.current.alternar() }) // pede pra parar A
+
+    // Sem esperar o onstop de A (que ainda não chegou), o gestor toca
+    // de novo — B começa.
+    await act(async () => { await result.current.alternar() })
+    const mrB = FakeRecorderAtrasado.instancias[1]
+    mrB.ondataavailable?.({ data: new Blob(['audio de B'], { type: 'audio/webm' }) })
+
+    // SÓ AGORA o onstop atrasado de A chega — ele TEM que transcrever,
+    // mesmo com B já em andamento.
+    await act(async () => { await mrA.onstop?.() })
+    await waitFor(() => expect(onTexto).toHaveBeenCalledWith('texto de A'))
+
+    // B não foi afetada — continua gravando e termina normalmente.
+    expect(result.current.gravando).toBe(true)
+    await act(async () => { await result.current.alternar() }) // pede o stop de B
+    await act(async () => { await mrB.onstop?.() })
+    await waitFor(() => expect(onTexto).toHaveBeenCalledWith('texto de B'))
+  })
+
+  // O teste acima não cobre a janela que `parar()` limpando
+  // `tentativaAtual` de fato protege: ali, uma gravação NOVA (B) nasce
+  // antes do `onstop` de A chegar, e o próprio início de B já
+  // sobrescreve `tentativaAtual.current` — a limpeza feita por
+  // `parar()` nem chega a ser necessária nesse caminho específico
+  // (confirmado por mutação: remover só aquela linha não derruba o
+  // teste acima). O caso que ela protege é este: `pararEDescartar()`
+  // chamado DEPOIS de `parar()` mas ANTES de qualquer gravação nova
+  // nascer — sem limpar a referência, `pararEDescartar()` encontraria
+  // `tentativaAtual` ainda apontando pra A e cancelaria um pedido de
+  // transcrição que o gestor fez de propósito.
+  it('fechar a folha logo depois de parar() não cancela a transcrição que o gestor pediu de propósito', async () => {
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'texto de A' }), { status: 200 }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    // A começa, recebe áudio, e é parada NORMALMENTE.
+    await act(async () => { await result.current.alternar() })
+    const mrA = FakeRecorderAtrasado.instancias[0]
+    mrA.ondataavailable?.({ data: new Blob(['audio de A'], { type: 'audio/webm' }) })
+    await act(async () => { await result.current.alternar() }) // pede pra parar A
+
+    // A folha fecha logo em seguida — SEM nenhuma gravação nova ter
+    // nascido ainda. `recorder.current` já é `null` (zerado por
+    // `parar()`), mas `streamRef.current` ainda aponta pro stream de A
+    // até o `onstop` dela rodar — é essa janela que este teste alveja.
+    act(() => { result.current.pararEDescartar() })
+
+    // O onstop atrasado de A finalmente chega — tem que transcrever,
+    // porque o pedido veio de `parar()`, não de `pararEDescartar()`.
+    await act(async () => { await mrA.onstop?.() })
+    await waitFor(() => expect(onTexto).toHaveBeenCalledWith('texto de A'))
+  })
+
+  it('transcrevendo vira true na hora que o gestor pede pra parar, e volta a false quando a transcrição termina (sucesso e falha)', async () => {
+    // Usa o gravador atrasado de propósito: sem ele, `FakeRecorder`
+    // dispara `onstop` (e toda a cadeia até o `fetch`) na mesma
+    // chamada síncrona de `.stop()`, e não haveria como observar o
+    // instante EM QUE `parar()` liga `transcrevendo`, separado do
+    // instante em que a transcrição finalmente termina.
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    // --- caminho de sucesso ---
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),
+    ) as unknown as typeof fetch
+
+    await act(async () => { await result.current.alternar() }) // inicia
+    const mr1 = FakeRecorderAtrasado.instancias[FakeRecorderAtrasado.instancias.length - 1]
+    mr1.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+    expect(result.current.transcrevendo).toBe(false) // só gravando, ainda não parou
+
+    await act(async () => { await result.current.alternar() }) // pede pra parar
+    // Síncrono: nada disparou `onstop` ainda (o dublê não dispara
+    // sozinho) — se `transcrevendo` é `true` aqui, foi `parar()` quem
+    // ligou, não uma transcrição que já rodou e voltou.
+    expect(result.current.transcrevendo).toBe(true)
+
+    await act(async () => { await mr1.onstop?.() }) // só agora a transcrição roda
+    expect(result.current.transcrevendo).toBe(false)
+    expect(onTexto).toHaveBeenCalledWith('ok')
+
+    // --- caminho de falha ---
+    onTexto.mockClear()
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'IA não configurada' }), { status: 503 }),
+    ) as unknown as typeof fetch
+
+    await act(async () => { await result.current.alternar() }) // inicia de novo
+    const mr2 = FakeRecorderAtrasado.instancias[FakeRecorderAtrasado.instancias.length - 1]
+    mr2.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+
+    await act(async () => { await result.current.alternar() }) // pede pra parar
+    expect(result.current.transcrevendo).toBe(true)
+
+    await act(async () => { await mr2.onstop?.() })
+    expect(result.current.transcrevendo).toBe(false)
+    expect(onTexto).not.toHaveBeenCalled()
+  })
+
+  it('onstop atrasado de A não pode impedir pararEDescartar() de desligar o mic de B na hora (streamRef ainda tem que apontar pro stream de B)', async () => {
+    // Round 3 acrescentou uma checagem de identidade em `streamRef`
+    // (só zera a ref se ela ainda for O STREAM desta tentativa) sem
+    // nenhum teste dedicado. Sem essa checagem, o `onstop` atrasado de
+    // A apagaria a referência viva do stream de B, e o desligamento
+    // SÍNCRONO do mic de `pararEDescartar()` (que depende de
+    // `streamRef.current` pra parar as tracks na hora, sem esperar o
+    // `onstop` de B) ficaria sem efeito nenhum — uma variante
+    // "desligamento atrasado" do vazamento de privacidade do round 1.
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    const pararTrackB = vi.fn()
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValueOnce({ getTracks: () => [{ stop: vi.fn() }] }) // A
+      .mockResolvedValueOnce({ getTracks: () => [{ stop: pararTrackB }] }) // B
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    // A começa e é descartada (folha fecha durante a gravação) — o
+    // `onstop` dela ainda não chegou.
+    await act(async () => { await result.current.alternar() })
+    const mrA = FakeRecorderAtrasado.instancias[0]
+    act(() => { result.current.pararEDescartar() })
+
+    // B começa ANTES do onstop atrasado de A chegar.
+    await act(async () => { await result.current.alternar() })
+
+    // O onstop atrasado de A finalmente chega — NÃO pode apagar a
+    // referência viva do stream de B.
+    await act(async () => { await mrA.onstop?.() })
+
+    // Fecha a folha de novo, agora com B gravando: o desligamento
+    // síncrono do mic (via `streamRef`, ANTES do onstop de B rodar)
+    // tem que continuar funcionando.
+    act(() => { result.current.pararEDescartar() })
+    expect(pararTrackB).toHaveBeenCalled()
+  })
+
+  // Cobertura extra, além dos 4 testes pedidos: "todo caminho de
+  // saída" do onstop inclui o blob vazio (gravação parada rápido
+  // demais pra capturar qualquer áudio) — `setTranscrevendo(true)`
+  // agora roda em `parar()`, então esse caminho também precisa
+  // devolver a false, senão o mic fica com cara de "ocupado" pra
+  // sempre depois de uma gravação vazia.
+  it('gravação sem áudio nenhum (blob vazio) também devolve transcrevendo a false', async () => {
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() }) // inicia — sem ondataavailable nenhum
+    const mr = FakeRecorderAtrasado.instancias[FakeRecorderAtrasado.instancias.length - 1]
+    await act(async () => { await result.current.alternar() }) // pede pra parar
+    expect(result.current.transcrevendo).toBe(true)
+
+    await act(async () => { await mr.onstop?.() }) // sem dados — blob vazio
+    expect(result.current.transcrevendo).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
