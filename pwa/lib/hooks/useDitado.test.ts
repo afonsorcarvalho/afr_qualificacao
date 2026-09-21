@@ -23,9 +23,30 @@ class FakeRecorder {
   }
 }
 
+// Gravador cujo `stop()` NÃO dispara `onstop` sozinho — o teste dispara
+// manualmente, mais tarde, simulando o evento `stop` atrasado de um
+// MediaRecorder real (thread principal ocupada, pausa de GC, celular
+// lento). Serve só aos testes de corrida entre gerações; os demais usam
+// o `FakeRecorder` de cima, que dispara na hora.
+class FakeRecorderAtrasado {
+  static instancias: FakeRecorderAtrasado[] = []
+  static isTypeSupported() { return true }
+  ondataavailable: ((e: { data: Blob }) => void) | null = null
+  onstop: (() => void) | null = null
+  constructor(public stream: unknown) {
+    FakeRecorderAtrasado.instancias.push(this)
+  }
+  start() {}
+  stop() {
+    // de propósito: nada acontece aqui. O teste chama `onstop` quando
+    // quiser simular a chegada do evento atrasado.
+  }
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
   FakeRecorder.ultima = null
+  FakeRecorderAtrasado.instancias = []
   ;(globalThis as any).MediaRecorder = FakeRecorder
   ;(globalThis as any).navigator.mediaDevices = {
     getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
@@ -184,5 +205,97 @@ describe('useDitado', () => {
 
     await act(async () => { await result.current.alternar() }) // pára e transcreve
     await waitFor(() => expect(onTexto).toHaveBeenCalledWith('remarca a visita do João'))
+  })
+
+  // Sequência que o coordinator apontou como alcançável em qualquer
+  // celular lento, sem precisar de timing sub-milissegundo: fechar a
+  // folha durante uma gravação só PEDE pro MediaRecorder parar — o
+  // evento `stop` fica na fila. Se a thread principal estiver ocupada
+  // (ou houver uma pausa de GC) tempo suficiente, o gestor consegue
+  // reabrir a folha e começar uma gravação NOVA antes desse evento
+  // atrasado chegar. Sem um jeito de cada tentativa se identificar, o
+  // `onstop` atrasado da tentativa A encontra o sinal de descarte já
+  // consumido pela tentativa B e segue adiante — só que os bytes que
+  // ele tem em mãos são os de A. O texto que chega no campo é de uma
+  // fala que o gestor nem fez nessa gravação.
+  it('onstop atrasado da gravação A não transcreve o áudio de A, e a gravação B (já em andamento) segue normal', async () => {
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    const pararTrackA = vi.fn()
+    const pararTrackB = vi.fn()
+    let chamadas = 0
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi.fn().mockImplementation(() => {
+      chamadas += 1
+      const pararTrack = chamadas === 1 ? pararTrackA : pararTrackB
+      return Promise.resolve({ getTracks: () => [{ stop: pararTrack }] })
+    })
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'texto da gravação B' }), { status: 200 }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    // Gravação A começa e recebe áudio.
+    await act(async () => { await result.current.alternar() })
+    expect(result.current.gravando).toBe(true)
+    const mrA = FakeRecorderAtrasado.instancias[0]
+    mrA.ondataavailable?.({ data: new Blob(['audio de A, não pode vazar'], { type: 'audio/webm' }) })
+
+    // A folha fecha com A ainda gravando: pede o stop, mas o evento
+    // NÃO chega ainda (é justamente isso que este teste controla).
+    act(() => { result.current.pararEDescartar() })
+    expect(result.current.gravando).toBe(false)
+
+    // O gestor reabre e grava de novo — B começa ANTES do onstop
+    // atrasado de A aparecer.
+    await act(async () => { await result.current.alternar() })
+    expect(result.current.gravando).toBe(true)
+    const mrB = FakeRecorderAtrasado.instancias[1]
+    mrB.ondataavailable?.({ data: new Blob(['audio de B'], { type: 'audio/webm' }) })
+
+    // SÓ AGORA o evento atrasado de A finalmente chega.
+    await act(async () => { await mrA.onstop?.() })
+
+    // Nem o fetch nem o callback podem ter rodado por causa do evento
+    // atrasado de A — nenhum dos dois, em nenhuma hipótese.
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(onTexto).not.toHaveBeenCalled()
+    expect(pararTrackA).toHaveBeenCalled() // track ainda tem que ser liberada
+
+    // B não foi afetada — continua gravando, e termina normalmente.
+    // `FakeRecorderAtrasado.stop()` também não dispara `onstop`
+    // sozinho (a mesma classe serve os dois gravadores deste teste),
+    // então o evento de B precisa ser simulado explicitamente, como o
+    // de A — a diferença é que aqui ele chega LOGO em seguida, sem
+    // atraso nenhum, exatamente como o caminho feliz de parar-e-transcrever.
+    expect(result.current.gravando).toBe(true)
+    await act(async () => { await result.current.alternar() }) // pede o stop de B
+    await act(async () => { await mrB.onstop?.() }) // evento de B chega, sem atraso
+    await waitFor(() => expect(onTexto).toHaveBeenCalledWith('texto da gravação B'))
+    expect(pararTrackB).toHaveBeenCalled()
+  })
+
+  it('onstop atrasado da gravação A não dispara fetch com os chunks de A', async () => {
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'não deveria nem ser chamado' }), { status: 200 }),
+    )
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() }) // A
+    const mrA = FakeRecorderAtrasado.instancias[0]
+    mrA.ondataavailable?.({ data: new Blob(['audio de A'], { type: 'audio/webm' }) })
+
+    act(() => { result.current.pararEDescartar() })
+
+    await act(async () => { await result.current.alternar() }) // B, antes do onstop de A chegar
+
+    await act(async () => { await mrA.onstop?.() }) // onstop atrasado de A
+
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

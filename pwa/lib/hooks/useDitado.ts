@@ -10,7 +10,6 @@ export function useDitado(onTexto: (t: string) => void) {
   const [transcrevendo, setTranscrevendo] = useState(false)
   const recorder = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const pedacos = useRef<Blob[]>([])
   // Início em andamento: sem isso, um segundo clique enquanto o
   // getUserMedia da primeira chamada ainda não resolveu reentra em
   // `alternar` (gravando ainda é `false` nesse closure), abre um
@@ -18,16 +17,31 @@ export function useDitado(onTexto: (t: string) => void) {
   // primeiro stream fica órfão, sem referência, com as tracks nunca
   // paradas. Mesma proteção que `MicButton.tsx` (`pressedRef`) usa.
   const iniciando = useRef(false)
-  // Descartar: sinaliza que a gravação em andamento (ou a permissão
-  // ainda pendente) deve ser interrompida SEM transcrever — o gestor
-  // fechou a folha do chat ou saiu da tela, não pediu o texto. É
-  // consumida em um de dois lugares: logo após o `await` do
-  // `getUserMedia` (se a interrupção chegou enquanto a permissão ainda
-  // estava pendente) ou dentro do `onstop` (se já havia um
-  // MediaRecorder gravando).
-  const descartarRef = useRef(false)
+  // Geração: cada tentativa de gravação ganha um número, incrementado
+  // no início de `alternar()` (quando começa do zero) e também em
+  // `pararEDescartar()`. Cada tentativa captura o número vigente no
+  // instante em que nasce e só age (criar o MediaRecorder, transcrever)
+  // se esse número ainda for o atual quando o momento chega.
+  //
+  // Isto substitui o booleano único (`descartarRef`) que os rounds
+  // anteriores usavam. Um booleano não distingue "isto é o que estou
+  // descartando agora" de "isto é uma tentativa NOVA, sem nenhuma
+  // relação com aquele descarte": `MediaRecorder.stop()` só ENFILEIRA
+  // o evento `stop` — ele não é síncrono — e se a thread principal
+  // estiver ocupada, ou houver uma pausa de GC (celular lento: comum
+  // numa PWA, não é borda), esse evento pode chegar DEPOIS que uma
+  // gravação nova já zerou a flag. A gravação antiga então segue
+  // adiante achando que está liberada pra transcrever — só que o texto
+  // que sai é da fala ERRADA, entregue como se fosse a atual. Um
+  // contador por tentativa não tem essa ambiguidade: o evento atrasado
+  // carrega consigo o número da geração a que pertence.
+  const geracao = useRef(0)
 
   const parar = useCallback(() => {
+    // Pára a gravação ATUAL a pedido do próprio gestor (segundo toque
+    // no mic) — ele quer a transcrição, então a geração NÃO muda: o
+    // `onstop` que vai rodar em seguida é exatamente quem deve
+    // transcrever.
     recorder.current?.stop()
     recorder.current = null
     setGravando(false)
@@ -40,19 +54,15 @@ export function useDitado(onTexto: (t: string) => void) {
   // mesmo que o `onstop` (que também tenta parar as tracks, de forma
   // idempotente) só rode depois.
   const pararEDescartar = useCallback(() => {
-    // `descartarRef` significa "descarte o que está em voo agora". Sem
-    // nada em voo (nenhum início pendente, nenhum gravador, nenhum
-    // stream), não há o que descartar — e armar a flag mesmo assim é
-    // exatamente o bug que vazou pro PRÓXIMO clique legítimo no mic: o
-    // efeito de `_ChatAgenda.tsx` chama `pararEDescartar()` toda vez
-    // que `open` é `false`, inclusive na montagem inicial (folha
-    // fechada por padrão) e em qualquer fechamento com o chat ocioso.
-    // Sem esta guarda, a flag ficava setada, sobrevivia até o gestor
-    // finalmente tocar o mic, e o primeiro toque legítimo era
-    // descartado em silêncio — `gravando` nunca virava `true`, sem
-    // erro nenhum na tela.
+    // Sem nada em voo (nenhum início pendente, nenhum gravador, nenhum
+    // stream), não há o que descartar — avançar a geração mesmo assim
+    // não quebraria nada hoje (nada capturou o valor antigo), mas sair
+    // cedo deixa a intenção explícita e evita um `setGravando(false)`
+    // supérfluo: `gravando === true` só é possível com
+    // `recorder.current` setado, então se ele é `null` aqui, `gravando`
+    // já era `false`.
     if (!iniciando.current && !recorder.current && !streamRef.current) return
-    descartarRef.current = true
+    geracao.current += 1
     recorder.current?.stop()
     recorder.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -67,26 +77,30 @@ export function useDitado(onTexto: (t: string) => void) {
     }
     if (iniciando.current) return
     iniciando.current = true
+    geracao.current += 1
+    const minhaGeracao = geracao.current
+    // Buffer PRÓPRIO desta tentativa — nunca compartilhado com nenhuma
+    // outra, passada ou futura. Não existe "limpar no início" porque
+    // não existe nada global pra limpar: cada `alternar()` que começa
+    // do zero cria o seu, isolado por closure.
+    const pedacos: Blob[] = []
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
       iniciando.current = false
-      descartarRef.current = false
       setGravando(false)
       return
     }
-    if (descartarRef.current) {
+    if (minhaGeracao !== geracao.current) {
       // A folha fechou (ou o hook desmontou) enquanto a permissão
       // ainda estava pendente: descarta o stream recém-obtido sem
       // nunca criar o MediaRecorder nem marcar gravando=true — do
       // contrário o mic ficaria ligado atrás de uma tela invisível.
-      descartarRef.current = false
       iniciando.current = false
       stream.getTracks().forEach((t) => t.stop())
       return
     }
-    pedacos.current = []
     streamRef.current = stream
     // Cascata igual à do MicButton.tsx (coleta): Safari/iOS não
     // produzem webm, então testar suporte é obrigatório, não só uma
@@ -101,17 +115,27 @@ export function useDitado(onTexto: (t: string) => void) {
     recorder.current = mr
     iniciando.current = false
     mr.ondataavailable = (e) => {
-      if (e.data && e.data.size) pedacos.current.push(e.data)
+      if (e.data && e.data.size) pedacos.push(e.data)
     }
     mr.onstop = async () => {
+      // Sempre libera as tracks desta tentativa, atrasada ou não — os
+      // cinco caminhos de parada continuam liberando o microfone
+      // incondicionalmente, independente do que vier a seguir.
       stream.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
-      if (descartarRef.current) {
-        descartarRef.current = false
+      // Só limpa a ref se ela ainda apontar pro stream DESTA tentativa
+      // — se este evento atrasou o bastante, uma tentativa mais nova
+      // pode já ter posto o próprio stream em `streamRef.current`, e
+      // não é este evento velho quem deveria apagar isso.
+      if (streamRef.current === stream) streamRef.current = null
+      if (minhaGeracao !== geracao.current) {
+        // Evento `stop` atrasado de uma tentativa já superada — uma
+        // gravação nova já começou (ou esta foi descartada e nada
+        // nasceu no lugar). Não toca nos buffers de ninguém, não
+        // transcreve o áudio ERRADO.
         return
       }
       const ext = mimeType.includes('mp4') ? 'mp4' : 'webm'
-      const blob = new Blob(pedacos.current, { type: mimeType })
+      const blob = new Blob(pedacos, { type: mimeType })
       if (!blob.size) return
       setTranscrevendo(true)
       try {
