@@ -550,6 +550,9 @@ export function VistaMes({
   onAlternarAjuste,
   erroAjuste,
   onSelecionarVisita,
+  tecnicoColorPorId,
+  instrumentoColorPorId,
+  instrumentoNomePorId,
 }: {
   visitas: VisitaAgenda[]
   /**
@@ -636,6 +639,26 @@ export function VistaMes({
   onAlternarAjuste: (visita: VisitaAgenda) => void
   erroAjuste: string
   onSelecionarVisita: (visita: VisitaAgenda) => void
+  /**
+   * Índice `color` configurado no Odoo por id de técnico, repassado direto
+   * ao `VisitaCard` do dia selecionado — mesmo Map que a Lista e a Semana já
+   * passam (`tecnicoColorPorId` de `page.tsx`). Achado Crítico da review
+   * final do badge-icone-tecnico-instrumento: faltava aqui, então o ícone do
+   * card no modo Mês caía no fallback automático por id (`PALETA[id % 12]`)
+   * enquanto a grade/legenda do MESMO mês, ao lado, mostrava a cor
+   * configurada — cores contraditórias pro mesmo técnico numa única tela.
+   */
+  tecnicoColorPorId?: Map<number, number | undefined>
+  /** Mesmo raciocínio de `tecnicoColorPorId` acima, para o ícone de instrumento do card. */
+  instrumentoColorPorId?: Map<number, number | undefined>
+  /**
+   * Nome por id pro `VisitaCard` do dia selecionado — mesmo Map que a Lista
+   * e a Semana já passam. Sem isto, o gate do card (`instrumentoNomePorId`
+   * ausente == "catálogo com falha", ver `VisitaCard.tsx`) lia `undefined`
+   * mesmo com o catálogo saudável, e o bloco de instrumento inteiro sumia de
+   * todo card do modo Mês (achado Crítico da review final).
+   */
+  instrumentoNomePorId?: Map<number, string>
 }) {
   const doDia = visitas.filter((v) => v.date === diaSel)
 
@@ -734,6 +757,9 @@ export function VistaMes({
           onSelect={onSelecionarVisita}
           onAjustar={podeAjustar ? onAlternarAjuste : undefined}
           emAjuste={emAjuste?.id === v.id}
+          tecnicoColorPorId={tecnicoColorPorId}
+          instrumentoColorPorId={instrumentoColorPorId}
+          instrumentoNomePorId={instrumentoNomePorId}
         />
       ))}
       {doDia.length === 0 && (

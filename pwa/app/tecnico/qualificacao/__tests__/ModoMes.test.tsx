@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import AgendaPage from '../agenda/page'
-import { gradeDoMes } from '../agenda/mes'
+import { gradeDoMes, corDoInstrumento } from '../agenda/mes'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import type { AgendaPayload, InstrumentoOpcao, VisitaAgenda } from '@/lib/odoo/agenda'
 
@@ -829,6 +829,46 @@ describe('Modo Mês', () => {
     expect(within(secao).getByText('Q002')).toBeInTheDocument()
     expect(within(secao).getByText('Instrumento #101')).toBeInTheDocument()
     expect(within(secao).getAllByText(/08:00–12:00/)).toHaveLength(2)
+  })
+
+  it('card do modo Mês mostra o NOME real do instrumento (catálogo saudável), não "Instrumento #<id>" — prop-threading via _VistaMes', async () => {
+    // `color: 3` (um índice VÁLIDO da paleta, ver `corConfigurada` em
+    // `mes.ts`) é o que distingue este teste de um onde só o nome estaria
+    // pinado: sem `instrumentoColorPorId` chegando no card, `corDoInstrumento`
+    // cairia no fallback automático `PALETA[101 % 12]` — o MESMO valor que um
+    // Map vazio ou ausente produziria — e a asserção de cor abaixo não pegaria
+    // a prop faltando.
+    instrumentoOptionsAtual = [{ id: 101, name: 'Q001', validade: '2027-01-01', color: 3 }]
+    payloadAtual = {
+      ...payload,
+      visitas: [visita({ id: 7, date: '2026-09-17', instrument_ids: [101] })],
+    }
+    montar()
+    irParaMes()
+    await waitFor(() => expect(screen.getByText('setembro de 2026')).toBeInTheDocument())
+
+    // Dia default é "hoje" (17, = server_today) — já selecionado, sem
+    // precisar clicar em nenhuma célula. Escopa no `<button>` do card (o
+    // nome do instrumento também aparece na seção "Instrumentos do dia" ao
+    // lado, então a busca tem de ficar restrita ao card).
+    const cardButton = screen.getByText('OS26-02').closest('button') as HTMLElement
+
+    // Antes da correção, `_VistaMes` não repassava `instrumentoNomePorId`
+    // (nem as duas cores) pro `VisitaCard` no modo Mês — o gate do card lê
+    // `undefined` como "catálogo com falha" (ver `VisitaCard.tsx`) e o
+    // bloco de instrumento inteiro sumia, mesmo com o catálogo saudável
+    // (achado Crítico da review final). Isto prova o contrário: o nome de
+    // cadastro aparece no card, nunca o id fabricado.
+    expect(within(cardButton).getByText('Q001')).toBeInTheDocument()
+    expect(within(cardButton).queryByText(/Instrumento #/)).toBeNull()
+    const icone = within(cardButton).getByRole('img', { name: 'Instrumento' })
+    expect(icone).toBeInTheDocument()
+
+    // Cor configurada no Odoo (achado Crítico, segunda metade): sem
+    // `instrumentoColorPorId` chegando aqui, o ícone cairia na cor
+    // AUTOMÁTICA por id — a mesma contradição visual que a grade/legenda do
+    // MESMO mês, ao lado, já não tem (elas sempre tiveram a cor configurada).
+    expect(icone.style.color).toBe(corDoInstrumento(101, 3))
   })
 
   it('legenda e célula listam os instrumentos na MESMA ordem, com colação numérica (TAG-2 antes de TAG-10)', async () => {

@@ -978,6 +978,9 @@ export default function AgendaPage() {
           onAlternarAjuste={alternarAjuste}
           erroAjuste={erroAjuste}
           onSelecionarVisita={setSelecionada}
+          tecnicoColorPorId={tecnicoColorPorId}
+          instrumentoColorPorId={instrumentoColorPorId}
+          instrumentoNomePorId={instrumentoNomePorId}
         />
       )}
 
