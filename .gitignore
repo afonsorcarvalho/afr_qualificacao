@@ -1,0 +1,34 @@
+# ESTE REPOSITÓRIO É PÚBLICO (github.com/afonsorcarvalho/afr_qualificacao).
+#
+# No labquali o deploy inteiro mora DENTRO da árvore de trabalho deste clone
+# (`/home/labquali`): segredos, filestore e dumps do banco ficavam aparecendo
+# como untracked no `git status`, a um `git add -A` de serem publicados.
+# Conferido em 2026-09-22. As regras abaixo existem por isso — não são
+# arrumação, são contenção.
+#
+# Cuidado ao mexer: `data/` NÃO pode ser ignorado inteiro — os seeds XML do
+# módulo moram lá e são versionados. Só as duas subpastas do servidor entram.
+
+# Segredos do deploy (.env da stack: DB_PASSWORD; .env do PWA: chaves de API)
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# odoo.conf carrega `admin_passwd` e `db_password` em texto puro
+conf/
+
+# Filestore e dumps: documento de cliente e banco inteiro
+data/odoo/
+data/backups/
+backups/
+*.dump
+*.sql
+
+# Outros módulos copiados para cá no servidor, vários vindos do monorepo
+# privado — publicá-los aqui seria vazamento de código, não só de segredo.
+addons/
+
+# Infra local do servidor
+nginx/
+scripts/
