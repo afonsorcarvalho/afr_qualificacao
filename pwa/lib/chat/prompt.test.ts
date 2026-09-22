@@ -168,6 +168,50 @@ describe('buildSystemPrompt — duração (horas previstas x jornada do dia)', (
   })
 })
 
+describe('buildSystemPrompt — bloco SEMANA (intervalos prontos, sem o modelo calcular)', () => {
+  // Mesma técnica de extração das cláusulas vizinhas, mas com [\s\S] em vez
+  // de `.`: o bloco SEMANA tem várias linhas (rótulo + 3 marcadores + frase
+  // de uso), então o `.` sem flag `s` (usado nas cláusulas de uma linha só)
+  // cortaria na primeira quebra de linha.
+  function blocoSemana(p: string): string {
+    const m = p.match(/SEMANA:[\s\S]*?\n\n/)
+    expect(m).toBeTruthy()
+    return m![0]
+  }
+
+  it('com serverToday numa segunda, traz esta semana e a semana que vem com os intervalos exatos do defeito medido', () => {
+    const p = buildSystemPrompt({ ...ctx, serverToday: '2026-09-21' })
+    const bloco = blocoSemana(p)
+    // esta semana: 2026-09-21 (segunda) a 2026-09-27 (domingo)
+    expect(bloco).toContain('2026-09-21')
+    expect(bloco).toContain('2026-09-27')
+    // semana que vem: exatamente a janela que o modelo errava (ver plano
+    // 2026-09-21-semana-no-prompt.md) — 2026-09-28 a 2026-10-04
+    expect(bloco).toContain('2026-09-28')
+    expect(bloco).toContain('2026-10-04')
+  })
+
+  it('com serverToday num domingo, esta semana ainda começa na segunda anterior — denuncia início de semana errado', () => {
+    const p = buildSystemPrompt({ ...ctx, serverToday: '2026-09-27' })
+    const bloco = blocoSemana(p)
+    expect(bloco).toContain('2026-09-21')
+    expect(bloco).toContain('2026-09-27')
+  })
+
+  it('manda usar os intervalos literalmente e contar as demais semanas a partir deles, nunca de outro dia', () => {
+    const bloco = blocoSemana(buildSystemPrompt(ctx))
+    expect(bloco).toMatch(/us[ea][\s\S]*intervalos[\s\S]*exatos|intervalos[\s\S]*exatos[\s\S]*us[ea]/i)
+    expect(bloco).toMatch(/segunda a domingo/i)
+  })
+
+  it('não altera o bloco DATA DE HOJE, que continua logo antes dele', () => {
+    const p = buildSystemPrompt({ ...ctx, serverToday: '2026-09-21' })
+    expect(p).toContain(
+      'DATA DE HOJE: 2026-09-21\nEsta data vem do servidor. Nunca deduza a data de hoje por conta própria e nunca confie em relógio de aparelho. Toda data que você passar a uma ferramenta é absoluta, no formato AAAA-MM-DD. Converta "quinta", "amanhã", "semana que vem" a partir de 2026-09-21.',
+    )
+  })
+})
+
 describe('resumirVisitas', () => {
   it('reduz a visita do payload ao que o prompt precisa', () => {
     const r = resumirVisitas([{

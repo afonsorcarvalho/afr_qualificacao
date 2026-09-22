@@ -4,6 +4,7 @@
 // dever de perguntar em caso de ambiguidade. Precisa ser versionado e
 // testável, não escondido dentro de um componente.
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
+import { semanaDe, deslocarSemanas } from './semana'
 
 export interface VisitaResumo {
   id: number
@@ -40,6 +41,10 @@ function hora(f: number): string {
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
+  const estaSemana = semanaDe(ctx.serverToday)
+  const semanaQueVem = deslocarSemanas(ctx.serverToday, 1)
+  const semanaPassada = deslocarSemanas(ctx.serverToday, -1)
+
   const tecnicos = ctx.tecnicos.length
     ? ctx.tecnicos.map((t) => `- id ${t.id}: ${t.name}`).join('\n')
     : '- (nenhum técnico carregado ainda; use listar_tecnicos)'
@@ -59,6 +64,14 @@ Responda sempre em português do Brasil, de forma curta e direta.
 
 DATA DE HOJE: ${ctx.serverToday}
 Esta data vem do servidor. Nunca deduza a data de hoje por conta própria e nunca confie em relógio de aparelho. Toda data que você passar a uma ferramenta é absoluta, no formato AAAA-MM-DD. Converta "quinta", "amanhã", "semana que vem" a partir de ${ctx.serverToday}.
+
+SEMANA: a semana vai de segunda a domingo.
+- ESTA SEMANA: ${estaSemana.from} a ${estaSemana.to}
+- SEMANA QUE VEM: ${semanaQueVem.from} a ${semanaQueVem.to}
+- SEMANA PASSADA: ${semanaPassada.from} a ${semanaPassada.to}
+Use estes intervalos exatos quando o gestor disser "esta semana", "semana que
+vem" ou "semana passada". Para qualquer outra semana, conte de segunda a
+domingo a partir destes — nunca de outro dia.
 
 REGRA DE IDENTIFICADORES: nunca invente um id. Só use os ids de visita, técnico, OS ou instrumento que apareceram no contexto abaixo ou no resultado de uma ferramenta que você já chamou nesta conversa. Se precisar de um id que não tem, chame a ferramenta de consulta primeiro.
 
