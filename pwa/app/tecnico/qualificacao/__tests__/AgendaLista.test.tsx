@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { VisitaCard } from '../_components/VisitaCard'
 import { agruparPorDia, deslocarJanela } from '../agenda/janela'
+import { corDoTecnico, corDoInstrumento } from '../agenda/mes'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
 import { semRelogioDoAparelho } from '@/tests/relogio'
 
@@ -46,11 +47,29 @@ describe('VisitaCard', () => {
   it('mostra o instrumento junto do equipamento quando houver', () => {
     render(
       <VisitaCard
-        visita={visita({ instrument_list: ['Termômetro TH-02'] })}
+        visita={visita({ instrument_list: ['Termômetro TH-02'], instrument_ids: [77] })}
         onSelect={vi.fn()}
       />,
     )
-    expect(screen.getByText(/Instr\.: Termômetro TH-02/)).toBeInTheDocument()
+    const nome = screen.getByText(/Termômetro TH-02/)
+    expect(nome).toBeInTheDocument()
+    // `nome` é o `<span className="truncate">` — o ícone é irmão dele, dentro
+    // do `<span>` pai que agrupa ícone+nome por instrumento.
+    const svg = nome.parentElement?.querySelector('svg')
+    expect(svg?.style.color).toBe(corDoInstrumento(77, undefined))
+  })
+
+  it('mostra o ícone do técnico quando a visita não é minha', () => {
+    render(
+      <VisitaCard
+        visita={visita({ is_mine: false, tecnico_name: 'Ariel Neves' })}
+        onSelect={vi.fn()}
+      />,
+    )
+    const nome = screen.getByText(/Ariel Neves/)
+    expect(nome).toBeInTheDocument()
+    const svg = nome.closest('p')?.querySelector('svg')
+    expect(svg?.style.color).toBe(corDoTecnico(441, undefined))
   })
 
   it('mostra a mensagem de conflito quando houver', () => {

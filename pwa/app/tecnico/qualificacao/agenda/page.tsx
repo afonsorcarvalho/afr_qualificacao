@@ -204,11 +204,24 @@ export default function AgendaPage() {
     () => rosterTecnicos(tecnicos.data ?? [], visitas),
     [tecnicos.data, visitas],
   )
+  // Índice `color` configurado no Odoo por id de técnico — o `VisitaCard`
+  // só tem o `tecnico_id` da visita, não o roster inteiro, então repassamos
+  // só o que ele precisa pra colorir o ícone (mesma cor de `corDoTecnico`
+  // usada na grade do Mês e no painel de recursos da Semana).
+  const tecnicoColorPorId = useMemo(
+    () => new Map(roster.map((t) => [t.id, t.color])),
+    [roster],
+  )
   const hoje = data?.server_today ?? null
   // Catálogo de instrumentos e o conjunto de ids que ele conhece. O conjunto
   // é o que separa "instrumento de cadastro" de "id fabricado
   // (`Instrumento #<id>`)" na hora de ordenar — ver `ordenarInstrumentos`.
   const opcoesInstrumento = useMemo(() => instrumentos.data ?? [], [instrumentos.data])
+  // Mesmo raciocínio de `tecnicoColorPorId`, para o ícone de instrumento do card.
+  const instrumentoColorPorId = useMemo(
+    () => new Map(opcoesInstrumento.map((o) => [o.id, o.color])),
+    [opcoesInstrumento],
+  )
   const idsInstrumentoConhecidos = useMemo(
     () => new Set(opcoesInstrumento.map((o) => o.id)),
     [opcoesInstrumento],
@@ -853,7 +866,13 @@ export default function AgendaPage() {
             {rotuloDia(g.date)}
           </h2>
           {g.visitas.map((v) => (
-            <VisitaCard key={v.id} visita={v} onSelect={setSelecionada} />
+            <VisitaCard
+              key={v.id}
+              visita={v}
+              onSelect={setSelecionada}
+              tecnicoColorPorId={tecnicoColorPorId}
+              instrumentoColorPorId={instrumentoColorPorId}
+            />
           ))}
         </section>
       ))}
@@ -892,6 +911,8 @@ export default function AgendaPage() {
               onSelect={setSelecionada}
               onAjustar={data?.can_manage ? alternarAjuste : undefined}
               emAjuste={emAjuste?.id === v.id}
+              tecnicoColorPorId={tecnicoColorPorId}
+              instrumentoColorPorId={instrumentoColorPorId}
             />
           ))}
           {doDia.length === 0 && (
