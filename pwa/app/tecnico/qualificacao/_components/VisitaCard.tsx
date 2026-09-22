@@ -1,8 +1,9 @@
 'use client'
-import { User, Wrench, Lock, AlertTriangle, Clock, MapPin } from 'lucide-react'
+import { Lock, AlertTriangle, Clock, MapPin } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { VisitaAgenda } from '@/lib/odoo/agenda'
 import { corDoTecnico, corDoInstrumento } from '../agenda/mes'
+import { IconeTecnico, IconeInstrumento } from './IconesRecurso'
 
 /** 8.5 → "08:30". Horas fracionárias do Odoo, sem tocar no fuso. */
 export function horaOdoo(h: number): string {
@@ -38,7 +39,7 @@ function Corpo({
       </div>
       {!visita.is_mine && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <User
+          <IconeTecnico
             className="h-3.5 w-3.5 shrink-0"
             style={{ color: corDoTecnico(visita.tecnico_id, tecnicoColorPorId?.get(visita.tecnico_id === false ? -1 : visita.tecnico_id)) }}
             role="img"
@@ -73,7 +74,7 @@ function Corpo({
             const nome = instrumentoNomePorId?.get(id) ?? `Instrumento #${id}`
             return (
               <span key={id} className="flex min-w-0 items-center gap-1">
-                <Wrench
+                <IconeInstrumento
                   className="h-3.5 w-3.5 shrink-0"
                   style={{ color: corDoInstrumento(id, instrumentoColorPorId?.get(id)) }}
                   role="img"

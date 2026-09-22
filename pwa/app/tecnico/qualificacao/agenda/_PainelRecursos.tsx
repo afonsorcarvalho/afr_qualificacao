@@ -1,8 +1,9 @@
 'use client'
 import { clsx } from 'clsx'
-import { User, Wrench, AlertTriangle } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import type { CargaTecnico, UsoInstrumento } from './carga'
 import { corDoTecnico, corDoInstrumento } from './mes'
+import { IconeTecnico, IconeInstrumento } from '../_components/IconesRecurso'
 
 export type Dimensao = 'tecnico' | 'instrumento'
 
@@ -94,7 +95,7 @@ export function PainelRecursos({
             pressionado={t.id === tecnicoIdDaVisita}
             aoTocar={() => onTocarTecnico(t.id)}
           >
-            <User
+            <IconeTecnico
               className="h-4 w-4 shrink-0"
               style={{ color: corDoTecnico(t.id, t.color) }}
               aria-hidden
@@ -119,7 +120,7 @@ export function PainelRecursos({
             pressionado={instrumentoIdsDaVisita.includes(i.id)}
             aoTocar={() => onTocarInstrumento(i.id)}
           >
-            <Wrench
+            <IconeInstrumento
               className="h-4 w-4 shrink-0"
               style={{ color: corDoInstrumento(i.id, i.color) }}
               aria-hidden
