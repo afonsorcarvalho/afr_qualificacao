@@ -88,7 +88,13 @@ function validarCorpo(b: unknown): ValidationResult {
     }
     const msg = x as Record<string, unknown>
     const role = msg.role
-    if (typeof role !== 'string' || !ROLES_VALIDOS.includes(role as any)) {
+    // `ROLES_VALIDOS` é `as const`, então `.includes` só aceitaria a união
+    // literal — e `role` aqui é uma string qualquer, vinda do corpo do
+    // request. Alargar a tupla para `readonly string[]` no ponto da chamada
+    // diz isso ao compilador sem `any`, que o ESLint do `next build` recusa
+    // (`@typescript-eslint/no-explicit-any`) e que apagaria a checagem de
+    // tipo do próprio argumento.
+    if (typeof role !== 'string' || !(ROLES_VALIDOS as readonly string[]).includes(role)) {
       return { valid: false, error: 'Schema inválido' }
     }
     const content = msg.content
