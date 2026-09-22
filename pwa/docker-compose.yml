@@ -22,6 +22,16 @@ services:
       # por vírgula.
       ODOO_ALLOWED_ORIGINS: ${ODOO_ALLOWED_ORIGINS:?defina a allowlist de origens Odoo, ex. https://labquali.afrsistemas.com.br}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Chat de agendamento. Opcionais de propósito (`:-`, não `:?`): sem a
+      # chave o `/api/chat` responde 503 e o drawer some, mas a agenda e o
+      # resto do app sobem normalmente. Tornar obrigatória faria o app
+      # inteiro recusar subir por causa de uma feature acessória. Sem estas
+      # duas linhas a chave no `.env` NÃO chega ao container — foi assim que
+      # o chat subiu morto no labquali em 2026-09-22.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Cadeia de fallback, separada por vírgula. Vazia usa o default do
+      # código (`MODELOS_PADRAO` em `app/api/chat/route.ts`).
+      OPENROUTER_MODELS: ${OPENROUTER_MODELS:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
       interval: 30s

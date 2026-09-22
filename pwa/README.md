@@ -58,6 +58,15 @@ sobe o container com a variável vazia: as features de IA (auto-resumo,
 ditado, revisão pré-fechamento) ficam desligadas (`/api/groq/status` →
 `enabled:false`) e o resto do app funciona normal.
 
+`OPENROUTER_API_KEY` segue o mesmo contrato, para o chat de agendamento da
+tela de agenda: ausente, `/api/chat/status` devolve `enabled:false`, o
+drawer não aparece e nada mais muda. `OPENROUTER_MODELS` é a cadeia de
+fallback separada por vírgula; vazia, vale o default do código. **As duas
+precisam estar declaradas no `environment:` do compose** — pô-las só no
+`.env` não basta, porque o `.env` alimenta a substituição de variáveis do
+compose, não o ambiente do container. Foi exatamente assim que o chat subiu
+desligado no labquali em 2026-09-22, com a chave presente no `.env`.
+
 ## Versionamento
 
 Este PWA **não** bumpa `__manifest__.py` do addon. A versão do front está no
