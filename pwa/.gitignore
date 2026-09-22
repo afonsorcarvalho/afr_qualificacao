@@ -28,6 +28,16 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# `.env` é o arquivo de SEGREDOS do deploy (chaves de API, allowlist). O
+# default do Next ignora só `.env*.local`, o que deixa `.env` aparecendo como
+# untracked no `git status` do servidor — a um `git add -A` de ser commitado.
+# Verificado em 2026-09-22 no labquali, com OPENROUTER_API_KEY real dentro.
+# Os `*.example` continuam versionados pela negação abaixo.
+.env
+.env.*
+!.env.example
+!.env.local.example
+
 # vercel
 .vercel
 
