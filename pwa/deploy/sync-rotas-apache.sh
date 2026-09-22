@@ -19,8 +19,11 @@
 #
 # COMO USAR (no servidor, com sudo)
 #
-#   sudo ./sync-rotas-apache.sh            # DRY-RUN: mostra o que falta e sai
+#   ./sync-rotas-apache.sh                 # DRY-RUN: mostra o que falta e sai
 #   sudo ./sync-rotas-apache.sh --apply    # aplica, testa a config e recarrega
+#
+# O dry-run NÃO precisa de sudo: ele só lê o vhost. Root só é exigido no
+# `--apply`, que escreve e recarrega o Apache.
 #
 # É idempotente: rodar de novo quando não falta nada não escreve nada.
 #
@@ -65,9 +68,16 @@ info() { printf '[..] %s\n' "$*"; }
 ok()   { printf '[ok] %s\n' "$*"; }
 warn() { printf '[!!] %s\n' "$*"; }
 
-[ "$(id -u)" -eq 0 ] || die "rode com sudo: sudo $0 ${1:-}"
-[ -f "$CONF" ] || die "vhost não encontrado: $CONF (defina CONF=... se for outro)"
-command -v apache2ctl >/dev/null || die "apache2ctl não encontrado — este host usa Apache?"
+# Root só é exigido para ESCREVER. O dry-run apenas lê o vhost, que é
+# legível por qualquer usuário — e poder pré-visualizar sem sudo é o que
+# torna o dry-run útil de verdade.
+if [ "$APPLY" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+  die "--apply escreve no vhost e recarrega o Apache: rode com sudo."
+fi
+[ -r "$CONF" ] || die "vhost não encontrado ou ilegível: $CONF (defina CONF=... se for outro)"
+if [ "$APPLY" -eq 1 ]; then
+  command -v apache2ctl >/dev/null || die "apache2ctl não encontrado — este host usa Apache?"
+fi
 
 # ── 1. O que falta ────────────────────────────────────────────────────────
 FALTANDO=()
