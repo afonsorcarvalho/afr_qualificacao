@@ -115,7 +115,8 @@ export function ChatAgenda({
               </button>
               <button
                 type="button"
-                className="min-h-[44px] flex-1 rounded-md border border-border px-3"
+                className="min-h-[44px] flex-1 rounded-md border border-border px-3 disabled:opacity-50"
+                disabled={ocupado}
                 onClick={cancelar}
               >
                 Cancelar

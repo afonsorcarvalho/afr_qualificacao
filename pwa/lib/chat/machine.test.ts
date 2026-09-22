@@ -261,6 +261,27 @@ describe('runTurn', () => {
     const tool = r.messages.find((m) => m.role === 'tool')
     expect(tool?.content).toContain('999')
     expect(tool?.content).toMatch(/não apareceu/i)
+    // id-não-visto é o caso que reconsultar de fato resolve — este ramo
+    // deve continuar mandando chamar a ferramenta (ao contrário do erro de
+    // formato abaixo, que não deve mais mandar).
+    expect(tool?.content).toMatch(/Chame/i)
+  })
+
+  it('instrument_ids não numérico (lixo de formato, não id alucinado) recebe erro específico, sem mandar reconsultar', async () => {
+    // Mesma distinção do teste escalar acima ("visita_id não numérico"),
+    // agora no ramo de lista: "abc" não é um id que precise ser buscado de
+    // novo, é lixo de formato — mandar `Chame listar_instrumentos primeiro`
+    // aqui gastava uma volta de cota à toa devolvendo uma lista que o
+    // modelo já tinha.
+    const d = deps([
+      chamada('atualizar_visita', { visita_id: 87, instrument_ids: ['abc'] }),
+      texto('corrigindo'),
+    ])
+    d.idsVistos.add(87)
+    const r = await runTurn(inicio, d)
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toMatch(/não é um id inteiro válido/i)
+    expect(tool?.content).not.toMatch(/Chame/i)
   })
 
   it('instrument_ids com strings cujos equivalentes numéricos já foram vistos vira proposta', async () => {

@@ -146,7 +146,10 @@ function validar(
       if (typeof item !== 'number' && typeof item !== 'string') continue
       const n = Number(item)
       if (!Number.isInteger(n)) {
-        return `O ${rotulo} "${JSON.stringify(item)}" não é um id inteiro válido. Chame ${ferramenta} primeiro.`
+        // Não é "id nunca visto" — é lixo de formato ("abc", 1.5, etc.),
+        // mesma distinção do ramo escalar CAMPOS_DE_ID acima. Sem "Chame X
+        // primeiro" aqui: reconsultar não resolve formato inválido.
+        return `O ${rotulo} "${JSON.stringify(item)}" não é um id inteiro válido.`
       }
       if (!idsVistos.has(n)) {
         return `O ${rotulo} de id ${n} não apareceu em nenhuma consulta desta conversa. Chame ${ferramenta} primeiro.`
