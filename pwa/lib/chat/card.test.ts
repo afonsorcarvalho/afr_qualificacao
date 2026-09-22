@@ -195,6 +195,39 @@ describe('montarCardProposta — criar_visita', () => {
     const card = montarCardProposta(payload, p)
     expect(card.titulo).toBe('Criar visita para OS 123')
   })
+
+  // Concern real: `criar_visita` agora exige equipment_ids/instrument_ids,
+  // mas o card não tinha NENHUMA linha pra eles — o gestor confirmava uma
+  // escrita sem ver o que estava sendo vinculado. `AgendaPayload` não tem
+  // catálogo de equipamento/instrumento por id (só o que já está preso a
+  // visitas existentes), então mostrar o NOME certo exigiria plumbing novo
+  // (o payload de listar_os/listar_instrumentos chegando até aqui) — fora
+  // do escopo desta task. O id cru é honesto e seencaixa no padrão já usado
+  // em `linhasSemAlvo` para `instrument_ids` (ver "Instrumentos (ids)"):
+  // melhor mostrar o id do que não mostrar nada.
+  it('mostra equipamentos e instrumentos (ids) quando vierem nos argumentos', () => {
+    const p = proposta({
+      name: 'criar_visita',
+      args: { os_id: 9, tecnico_id: 7, date: '2026-09-24', equipment_ids: [771, 772], instrument_ids: [882] },
+    })
+    const card = montarCardProposta(payload, p)
+    expect(card.linhas).toEqual([
+      { rotulo: 'Data', para: 'qui, 24/09/2026' },
+      { rotulo: 'Técnico', para: 'Bruno Neves' },
+      { rotulo: 'Equipamentos (ids)', para: '771, 772' },
+      { rotulo: 'Instrumentos (ids)', para: '882' },
+    ])
+  })
+
+  it('sem equipment_ids/instrument_ids nos argumentos, não mostra as linhas (não inventa vazio)', () => {
+    const p = proposta({
+      name: 'criar_visita',
+      args: { os_id: 9, tecnico_id: 7, date: '2026-09-24' },
+    })
+    const card = montarCardProposta(payload, p)
+    expect(card.linhas.map((l) => l.rotulo)).not.toContain('Equipamentos (ids)')
+    expect(card.linhas.map((l) => l.rotulo)).not.toContain('Instrumentos (ids)')
+  })
 })
 
 describe('montarCardProposta — fallback', () => {

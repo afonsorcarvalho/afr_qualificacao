@@ -98,6 +98,10 @@ export function isDataIso(v: unknown): boolean {
 
 const CAMPOS_DE_DATA = ['date', 'date_from', 'date_to']
 const CAMPOS_DE_ID = ['visita_id', 'tecnico_id', 'os_id']
+const CAMPOS_DE_LISTA_DE_ID = [
+  { campo: 'instrument_ids', rotulo: 'instrumento', ferramenta: 'listar_instrumentos' },
+  { campo: 'equipment_ids', rotulo: 'equipamento', ferramenta: 'listar_os' },
+] as const
 
 /** Erro legível para o modelo, ou null se os argumentos passam. */
 function validar(
@@ -130,16 +134,22 @@ function validar(
       return `O id ${n} em "${campo}" não apareceu em nenhuma consulta desta conversa. Chame a ferramenta de consulta adequada primeiro e use o id que ela devolver.`
     }
   }
-  const instrumentos = args.instrument_ids
-  if (Array.isArray(instrumentos)) {
-    for (const item of instrumentos) {
+  // `instrument_ids` (atualizar_visita/criar_visita) e `equipment_ids`
+  // (criar_visita, campo novo desta task) são listas de ids — mesma trava
+  // dos campos escalares acima, só que por item. Generalizado num só laço
+  // pra não deixar `equipment_ids` sem a checagem que `instrument_ids` já
+  // tinha (um equipamento alucinado não pode virar proposta de escrita).
+  for (const { campo, rotulo, ferramenta } of CAMPOS_DE_LISTA_DE_ID) {
+    const valores = args[campo]
+    if (!Array.isArray(valores)) continue
+    for (const item of valores) {
       if (typeof item !== 'number' && typeof item !== 'string') continue
       const n = Number(item)
       if (!Number.isInteger(n)) {
-        return `O instrumento "${JSON.stringify(item)}" não é um id inteiro válido. Chame listar_instrumentos primeiro.`
+        return `O ${rotulo} "${JSON.stringify(item)}" não é um id inteiro válido. Chame ${ferramenta} primeiro.`
       }
       if (!idsVistos.has(n)) {
-        return `O instrumento de id ${n} não apareceu em nenhuma consulta desta conversa. Chame listar_instrumentos primeiro.`
+        return `O ${rotulo} de id ${n} não apareceu em nenhuma consulta desta conversa. Chame ${ferramenta} primeiro.`
       }
     }
   }
@@ -161,7 +171,14 @@ function resumir(name: string, args: Record<string, unknown>): string {
     const os = ouFalta(args.os_id, 'id da OS')
     const data = ouFalta(args.date, 'data')
     const tecnico = ouFalta(args.tecnico_id, 'técnico')
-    return `Criar visita para a OS ${os} em ${data}, técnico ${tecnico}.`
+    // Equipamentos e instrumentos são obrigatórios em `criar_visita` desde
+    // esta task — omiti-los aqui esconderia do próprio MODELO (este texto
+    // volta pra ele na próxima volta do loop) o que está sendo proposto.
+    const equipamentos = args.equipment_ids !== undefined
+      ? JSON.stringify(args.equipment_ids) : '(equipamentos não informados)'
+    const instrumentos = args.instrument_ids !== undefined
+      ? JSON.stringify(args.instrument_ids) : '(instrumentos não informados)'
+    return `Criar visita para a OS ${os} em ${data}, técnico ${tecnico}, equipamentos ${equipamentos}, instrumentos ${instrumentos}.`
   }
   const visita = ouFalta(args.visita_id, 'id da visita')
   const partes: string[] = []

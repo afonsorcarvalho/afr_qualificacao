@@ -187,6 +187,19 @@ function cardCriarVisita(payload: AgendaPayload, args: Record<string, unknown>):
   const linhas: LinhaCardProposta[] = []
   if (typeof args.date === 'string') linhas.push({ rotulo: 'Data', para: formatarDataHumana(args.date) })
   if (args.tecnico_id !== undefined) linhas.push({ rotulo: 'Técnico', para: nomeTecnico(payload, args.tecnico_id) })
+  // `AgendaPayload` não tem catálogo de equipamento/instrumento por id (só
+  // o que já está preso a visitas existentes) — mostrar o NOME certo
+  // exigiria o payload de `listar_os`/`listar_instrumentos` chegando até
+  // aqui, fora do escopo desta mudança. Id cru é honesto (mesmo padrão já
+  // usado para `instrument_ids` em `linhasSemAlvo`, abaixo): melhor
+  // mostrar o id do que deixar o gestor confirmar uma escrita sem ver que
+  // equipamento/instrumento foi vinculado.
+  if (Array.isArray(args.equipment_ids) && args.equipment_ids.length > 0) {
+    linhas.push({ rotulo: 'Equipamentos (ids)', para: (args.equipment_ids as unknown[]).join(', ') })
+  }
+  if (Array.isArray(args.instrument_ids) && args.instrument_ids.length > 0) {
+    linhas.push({ rotulo: 'Instrumentos (ids)', para: (args.instrument_ids as unknown[]).join(', ') })
+  }
   return {
     titulo: `Criar visita para ${nomeOs(payload, args.os_id)}`,
     linhas,

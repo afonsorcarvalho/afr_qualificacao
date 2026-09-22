@@ -58,6 +58,27 @@ describe('coletarIds', () => {
     coletarIds({ id: 'abc', os_id: null }, s)
     expect(s.size).toBe(0)
   })
+
+  // Concern real: `listar_os` devolve equipment_ids/instrument_ids
+  // ANINHADOS, um nível mais fundo do que o payload plano de antes
+  // (`equipment_list: [{id, name}]`, `instrument_suggestions: [{id, name}]`,
+  // dentro de uma lista de OS). Se a trava de id (`validar`, mais abaixo)
+  // não reconhecesse esses ids como "vistos", TODO `criar_visita` real
+  // quebraria — e nenhum teste de `tools.test.ts` acusaria, porque lá
+  // `fetchOsOptions` é mockado. Prova direta de que a recursão genérica de
+  // `coletarIds` (chave "id" bate em qualquer profundidade) cobre o
+  // payload novo sem precisar de caso especial.
+  it('coleta ids aninhados em equipment_list/instrument_suggestions (payload de listar_os)', () => {
+    const s = new Set<number>()
+    coletarIds([
+      {
+        id: 9, name: 'QOS00009',
+        equipment_list: [{ id: 771, name: 'Autoclave' }, { id: 772, name: 'Estufa' }],
+        instrument_suggestions: [{ id: 882, name: 'Q001' }],
+      },
+    ], s)
+    expect(Array.from(s).sort((a, b) => a - b)).toEqual([9, 771, 772, 882])
+  })
 })
 
 describe('runTurn', () => {
@@ -154,6 +175,29 @@ describe('runTurn', () => {
     }
   })
 
+  // Concern real: o resumo de `criar_visita` (texto que VOLTA PRO MODELO,
+  // distinto do card — ver nota em card.ts) não citava equipment_ids/
+  // instrument_ids. Como os dois são obrigatórios desde esta task, omiti-
+  // los do resumo escondia do próprio modelo o que ele estava propondo.
+  it('resumo de criar_visita cita equipamentos e instrumentos quando informados', async () => {
+    const d = deps([chamada('criar_visita', {
+      os_id: 9, tecnico_id: 3, date: '2026-10-20',
+      equipment_ids: [771, 772], instrument_ids: [882],
+    })])
+    d.idsVistos.add(9)
+    d.idsVistos.add(3)
+    d.idsVistos.add(771)
+    d.idsVistos.add(772)
+    d.idsVistos.add(882)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('proposal')
+    if (r.kind === 'proposal') {
+      expect(r.proposta.resumo).toContain('771')
+      expect(r.proposta.resumo).toContain('772')
+      expect(r.proposta.resumo).toContain('882')
+    }
+  })
+
   it('escrita com id nunca visto não vira proposta; o erro volta ao modelo', async () => {
     const d = deps([
       chamada('atualizar_visita', { visita_id: 999, date: '2026-10-16' }),
@@ -224,6 +268,44 @@ describe('runTurn', () => {
     d.idsVistos.add(87)
     d.idsVistos.add(11)
     d.idsVistos.add(12)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('proposal')
+  })
+
+  // Concern real: `equipment_ids` é campo novo em `criar_visita` (obrigatório
+  // desde esta task) e não tinha NENHUMA trava de id aqui — só
+  // `instrument_ids` era checado contra `idsVistos`. Um equipamento
+  // alucinado (nunca visto em listar_os) passava direto pra proposta;
+  // hoje espelha exatamente o comportamento de `instrument_ids`.
+  it('equipment_ids com id alucinado (nunca visto) não vira proposta', async () => {
+    const d = deps([
+      chamada('criar_visita', {
+        os_id: 9, tecnico_id: 3, date: '2026-10-20',
+        equipment_ids: [771, 99999], instrument_ids: [882],
+      }),
+      texto('vou conferir os equipamentos'),
+    ])
+    d.idsVistos.add(9)
+    d.idsVistos.add(3)
+    d.idsVistos.add(771)
+    d.idsVistos.add(882)
+    const r = await runTurn(inicio, d)
+    expect(r.kind).toBe('text')
+    const tool = r.messages.find((m) => m.role === 'tool')
+    expect(tool?.content).toContain('99999')
+    expect(tool?.content).toMatch(/não apareceu/i)
+  })
+
+  it('equipment_ids com todos os ids já vistos vira proposta', async () => {
+    const d = deps([chamada('criar_visita', {
+      os_id: 9, tecnico_id: 3, date: '2026-10-20',
+      equipment_ids: [771, 772], instrument_ids: [882],
+    })])
+    d.idsVistos.add(9)
+    d.idsVistos.add(3)
+    d.idsVistos.add(771)
+    d.idsVistos.add(772)
+    d.idsVistos.add(882)
     const r = await runTurn(inicio, d)
     expect(r.kind).toBe('proposal')
   })
