@@ -147,6 +147,25 @@ export interface OsOptionPwa {
    * `listInstrumentoOptions` para escolher manualmente.
    */
   instrument_suggestions: OsOptionItem[]
+  /**
+   * Soma de `product_uom_qty` (horas faturadas) das linhas SO de todas as
+   * qualificações da OS. `0` é normal — várias OS legadas não têm
+   * orçamento vinculado; não é erro nem ausência de dado.
+   */
+  horas_previstas: number
+  /**
+   * Jornada (h/dia) das linhas SO da OS. Quando as linhas divergem, o
+   * servidor devolve a MENOR não-zero (leitura conservadora — evita achar
+   * que cabe mais no dia do que realmente cabe); zero/ausente cai no
+   * padrão de 8h.
+   */
+  jornada_horas_dia: number
+  /**
+   * `horas_previstas / jornada_horas_dia`, arredondado para cima pelo
+   * servidor — poupa o modelo de fazer essa conta (e de arredondar errado).
+   * `0` quando não há orçamento.
+   */
+  dias_previstos: number
 }
 
 /**

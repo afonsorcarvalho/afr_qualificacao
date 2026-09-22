@@ -57,6 +57,12 @@ describe('TOOL_DEFS', () => {
     expect(p.date_to.description).toContain('AAAA-MM-DD')
   })
 
+  it('listar_os menciona as horas previstas e a jornada diária no retorno', () => {
+    const def = TOOL_DEFS.find((t) => t.function.name === 'listar_os')!
+    expect(def.function.description).toContain('horas_previstas')
+    expect(def.function.description).toContain('jornada_horas_dia')
+  })
+
   it('criar_visita exige equipment_ids e instrument_ids no schema', () => {
     const def = TOOL_DEFS.find((t) => t.function.name === 'criar_visita')!
     const params = def.function.parameters as Record<string, any>

@@ -46,7 +46,7 @@ export const TOOL_DEFS: LlmToolDef[] = [
     function: {
       name: 'listar_os',
       description:
-        'Lista as ordens de serviço de qualificação que aceitam visita nova (rascunho ou agendada). Cada OS já vem com os equipamentos vinculados (equipment_list) e, quando o plano de recursos da OS já foi calculado, os instrumentos sugeridos (instrument_suggestions) — ambos com id e rótulo legível. Uma OS sem instrument_suggestions é normal (plano ainda não calculado); nesse caso use listar_instrumentos para escolher manualmente.',
+        'Lista as ordens de serviço de qualificação que aceitam visita nova (rascunho ou agendada). Cada OS já vem com os equipamentos vinculados (equipment_list) e, quando o plano de recursos da OS já foi calculado, os instrumentos sugeridos (instrument_suggestions) — ambos com id e rótulo legível. Uma OS sem instrument_suggestions é normal (plano ainda não calculado); nesse caso use listar_instrumentos para escolher manualmente. Cada OS também traz horas_previstas (horas faturadas no orçamento), jornada_horas_dia (jornada diária) e dias_previstos (horas_previstas / jornada, já arredondado para cima) — horas_previstas=0 é normal em OS sem orçamento vinculado.',
       parameters: { type: 'object', properties: {} },
     },
   },

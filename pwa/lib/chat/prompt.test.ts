@@ -141,6 +141,33 @@ describe('buildSystemPrompt — visita completa (técnico, equipamento e instrum
   })
 })
 
+describe('buildSystemPrompt — duração (horas previstas x jornada do dia)', () => {
+  // Mesma técnica de extração das cláusulas AMBIGUIDADE/IDENTIFICAÇÃO NA
+  // PROSA: os vizinhos já usam "visita"/"dia"/"gestor" à vontade, então um
+  // assert genérico nessas palavras passaria mesmo sem a cláusula nova.
+  // Âncora nos nomes de campo (horas_previstas/jornada_horas_dia), que só
+  // esta cláusula usa.
+  function clausulaDuracao(p: string): string {
+    const m = p.match(/DURAÇÃO:.*?\.\n/)
+    expect(m).toBeTruthy()
+    return m![0]
+  }
+
+  it('cita os campos horas_previstas e jornada_horas_dia de listar_os', () => {
+    const clausula = clausulaDuracao(buildSystemPrompt(ctx))
+    expect(clausula).toContain('horas_previstas')
+    expect(clausula).toContain('jornada_horas_dia')
+    expect(clausula).toMatch(/listar_os/)
+  })
+
+  it('manda verificar se cabe no dia e propor divisão ou avisar o gestor quando não couber', () => {
+    const clausula = clausulaDuracao(buildSystemPrompt(ctx))
+    expect(clausula).toMatch(/cabem|cabe/i)
+    expect(clausula).toMatch(/dividir/i)
+    expect(clausula).toMatch(/avise o gestor/i)
+  })
+})
+
 describe('resumirVisitas', () => {
   it('reduz a visita do payload ao que o prompt precisa', () => {
     const r = resumirVisitas([{
