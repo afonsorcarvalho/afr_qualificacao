@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { FaixaDias } from '../agenda/_FaixaDias'
 import { PainelRecursos } from '../agenda/_PainelRecursos'
+import { corDoTecnico, corDoInstrumento } from '../agenda/mes'
 
 const dias = [
   { date: '2026-09-14', horas: 4, conflito: false },
@@ -117,6 +118,32 @@ describe('PainelRecursos — técnico', () => {
     const barra = container.querySelector('.bg-primary') as HTMLElement
     expect(barra.style.width).toBe('25%')
   })
+
+  it('renderiza ícone User colorido para cada técnico', () => {
+    const { container } = render(painel({
+      tecnicos: [{ id: 441, name: 'Afonso', horas: 8, color: 5 }],
+    }))
+    const svg = container.querySelector('svg')
+    expect(svg).toBeInTheDocument()
+    expect(svg).toHaveAttribute('aria-hidden', 'true')
+    expect(svg?.style.color).toBe(corDoTecnico(441, 5))
+  })
+
+  it('ícone usa cor configurada quando disponível', () => {
+    const { container } = render(painel({
+      tecnicos: [{ id: 441, name: 'Afonso', horas: 8, color: 3 }],
+    }))
+    const svg = container.querySelector('svg')
+    expect(svg?.style.color).toBe(corDoTecnico(441, 3))
+  })
+
+  it('ícone cai na cor automática quando sem color configurado', () => {
+    const { container } = render(painel({
+      tecnicos: [{ id: 441, name: 'Afonso', horas: 8 }],
+    }))
+    const svg = container.querySelector('svg')
+    expect(svg?.style.color).toBe(corDoTecnico(441, undefined))
+  })
 })
 
 describe('PainelRecursos — instrumento', () => {
@@ -191,5 +218,45 @@ describe('PainelRecursos — instrumento', () => {
         (el.textContent ?? '').includes('13:00–17:00'),
     )
     expect(algumNoFolhaTemAsDuas).toBe(false)
+  })
+
+  it('renderiza ícone Wrench colorido para cada instrumento', () => {
+    const { container } = render(painel({
+      dimensao: 'instrumento',
+      instrumentos: [{ id: 1, name: 'Q001', vencido: false, usos: [], color: 4 }],
+    }))
+    const svgs = container.querySelectorAll('svg')
+    expect(svgs.length).toBeGreaterThan(0)
+    const instrumentoSvg = Array.from(svgs).find((svg) => {
+      const color = svg.style.color
+      return color === corDoInstrumento(1, 4)
+    })
+    expect(instrumentoSvg).toBeTruthy()
+  })
+
+  it('ícone de instrumento usa cor configurada quando disponível', () => {
+    const { container } = render(painel({
+      dimensao: 'instrumento',
+      instrumentos: [{ id: 1, name: 'Q001', vencido: false, usos: [], color: 6 }],
+    }))
+    const svgs = container.querySelectorAll('svg')
+    const instrumentoSvg = Array.from(svgs).find((svg) => {
+      const color = svg.style.color
+      return color === corDoInstrumento(1, 6)
+    })
+    expect(instrumentoSvg?.style.color).toBe(corDoInstrumento(1, 6))
+  })
+
+  it('ícone de instrumento cai na cor automática quando sem color configurado', () => {
+    const { container } = render(painel({
+      dimensao: 'instrumento',
+      instrumentos: [{ id: 1, name: 'Q001', vencido: false, usos: [] }],
+    }))
+    const svgs = container.querySelectorAll('svg')
+    const instrumentoSvg = Array.from(svgs).find((svg) => {
+      const color = svg.style.color
+      return color === corDoInstrumento(1, undefined)
+    })
+    expect(instrumentoSvg?.style.color).toBe(corDoInstrumento(1, undefined))
   })
 })

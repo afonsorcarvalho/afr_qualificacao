@@ -1,7 +1,8 @@
 'use client'
 import { clsx } from 'clsx'
-import { AlertTriangle } from 'lucide-react'
+import { User, Wrench, AlertTriangle } from 'lucide-react'
 import type { CargaTecnico, UsoInstrumento } from './carga'
+import { corDoTecnico, corDoInstrumento } from './mes'
 
 export type Dimensao = 'tecnico' | 'instrumento'
 
@@ -93,6 +94,11 @@ export function PainelRecursos({
             pressionado={t.id === tecnicoIdDaVisita}
             aoTocar={() => onTocarTecnico(t.id)}
           >
+            <User
+              className="h-4 w-4 shrink-0"
+              style={{ color: corDoTecnico(t.id, t.color) }}
+              aria-hidden
+            />
             <span className="w-28 shrink-0 truncate">{t.name}</span>
             <span className="h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-hidden>
               <span
@@ -113,6 +119,11 @@ export function PainelRecursos({
             pressionado={instrumentoIdsDaVisita.includes(i.id)}
             aoTocar={() => onTocarInstrumento(i.id)}
           >
+            <Wrench
+              className="h-4 w-4 shrink-0"
+              style={{ color: corDoInstrumento(i.id, i.color) }}
+              aria-hidden
+            />
             <span className="w-20 shrink-0 truncate">{i.name}</span>
             {i.usos.length === 0 ? (
               <span className="min-w-0 flex-1 text-xs text-muted-foreground">livre</span>

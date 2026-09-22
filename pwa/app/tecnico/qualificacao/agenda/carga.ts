@@ -22,6 +22,7 @@ export interface CargaTecnico {
   id: number
   name: string
   horas: number
+  color?: number
 }
 
 /** Um uso de um instrumento numa visita: quem, quando, em qual OS. */
@@ -37,6 +38,7 @@ export interface UsoInstrumento {
   name: string
   vencido: boolean
   usos: UsoDeVisita[]
+  color?: number
 }
 
 /**
@@ -143,6 +145,7 @@ export function cargaPorTecnico(
     horas: visitas
       .filter((v) => v.date === dia && v.tecnico_id === t.id)
       .reduce((s, v) => s + horasDaVisita(v), 0),
+    color: t.color,
   }))
 }
 
@@ -233,6 +236,7 @@ export function usoPorInstrumento(
     // `_instrument_valid_on` no servidor.
     vencido: !i.validade || i.validade < dia,
     usos: usosNoDia(doDia, i.id),
+    color: i.color,
   }))
 }
 

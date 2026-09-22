@@ -122,6 +122,16 @@ describe('cargaPorTecnico', () => {
     )
     expect(r[0].horas).toBe(4)
   })
+
+  it('preserva o color do roster na carga por técnico', () => {
+    const tecnososComCor = [
+      { id: 441, name: 'Afonso', color: 5 },
+      { id: 9, name: 'Bruno' },
+    ]
+    const r = cargaPorTecnico([], '2026-09-17', tecnososComCor)
+    expect(r.find((t) => t.id === 441)).toEqual({ id: 441, name: 'Afonso', horas: 0, color: 5 })
+    expect(r.find((t) => t.id === 9)).toEqual({ id: 9, name: 'Bruno', horas: 0 })
+  })
 })
 
 describe('rosterTecnicos', () => {
@@ -261,5 +271,15 @@ describe('usoPorInstrumento', () => {
       '2026-09-17', instrumentos,
     )
     expect(r[0].usos.map((u) => u.visitaId)).toEqual([7, 8])
+  })
+
+  it('preserva o color do catálogo na carga por instrumento', () => {
+    const instrumentosComCor = [
+      { id: 1, name: 'Q001', validade: '2027-01-01' as string | false, color: 7 },
+      { id: 2, name: 'Q002', validade: '2026-01-01' as string | false },
+    ]
+    const r = usoPorInstrumento([], '2026-09-17', instrumentosComCor)
+    expect(r.find((i) => i.id === 1)).toEqual({ id: 1, name: 'Q001', vencido: false, usos: [], color: 7 })
+    expect(r.find((i) => i.id === 2)).toEqual({ id: 2, name: 'Q002', vencido: true, usos: [] })
   })
 })
