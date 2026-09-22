@@ -6,10 +6,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { llmChat, LlmError, type LlmMessage } from '@/lib/llm/client'
 import { TOOL_DEFS } from '@/lib/chat/toolDefs'
 
+// ATENÇÃO ao acrescentar export aqui: num `route.ts` do App Router, o Next
+// só aceita os verbos HTTP e os campos de config (`dynamic`, `runtime`,
+// `revalidate`, ...). Qualquer outro export falha o `next build` com
+// "is not a valid Route export field" — e falha SÓ ali: `next dev` e a
+// suíte de testes passam sem reclamar. Se algo aqui precisar ser
+// compartilhado, mova para um arquivo vizinho e importe.
+
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 /**
  * Política, não preferência: os provedores listados treinam nos prompts
@@ -21,7 +28,7 @@ export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
  * Deliberadamente NÃO usamos `zdr: true` nem `data_collection: "deny"`:
  * esses filtram retenção, não treino, e excluiriam o próprio primário.
  */
-export const PROVIDER_POLICY = {
+const PROVIDER_POLICY = {
   ignore: ['nvidia', 'liquid', 'thinkingmachines'],
   require_parameters: true,
 } as const
@@ -52,7 +59,7 @@ const MAX_CHARS_TOTAL = 400000
 
 const ROLES_VALIDOS = ['system', 'user', 'assistant', 'tool'] as const
 
-export function modelosConfigurados(): string[] {
+function modelosConfigurados(): string[] {
   const bruto = process.env.OPENROUTER_MODELS
   if (!bruto) return MODELOS_PADRAO
   const lista = bruto.split(',').map((m) => m.trim()).filter(Boolean)
