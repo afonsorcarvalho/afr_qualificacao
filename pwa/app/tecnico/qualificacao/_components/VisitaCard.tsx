@@ -39,7 +39,8 @@ function Corpo({
           <User
             className="h-3.5 w-3.5 shrink-0"
             style={{ color: corDoTecnico(visita.tecnico_id, tecnicoColorPorId?.get(visita.tecnico_id === false ? -1 : visita.tecnico_id)) }}
-            aria-hidden
+            role="img"
+            aria-label="Técnico"
           />
           {visita.tecnico_name}
         </p>
@@ -61,7 +62,8 @@ function Corpo({
                 <Wrench
                   className="h-3.5 w-3.5 shrink-0"
                   style={{ color: corDoInstrumento(id, instrumentoColorPorId?.get(id)) }}
-                  aria-hidden
+                  role="img"
+                  aria-label="Instrumento"
                 />
                 <span className="truncate">{nome}</span>
               </span>
