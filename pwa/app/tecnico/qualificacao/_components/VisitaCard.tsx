@@ -15,10 +15,12 @@ function Corpo({
   visita,
   tecnicoColorPorId,
   instrumentoColorPorId,
+  instrumentoNomePorId,
 }: {
   visita: VisitaAgenda
   tecnicoColorPorId?: Map<number, number | undefined>
   instrumentoColorPorId?: Map<number, number | undefined>
+  instrumentoNomePorId?: Map<number, string>
 }) {
   return (
     <>
@@ -53,12 +55,24 @@ function Corpo({
           Equip.: {visita.equipment_list.join(', ')}
         </p>
       )}
-      {visita.instrument_list.length > 0 && (
+      {visita.instrument_ids.length > 0 && instrumentoNomePorId && (
+        // Itera por `instrument_ids` (nunca por `instrument_list`, casado por
+        // índice): o backend monta `instrument_list` filtrando instrumento
+        // sem nome cadastrado (`list(filter(None, ...mapped('name')))`),
+        // enquanto `instrument_ids` mantém todos os ids — os dois arrays
+        // podem ficar desalinhados em tamanho/posição. Mesmo padrão de
+        // `instrumentosPorDia` em `mes.ts`: nome resolvido por id, com
+        // fallback `Instrumento #<id>`.
+        //
+        // `instrumentoNomePorId` ausente (não só vazio) sinaliza catálogo com
+        // FALHA conhecida (ver `instrumentosComFalha` em `page.tsx`) — sem
+        // catálogo bom não há nome de verdade pra resolver, e o bloco inteiro
+        // some em vez de fabricar `Instrumento #<id>` como se fosse fato.
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-          {visita.instrument_list.map((nome, idx) => {
-            const id = visita.instrument_ids[idx]
+          {visita.instrument_ids.map((id) => {
+            const nome = instrumentoNomePorId?.get(id) ?? `Instrumento #${id}`
             return (
-              <span key={id ?? nome} className="flex min-w-0 items-center gap-1">
+              <span key={id} className="flex min-w-0 items-center gap-1">
                 <Wrench
                   className="h-3.5 w-3.5 shrink-0"
                   style={{ color: corDoInstrumento(id, instrumentoColorPorId?.get(id)) }}
@@ -88,6 +102,7 @@ export function VisitaCard({
   emAjuste = false,
   tecnicoColorPorId,
   instrumentoColorPorId,
+  instrumentoNomePorId,
 }: {
   visita: VisitaAgenda
   onSelect: (visita: VisitaAgenda) => void
@@ -97,6 +112,14 @@ export function VisitaCard({
   /** Índice `color` configurado no Odoo, por id — vem do roster/catálogo de `page.tsx`. */
   tecnicoColorPorId?: Map<number, number | undefined>
   instrumentoColorPorId?: Map<number, number | undefined>
+  /**
+   * Nome por id — fonte de verdade pro nome do instrumento no card, nunca
+   * `instrument_list`. `undefined` = catálogo indisponível (falha de fetch);
+   * o bloco de instrumento inteiro some em vez de inventar `Instrumento
+   * #<id>`. Presente (mesmo que sem a chave do id) = catálogo saudável; aí o
+   * fallback fabricado por id é aceitável (id arquivado depois de usado).
+   */
+  instrumentoNomePorId?: Map<number, string>
 }) {
   const base = 'flex w-full min-h-[44px] flex-col gap-1 rounded-lg border border-border bg-card p-3 text-left'
   // `lock_reason` é frase pronta do servidor. O front não decide nada aqui —
@@ -104,7 +127,12 @@ export function VisitaCard({
   if (!visita.editable) {
     return (
       <div className={clsx(base, 'opacity-70')}>
-        <Corpo visita={visita} tecnicoColorPorId={tecnicoColorPorId} instrumentoColorPorId={instrumentoColorPorId} />
+        <Corpo
+          visita={visita}
+          tecnicoColorPorId={tecnicoColorPorId}
+          instrumentoColorPorId={instrumentoColorPorId}
+          instrumentoNomePorId={instrumentoNomePorId}
+        />
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
           {visita.lock_reason}
@@ -115,7 +143,12 @@ export function VisitaCard({
   return (
     <div className={clsx('flex flex-col gap-1', emAjuste && 'rounded-lg ring-2 ring-primary')}>
       <button type="button" onClick={() => onSelect(visita)} className={clsx(base, 'hover:bg-accent')}>
-        <Corpo visita={visita} tecnicoColorPorId={tecnicoColorPorId} instrumentoColorPorId={instrumentoColorPorId} />
+        <Corpo
+          visita={visita}
+          tecnicoColorPorId={tecnicoColorPorId}
+          instrumentoColorPorId={instrumentoColorPorId}
+          instrumentoNomePorId={instrumentoNomePorId}
+        />
       </button>
       {onAjustar && (
         <button

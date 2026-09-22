@@ -247,6 +247,21 @@ export default function AgendaPage() {
   // passageira — e não há nome fabricado nenhum pra suprimir, que é a única
   // coisa que a tarja existe pra impedir.
   const instrumentosComFalha = instrumentos.isError && instrumentos.data === undefined
+  // Nome por id pro `VisitaCard` (Task 2, badge-icone-tecnico-instrumento) —
+  // resolve por `instrument_ids`, nunca por `instrument_list` (que pode vir
+  // desalinhada, ver `instrumentosPorDia` em `mes.ts`). `undefined` quando o
+  // catálogo está com FALHA CONHECIDA (`instrumentosComFalha`): mesma regra
+  // do parágrafo acima — sem catálogo bom, não há nome de verdade pra
+  // resolver, e o card não pode fabricar `Instrumento #<id>` como se fosse
+  // fato (é exatamente o identificador fabricado que a tarja de erro acima
+  // existe pra impedir de vazar, e vazava pelo card antes deste guard).
+  // Com catálogo saudável mas id ausente (instrumento arquivado depois de
+  // usado), o Map fica presente e o fallback por id dentro do `VisitaCard`
+  // continua valendo — mesmo comportamento de `instrumentosPorDia`.
+  const instrumentoNomePorId = useMemo(
+    () => (instrumentosComFalha ? undefined : new Map(opcoesInstrumento.map((o) => [o.id, o.name]))),
+    [instrumentosComFalha, opcoesInstrumento],
+  )
   // Enquanto `ancoraMes` não ancorou (primeiríssima carga do mês) OU a
   // busca da faixa completa ainda está em voo (2ª busca, cada toque em
   // ◀ ▶ com `queryKey` novo), não há grade utilizável pra mostrar —
@@ -872,6 +887,7 @@ export default function AgendaPage() {
               onSelect={setSelecionada}
               tecnicoColorPorId={tecnicoColorPorId}
               instrumentoColorPorId={instrumentoColorPorId}
+              instrumentoNomePorId={instrumentoNomePorId}
             />
           ))}
         </section>
@@ -913,6 +929,7 @@ export default function AgendaPage() {
               emAjuste={emAjuste?.id === v.id}
               tecnicoColorPorId={tecnicoColorPorId}
               instrumentoColorPorId={instrumentoColorPorId}
+              instrumentoNomePorId={instrumentoNomePorId}
             />
           ))}
           {doDia.length === 0 && (

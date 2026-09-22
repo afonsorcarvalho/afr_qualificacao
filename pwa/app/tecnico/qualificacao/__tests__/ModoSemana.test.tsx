@@ -262,7 +262,12 @@ describe('Modo Semana', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ajustar/ }))
     fireEvent.click(screen.getByRole('button', { name: /^Instrumento$/ }))
 
-    fireEvent.click(screen.getByRole('button', { name: /Q001/ }))
+    // `^Q001`/`^Q002`: âncora no início do nome acessível. Sem ela, depois do
+    // refetch abaixo o `VisitaCard` também passa a mostrar "Q001"/"Q002"
+    // (Task 2, badge-icone-tecnico-instrumento — o card resolve o nome por
+    // `instrument_ids` contra o catálogo, não mais só por `instrument_list`
+    // estático), e o botão do card colide com o botão de alternar do painel.
+    fireEvent.click(screen.getByRole('button', { name: /^Q001/ }))
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [1] } }),
     )
@@ -275,7 +280,7 @@ describe('Modo Semana', () => {
     // A cena que motivou o `emAjusteAtual`: ligar um SEGUNDO instrumento
     // diferente não pode apagar o primeiro.
     mutateUpdate.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: /Q002/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Q002/ }))
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [1, 2] } }),
     )
@@ -284,7 +289,7 @@ describe('Modo Semana', () => {
     refresh()
 
     mutateUpdate.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: /Q001/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^Q001/ }))
     await waitFor(() =>
       expect(mutateUpdate).toHaveBeenCalledWith({ id: 7, vals: { instrument_ids: [2] } }),
     )
