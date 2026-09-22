@@ -32,3 +32,8 @@ addons/
 # Infra local do servidor
 nginx/
 scripts/
+
+# Anotações de trabalho com dado de cliente. Estava untracked e não-ignorado
+# no clone de desenvolvimento em 2026-09-22 — mesmo risco dos itens acima,
+# num repositório público.
+dados_sensiveis/
