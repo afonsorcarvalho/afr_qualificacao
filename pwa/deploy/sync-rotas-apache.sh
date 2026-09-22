@@ -162,8 +162,13 @@ for entrada in "${ROTAS[@]}"; do
   rota="${entrada%% *}"
   alvo="$rota"
   [ "$rota" = "/api/chat" ] && alvo="/api/chat/status"   # /api/chat só aceita POST
-  corpo=$(curl -s --max-time 20 "https://${HOST}${alvo}" | head -c 400 || true)
-  codigo=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "https://${HOST}${alvo}" || true)
+  # Uma requisição só por rota, com o código no fim do corpo. `curl | head`
+  # fecharia o pipe cedo e o curl cuspia "(23) Failed writing body" no meio
+  # do relatório; e duas chamadas por rota dobravam o tráfego à toa.
+  resposta=$(curl -s --max-time 20 -w $'\n%{http_code}' "https://${HOST}${alvo}" || true)
+  codigo="${resposta##*$'\n'}"
+  corpo="${resposta%$'\n'*}"
+  corpo="${corpo:0:400}"
   # O sintoma da rota faltando é a página 404 do site Odoo, não um erro do PWA.
   if printf '%s' "$corpo" | grep -qi 'Page Not Found\|data-website-id'; then
     printf '  %-22s %s  <<< caindo no Odoo, rota NÃO publicada\n' "$alvo" "$codigo"
