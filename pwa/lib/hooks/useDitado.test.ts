@@ -610,4 +610,36 @@ describe('useDitado', () => {
       vi.useRealTimers()
     }
   })
+
+  it('fechar a folha (pararEDescartar) antes dos 60s também desarma o auto-stop', async () => {
+    // Mesmo risco do teste acima, outro gatilho: `pararEDescartar()` zera
+    // `recorder.current`/`streamRef.current`, mas se o timer de auto-stop
+    // sobreviver, ele dispara depois sobre uma tentativa já descartada —
+    // `parar()` chamaria `setTranscrevendo(true)` sem nenhum `onstop` vindo
+    // pra devolver a `false` depois (a tentativa já foi cancelada, não vai
+    // transcrever nada), deixando o botão "ocupado" pra sempre. Como
+    // `ChatAgenda` nunca desmonta quando a folha fecha, essa é exatamente a
+    // classe de falha muda que esta task existe pra fechar.
+    vi.useFakeTimers()
+    try {
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() }) // inicia
+      act(() => { result.current.pararEDescartar() }) // folha fecha com o mic ligado
+      expect(result.current.gravando).toBe(false)
+      toastMock.mockClear()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+
+      expect(toastMock).not.toHaveBeenCalled()
+      // A asserção que importa de verdade: sem isso, `transcrevendo` fica
+      // `true` pra sempre e o botão de mic nunca mais sai do estado
+      // "ocupado" — travado, não só sem aviso.
+      expect(result.current.transcrevendo).toBe(false)
+      expect(onTexto).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
