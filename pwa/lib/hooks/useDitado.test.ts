@@ -57,6 +57,13 @@ class FakeAnalyserNode {
 class FakeAudioContext {
   static ultima: FakeAudioContext | null = null
   closed = false
+  // 'running' por padrão (não 'suspended'): a maioria dos testes deste
+  // arquivo não tem nada a ver com o resume() do item 2 — se o padrão
+  // fosse 'suspended', TODO teste passaria a await um resume() extra,
+  // mudando quando exatamente o `MediaRecorder`/analyser ficam prontos e
+  // quebrando timing que os outros 36 testes já assumem. Só o teste
+  // dedicado do resume usa um contexto suspenso, com uma classe própria.
+  state: 'suspended' | 'running' | 'closed' = 'running'
   analyser: FakeAnalyserNode | null = null
   constructor() {
     FakeAudioContext.ultima = this
@@ -1221,6 +1228,375 @@ describe('useDitado', () => {
 
       await act(async () => { await result.current.alternar() }) // pára
       expect(result.current.nivelAudio).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // --- Onda de fix (2026-09-22-ditado-em-rajadas, review final) ---
+
+  // Item 1 (crítico): ✕ / fechar a folha / desmontar não descartavam de
+  // verdade uma rajada já em voo — o `controle.descartado` só era lido
+  // ANTES do `await fetch`, então o texto ainda chegava um segundo depois
+  // do clique em ✕, com o botão já dizendo "Descartar gravação".
+  it('fix item 1: ✕ (pararEDescartar) enquanto uma rajada está em voo descarta de verdade — o texto dela nunca chega, mesmo que o fetch resolva depois', async () => {
+    vi.useFakeTimers()
+    try {
+      const resolvers: Array<(r: Response) => void> = []
+      const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => resolvers.push(resolve)))
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Fecha a rajada 1 por silêncio — dispara o fetch, que fica em voo
+      // (o dublê não resolve sozinho).
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // ✕ — AINDA gravando, o fetch da rajada 1 continua em voo.
+      act(() => { result.current.pararEDescartar() })
+      expect(result.current.gravando).toBe(false)
+
+      // O fetch só agora resolve — um segundo (ou mais) depois do clique.
+      await act(async () => {
+        resolvers[0](new Response(JSON.stringify({ text: 'não pode aparecer' }), { status: 200 }))
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+
+      expect(onTexto).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('fix item 1: depois de descartar, uma sessão NOVA não recebe o texto da sessão antiga que ainda estava em voo (não vaza pro campo errado)', async () => {
+    vi.useFakeTimers()
+    try {
+      const resolvers: Array<(r: Response) => void> = []
+      const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => resolvers.push(resolve)))
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      // Sessão A: fecha uma rajada por silêncio, fetch fica em voo.
+      await act(async () => { await result.current.alternar() })
+      const analyserA = FakeAudioContext.ultima!.analyser!
+      analyserA.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyserA.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // ✕ descarta a sessão A ainda com o fetch dela em voo.
+      act(() => { result.current.pararEDescartar() })
+
+      // Sessão B começa — antes do fetch atrasado de A responder.
+      await act(async () => { await result.current.alternar() })
+      expect(result.current.gravando).toBe(true)
+
+      // O fetch atrasado de A só resolve agora, com B já rodando.
+      await act(async () => {
+        resolvers[0](new Response(JSON.stringify({ text: 'texto de A, não pode vazar pra B' }), { status: 200 }))
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+
+      expect(onTexto).not.toHaveBeenCalled()
+      // B não foi afetada pela contaminação.
+      expect(result.current.gravando).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Item 2 (importante): o AudioContext nunca era resumido — em Safari/iOS
+  // ele nasce `suspended` (foi construído fora do gesto original do
+  // usuário, depois do `await getUserMedia`), e um contexto suspenso
+  // devolve zeros em `getFloatTimeDomainData`: RMS travado em 0, nenhuma
+  // rajada detecta voz, nada sobe no meio da sessão.
+  it('fix item 2: AudioContext suspenso (iOS) é resumido — senão o RMS fica travado em 0 e nenhuma rajada detecta voz', async () => {
+    class FakeAnalyserSuspenso {
+      fftSize = 2048
+      nivel = 0.5
+      getFloatTimeDomainData(buffer: Float32Array) {
+        // Enquanto suspenso, um AudioContext de verdade devolve SEMPRE
+        // zero aqui — é esse o sintoma que o fix existe pra evitar.
+        buffer.fill(CtxSuspenso.instancia!.state === 'suspended' ? 0 : this.nivel)
+      }
+    }
+    class CtxSuspenso {
+      static instancia: CtxSuspenso | null = null
+      state: 'suspended' | 'running' = 'suspended'
+      analyser: FakeAnalyserSuspenso | null = null
+      resume = vi.fn().mockImplementation(() => {
+        this.state = 'running'
+        return Promise.resolve()
+      })
+      constructor() {
+        CtxSuspenso.instancia = this
+      }
+      createMediaStreamSource() {
+        return { connect: () => {} }
+      }
+      createAnalyser() {
+        this.analyser = new FakeAnalyserSuspenso()
+        return this.analyser
+      }
+      close() {
+        return Promise.resolve()
+      }
+    }
+    ;(globalThis as any).AudioContext = CtxSuspenso
+    vi.useFakeTimers()
+    try {
+      const { result } = renderHook(() => useDitado(vi.fn()))
+
+      await act(async () => { await result.current.alternar() })
+
+      expect(CtxSuspenso.instancia!.resume).toHaveBeenCalledTimes(1)
+      expect(CtxSuspenso.instancia!.state).toBe('running')
+
+      // O sintoma de verdade: sem o resume, o nível exposto ficaria preso
+      // em 0 pra sempre, mesmo com "voz" no dublê.
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      expect(result.current.nivelAudio).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Item 4 (importante): `MediaRecorder.stop()` supõe um gravador
+  // `recording`/`paused` — se o stream morreu sozinho por fora (chamada
+  // entrando, Bluetooth caindo, iOS pausando o app), o gravador já está
+  // `inactive` e `stop()` lança `InvalidStateError`. Sem tratar, a sessão
+  // trava pra sempre: `transcrevendo` nunca volta a `false`.
+  it('fix item 4: MediaRecorder.stop() lançando (stream morto por fora) não trava a sessão — transcrevendo volta a false', async () => {
+    class FakeRecorderQuebraNoStop {
+      static isTypeSupported() { return true }
+      ondataavailable: ((e: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      state = 'inactive' // já morreu sozinho antes do clique
+      constructor(public stream: unknown) {}
+      start() { this.state = 'recording' }
+      stop() {
+        throw new DOMException('already inactive', 'InvalidStateError')
+      }
+    }
+    ;(globalThis as any).MediaRecorder = FakeRecorderQuebraNoStop
+    const pararTrack = vi.fn()
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: pararTrack }] })
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    await act(async () => { await result.current.alternar() }) // inicia
+    expect(result.current.gravando).toBe(true)
+
+    // Clica em ✓ — parar() chama fecharRajadaAtual(..., true), que tenta
+    // stop() e apanha o InvalidStateError.
+    await act(async () => { await result.current.alternar() })
+
+    expect(result.current.gravando).toBe(false)
+    // A asserção que importa: sem o fix, isto ficava `true` pra sempre.
+    expect(result.current.transcrevendo).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(onTexto).not.toHaveBeenCalled()
+    // Track liberada mesmo sem o onstop normal ter rodado (era a ÚLTIMA
+    // rajada da sessão).
+    expect(pararTrack).toHaveBeenCalled()
+
+    // O mic continua utilizável depois — não fica morto até recarregar.
+    await act(async () => { await result.current.alternar() })
+    expect(result.current.gravando).toBe(true)
+  })
+
+  // Item 5 (importante): o carve-out da rajada final usava `!textoEntregue`
+  // ("já ENTREGOU texto?"), que depende de a resposta de rede ter voltado —
+  // numa conexão de campo lenta, o gestor pode tocar ✓ antes de qualquer
+  // rajada ter respondido, mesmo já tendo enviado uma de verdade. O fix
+  // troca por "nenhuma rajada foi ENVIADA ainda nesta sessão", que não
+  // depende de timing de rede.
+  it('fix item 5: rajada final sem voz NÃO sobe quando outra rajada já foi enviada mas ainda não respondeu (rede lenta) — não duplica com alucinação', async () => {
+    vi.useFakeTimers()
+    try {
+      let resolveBurst1: ((r: Response) => void) | null = null
+      let chamada = 0
+      const fetchMock = vi.fn().mockImplementation(() => {
+        chamada += 1
+        if (chamada === 1) return new Promise<Response>((resolve) => { resolveBurst1 = resolve })
+        return Promise.resolve(new Response(JSON.stringify({ text: 'resposta inesperada' }), { status: 200 }))
+      })
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Rajada 1: fala de verdade, fecha por silêncio — sobe (fetch #1),
+      // mas a rede é lenta e a resposta NÃO chega ainda.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(onTexto).not.toHaveBeenCalled() // ainda não respondeu
+
+      // Gestor clica em ✓ — a rajada final é só o silêncio desde o
+      // fechamento da 1ª (nenhuma leitura de voz nela).
+      await act(async () => { await result.current.alternar() })
+
+      // A rajada final NÃO pode subir: já existe uma rajada enviada nesta
+      // sessão (só ainda não respondeu — diferente de "nunca enviou").
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // Agora a rajada 1 responde de verdade.
+      await act(async () => {
+        resolveBurst1!(new Response(JSON.stringify({ text: 'texto real' }), { status: 200 }))
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+
+      expect(onTexto).toHaveBeenCalledWith('texto real')
+      expect(onTexto).toHaveBeenCalledTimes(1) // nunca um segundo call (alucinação)
+      expect(result.current.transcrevendo).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Item 6 (importante): sem timeout, um fetch que trava prende a rajada
+  // (e, por causa da entrega estritamente em ordem, TODAS as seguintes)
+  // pra sempre — `transcrevendo` nunca volta a `false`.
+  it('fix item 6: fetch pendurado (rede travada) usa timeout — não prende as rajadas seguintes nem trava transcrevendo', async () => {
+    vi.useFakeTimers()
+    try {
+      let chamada = 0
+      const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        chamada += 1
+        if (chamada === 1) {
+          // Rajada 1: nunca resolve sozinha — só quando o AbortController
+          // interno do próprio hook disparar (o timeout).
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('The operation was aborted', 'AbortError'))
+            })
+          })
+        }
+        return Promise.resolve(new Response(JSON.stringify({ text: 'segunda rajada' }), { status: 200 }))
+      })
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Fecha a rajada 1 por silêncio — dispara o fetch que vai travar.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // Fecha a rajada 2 por silêncio — não espera a 1ª pra subir.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+
+      // Encerra a sessão — a 2ª já teria resposta, mas fica represada
+      // atrás da 1ª (entrega estritamente em ordem) até ela se resolver.
+      await act(async () => { await result.current.alternar() })
+      expect(onTexto).not.toHaveBeenCalled()
+      expect(result.current.transcrevendo).toBe(true)
+
+      // Passam os ~30s do timeout interno da rajada 1.
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+
+      expect(onTexto).toHaveBeenCalledWith('segunda rajada')
+      expect(result.current.transcrevendo).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Item 8 (minor): "Transcrição vazia" disparava POR RAJADA — podia
+  // interromper uma sessão que, no fim das contas, ia funcionar (rajada 1
+  // vazia, rajada 2 com a fala de verdade), e ainda roubava a vez do
+  // "Gravação muito curta" no fim de uma sessão de verdade vazia.
+  it('fix item 8: "Transcrição vazia" não interrompe uma sessão que ainda vai produzir texto — só decide no fim da sessão', async () => {
+    vi.useFakeTimers()
+    try {
+      let chamada = 0
+      const fetchMock = vi.fn().mockImplementation(() => {
+        chamada += 1
+        const texto = chamada === 1 ? '' : 'fala de verdade'
+        return Promise.resolve(new Response(JSON.stringify({ text: texto }), { status: 200 }))
+      })
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Rajada 1: leitura de voz, mas o Whisper devolve 200 com text vazio.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      // Sem o fix: dispararia 'Transcrição vazia' JÁ AQUI, no meio de uma
+      // sessão que ainda vai funcionar.
+      expect(toastMock.error).not.toHaveBeenCalled()
+
+      // Rajada 2: fala de verdade, entrega texto.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      expect(onTexto).toHaveBeenCalledWith('fala de verdade')
+      // Sessão produziu texto — nenhum aviso de "vazia" nem "muito curta".
+      expect(toastMock.error).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('fix item 8: sessão inteira sem texto, mas com pelo menos uma rajada 200-vazia, avisa "Transcrição vazia" (não "muito curta")', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: '' }), { status: 200 }),
+      )
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      await act(async () => { await result.current.alternar() }) // ✓ encerra
+
+      expect(onTexto).not.toHaveBeenCalled()
+      expect(toastMock.error).toHaveBeenCalledTimes(1)
+      expect(toastMock.error).toHaveBeenCalledWith('Transcrição vazia')
+      expect(result.current.transcrevendo).toBe(false)
     } finally {
       vi.useRealTimers()
     }

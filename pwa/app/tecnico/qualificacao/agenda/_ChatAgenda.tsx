@@ -6,6 +6,7 @@ import { useChatAgenda, type Bolha } from '@/lib/hooks/useChatAgenda'
 import { useDitado } from '@/lib/hooks/useDitado'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
+import type { Proposta } from '@/lib/chat/machine'
 import { montarCardProposta } from '@/lib/chat/card'
 import { DetalhesTraco, formatarNumero, formatarCusto } from './_DetalhesTraco'
 import { MarkdownAssistente } from './_MarkdownAssistente'
@@ -48,6 +49,74 @@ const Bolhas = memo(function Bolhas({ bolhas }: { bolhas: Bolha[] }) {
         </div>
       ))}
     </>
+  )
+})
+
+/**
+ * Card de proposta (confirmar/cancelar) + `DetalhesTraco`, isolado num
+ * componente `memo` — mesmo raciocínio de `Bolhas` logo acima, terminando
+ * o que aquele memo começou: antes, `montarCardProposta` rodava no CORPO
+ * de `ChatAgenda` e este card ficava fora de qualquer `memo`, então os
+ * ~20 re-renders/s de `ditado.nivelAudio` durante o ditado recalculavam o
+ * card e re-renderizavam `DetalhesTraco` por baixo dele à toa — mesmo sem
+ * nada da proposta ter mudado. `payload`/`proposta`/`ocupado` só mudam
+ * quando a conversa avança de verdade (estado de `useChatAgenda`), e
+ * `confirmar`/`cancelar` são `useCallback` — o `memo` faz bail-out em
+ * todo render onde só `nivelAudio` mudou.
+ */
+const PropostaCard = memo(function PropostaCard({
+  payload,
+  proposta,
+  ocupado,
+  confirmar,
+  cancelar,
+}: {
+  payload: AgendaPayload
+  proposta: Proposta
+  ocupado: boolean
+  confirmar: () => void
+  cancelar: () => void
+}) {
+  const card = montarCardProposta(payload, proposta)
+  return (
+    <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
+      <p className="text-sm font-medium">{card.titulo}</p>
+      {card.subtitulo && (
+        <p className="mt-1 text-xs text-muted-foreground">{card.subtitulo}</p>
+      )}
+      {card.aviso && (
+        <p className="mt-1 text-xs text-destructive">{card.aviso}</p>
+      )}
+      {card.linhas.length > 0 && (
+        <div className="mt-2 space-y-0.5">
+          {card.linhas.map((l) => (
+            <p key={l.rotulo} className="text-sm">
+              <span className="text-muted-foreground">{l.rotulo}</span>{' '}
+              {l.de ? `${l.de} → ${l.para}` : l.para}
+            </p>
+          ))}
+        </div>
+      )}
+      {proposta.tracos && <DetalhesTraco tracos={proposta.tracos} />}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          className="min-h-[44px] flex-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50"
+          disabled={ocupado}
+          onClick={confirmar}
+        >
+          Confirmar
+        </button>
+        <button
+          type="button"
+          className="min-h-[44px] flex-1 rounded-md border border-border px-3 disabled:opacity-50"
+          disabled={ocupado}
+          onClick={cancelar}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   )
 })
 
@@ -106,15 +175,22 @@ export function ChatAgenda({
 
   if (!payload?.can_manage) return null
 
-  const card = proposta ? montarCardProposta(payload, proposta) : null
-
   async function submeter(e: React.FormEvent) {
     e.preventDefault()
     // Só limpar o campo se o envio for mesmo acontecer: `enviar` tem seu
     // próprio guard (texto vazio, ocupado, sem payload) e retorna cedo
     // sem mandar nada — limpar `texto` ANTES desse guard perde o que o
     // gestor escreveu, sem enviar e sem devolver o texto pra tela.
-    if (ocupado || !texto.trim()) return
+    //
+    // `ditado.gravando`: com um único `<input>` no formulário, Enter (ou
+    // "Ir"/"Concluído" do teclado do celular) já dispara `submit` mesmo
+    // sem nenhum botão de envio visível na tela — durante a gravação o
+    // botão Enviar está escondido (dá lugar ao medidor/✕/✓), mas o
+    // submit implícito continua alcançável. Sem este guard, um toque sem
+    // querer no teclado manda o texto PARCIAL ditado até ali e limpa o
+    // campo enquanto a gravação continua — o resto da fala cai num campo
+    // que o gestor já não vê mais como "o que eu falei".
+    if (ocupado || ditado.gravando || !texto.trim()) return
     const t = texto
     setTexto('')
     await enviar(t)
@@ -131,45 +207,14 @@ export function ChatAgenda({
         )}
         <Bolhas bolhas={bolhas} />
 
-        {proposta && card && (
-          <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
-            <p className="text-sm font-medium">{card.titulo}</p>
-            {card.subtitulo && (
-              <p className="mt-1 text-xs text-muted-foreground">{card.subtitulo}</p>
-            )}
-            {card.aviso && (
-              <p className="mt-1 text-xs text-destructive">{card.aviso}</p>
-            )}
-            {card.linhas.length > 0 && (
-              <div className="mt-2 space-y-0.5">
-                {card.linhas.map((l) => (
-                  <p key={l.rotulo} className="text-sm">
-                    <span className="text-muted-foreground">{l.rotulo}</span>{' '}
-                    {l.de ? `${l.de} → ${l.para}` : l.para}
-                  </p>
-                ))}
-              </div>
-            )}
-            {proposta.tracos && <DetalhesTraco tracos={proposta.tracos} />}
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                className="min-h-[44px] flex-1 rounded-md bg-primary px-3 text-primary-foreground disabled:opacity-50"
-                disabled={ocupado}
-                onClick={confirmar}
-              >
-                Confirmar
-              </button>
-              <button
-                type="button"
-                className="min-h-[44px] flex-1 rounded-md border border-border px-3 disabled:opacity-50"
-                disabled={ocupado}
-                onClick={cancelar}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
+        {proposta && (
+          <PropostaCard
+            payload={payload}
+            proposta={proposta}
+            ocupado={ocupado}
+            confirmar={confirmar}
+            cancelar={cancelar}
+          />
         )}
 
         {ocupado && (
@@ -190,7 +235,13 @@ export function ChatAgenda({
 
       <form onSubmit={submeter} className="mt-3 flex items-center gap-2">
         <input
-          className="min-h-[44px] flex-1 rounded-md border border-border bg-background px-3"
+          // `min-w-0`: sem isto, `flex-1` sozinho deixa `min-width: auto`,
+          // que resolve pra largura INTRÍNSECA do input — ele não
+          // consegue encolher abaixo dela. Gravar acrescenta ~52px de
+          // controles fixos (medidor + ✕/✓) a uma linha que antes só
+          // cabia por pouco: sem este `min-w-0` a barra estoura em
+          // celulares comuns (360px, 320px).
+          className="min-h-[44px] min-w-0 flex-1 rounded-md border border-border bg-background px-3"
           // "Ouvindo…" sai de graça: placeholder de HTML só aparece com o
           // campo vazio, então ele se apaga sozinho assim que a primeira
           // rajada trai texto — não precisa de estado próprio, só lê
@@ -236,7 +287,12 @@ export function ChatAgenda({
                 <span
                   key={i}
                   data-testid={peso === 1 ? 'medidor-barra-referencia' : undefined}
-                  className="w-1 rounded-full bg-foreground transition-[height] duration-100 ease-out motion-reduce:transition-none"
+                  // `duration-100` (Tailwind default) é MAIOR que o
+                  // intervalo de amostragem (~50ms, `useDitado.ts`) — toda
+                  // transição é pré-empedida pela amostra seguinte antes
+                  // de terminar, e as barras leem como "atrasadas" atrás
+                  // da voz. `duration-[40ms]` fica abaixo da amostra.
+                  className="w-1 rounded-full bg-foreground transition-[height] duration-[40ms] ease-out motion-reduce:transition-none"
                   style={{
                     height: `${Math.max(PISO_BARRA_PCT, Math.round(Math.min(1, Math.max(0, ditado.nivelAudio) / NIVEL_REFERENCIA_CHEIA) * peso * 100))}%`,
                   }}

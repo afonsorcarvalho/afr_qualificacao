@@ -34,6 +34,13 @@ const { useDitadoMock, alternarMock, pararEDescartarMock } = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/hooks/useDitado', () => ({ useDitado: useDitadoMock }))
 
+// Item 7 da onda de fix: prova que o card de proposta não recalcula em
+// re-renders motivados só por `nivelAudio` — mockar `montarCardProposta`
+// por inteiro deixa contar chamadas sem precisar coreografar o shape real
+// de `Proposta`/`AgendaPayload`.
+const { montarCardPropostaMock } = vi.hoisted(() => ({ montarCardPropostaMock: vi.fn() }))
+vi.mock('@/lib/chat/card', () => ({ montarCardProposta: montarCardPropostaMock }))
+
 import { ChatAgenda } from '../agenda/_ChatAgenda'
 
 const payload = {
@@ -191,5 +198,101 @@ describe('ChatAgenda — barra de gravação (Task 3)', () => {
     useDitadoMock.mockReturnValue(ditado())
     montar()
     expect(screen.getByRole('status')).toHaveTextContent('')
+  })
+
+  // --- Onda de fix (2026-09-22-ditado-em-rajadas, review final) ---
+
+  // Item 3 (importante): `flex-1` sozinho deixa `min-width: auto`, que
+  // resolve pra largura intrínseca do input — ele não encolhe abaixo
+  // dela. Gravar acrescenta ~52px de controles fixos (medidor + ✕/✓) a
+  // uma linha que antes só cabia por pouco — sem `min-w-0` a barra
+  // estoura em celulares comuns (360px, 320px).
+  it('fix item 3: o input do chat tem min-w-0 — sem isso ele não encolhe pra abrir espaço pro medidor/✕/✓ e a barra estoura em telas pequenas', () => {
+    useDitadoMock.mockReturnValue(ditado({ gravando: true }))
+    montar()
+    const input = screen.getByPlaceholderText('Ouvindo…')
+    expect(input.className.split(' ')).toContain('min-w-0')
+  })
+
+  // Item 9 (minor): `duration-100` (padrão do Tailwind) é MAIOR que o
+  // intervalo de amostragem do hook (~50ms) — toda transição é
+  // pré-empedida pela amostra seguinte antes de terminar, e as barras
+  // leem como "atrasadas" atrás da voz, não como um detector lento de
+  // verdade.
+  it('fix item 9: a transição de altura das barras do medidor é mais rápida que o intervalo de amostragem (~50ms)', () => {
+    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.2 }))
+    const { container } = montar()
+    const barra = container.querySelector('[data-testid="medidor-barra-referencia"]') as HTMLElement
+    expect(barra.className).toContain('duration-[40ms]')
+    expect(barra.className).not.toContain('duration-100')
+  })
+
+  // Item 11 (importante): com um único <input> no <form>, Enter (ou
+  // "Ir"/"Concluído" do teclado do celular) dispara submit IMPLÍCITO
+  // mesmo sem nenhum botão de envio visível na tela — durante a gravação
+  // o botão Enviar está escondido, mas o submit continua alcançável. Sem
+  // este guard, um toque no teclado manda o texto PARCIAL ditado até ali
+  // e limpa o campo enquanto a gravação continua.
+  it('fix item 11: Enter durante a gravação não envia o texto parcial nem limpa o campo', async () => {
+    const enviarMock = vi.fn()
+    useChatAgendaMock.mockReturnValue({
+      bolhas: [],
+      proposta: null,
+      ocupado: false,
+      enviar: enviarMock,
+      confirmar: vi.fn(),
+      cancelar: vi.fn(),
+      totais: { chamadas: 0, entrada: 0, saida: 0, custo: 0, temCusto: false },
+    })
+    useDitadoMock.mockReturnValue(ditado({ gravando: true }))
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <ChatAgenda open onClose={() => {}} payload={payload as never} />
+      </QueryClientProvider>,
+    )
+    const input = screen.getByPlaceholderText('Ouvindo…')
+    await userEvent.type(input, 'remarca pra amanhã{enter}')
+
+    expect(enviarMock).not.toHaveBeenCalled()
+    // O texto continua no campo — não foi limpo por um submit que não
+    // devia ter acontecido.
+    expect((input as HTMLInputElement).value).toBe('remarca pra amanhã')
+  })
+
+  // Item 7 (minor): `montarCardProposta` rodava no CORPO de `ChatAgenda`
+  // (fora de qualquer `memo`), então os ~20 re-renders/s de
+  // `ditado.nivelAudio` durante o ditado recalculavam o card à toa —
+  // mesmo sem nada da proposta ter mudado.
+  it('fix item 7: card de proposta é memoizado — um re-render motivado só por nivelAudio não recalcula o card', () => {
+    montarCardPropostaMock.mockClear()
+    montarCardPropostaMock.mockReturnValue({ titulo: 'Card de teste', linhas: [] })
+    useChatAgendaMock.mockReturnValue({
+      bolhas: [],
+      proposta: { toolCallId: 'c1', name: 'atualizar_visita', args: { visita_id: 87 }, resumo: 'reagenda' },
+      ocupado: false,
+      enviar: vi.fn(),
+      confirmar: vi.fn(),
+      cancelar: vi.fn(),
+      totais: { chamadas: 0, entrada: 0, saida: 0, custo: 0, temCusto: false },
+    })
+    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.2 }))
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <ChatAgenda open onClose={() => {}} payload={payload as never} />
+      </QueryClientProvider>,
+    )
+    expect(montarCardPropostaMock).toHaveBeenCalledTimes(1)
+
+    // Só `nivelAudio` muda — mesma proposta, mesmo payload, mesmo ocupado.
+    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.9 }))
+    rerender(
+      <QueryClientProvider client={qc}>
+        <ChatAgenda open onClose={() => {}} payload={payload as never} />
+      </QueryClientProvider>,
+    )
+
+    expect(montarCardPropostaMock).toHaveBeenCalledTimes(1) // não recalculou
   })
 })

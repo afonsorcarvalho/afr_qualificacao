@@ -206,7 +206,19 @@ export function useDitado(onTexto: (t: string) => void) {
     fecharAudioContext()
     setNivelAudio(0)
     if (tentativaAtual.current) tentativaAtual.current.descartado = true
-    recorder.current?.stop()
+    try {
+      recorder.current?.stop()
+    } catch {
+      // Mesmo hazard de `fecharRajadaAtual` (stream morto por fora vira
+      // `InvalidStateError` em `stop()`) — aqui não tem rajada pra
+      // "settle": esta é a rajada AINDA ativa que `pararEDescartar()`
+      // interrompe direto, sem passar por `fecharRajadaAtual`, então
+      // `infoFechamentoRef.current.contabilizada` continua `false` (ver
+      // comentário no tipo `fechamento` lá em cima) — não há
+      // `rajadasEmVoo`/`pendentes` pra ajustar. Só evita que a exceção
+      // corte a limpeza síncrona logo abaixo (soltar as tracks,
+      // `setGravando(false)`), que é o que de fato desliga o mic.
+    }
     recorder.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
@@ -286,6 +298,28 @@ export function useDitado(onTexto: (t: string) => void) {
       // lançar) pra garantir que o catch mais abaixo encontre e feche
       // este contexto mesmo que a configuração do analyser falhe.
       audioContextRef.current = audioCtx
+      // Safari/iOS constrói o AudioContext FORA do gesto de usuário
+      // original (já estamos depois do `await getUserMedia` acima) — ele
+      // nasce `suspended`. Um contexto suspenso devolve zeros em
+      // `getFloatTimeDomainData`, então o RMS fica travado em 0, nenhuma
+      // rajada nunca detecta voz, nada sobe no meio da sessão, e o medidor
+      // fica preso no piso — sem nenhum erro na tela, a feature só parece
+      // ter voltado ao comportamento de antes da Task 2.
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume()
+        if (controle.descartado) {
+          // Mesma janela do `controle.descartado` logo após o
+          // `getUserMedia` acima: a folha pode ter fechado (ou o hook
+          // desmontado) enquanto o `resume()` estava em voo.
+          // `pararEDescartar()` já deve ter rodado — ela encontra
+          // `iniciando.current` ainda `true` (só `iniciarNovaRajada`,
+          // mais abaixo, o zera) e já desliga stream/contexto sozinha;
+          // só falta esta função também limpar `iniciando` (ela não mexe
+          // nisso) e sair sem criar o MediaRecorder.
+          iniciando.current = false
+          return
+        }
+      }
       const source = audioCtx.createMediaStreamSource(stream)
       const analyser = audioCtx.createAnalyser()
       source.connect(analyser)
@@ -324,6 +358,16 @@ export function useDitado(onTexto: (t: string) => void) {
       // silêncio, sub-piso, ou falharam), avisa "Gravação muito curta" —
       // mas só se nenhum outro aviso já explicou o motivo.
       let textoEntregue = false
+      // Fato de SESSÃO, não de rajada: alguma rajada respondeu 200 mas sem
+      // texto nenhum (silêncio real captado, só ruído de fundo). Não
+      // dispara aviso NA HORA — por rajada, isso interrompe uma sessão que
+      // no fim das contas funciona (rajada 1 vazia, rajada 2 com a fala de
+      // verdade), e ainda rouba a vez do "Gravação muito curta" no fim de
+      // uma sessão que nunca produziu nada (`avisoFalhaMostrado` já
+      // travado por um toast que não era bem o motivo). Só decide a
+      // mensagem quando a sessão inteira termina, em
+      // `finalizarSessaoSeAcabou`.
+      let algumaTranscricaoVazia = false
       estadoRajadaRef.current = criarEstadoRajada(Date.now())
 
       const avisarFalhaUmaVez = (mensagem: string) => {
@@ -336,6 +380,20 @@ export function useDitado(onTexto: (t: string) => void) {
       // ou seja, avança enquanto a próxima posição esperada já tiver
       // resposta (mesmo que seja um `null`, que só é pulado).
       const entregarEmOrdem = () => {
+        // Guarda no PRÓPRIO ponto de dreno, não só antes de um
+        // `pendentes.set` isolado: QUALQUER rajada desta sessão pode ser a
+        // que chama `entregarEmOrdem()` no seu `finally` (a ordem de
+        // chegada das respostas não é a ordem das rajadas — ver comentário
+        // grande no topo do arquivo), então uma checagem antes de um único
+        // `set` não impede as OUTRAS rajadas de drenar o mapa depois que
+        // a sessão já foi descartada (✕, folha fechando, unmount). Sem
+        // isto, o texto ainda aparecia um segundo depois do descarte — e,
+        // pior, uma sessão NOVA já podia ter nascido por cima, herdando o
+        // texto da sessão velha no campo errado.
+        if (controle.descartado) {
+          pendentes.clear()
+          return
+        }
         while (pendentes.has(proximoNumeroParaEntregar)) {
           const texto = pendentes.get(proximoNumeroParaEntregar) ?? null
           pendentes.delete(proximoNumeroParaEntregar)
@@ -355,7 +413,11 @@ export function useDitado(onTexto: (t: string) => void) {
         if (!sessaoEncerrando || rajadasEmVoo > 0) return
         setTranscrevendo(false)
         if (!textoEntregue && !avisoFalhaMostrado) {
-          toast.error('Gravação muito curta, segure mais tempo')
+          // "Transcrição vazia" só se pelo menos uma rajada chegou a
+          // responder 200 sem texto — senão (nenhuma rajada nem chegou a
+          // subir: tudo ficou preso em silêncio/sub-piso) o motivo certo
+          // continua sendo "Gravação muito curta".
+          toast.error(algumaTranscricaoVazia ? 'Transcrição vazia' : 'Gravação muito curta, segure mais tempo')
         }
       }
 
@@ -422,7 +484,26 @@ export function useDitado(onTexto: (t: string) => void) {
             // (ver app/api/groq/transcribe/route.ts e MicButton.tsx, que já
             // consome essa rota na coleta) — não "file".
             form.append('audio', blob, `audio.${ext}`)
-            const res = await fetch('/api/groq/transcribe', { method: 'POST', body: form })
+            // Sem isto, um fetch que trava (rede instável em campo, proxy
+            // que nunca fecha a conexão) prende esta rajada PRA SEMPRE — e
+            // como a entrega é estritamente sequencial (`entregarEmOrdem`,
+            // ver comentário no topo do arquivo), toda rajada seguinte
+            // fica represada atrás dela, com `rajadasEmVoo` nunca voltando
+            // a zero e `transcrevendo` travado em `true`. 30s é generoso
+            // (bem acima do tempo normal de uma rajada curta) mas ainda
+            // finito.
+            const abortCtrl = new AbortController()
+            const timeoutId = setTimeout(() => abortCtrl.abort(), 30_000)
+            let res: Response
+            try {
+              res = await fetch('/api/groq/transcribe', {
+                method: 'POST',
+                body: form,
+                signal: abortCtrl.signal,
+              })
+            } finally {
+              clearTimeout(timeoutId)
+            }
             let json: { text?: string; error?: string } | null = null
             try {
               json = await res.json()
@@ -439,8 +520,11 @@ export function useDitado(onTexto: (t: string) => void) {
             if (typeof json?.text === 'string' && json.text.trim()) {
               pendentes.set(numero, json.text.trim())
             } else {
+              // Não avisa aqui (ver `algumaTranscricaoVazia` lá em cima) —
+              // por rajada, isso interrompia uma sessão que no fim das
+              // contas funciona.
               pendentes.set(numero, null)
-              avisarFalhaUmaVez('Transcrição vazia')
+              algumaTranscricaoVazia = true
             }
           } catch (e) {
             // Avisa (uma vez por sessão — ver `avisarFalhaUmaVez`), não
@@ -449,7 +533,13 @@ export function useDitado(onTexto: (t: string) => void) {
             // antes da Task 2, uma rajada falhando NÃO derruba a sessão —
             // as próximas continuam normalmente.
             if (numero !== null) pendentes.set(numero, null)
-            avisarFalhaUmaVez(`IA: ${mensagemDoErro(e, 'indisponível')}`)
+            // `mensagemDoErro` devolveria o texto em inglês do
+            // `DOMException` de abort ("The operation was aborted") — foge
+            // da convenção pt-BR do resto da UI, então o timeout (item 6)
+            // ganha mensagem própria.
+            const mensagem =
+              nomeDoErro(e) === 'AbortError' ? 'demorou demais, tente de novo' : mensagemDoErro(e, 'indisponível')
+            avisarFalhaUmaVez(`IA: ${mensagem}`)
           } finally {
             // Só mexe na contabilidade da sessão (`rajadasEmVoo`) se esta
             // rajada foi de fato CONTADA por `fecharRajadaAtual` — uma
@@ -503,22 +593,73 @@ export function useDitado(onTexto: (t: string) => void) {
           // praticamente toda sessão bem-sucedida.
           //
           // A rajada final AINDA tem uma saída, mas só quando faz falta de
-          // verdade: se a sessão inteira não produziu texto nenhum até
-          // aqui, a última chance é deixá-la subir mesmo sem leitura de voz
-          // — melhor arriscar uma transcrição ruim do que garantir "Gravação
+          // verdade: se NENHUMA rajada desta sessão foi enviada ainda, a
+          // última chance é deixá-la subir mesmo sem leitura de voz —
+          // melhor arriscar uma transcrição ruim do que garantir "Gravação
           // muito curta" numa sessão onde o gestor efetivamente falou, só
           // que a fala caiu inteira nesta rajada e a leitura de RMS ainda
           // não tinha pego (o mesmo caso raro do parágrafo acima, agora sem
           // custo pras sessões normais — só se aplica quando não sobrou
           // texto nenhum).
+          //
+          // `nadaEnviadoAinda` (não `!textoEntregue`): o carve-out original
+          // perguntava "o texto já foi ENTREGUE" — mas entrega depende da
+          // RESPOSTA da rede chegar, e numa conexão de campo lenta o
+          // gestor pode tocar ✓ antes de qualquer rajada ter respondido,
+          // mesmo já tendo enviado uma de verdade. Nesse caso o carve-out
+          // antigo liberava a rajada final silenciosa mesmo assim — a
+          // alucinação do Whisper chegava depois, em cima do texto real
+          // que só ainda não tinha voltado. `proximoNumeroParaEnviar` no
+          // valor inicial (1) é o fato que não depende de timing: "esta
+          // sessão nunca chegou a enviar rajada nenhuma".
+          const nadaEnviadoAinda = proximoNumeroParaEnviar === 1
           fechamento.numero =
-            (ultima ? houveVoz || !textoEntregue : houveVoz) ? proximoNumeroParaEnviar++ : null
+            (ultima ? houveVoz || nadaEnviadoAinda : houveVoz) ? proximoNumeroParaEnviar++ : null
           fechamento.contabilizada = true
           rajadasEmVoo += 1
         }
         if (ultima) sessaoEncerrando = true
-        recorder.current?.stop()
+        try {
+          recorder.current?.stop()
+        } catch {
+          // `stop()` pressupõe um gravador `recording`/`paused` — se o
+          // stream morreu sozinho por fora (chamada entrando, Bluetooth
+          // caindo, iOS pausando o app em segundo plano), o gravador já
+          // está `inactive` e `stop()` lança `InvalidStateError`. Sem este
+          // catch, a exceção escapava (do clique em ✓, ou do próprio
+          // detector de silêncio dentro do `setInterval`), NENHUM `onstop`
+          // chega pra fechar esta rajada, e a sessão trava pra sempre:
+          // `transcrevendo` nunca volta a `false`, o mic fica morto até
+          // recarregar a página. `onstop` nunca vai rodar pra esta
+          // rajada — este catch faz na mão o que o `finally` dele faria
+          // (mesmo formato do catch de rede do `onstop`, mais abaixo):
+          // fecha a rajada como falha e segue a contabilidade da sessão
+          // adiante, sem engolir o problema em silêncio.
+          if (fechamento) {
+            if (fechamento.numero !== null) pendentes.set(fechamento.numero, null)
+            try {
+              entregarEmOrdem()
+            } finally {
+              rajadasEmVoo -= 1
+              finalizarSessaoSeAcabou()
+            }
+          }
+          // `onstop` também é quem soltaria as tracks quando esta é a
+          // ÚLTIMA rajada da sessão (ver dentro de `iniciarNovaRajada`) —
+          // como ele nunca vai rodar aqui, este é o único lugar que ainda
+          // pode soltá-las. Sem isto, o mic continuaria "ligado" (track
+          // viva) apesar da sessão já ter travado.
+          if (ultima) {
+            stream.getTracks().forEach((t) => t.stop())
+            if (streamRef.current === stream) streamRef.current = null
+          }
+        }
         recorder.current = null
+        // Fora do try/catch de propósito: se o stream já morreu, um NOVO
+        // `MediaRecorder` sobre ele também lança — e é exatamente esse
+        // throw que o `catch` do `setInterval` (mais abaixo) já existe pra
+        // pegar, encerrando a sessão pelo caminho de descarte. Engolir a
+        // exceção aqui apagaria essa recuperação.
         if (!ultima) iniciarNovaRajada()
       }
 
