@@ -29,9 +29,11 @@ backups/
 # privado — publicá-los aqui seria vazamento de código, não só de segredo.
 addons/
 
-# Infra local do servidor
-nginx/
-scripts/
+# Infra local do servidor. Âncora inicial OBRIGATÓRIA: sem a barra da frente,
+# `scripts/` casa em QUALQUER nível e engoliu `pwa/scripts/validacao-chat/`
+# (o harness de validação do chat) em silêncio, até 2026-09-22.
+/nginx/
+/scripts/
 
 # Anotações de trabalho com dado de cliente. Estava untracked e não-ignorado
 # no clone de desenvolvimento em 2026-09-22 — mesmo risco dos itens acima,
