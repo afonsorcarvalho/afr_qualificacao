@@ -2,6 +2,271 @@
 
 ## Pendente
 
+### ~~`/api/chat` fora do proxy do Apache~~ — RESOLVIDO (2026-09-22)
+
+Aplicado pelo user no `fitadigital` com `deploy/sync-rotas-apache.sh --apply`.
+Backup em `012-labquali-le-ssl.conf.bak-20260922_182307`, `configtest`
+aprovado, `reload` (não restart — o Apache é multi-inquilino).
+
+Verificado pelo domínio, não só no loopback:
+
+```
+GET  /api/chat/status  → {"enabled":true}
+POST /api/chat         → 401 {"error":"Sessão expirada"}
+```
+
+O 401 é o que prova o conserto: é a NOSSA rota respondendo com o guard de
+sessão. Antes vinha a página 404 do site Odoo, porque o `ProxyPass /` do Odoo
+pegava tudo que não tivesse regra própria antes dele.
+
+**O débito de fundo foi pago junto.** `deploy/sync-rotas-apache.sh` passou a
+carregar a lista de rotas do PWA como fonte da verdade, comparar com o vhost e
+inserir o que faltar — dry-run por padrão (sem sudo, só lê), backup +
+`configtest` + rollback automático no `--apply`, e conferência final rota a
+rota pelo domínio detectando o sintoma real (a página 404 do Odoo no corpo, não
+o código HTTP). **Rota nova do PWA agora é uma linha na lista do script**, em
+vez de uma edição manual do Apache que ninguém lembra de fazer — esquecimento
+que já mordeu duas vezes (`/api/groq` em 2026-09-05, `/api/chat` hoje).
+
+A config do Apache em si continua não-versionada; o script cobre o caso de uso
+que importa, mas um `012-labquali-le-ssl.conf` de referência no repo ainda
+seria melhor.
+
+### ~~"Semana que vem" no chat desliza um dia~~ — RESOLVIDO (2026-09-21)
+
+Corrigido nos commits `8d3694d` (helper) e `97856ae` (prompt).
+
+**O diagnóstico original estava errado em duas coisas**, e as duas importam pra
+quem for mexer nisso de novo:
+
+1. **Não era "desliza um dia", era sorteio.** Cinco execuções da mesma pergunta
+   ("como tá a agenda da semana que vem?"), mesmo prompt, mesmo modelo:
+
+   | `SERVER_TODAY` | janela pedida | veredito |
+   |---|---|---|
+   | 2026-09-21 | `2026-09-28` → `2026-10-04` | ✅ segunda a domingo |
+   | 2026-09-21 | `2026-09-22` → `2026-09-28` | ❌ terça a segunda |
+   | 2026-09-21 | `2026-09-27` → `2026-10-03` | ❌ domingo a sábado |
+   | 2026-09-14 | `2026-09-21` → `2026-09-27` | ✅ segunda a domingo |
+   | 2026-09-14 | `2026-09-21` → `2026-09-27` | ✅ segunda a domingo |
+
+   Três janelas diferentes para a mesma pergunta na mesma data. Não era uma
+   convenção errada e estável — era ausência de convenção, com o modelo
+   improvisando sete dias a cada chamada. A observação original pegou um dos
+   sorteios e o descreveu como regra.
+
+2. **A convenção segunda-a-domingo não existia no código.** O relato citava o
+   cabeçalho da tela ("seg., 21 de set. – dom., 04 de out.") como prova de que
+   o app trabalha assim. Não trabalha: `pwa_agenda_fetch`
+   (`addons/afr_qualificacao_agendamento/models/os_visita.py:620`) devolve
+   `today` a `today + _PWA_WINDOW_DAYS - 1` — catorze dias corridos a partir de
+   hoje, sem alinhamento a dia da semana. O cabeçalho saiu assim porque o dia
+   da observação era uma segunda-feira. Não havia convenção a citar; havia uma
+   a escolher.
+
+**O que foi feito.** Segunda-a-domingo virou decisão de produto registrada
+(costume brasileiro e ISO-8601), e mora num só lugar: `lib/chat/semana.ts`,
+helper puro sobre data ISO, aritmética via `Date.UTC` como manda
+`janela.ts`. O `buildSystemPrompt` deriva dali três intervalos e os entrega
+**já calculados** no system prompt — esta semana, a que vem, a passada — com a
+ordem de usá-los literalmente. O modelo deixou de fazer aritmética de
+calendário, que era exatamente onde ele sorteava. `PromptContext` não ganhou
+campo novo de propósito: três chamadores calculando a própria semana é o mesmo
+bug com mais lugares para divergir.
+
+**Gate de regressão — fixture `F04b`, cinco execuções, todas verdes:**
+
+```bash
+agent-browser cookies get > "$SCRATCH/cookies.txt"   # navegador já logado no PWA
+for i in 1 2 3 4 5; do
+  COOKIE_FILE="$SCRATCH/cookies.txt" SERVER_TODAY=2026-09-21 \
+    JANELA_FROM=2026-09-21 JANELA_TO=2026-09-27 FIXTURE_FILTER=F04b \
+    RELATORIO="$SCRATCH/gate-$i.md" \
+    npx vitest run --config vitest.live.config.ts 2>&1 | grep ^F04b
+done
+grep -h "data derivada" "$SCRATCH"/gate-*.md    # as cinco precisam dar ✅
+```
+
+```
+F04b semana-relativa → text | buscar_agenda | 21.2s | datas [2026-09-28, 2026-10-04]
+F04b semana-relativa → text | buscar_agenda |  5.2s | datas [2026-09-28, 2026-10-04]
+F04b semana-relativa → text | buscar_agenda |  4.8s | datas [2026-09-28, 2026-10-04]
+F04b semana-relativa → text | buscar_agenda |  3.4s | datas [2026-09-28, 2026-10-04]
+F04b semana-relativa → text | buscar_agenda |  4.2s | datas [2026-09-28, 2026-10-04]
+
+- ✅ **data derivada do server_today** — vistas [2026-09-28, 2026-10-04]   (×5)
+```
+
+Cinco, e não uma, porque com o defeito intacto uma execução tinha ~1/3 de
+chance de passar.
+
+**Por que `F04b` e não `F04`.** A `F04` é pontuada contra a data PADRÃO do
+harness (`2026-09-14`). Rodá-la com `SERVER_TODAY=2026-09-21` fazia o placar
+marcar ❌ justamente na resposta CERTA — as datas boas caíam na lista de
+"dedução pelo relógio real", porque as expectativas dela estão fixadas na outra
+data. A primeira versão deste gate lia só o stdout e não viu isso. A `F04b` é
+a mesma pergunta com as expectativas fixadas em `2026-09-21`, e suas
+`datasDeDeducao` são as duas janelas erradas que foram REALMENTE observadas
+(`2026-09-22`–`28` e `2026-09-27`–`10-03`), não hipóteses. Confira sempre o
+`grep` do placar, não só o stdout: é o placar que é o gate.
+
+### O bloco "VISITAS NA JANELA ABERTA NA TELA" não diz que janela é (2026-09-21)
+
+Achado na validação empírica (fixture F07, `docs/VALIDACAO-CHAT.md`). A
+pergunta "tem alguma visita do Paulo essa semana?" foi respondida **sem chamar
+ferramenta nenhuma**, direto do bloco de contexto que `buildSystemPrompt`
+injeta. A resposta estava certa — por coincidência, porque a janela aberta na
+tela era mesmo a semana corrente.
+
+**O risco.** O bloco lista as visitas mas nunca diz a que intervalo de datas
+ele corresponde (`prompt.ts`, seção `VISITAS NA JANELA ABERTA NA TELA`). Se o
+gestor tiver rolado a agenda para outro mês e perguntar "essa semana", o
+modelo responde com confiança sobre a janela errada, sem nenhum sinal de que
+respondeu pelo contexto em vez de consultar.
+
+**Onde corrigir:** `pwa/lib/chat/prompt.ts`. Duas mudanças pequenas no mesmo
+lugar: nomear as datas da janela no cabeçalho do bloco
+(`VISITAS NA JANELA ABERTA NA TELA (2026-09-14 a 2026-09-20)`) e dizer
+explicitamente que qualquer pergunta sobre data fora dela exige
+`buscar_agenda`. `PromptContext` já teria que carregar `janelaFrom`/`janelaTo`
+— quem chama já tem os dois, são os argumentos do `fetchAgenda` da tela.
+
+O mesmo padrão aparece em `TÉCNICOS CONHECIDOS` (fixture F02: "quais técnicos
+a gente tem?" respondido sem `listar_tecnicos`), mas **ali é inofensivo** — a
+lista injetada é a lista completa, não um recorte. Não mexer.
+
+**Como testar depois:** rodar `FIXTURE_FILTER=F07` com a janela deslocada
+(`JANELA_FROM=2026-08-01 JANELA_TO=2026-08-07`) e conferir que o modelo chama
+`buscar_agenda` em vez de responder pelo contexto.
+
+### Erro "Failed to connect to MetaMask" no Odoo (2026-09-21)
+
+Reportado pelo user: diálogo "Erro de Cliente Odoo" com
+`UncaughtPromiseError > Failed to connect to MetaMask`.
+
+**Não é bug do Odoo nem do nosso código.** O traço aponta para
+`chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn/scripts/inpage.js` —
+esse id é a extensão **MetaMask**, que injeta script em toda página aberta.
+A conexão com a carteira falha, sobra uma promessa não capturada, e o
+handler global de erro do Odoo exibe o diálogo porque captura qualquer
+rejeição não tratada da página, venha de onde vier.
+
+**O que fazer:** desabilitar o MetaMask para `localhost` (ou usar um perfil
+de navegador sem ele para trabalhar no Odoo). Nada a corrigir no código.
+
+**Como confirmar em 10 segundos**, se voltar: abrir a mesma tela numa janela
+anônima sem extensões. Se o erro não aparecer, era extensão.
+
+Registrado porque vai reaparecer e alguém pode perder tempo procurando no
+lugar errado.
+
+### ~~Seletor de OS da "Nova visita" mostra OS que não aceitam visita~~ — RESOLVIDO ANTES DE SER ESCRITO (2026-09-21)
+
+**Este item nasceu velho.** Foi escrito depois do conserto já ter entrado, no
+mesmo dia — o commit `be674e1` criou `pwa_os_options` justamente para isso, e
+a docstring dele cita este TODO. Conferido no ar em 2026-09-21, contra o
+`qualificacao-dev`: `pwa_os_options` devolve 13 OS, `Counter({draft: 8,
+scheduled: 5})`, e a OS26-06-0002 (`in_progress`) não aparece. A fixture F03
+da validação empírica (`docs/VALIDACAO-CHAT.md`) mostra o chat listando a
+mesma coisa.
+
+O desenho que ficou é o que o próprio item recomendava como plano B, e não o
+plano A:
+
+- `board_os_options` **não foi estreitado** — continua devolvendo toda OS
+  ativa para o board OWL do backend, que a usa para consulta da equipe.
+- `pwa_os_options` é um método **novo**, já filtrado a `_OS_UNLOCKED_STATES`,
+  e serve os dois consumidores do PWA: a folha manual "Nova visita" (via
+  `listOsOptions`, que remonta o rótulo "OS - cliente" para não mudar o que
+  aparece na tela) e a ferramenta `listar_os` do chat.
+- A descrição de `listar_os` em `lib/chat/toolDefs.ts` **já foi simplificada**:
+  hoje diz "ordens de serviço de qualificação que aceitam visita nova
+  (rascunho ou agendada)", sem o antigo aviso de que nem toda OS listada
+  serviria.
+
+**Uma ponta solta, de propósito, no backend.** `board_create_visita` chama
+`create()` direto, e o guarda de estado do modelo está em `write`/`unlink` —
+**não em `create`**. Só `pwa_visita_create` valida o estado na criação. Ou
+seja: pelo board OWL do backend ainda dá para criar visita numa OS em
+execução, sem erro. Não é regressão (sempre foi assim) e não afeta o PWA;
+fica registrado porque a próxima pessoa que ler `_OS_UNLOCKED_STATES` vai
+supor que ele cobre a criação, e não cobre.
+
+### Chat de agendamento — limpeza pós-entrega (2026-09-21)
+
+- **Apagar o workspace de scratch do SDD** quando não for mais útil:
+  `.superpowers/sdd/2026-09-20-chat-agendamento/` no monorepo e o de mesmo nome
+  dentro de `addons/afr_qualificacao/`. Guardam os relatórios por task com os
+  traços de mutation testing — única cópia dessa evidência, já que não está em
+  git. O processo do SDD manda apagar ao fechar a branch; ficou guardado a
+  pedido. São git-ignored, então não sujam commit; só ocupam espaço.
+- ~~**Validação empírica do modelo ainda não rodou.**~~ **Rodou em 2026-09-21.**
+  Harness versionado em `scripts/validacao-chat/` (fixtures com expectativa
+  pré-registrada + runner), relatório gerado em `docs/VALIDACAO-CHAT.md`.
+  Roda fora da suíte de propósito — `npm test` não pode gastar cota sem querer:
+
+  ```bash
+  agent-browser cookies get > /tmp/cookies.txt      # navegador já logado no PWA
+  COOKIE_FILE=/tmp/cookies.txt npx vitest run --config vitest.live.config.ts
+  ```
+
+  O único substituto no caminho é o TRANSPORTE do `odooClient` (axios com
+  baseURL relativa não roda fora do navegador), trocado por fetch com o cookie
+  de sessão; modelo, prompt, travas de `machine.ts`, dispatch de `tools.ts` e
+  RPCs do Odoo são os de verdade. `SERVER_TODAY` é injetado **diferente do hoje
+  real da máquina** — sem isso o critério "derivou do servidor, não deduziu do
+  relógio" não discrimina nada.
+
+  **Resultado: 8 de 10 fixtures limpas** com `google/gemma-4-31b-it`.
+  Mediana 2,3 s por mensagem, pior caso 14,9 s (o único turno que encadeou
+  quatro ferramentas), US$ 0,0395 nas dez. Nenhum id alucinado em nenhuma
+  fixture — a trava de `machine.ts` não precisou disparar uma vez sequer, e os
+  ids conferidos à mão batem (`tecnico_id: 4` = Bruno Neves, `equipment_ids:
+  [4823]` = o único equipamento da OS pedida). O caminho completo de escrita
+  (`listar_os` → `listar_tecnicos` → `listar_instrumentos` → `criar_visita`)
+  saiu correto de primeira. **A preocupação que motivou a spec — parser de tool
+  call da stack de serving do Gemma 4 — não se materializou:** 18 chamadas ao
+  modelo, zero JSON malformado.
+
+  As duas falhas estão registradas como itens próprios abaixo.
+- ~~**Dois minors parqueados**~~ **Fechados em 2026-09-21** (commit `54f5496`),
+  e um dos dois estava mal diagnosticado:
+  - **`instrument_ids`/`equipment_ids` com erro de formato mandavam reconsultar
+    à toa.** Era real. `machine.ts` agora distingue os dois casos como o ramo
+    escalar já distinguia: formato inválido (`"abc"`, `1.5`) só descreve o
+    erro; id que nunca apareceu continua mandando chamar a ferramenta — ali
+    reconsultar é o conserto certo.
+  - **Botão Cancelar sem `disabled={ocupado}`: o race descrito NÃO EXISTE.** O
+    registro dizia que um duplo clique em <16 ms duplicaria a resposta `tool` e
+    travaria a conversa. Verificado contra `lib/hooks/useChatAgenda.ts:161-202`,
+    por duas leituras independentes: `proposta !== null && ocupado === true`
+    nunca acontece pelo hook real — `confirmar()` liga `ocupado` e zera
+    `proposta` no MESMO lote do React, então o card inteiro desmonta antes de
+    um segundo clique poder chegar; `enviar()` descarta a proposta antes de
+    ligar `ocupado`; e `cancelar()` não toca em `ocupado`. O teste de duplo
+    clique que o plano pedia passa com e sem a correção — não discrimina nada.
+    O `disabled={ocupado}` entrou assim mesmo, como simetria com o Confirmar, e
+    `ChatAgenda.cardOcupado.test.tsx` testa a declaração JSX documentando no
+    cabeçalho que é só isso que ele prova. **Se este race reaparecer no relato
+    de alguém, o caminho não é o que estava escrito aqui** — comece por
+    descobrir que código consegue produzir proposta pendente com `ocupado`
+    verdadeiro, porque hoje nenhum consegue.
+- **Dois minors novos, da validação empírica** (`docs/VALIDACAO-CHAT.md`):
+  - Fixture F09 ("cancela a visita 999"): o modelo recusou certo, mas escreveu
+    *"não encontrei nenhuma visita com o id 999"* — id interno na prosa pro
+    gestor, contra a regra IDENTIFICAÇÃO NA PROSA do prompt. Gravidade baixa:
+    aqui quem trouxe o id foi o próprio gestor. Vale só se a regra for
+    endurecida ("nem para repetir um id que o gestor citou").
+  - **Uma volta inteira falhou com "Falha na conexão com a IA" e a repetição
+    imediata passou.** Os dois modelos da cadeia devolveram erro de transporte
+    (502) no mesmo instante; nenhum traço, nenhum token gasto. Nada a corrigir
+    no código — a cadeia de fallback fez o que devia —, mas fica registrado
+    porque em campo isso aparece como "a IA está quebrada" e não está.
+- **Registro do `devserver` aponta porta errada** para este app: consta 3012, o
+  processo escuta 3010. Corrigir com `devserver stop` + `start --port 3010`, ou
+  `devserver adopt --port 3010 --dir <este dir>`.
+
+
 ### Publicação em produção (labquali) — levantado em 2026-09-05
 
 > **2026-09-07: o tema claro foi para produção.** 35 commits (`a9abbc1` → `a48d216`),
@@ -53,8 +318,12 @@
   O container é `afr_qualificacao_pwa` (compose em `/home/labquali/pwa`, serviço `pwa`,
   bind `127.0.0.1:3010`, healthcheck próprio). O `.env` de lá já tem `ODOO_ALLOWED_ORIGINS`.
 
-- **`GROQ_API_KEY` vazada, rotação adiada por decisão de 2026-09-05.** Subir sem chave é
-  degradação limpa e documentada (IA desligada, resto normal). Não subir com a chave antiga.
+- ~~`GROQ_API_KEY` vazada, rotação adiada por decisão de 2026-09-05.~~ **RESOLVIDO
+  (2026-09-22).** A migração Groq→OpenRouter (task 3) apagou a variável do projeto
+  inteiro — `lib/groq/client.ts`, `docker-compose.yml`, `README.md` e os
+  `.env*.example`. Sem `GROQ_API_KEY` em lugar nenhum do código, não há mais nada
+  para rotacionar: o débito está fechado por remoção, não por rotação. As
+  features de IA agora rodam em `OPENROUTER_API_KEY`.
 
 
 ### Design system (novo em 2026-09-03)
@@ -345,11 +614,12 @@
   tablet/celular), D 8/8, F 3/3 com a ressalva de leitura acima. Contas de teste criadas no
   `qualificacao-dev`: `tecnico.a@teste.local`, `tecnico.b@teste.local`, `gestor@teste.local`
   (senha `Teste@2026`). **Falta**: Bloco E (E.2/E.3/E.4 dependem de Chrome real) e Bloco G
-  (precisa de `GROQ_API_KEY` reposta + microfone).
-- **Bloco G (IA/Groq, G1–G9) — adiado por decisão de 2026-09-03.** Dois bloqueios: (1) não existe
-  `pwa/.env.local` e a `GROQ_API_KEY` antiga vazou numa sessão, precisa ser rotacionada antes de
-  qualquer teste; (2) G4, G5, G6 e G9 dependem de microfone real — browser headless não tem, então
-  isso só roda em máquina com mic. Retomar quando a chave for reposta.
+  (precisa de microfone).
+- **Bloco G (IA, G1–G9) — adiado por decisão de 2026-09-03; bloqueio da chave superado em
+  2026-09-22.** Provedor de IA migrou de Groq para OpenRouter (task 3 da migração
+  Groq→OpenRouter); `pwa/.env.local` já tem `OPENROUTER_API_KEY` configurada. Bloqueio
+  restante: G4, G5, G6 e G9 dependem de microfone real — browser headless não tem, então
+  isso só roda em máquina com mic.
 - ~~`/manifest.json` respondia 307 sem sessão.~~ **Corrigido em 2026-09-03**: o bypass de estáticos
   do `middleware.ts` não cobria `.json`/`.webmanifest`. Rotas do app seguem protegidas.
 - **Deep link para uma coleta perde o destino no login.** Abrir

@@ -12,7 +12,8 @@ contrato RPC (`action_start_daily_relatorio`, `action_done`,
 
 ```bash
 npm ci
-cp .env.example .env.local     # preencher GROQ_API_KEY
+cp .env.example .env.local     # config básica (Odoo)
+# opcional: IA (auto-resumo/ditado/revisão) e chat de agendamento — ver .env.local.example
 npm run dev                    # http://localhost:3010
 ```
 
@@ -53,19 +54,20 @@ HTTPS não há instalação no aparelho nem uso offline — e uma página HTTPS
 não pode chamar uma API HTTP (conteúdo misto). Ver
 `deploy/setup-pwa-proxy.sh`.
 
-Sem `GROQ_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
+Sem `OPENROUTER_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
 sobe o container com a variável vazia: as features de IA (auto-resumo,
 ditado, revisão pré-fechamento) ficam desligadas (`/api/groq/status` →
-`enabled:false`) e o resto do app funciona normal.
+`enabled:false`) e o chat de agendamento da tela de agenda também
+(`/api/chat/status` → `enabled:false`, drawer não aparece) — o resto do app
+funciona normal.
 
-`OPENROUTER_API_KEY` segue o mesmo contrato, para o chat de agendamento da
-tela de agenda: ausente, `/api/chat/status` devolve `enabled:false`, o
-drawer não aparece e nada mais muda. `OPENROUTER_MODELS` é a cadeia de
-fallback separada por vírgula; vazia, vale o default do código. **As duas
-precisam estar declaradas no `environment:` do compose** — pô-las só no
-`.env` não basta, porque o `.env` alimenta a substituição de variáveis do
-compose, não o ambiente do container. Foi exatamente assim que o chat subiu
-desligado no labquali em 2026-09-22, com a chave presente no `.env`.
+`OPENROUTER_MODELS` é a cadeia de fallback separada por vírgula; vazia, vale
+o default do código. `OPENROUTER_STT_MODEL` escolhe o modelo de transcrição
+do ditado; vazia, também vale o default do código. **As três precisam estar
+declaradas no `environment:` do compose** — pô-las só no `.env` não basta,
+porque o `.env` alimenta a substituição de variáveis do compose, não o
+ambiente do container. Foi exatamente assim que o chat subiu desligado no
+labquali em 2026-09-22, com a chave presente no `.env`.
 
 ## Versionamento
 

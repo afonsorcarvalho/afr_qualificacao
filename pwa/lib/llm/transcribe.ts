@@ -2,8 +2,7 @@
 // Cliente de transcrição do OpenRouter. Ao contrário do endpoint de chat
 // (que segue o wire OpenAI-compatível em `lib/llm/client.ts`), o endpoint
 // de transcrição do OpenRouter é JSON com áudio em base64, não multipart
-// — divergente do Groq (`lib/groq/client.ts`, `groqTranscribe`), que espera
-// `FormData`. Mandar multipart aqui é o jeito de falhar em silêncio com 400.
+// — quem manda `FormData` aqui falha em silêncio com 400.
 // Reaproveita `LlmError`/`readError` de `./client`: não é uma hierarquia de
 // erro nova.
 import { LlmError, readError } from './client'

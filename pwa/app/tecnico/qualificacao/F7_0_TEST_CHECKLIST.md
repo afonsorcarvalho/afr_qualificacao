@@ -131,14 +131,15 @@ F.1/F.2 marcam isso explicitamente.
 - [ ] Tudo OK → confirmar pra merge F7.0 (backend + frontend) no main
 - [ ] Falha → bloco/passo + screenshot + log
 
-## Bloco G — IA (Groq)
+## Bloco G — IA (OpenRouter)
 
-**Não executado em 2026-09-03 — bloqueado.** Falta `pwa/.env.local` com
-`GROQ_API_KEY` (a chave antiga vazou numa sessão e precisa ser rotacionada), e
-G4–G6/G9 dependem de microfone real, que o browser headless não tem. Rodar
-manualmente em máquina com mic depois de repor a chave.
+**Não executado em 2026-09-03 — bloqueado.** Bloqueio original (`pwa/.env.local`
+sem chave, chave antiga vazada) superado em 2026-09-22: o provedor migrou de
+Groq para OpenRouter e `.env.local` já tem `OPENROUTER_API_KEY` configurada.
+Bloqueio restante: G4–G6/G9 dependem de microfone real, que o browser headless
+não tem. Rodar manualmente em máquina com mic.
 
-Pré-requisitos: `.env.local` com `GROQ_API_KEY=gsk_...` válida, dev server em `localhost:3010`, OS de teste com ao menos 1 relatório aberto e itens coletados.
+Pré-requisitos: `.env.local` com `OPENROUTER_API_KEY=` válida, dev server em `localhost:3010`, OS de teste com ao menos 1 relatório aberto e itens coletados.
 
 - [ ] **G1** — Auto-resumo OS pequena: abrir Finalizar em OS com 1 equipamento + ≥2 coletas. Textarea começa vazio → mostra "Gerando resumo automático..." → preenche em <5s com parágrafo iniciando pelo nome do equipamento.
 - [ ] **G2** — Auto-resumo OS multi-equipamento: abrir Finalizar em OS com ≥3 equipamentos. Resultado tem 1 parágrafo por equipamento, separados por linha em branco.
@@ -147,7 +148,7 @@ Pré-requisitos: `.env.local` com `GROQ_API_KEY=gsk_...` válida, dev server em 
 - [ ] **G5** — Ditado longo (~30s) em Finalizar: pressionar mic, falar por ~30 segundos descrevendo o turno, soltar. Texto transcrito é adicionado à descricao.
 - [ ] **G6** — Auto-stop em 60s: pressionar mic e manter pressionado sem falar por 65s. Gravação para automaticamente em 60s e tenta enviar (vazio ou ruído → toast "muito curto" ou transcrição vazia).
 - [ ] **G7** — Offline: DevTools → Network → Offline. MicButton fica oculto/desabilitado; SummaryButton em Finalizar mostra toast "IA offline".
-- [ ] **G8** — Sem `GROQ_API_KEY`: parar dev server, esvaziar `GROQ_API_KEY=` no `.env.local`, reiniciar. MicButton e SummaryButton não aparecem em nenhuma tela.
+- [ ] **G8** — Sem `OPENROUTER_API_KEY`: parar dev server, esvaziar `OPENROUTER_API_KEY=` no `.env.local`, reiniciar. MicButton e SummaryButton não aparecem em nenhuma tela.
 - [ ] **G9** — Permissão mic negada: nas configurações do navegador para `localhost:3010`, bloquear microfone. Pressionar mic uma vez → toast "Permita microfone..." → botão desaparece até reload.
 
 ## Bloco H — Revalidação pós-adequação backend (v16.0.6.4.0)
