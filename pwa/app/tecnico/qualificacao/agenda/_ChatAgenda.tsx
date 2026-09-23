@@ -4,6 +4,7 @@ import { Send, Mic } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
 import { useDitado } from '@/lib/hooks/useDitado'
+import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
 import { montarCardProposta } from '@/lib/chat/card'
 import { DetalhesTraco, formatarNumero, formatarCusto } from './_DetalhesTraco'
@@ -21,6 +22,7 @@ export function ChatAgenda({
   const [texto, setTexto] = useState('')
   const { bolhas, proposta, ocupado, enviar, confirmar, cancelar, totais } =
     useChatAgenda(payload)
+  const { enabled: ditadoHabilitado } = useGroqStatus()
   const ditado = useDitado((t) => setTexto((antes) => (antes ? `${antes} ${t}` : t)))
 
   // `ChatAgenda` nunca desmonta quando a folha fecha — é o `BottomSheet`
@@ -149,17 +151,23 @@ export function ChatAgenda({
           onChange={(e) => setTexto(e.target.value)}
           disabled={ocupado}
         />
-        <button
-          type="button"
-          aria-label={ditado.gravando ? 'Parar gravação' : 'Ditar'}
-          onClick={ditado.alternar}
-          disabled={ocupado || ditado.transcrevendo}
-          className={`min-h-[44px] min-w-[44px] rounded-md border border-border ${
-            ditado.gravando ? 'bg-destructive text-destructive-foreground' : ''
-          }`}
-        >
-          <Mic className="mx-auto h-4 w-4" />
-        </button>
+        {/* Esconde, não desabilita: um botão desabilitado sem explicação é
+            tão mudo quanto o defeito relatado ("cliquei no mic e não
+            aconteceu nada") — mesmo critério do `MicButton.tsx` (coleta),
+            que faz `return null` quando a IA está desligada. */}
+        {ditadoHabilitado && (
+          <button
+            type="button"
+            aria-label={ditado.gravando ? 'Parar gravação' : 'Ditar'}
+            onClick={ditado.alternar}
+            disabled={ocupado || ditado.transcrevendo}
+            className={`min-h-[44px] min-w-[44px] rounded-md border border-border ${
+              ditado.gravando ? 'bg-destructive text-destructive-foreground' : ''
+            }`}
+          >
+            <Mic className="mx-auto h-4 w-4" />
+          </button>
+        )}
         <button
           type="submit"
           aria-label="Enviar"

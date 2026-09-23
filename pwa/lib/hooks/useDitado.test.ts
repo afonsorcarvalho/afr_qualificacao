@@ -3,6 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useDitado } from './useDitado'
 
+// `toast` (default export) é usado tanto como função (`toast(msg)`, aviso
+// neutro do auto-stop) quanto com `.error` (falha de transcrição) — o dublê
+// precisa ser as duas coisas ao mesmo tempo, não só um objeto com `.error`.
+const { toastMock } = vi.hoisted(() => ({
+  toastMock: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }),
+}))
+vi.mock('react-hot-toast', () => ({ default: toastMock }))
+
 class FakeRecorder {
   static ultima: FakeRecorder | null = null
   // A cascata de mimeType em useDitado.ts chama isTypeSupported antes de
@@ -47,6 +55,8 @@ beforeEach(() => {
   vi.restoreAllMocks()
   FakeRecorder.ultima = null
   FakeRecorderAtrasado.instancias = []
+  toastMock.mockClear()
+  toastMock.error.mockClear()
   ;(globalThis as any).MediaRecorder = FakeRecorder
   ;(globalThis as any).navigator.mediaDevices = {
     getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
@@ -69,7 +79,7 @@ describe('useDitado', () => {
     expect(result.current.gravando).toBe(false)
   })
 
-  it('falha de transcrição não deixa o hook travado em gravando', async () => {
+  it('falha de transcrição (503) não deixa o hook travado em gravando, não chama onTexto, e AVISA o gestor', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: 'IA não configurada' }), { status: 503 }),
     ) as unknown as typeof fetch
@@ -81,6 +91,34 @@ describe('useDitado', () => {
     await waitFor(() => expect(result.current.transcrevendo).toBe(false))
     expect(result.current.gravando).toBe(false)
     expect(onTexto).not.toHaveBeenCalled()
+    // Requisito B: um 503 não pode mais sumir em silêncio — o toast usa o
+    // `{error}` do corpo da resposta, mesmo formato do MicButton.tsx.
+    expect(toastMock.error).toHaveBeenCalledWith('IA: IA não configurada')
+  })
+
+  it('falha de rede (fetch lança) também avisa o gestor — o catch não é mais "silencioso de propósito"', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Failed to fetch')) as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    await act(async () => { await result.current.alternar() })
+    await act(async () => { await result.current.alternar() })
+    await waitFor(() => expect(result.current.transcrevendo).toBe(false))
+    expect(onTexto).not.toHaveBeenCalled()
+    expect(toastMock.error).toHaveBeenCalledWith('IA: Failed to fetch')
+  })
+
+  it('sucesso não dispara nenhum toast de erro — a regressão que importa é o caminho feliz virar barulhento', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    await act(async () => { await result.current.alternar() })
+    await act(async () => { await result.current.alternar() })
+    await waitFor(() => expect(onTexto).toHaveBeenCalledWith('remarca a visita do João'))
+    expect(toastMock.error).not.toHaveBeenCalled()
   })
 
   it('permissão de microfone negada não quebra', async () => {
@@ -504,5 +542,72 @@ describe('useDitado', () => {
     await act(async () => { await mr.onstop?.() }) // sem dados — blob vazio
     expect(result.current.transcrevendo).toBe(false)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // Requisito C: diferente do MicButton (segurar-para-falar, com cronômetro
+  // visível na tela), o mic do chat é clicar-pra-alternar e não mostra
+  // duração nenhuma — sem um limite, o gestor pode deixar gravando por
+  // minutos. A OpenRouter documenta ~60s de timeout por requisição nos
+  // provedores upstream: uma gravação mais longa que isso vira, cedo ou
+  // tarde, um pedido recusado por tempo. `MicButton.tsx` já usa o mesmo
+  // `MAX_DURATION_MS` pro mesmo motivo.
+  it('gravação sem soltar o mic pára sozinha aos 60s, avisa o gestor, e ainda transcreve o que foi gravado', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'fala de mais de 60 segundos' }), { status: 200 }),
+      ) as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      expect(result.current.gravando).toBe(true)
+
+      // Só 59.9s: ainda não pode ter parado sozinho.
+      await act(async () => { await vi.advanceTimersByTimeAsync(59_900) })
+      expect(result.current.gravando).toBe(true)
+      expect(toastMock).not.toHaveBeenCalled()
+
+      // Cruza os 60s: auto-stop dispara.
+      await act(async () => { await vi.advanceTimersByTimeAsync(100) })
+
+      expect(result.current.gravando).toBe(false)
+      // Avisa o gestor — sem cronômetro na tela, a parada sozinha seria
+      // indistinguível de um bug.
+      expect(toastMock).toHaveBeenCalled()
+      // `waitFor` não serve sob fake timers (seu polling também depende de
+      // `setTimeout`, que está congelado) — `advanceTimersByTimeAsync` já
+      // drena a cadeia inteira (parar → onstop → fetch → onTexto), então a
+      // asserção é direta, sem espera.
+      expect(onTexto).toHaveBeenCalledWith('fala de mais de 60 segundos')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('parar manualmente antes dos 60s desarma o auto-stop (não dispara um segundo stop/aviso depois)', async () => {
+    // Sem desarmar, o timer de 60s da tentativa A dispararia mais tarde e
+    // chamaria `parar()` de novo — inofensivo pro `recorder.current` (já é
+    // `null`), mas dispararia um toast de auto-stop sobre uma gravação que
+    // já tinha sido parada pelo próprio gestor, confundindo mais do que
+    // ajudando.
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),
+      ) as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() }) // inicia
+      await act(async () => { await result.current.alternar() }) // gestor pára em seguida
+      expect(result.current.gravando).toBe(false)
+      toastMock.mockClear()
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+      expect(toastMock).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

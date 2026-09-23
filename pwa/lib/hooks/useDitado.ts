@@ -4,6 +4,16 @@
 // porque transcrição errada de nome próprio é comum.
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
+import { mensagemDoErro } from '@/lib/utils/erro'
+
+// A OpenRouter documenta que os provedores upstream cortam por volta de
+// 60s por requisição — uma gravação sem limite vira, mais cedo ou mais
+// tarde, um pedido que o provedor recusa por tempo, não pelo conteúdo.
+// Mesmo valor de `MAX_DURATION_MS` do `MicButton.tsx` (coleta), mas aqui
+// o botão não mostra cronômetro na tela: sem avisar o gestor, a parada
+// automática pareceria o botão mudando sozinho, do nada.
+const MAX_DURATION_MS = 60_000
 
 // Fato de uma tentativa específica: "fui descartada". Cada `alternar()`
 // que começa uma gravação nova cria o seu próprio objeto — nunca
@@ -18,6 +28,11 @@ export function useDitado(onTexto: (t: string) => void) {
   const [transcrevendo, setTranscrevendo] = useState(false)
   const recorder = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  // Agendado só enquanto uma gravação está de fato em andamento; qualquer
+  // caminho que pára antes do limite (segundo toque no mic, folha
+  // fechando) tem que desarmar — senão o timer dispara depois, sobre uma
+  // tentativa que já não é mais "a gravação atual".
+  const autoStopRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Início em andamento: sem isso, um segundo clique enquanto o
   // getUserMedia da primeira chamada ainda não resolveu reentra em
   // `alternar` (gravando ainda é `false` nesse closure), abre um
@@ -50,6 +65,13 @@ export function useDitado(onTexto: (t: string) => void) {
   const tentativaAtual = useRef<ControleDaTentativa | null>(null)
 
   const parar = useCallback(() => {
+    // Pode ser o gestor tocando de novo OU o auto-stop de 60s chegando —
+    // nos dois casos o limite deixa de valer pra esta tentativa (ela já
+    // está parando), então desarma antes de qualquer outra coisa.
+    if (autoStopRef.current) {
+      clearTimeout(autoStopRef.current)
+      autoStopRef.current = null
+    }
     // O gestor pediu a transcrição (segundo toque no mic) — a partir
     // daqui esta tentativa está comprometida a transcrever, não importa
     // o que aconteça depois (uma gravação nova pode até começar antes
@@ -85,6 +107,10 @@ export function useDitado(onTexto: (t: string) => void) {
     // disjunto que garante que um desmonte NESSA janela ainda desliga
     // o mic.
     if (!iniciando.current && !recorder.current && !streamRef.current) return
+    if (autoStopRef.current) {
+      clearTimeout(autoStopRef.current)
+      autoStopRef.current = null
+    }
     if (tentativaAtual.current) tentativaAtual.current.descartado = true
     recorder.current?.stop()
     recorder.current = null
@@ -179,18 +205,34 @@ export function useDitado(onTexto: (t: string) => void) {
         // consome essa rota na coleta) — não "file".
         form.append('audio', blob, `audio.${ext}`)
         const res = await fetch('/api/groq/transcribe', { method: 'POST', body: form })
-        if (res.ok) {
-          const j = (await res.json()) as { text?: string }
-          if (j.text) onTexto(j.text)
-        }
-      } catch {
-        // Silencioso de propósito: o gestor ainda pode digitar.
+        let json: { text?: string; error?: string } | null = null
+        try { json = await res.json() } catch { /* sem json: proxy, 502, corpo vazio */ }
+        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+        if (json?.text) onTexto(json.text)
+      } catch (e) {
+        // Avisa, não trava: nem um 503 (sem chave configurada) nem uma
+        // exceção de rede podem sumir sem passar por lugar nenhum — foi
+        // exatamente esse silêncio que fez o defeito relatado ("o mic não
+        // faz nada") passar despercebido em produção. O que o comentário
+        // antigo ("Silencioso de propósito") protegia de verdade era só
+        // "não travar o campo de texto" — o gestor continua podendo
+        // digitar normalmente, um toast não tira essa saída.
+        toast.error(`IA: ${mensagemDoErro(e, 'indisponível')}`)
       } finally {
         setTranscrevendo(false)
       }
     }
     mr.start()
     setGravando(true)
+    // Auto-stop em MAX_DURATION_MS (ver comentário no topo do arquivo): o
+    // gestor não pediu pra parar, então avisa por quê antes de chamar
+    // `parar()` — sem isso o botão trocaria de "Parar gravação" pra
+    // "Ditar" sozinho, do nada.
+    autoStopRef.current = setTimeout(() => {
+      autoStopRef.current = null
+      toast('Gravação parada automaticamente após 60s')
+      parar()
+    }, MAX_DURATION_MS)
   }, [gravando, parar, onTexto])
 
   // Cleanup ao desmontar: sem isso, navegar pra outra tela (ou a troca

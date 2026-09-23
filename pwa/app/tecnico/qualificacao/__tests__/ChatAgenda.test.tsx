@@ -21,6 +21,18 @@ vi.mock('@/lib/chat/machine', async () => {
 })
 vi.mock('@/lib/chat/tools', () => ({ runTool: runToolMock }))
 
+// `useGroqStatus` faz um `fetch('/api/groq/status')` de verdade via
+// react-query — sem mockar o hook, TODOS os testes deste arquivo (não só
+// os de ditado) passariam a depender de `globalThis.fetch`, que a maioria
+// não configura. Default `enabled: true` preserva o comportamento que os
+// testes de ditado já assumiam antes da Task 4; os dois testes que
+// exercitam o requisito A ("esconder o mic quando a IA está desligada")
+// sobrescrevem explicitamente com `mockReturnValue`.
+const { useGroqStatusMock } = vi.hoisted(() => ({
+  useGroqStatusMock: vi.fn(() => ({ enabled: true, isLoading: false })),
+}))
+vi.mock('@/lib/hooks/useGroqStatus', () => ({ useGroqStatus: useGroqStatusMock }))
+
 import { ChatAgenda } from '../agenda/_ChatAgenda'
 
 const payload = {
@@ -77,6 +89,10 @@ const mediaRecorderOriginal = (globalThis as any).MediaRecorder
 beforeEach(() => {
   vi.clearAllMocks()
   globalThis.sessionStorage?.clear()
+  // `vi.clearAllMocks()` também limpa o valor de retorno configurado por
+  // `mockReturnValue` — sem restaurar o default aqui, o teste que desliga
+  // a IA "vazaria" `enabled: false` pros testes seguintes.
+  useGroqStatusMock.mockReturnValue({ enabled: true, isLoading: false })
 })
 
 afterEach(() => {
@@ -367,6 +383,23 @@ describe('ChatAgenda', () => {
     const mic = screen.getByRole('button', { name: /ditar/i })
     expect(mic).toBeTruthy()
     expect(runTurnMock).not.toHaveBeenCalled()
+  })
+
+  it('IA desligada (useGroqStatus enabled=false): o botão de ditar não aparece', () => {
+    // Requisito A: mesmo defeito relatado (mic sem chave nenhuma configurada,
+    // como acontecia em produção antes da migração pra OpenRouter) não pode
+    // mais aparecer como um botão mudo — some de vez, igual ao MicButton.
+    useGroqStatusMock.mockReturnValue({ enabled: false, isLoading: false })
+    montar()
+    expect(screen.queryByRole('button', { name: /ditar/i })).toBeNull()
+  })
+
+  it('IA ligada (useGroqStatus enabled=true): o botão de ditar aparece', () => {
+    // Contraprova do teste acima: protege contra "resolver" o bug
+    // escondendo o mic pra sempre, em vez de só quando a IA está off.
+    useGroqStatusMock.mockReturnValue({ enabled: true, isLoading: false })
+    montar()
+    expect(screen.getByRole('button', { name: /ditar/i })).toBeTruthy()
   })
 
   it('texto ditado cai no campo mas não dispara envio automático', async () => {
