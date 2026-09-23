@@ -121,6 +121,38 @@ describe('useDitado', () => {
     expect(toastMock.error).not.toHaveBeenCalled()
   })
 
+  it('200 com text vazio (só ruído/silêncio na gravação) avisa "Transcrição vazia" e NÃO chama onTexto', async () => {
+    // Fix round 1: este é o sintoma relatado de verdade — a resposta veio
+    // ok (`res.ok === true`), então o caminho de erro do requisito B nunca
+    // roda. Sem este `else`, um 200 com `text: ''` cai no mesmo silêncio
+    // que motivou a task inteira. Mesmo aviso do `MicButton.tsx:68`.
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: '' }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    await act(async () => { await result.current.alternar() })
+    await act(async () => { await result.current.alternar() })
+    await waitFor(() => expect(result.current.transcrevendo).toBe(false))
+    expect(onTexto).not.toHaveBeenCalled()
+    expect(toastMock.error).toHaveBeenCalledWith('Transcrição vazia')
+  })
+
+  it('200 sem o campo text nenhum também avisa "Transcrição vazia" e NÃO chama onTexto', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({}), { status: 200 }),
+    ) as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    await act(async () => { await result.current.alternar() })
+    await act(async () => { await result.current.alternar() })
+    await waitFor(() => expect(result.current.transcrevendo).toBe(false))
+    expect(onTexto).not.toHaveBeenCalled()
+    expect(toastMock.error).toHaveBeenCalledWith('Transcrição vazia')
+  })
+
   it('permissão de microfone negada não quebra', async () => {
     ;(globalThis as any).navigator.mediaDevices.getUserMedia =
       vi.fn().mockRejectedValue(new Error('NotAllowedError'))

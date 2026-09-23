@@ -208,7 +208,17 @@ export function useDitado(onTexto: (t: string) => void) {
         let json: { text?: string; error?: string } | null = null
         try { json = await res.json() } catch { /* sem json: proxy, 502, corpo vazio */ }
         if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-        if (json?.text) onTexto(json.text)
+        // Um 200 com `text` vazio/ausente (silêncio na gravação, só ruído
+        // de fundo, corpo sem o campo) é o MESMO sintoma relatado ("cliquei
+        // no mic e não aconteceu nada") como um 503 seria — `res.ok` sendo
+        // `true` não é garantia de que sobrou transcrição nenhuma pra
+        // devolver. Mesmo texto do `MicButton.tsx:68`, pra os dois mics não
+        // divergirem no que dizem pro gestor.
+        if (typeof json?.text === 'string' && json.text.trim()) {
+          onTexto(json.text.trim())
+        } else {
+          toast.error('Transcrição vazia')
+        }
       } catch (e) {
         // Avisa, não trava: nem um 503 (sem chave configurada) nem uma
         // exceção de rede podem sumir sem passar por lugar nenhum — foi

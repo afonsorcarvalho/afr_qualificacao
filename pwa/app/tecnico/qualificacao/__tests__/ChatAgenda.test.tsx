@@ -89,9 +89,11 @@ const mediaRecorderOriginal = (globalThis as any).MediaRecorder
 beforeEach(() => {
   vi.clearAllMocks()
   globalThis.sessionStorage?.clear()
-  // `vi.clearAllMocks()` também limpa o valor de retorno configurado por
-  // `mockReturnValue` — sem restaurar o default aqui, o teste que desliga
-  // a IA "vazaria" `enabled: false` pros testes seguintes.
+  // `vi.clearAllMocks()` limpa só o histórico de chamadas — NÃO desfaz um
+  // `mockReturnValue` configurado antes (isso é `resetAllMocks`/`mockReset`).
+  // Sem restaurar explicitamente aqui, o teste que desliga a IA "vazaria"
+  // `enabled: false` pros testes seguintes, que rodariam depois dele na
+  // mesma ordem do arquivo.
   useGroqStatusMock.mockReturnValue({ enabled: true, isLoading: false })
 })
 
