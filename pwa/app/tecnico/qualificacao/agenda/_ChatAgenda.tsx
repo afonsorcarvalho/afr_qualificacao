@@ -1,14 +1,66 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Send, Mic } from 'lucide-react'
+import { memo, useEffect, useState } from 'react'
+import { Send, Mic, X, Check } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/BottomSheet'
-import { useChatAgenda } from '@/lib/hooks/useChatAgenda'
+import { useChatAgenda, type Bolha } from '@/lib/hooks/useChatAgenda'
 import { useDitado } from '@/lib/hooks/useDitado'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import type { AgendaPayload } from '@/lib/odoo/agenda'
 import { montarCardProposta } from '@/lib/chat/card'
 import { DetalhesTraco, formatarNumero, formatarCusto } from './_DetalhesTraco'
 import { MarkdownAssistente } from './_MarkdownAssistente'
+
+/**
+ * Lista de bolhas da conversa, isolada num componente `memo`.
+ *
+ * `ditado.nivelAudio` (Task 2) atualiza a cada ~50ms enquanto grava, e
+ * `ChatAgenda` inteiro re-renderiza a cada troca de estado do hook — sem
+ * isolar a lista, isso incluiria re-renderizar a conversa inteira (com
+ * markdown) a ~20Hz durante a gravação, no celular do técnico em campo.
+ * `bolhas` só muda quando o gestor manda mensagem ou a resposta chega
+ * (`useState` em `useChatAgenda`, referência estável entre renders) — o
+ * `memo` faz bail-out em todo render onde só `nivelAudio` mudou.
+ */
+const Bolhas = memo(function Bolhas({ bolhas }: { bolhas: Bolha[] }) {
+  return (
+    <>
+      {bolhas.map((b, i) => (
+        <div
+          key={i}
+          className={
+            b.autor === 'user'
+              ? 'self-end rounded-lg bg-primary/10 px-3 py-2 text-sm'
+              : b.autor === 'erro'
+                ? 'self-start rounded-lg bg-destructive/10 px-3 py-2 text-sm'
+                : 'self-start rounded-lg bg-muted px-3 py-2 text-sm'
+          }
+        >
+          {b.autor === 'assistente' ? (
+            // Só a bolha do assistente passa por markdown — texto do
+            // gestor e das bolhas de erro é montado pelo nosso código,
+            // não pelo modelo, e fica em texto puro de propósito (ver
+            // `_MarkdownAssistente.tsx`).
+            <MarkdownAssistente texto={b.texto} />
+          ) : (
+            b.texto
+          )}
+          {b.tracos && <DetalhesTraco tracos={b.tracos} />}
+        </div>
+      ))}
+    </>
+  )
+})
+
+// Pesos por barra do medidor de nível — geometria da silhueta (dá cara de
+// forma de onda), não canais de áudio diferentes: TODAS as barras leem a
+// MESMA amostra (`ditado.nivelAudio`). O índice de peso 1 é a barra
+// "cheia", usada como referência determinística no teste do medidor.
+const PESOS_BARRA_MEDIDOR = [0.55, 1, 0.8, 0.45]
+// Altura mínima visual (%) mesmo com nível 0 — sem isto, um instante de
+// silêncio entre rajadas (comum: a máquina de silêncio corta ali de
+// propósito) faria as quatro barras colapsarem pra uma linha reta, que
+// lê como "travou", não como "silêncio".
+const PISO_BARRA_PCT = 15
 
 export function ChatAgenda({
   open,
@@ -62,29 +114,7 @@ export function ChatAgenda({
             “quem está livre dia 20?”.
           </p>
         )}
-        {bolhas.map((b, i) => (
-          <div
-            key={i}
-            className={
-              b.autor === 'user'
-                ? 'self-end rounded-lg bg-primary/10 px-3 py-2 text-sm'
-                : b.autor === 'erro'
-                  ? 'self-start rounded-lg bg-destructive/10 px-3 py-2 text-sm'
-                  : 'self-start rounded-lg bg-muted px-3 py-2 text-sm'
-            }
-          >
-            {b.autor === 'assistente' ? (
-              // Só a bolha do assistente passa por markdown — texto do
-              // gestor e das bolhas de erro é montado pelo nosso código,
-              // não pelo modelo, e fica em texto puro de propósito (ver
-              // `_MarkdownAssistente.tsx`).
-              <MarkdownAssistente texto={b.texto} />
-            ) : (
-              b.texto
-            )}
-            {b.tracos && <DetalhesTraco tracos={b.tracos} />}
-          </div>
-        ))}
+        <Bolhas bolhas={bolhas} />
 
         {proposta && card && (
           <div className="rounded-lg border border-primary/40 bg-primary/5 p-3">
@@ -143,39 +173,119 @@ export function ChatAgenda({
         </p>
       )}
 
-      <form onSubmit={submeter} className="mt-3 flex gap-2">
+      <form onSubmit={submeter} className="mt-3 flex items-center gap-2">
         <input
           className="min-h-[44px] flex-1 rounded-md border border-border bg-background px-3"
-          placeholder="Escreva o que precisa"
+          // "Ouvindo…" sai de graça: placeholder de HTML só aparece com o
+          // campo vazio, então ele se apaga sozinho assim que a primeira
+          // rajada trai texto — não precisa de estado próprio, só lê
+          // `ditado.gravando` (que já existe).
+          placeholder={ditado.gravando ? 'Ouvindo…' : 'Escreva o que precisa'}
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           disabled={ocupado}
         />
+
+        {ditadoHabilitado && (
+          // As barras do medidor logo abaixo são `aria-hidden` — sozinhas
+          // não dizem nada pra quem usa leitor de tela. Este `role="status"`
+          // é quem cobre essa informação: anuncia a virada pra "Gravando" e
+          // depois "Transcrevendo" (as duas fases que a barra visual
+          // comunica) e volta a ficar vazio fora delas — sem isto a troca de
+          // estado inteira fica muda pra quem não vê a tela.
+          <span role="status" aria-live="polite" className="sr-only">
+            {ditado.gravando ? 'Gravando' : ditado.transcrevendo ? 'Transcrevendo' : ''}
+          </span>
+        )}
+
+        {ditadoHabilitado && ditado.gravando && (
+          <>
+            {/* Medidor de nível: todas as barras leem a MESMA amostra
+                (`ditado.nivelAudio`, RMS lido do AnalyserNode a cada ~50ms
+                dentro de `useDitado` — Task 2). Ele se move porque o áudio
+                se move, não por keyframe — não é o vocabulário de animação
+                decorativa em loop que o DESIGN.md aposentou
+                (`animate-pulse-glow` e cia.), é dado, e uma limpeza de
+                animação futura não pode confundir os dois. `aria-hidden`
+                aqui porque o `role="status"` acima já cobre a informação
+                pra leitor de tela. Sob `prefers-reduced-motion`
+                (`motion-reduce:transition-none`) é a TRANSIÇÃO entre
+                valores que vira corte — os valores continuam mudando com o
+                áudio. */}
+            <div
+              aria-hidden="true"
+              data-testid="medidor-nivel"
+              className="flex h-[44px] w-11 shrink-0 items-end justify-center gap-0.5 rounded-md border border-border px-2 py-1.5"
+            >
+              {PESOS_BARRA_MEDIDOR.map((peso, i) => (
+                <span
+                  key={i}
+                  data-testid={peso === 1 ? 'medidor-barra-referencia' : undefined}
+                  className="w-1 rounded-full bg-foreground transition-[height] duration-100 ease-out motion-reduce:transition-none"
+                  style={{
+                    height: `${Math.max(PISO_BARRA_PCT, Math.min(1, Math.max(0, ditado.nivelAudio)) * peso * 100)}%`,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* ✕ descarta sem transcrever — `pararEDescartar()` existe no
+                hook desde a Task 2, mas até aqui a interface nunca ofereceu
+                um jeito de chamá-la: começar a gravar obrigava o gestor a
+                transcrever, mesmo que tivesse mudado de ideia. Vermelho
+                porque é perda de trabalho de verdade (o áudio capturado
+                some) — mesmo critério do botão destructive do DESIGN.md. */}
+            <button
+              type="button"
+              aria-label="Descartar gravação"
+              onClick={ditado.pararEDescartar}
+              className="min-h-[44px] min-w-[44px] rounded-md bg-destructive text-destructive-foreground"
+            >
+              <X className="mx-auto h-4 w-4" />
+            </button>
+
+            {/* ✓ é "parar e transcrever" — o mesmo `alternar()` que hoje já
+                faz isso no segundo clique do mic (com `gravando` true,
+                `alternar()` só chama `parar()`). */}
+            <button
+              type="button"
+              aria-label="Parar gravação"
+              onClick={ditado.alternar}
+              className="min-h-[44px] min-w-[44px] rounded-md bg-primary text-primary-foreground"
+            >
+              <Check className="mx-auto h-4 w-4" />
+            </button>
+          </>
+        )}
+
         {/* Esconde, não desabilita: um botão desabilitado sem explicação é
             tão mudo quanto o defeito relatado ("cliquei no mic e não
             aconteceu nada") — mesmo critério do `MicButton.tsx` (coleta),
             que faz `return null` quando a IA está desligada. */}
-        {ditadoHabilitado && (
+        {ditadoHabilitado && !ditado.gravando && (
           <button
             type="button"
-            aria-label={ditado.gravando ? 'Parar gravação' : 'Ditar'}
+            aria-label="Ditar"
             onClick={ditado.alternar}
             disabled={ocupado || ditado.transcrevendo}
-            className={`min-h-[44px] min-w-[44px] rounded-md border border-border ${
-              ditado.gravando ? 'bg-destructive text-destructive-foreground' : ''
-            }`}
+            className="min-h-[44px] min-w-[44px] rounded-md border border-border"
           >
             <Mic className="mx-auto h-4 w-4" />
           </button>
         )}
-        <button
-          type="submit"
-          aria-label="Enviar"
-          className="min-h-[44px] min-w-[44px] rounded-md bg-primary text-primary-foreground disabled:opacity-50"
-          disabled={ocupado || !texto.trim()}
-        >
-          <Send className="mx-auto h-4 w-4" />
-        </button>
+
+        {/* Some junto com o mic durante a gravação — dá lugar ao medidor e
+            aos botões ✕/✓ (ver acima). */}
+        {!ditado.gravando && (
+          <button
+            type="submit"
+            aria-label="Enviar"
+            className="min-h-[44px] min-w-[44px] rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+            disabled={ocupado || !texto.trim()}
+          >
+            <Send className="mx-auto h-4 w-4" />
+          </button>
+        )}
       </form>
     </BottomSheet>
   )
