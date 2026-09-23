@@ -1138,6 +1138,57 @@ describe('useDitado', () => {
     }
   })
 
+  // Fix round 2 (review): o teste acima cobre a metade "não sobe" do
+  // `ultima ? (houveVoz || !textoEntregue) : houveVoz`. Esta é a OUTRA
+  // metade, sem cobertura nenhuma até agora — e sem ela, o teste "sessão
+  // inteira sem texto" (logo acima) passa pelo motivo ERRADO: ele seta
+  // `bytesAoParar = 1` antes do clique final, então `expect(fetchMock).
+  // not.toHaveBeenCalled()` passa por causa do PISO de tamanho
+  // (`MIN_BLOB_BYTES`), não por causa do gate — passaria idêntico se
+  // `!textoEntregue` fosse apagado da fórmula. Aqui o piso fica no default
+  // da fixture (2000 bytes, bem acima do piso), de propósito, pra garantir
+  // que só o GATE pode estar barrando (ou liberando) a chamada.
+  //
+  // Por que a branch importa: é o carve-out que protege a interação mais
+  // comum do produto — clique, uma frase curta, clique de novo. Se o
+  // detector nunca pegou uma leitura de RMS acima do limiar (fala baixa,
+  // ou a frase inteira coube entre duas amostras de ~50ms — o caso comum
+  // em qualquer sessão de um clique só, inclusive quase todos os 26 testes
+  // originais deste arquivo), a rajada única da sessão TEM que subir —
+  // sem isso, o gestor clica, fala, clica de novo, e não acontece nada,
+  // sem erro nenhum na tela.
+  it('rajada final sem nenhuma leitura de voz É ENVIADA quando a sessão ainda não produziu texto nenhum (última chance)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'frase curta' }), { status: 200 }),
+      )
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+      // Silêncio DESDE O INÍCIO — nenhuma leitura desta rajada (a única da
+      // sessão) é voz. Menos que minRajadaMs+silencioMs: não fecha por
+      // conta própria, o clique de parar é quem fecha.
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+
+      // Sanity do próprio teste: se isto falhar, o teste não estaria
+      // isolando o gate do piso de tamanho.
+      expect(FakeRecorder.ultima!.bytesAoParar).toBe(2000)
+
+      await act(async () => { await result.current.alternar() }) // clique manual de parar
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(onTexto).toHaveBeenCalledWith('frase curta')
+      expect(toastMock.error).not.toHaveBeenCalledWith('Gravação muito curta, segure mais tempo')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('AudioContext é fechado ao parar normalmente (segundo clique)', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),
