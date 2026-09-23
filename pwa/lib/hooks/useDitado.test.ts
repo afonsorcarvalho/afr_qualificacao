@@ -20,20 +20,57 @@ class FakeRecorder {
   ondataavailable: ((e: { data: Blob }) => void) | null = null
   onstop: (() => void) | null = null
   state = 'inactive'
+  // >= MIN_BLOB_BYTES por padrão de propósito: este dublê serve o caminho
+  // feliz da maioria dos testes deste arquivo — um blob de 1 byte cairia no
+  // piso de "gravação muito curta" assim que ele existisse, e derrubaria
+  // toda transcrição esperada nesses testes por um motivo que não é o que
+  // eles querem exercitar. Testes do piso (agora por RAJADA, não mais só
+  // por gravação) setam `bytesAoParar` num valor pequeno antes de fechar a
+  // rajada que querem sub-piso.
+  bytesAoParar = 2000
   constructor(public stream: unknown) {
     FakeRecorder.ultima = this
   }
   start() { this.state = 'recording' }
   stop() {
     this.state = 'inactive'
-    // >= MIN_BLOB_BYTES de propósito: este dublê serve o caminho feliz da
-    // maioria dos testes deste arquivo — um blob de 1 byte (como era antes)
-    // cairia no piso de "gravação muito curta" assim que ele existisse, e
-    // derrubaria toda transcrição esperada nesses testes por um motivo que
-    // não é o que eles querem exercitar. O teste do piso em si usa
-    // `FakeRecorderAtrasado` com um chunk pequeno deliberado.
-    this.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
+    this.ondataavailable?.({ data: new Blob(['x'.repeat(this.bytesAoParar)], { type: 'audio/webm' }) })
     this.onstop?.()
+  }
+}
+
+// Dublê do nível de áudio: por padrão fica ACIMA do limiar de silêncio
+// (0.01 em deteccaoSilencio.ts) — "tem voz" é o default seguro, porque a
+// maioria dos testes deste arquivo não mexe em rajadas/silêncio nenhuma, e
+// um RMS 0 por padrão marcaria toda rajada como `houveVoz: false` e
+// quebraria a suíte inteira de um jeito que pareceria bug de lógica, não
+// fixture. Só os testes de rajada pedem silêncio explicitamente, setando
+// `nivel` antes de avançar o relógio falso.
+class FakeAnalyserNode {
+  fftSize = 2048
+  nivel = 0.5
+  getFloatTimeDomainData(buffer: Float32Array) {
+    buffer.fill(this.nivel)
+  }
+}
+
+class FakeAudioContext {
+  static ultima: FakeAudioContext | null = null
+  closed = false
+  analyser: FakeAnalyserNode | null = null
+  constructor() {
+    FakeAudioContext.ultima = this
+  }
+  createMediaStreamSource(_stream: unknown) {
+    return { connect: () => {} }
+  }
+  createAnalyser() {
+    this.analyser = new FakeAnalyserNode()
+    return this.analyser
+  }
+  close() {
+    this.closed = true
+    return Promise.resolve()
   }
 }
 
@@ -70,9 +107,11 @@ beforeEach(() => {
   vi.restoreAllMocks()
   FakeRecorder.ultima = null
   FakeRecorderAtrasado.instancias = []
+  FakeAudioContext.ultima = null
   toastMock.mockClear()
   toastMock.error.mockClear()
   ;(globalThis as any).MediaRecorder = FakeRecorder
+  ;(globalThis as any).AudioContext = FakeAudioContext
   ;(globalThis as any).navigator.mediaDevices = {
     getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
   }
@@ -232,6 +271,11 @@ describe('useDitado', () => {
     // A asserção que importa de verdade: o stream JÁ obtido não pode ficar
     // órfão — assert no stop de verdade, não só na flag `gravando`.
     expect(pararTrack).toHaveBeenCalled()
+    // O AudioContext é criado ANTES do `new MediaRecorder(...)` (Task 2) —
+    // se a construção do gravador falhar depois disso, o contexto já
+    // existente não pode ficar pendurado. `close()` é chamado pelo catch
+    // de `alternar()`, o mesmo que solta a track.
+    expect(FakeAudioContext.ultima?.closed).toBe(true)
 
     // Nenhuma ref pode ficar pendurada: `pararEDescartar()` (que roda no
     // unmount / fechar a folha) tem que encontrar "nada em voo" e não tentar
@@ -727,8 +771,15 @@ describe('useDitado', () => {
   it('gravação sem soltar o mic pára sozinha aos 60s, avisa o gestor, e ainda transcreve o que foi gravado', async () => {
     vi.useFakeTimers()
     try {
-      globalThis.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ text: 'fala de mais de 60 segundos' }), { status: 200 }),
+      // `mockImplementation` (não `mockResolvedValue`): o nível de áudio
+      // padrão do dublê é "voz" (ver FakeAnalyserNode), então ao longo de
+      // 60s a rajada fecha várias vezes pelo TETO de duração (8s, ver
+      // `deteccaoSilencio.ts`) — cada fechamento chama fetch de novo, e um
+      // único objeto `Response` reaproveitado só deixa o corpo ser lido
+      // (`.json()`) uma vez; da segunda chamada em diante ele quebraria
+      // silenciosamente e a rajada cairia no balde de "Transcrição vazia".
+      globalThis.fetch = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ text: 'fala de mais de 60 segundos' }), { status: 200 })),
       ) as unknown as typeof fetch
       const onTexto = vi.fn()
       const { result } = renderHook(() => useDitado(onTexto))
@@ -811,6 +862,264 @@ describe('useDitado', () => {
       // "ocupado" — travado, não só sem aviso.
       expect(result.current.transcrevendo).toBe(false)
       expect(onTexto).not.toHaveBeenCalled()
+      // AudioContext fechado neste caminho de parada também — senão cada
+      // "fechar a folha com o mic ligado" vaza um contexto de áudio.
+      expect(FakeAudioContext.ultima?.closed).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // --- Task 2: gravação em rajadas ---
+
+  it('fecha rajada por silêncio, envia o áudio, e a gravação continua sozinha (sem segundo clique)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ text: 'primeira rajada' }), { status: 200 })),
+      )
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      expect(result.current.gravando).toBe(true)
+
+      // O nível padrão do dublê já é "voz" (ver FakeAnalyserNode) — uma
+      // amostra assim garante `houveVoz: true` antes de cair pro silêncio.
+      const analyser = FakeAudioContext.ultima!.analyser!
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      // Silêncio sustentado por tempo suficiente (minRajadaMs 1500 +
+      // silencioMs 700, com folga) fecha a rajada sozinha.
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(onTexto).toHaveBeenCalledWith('primeira rajada')
+      // Nem clicou de novo, nem a gravação parou — é exatamente o ponto da
+      // task: pra quem está falando, a gravação nunca para.
+      expect(result.current.gravando).toBe(true)
+      expect(FakeRecorder.ultima).not.toBeNull()
+      expect(FakeRecorder.ultima?.state).toBe('recording')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rajada sem nenhuma leitura de voz nunca é enviada pro servidor (hazard de alucinação do Whisper)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ text: 'segunda rajada' }), { status: 200 })),
+      )
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+      // Silêncio DESDE O INÍCIO — nenhuma leitura desta rajada é voz.
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) }) // fecha a 1ª rajada
+
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      // A sessão continua viva: uma rajada seguinte COM voz sobe normal.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(onTexto).toHaveBeenCalledWith('segunda rajada')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rajada abaixo do piso no meio da sessão é descartada sem aviso, e a rajada seguinte entrega texto normalmente', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ text: 'segunda rajada' }), { status: 200 })),
+      )
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Uma leitura de voz (pra `houveVoz` ficar `true` e a rajada ganhar
+      // número/tentar subir), mas o gravador só captura 1 byte quando a
+      // rajada fechar — sub-piso, "clicou e não deu tempo de captar áudio".
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      FakeRecorder.ultima!.bytesAoParar = 1
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) }) // fecha a 1ª rajada
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(toastMock.error).not.toHaveBeenCalled()
+
+      // Segunda rajada: tamanho normal (default do dublê), fecha por
+      // silêncio de novo, e desta vez sobra texto de verdade.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(onTexto).toHaveBeenCalledWith('segunda rajada')
+      expect(toastMock.error).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('respostas fora de ordem são entregues na ordem certa (rajada 2 responde antes da 1)', async () => {
+    vi.useFakeTimers()
+    try {
+      const resolvers: Array<(r: Response) => void> = []
+      const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => resolvers.push(resolve)))
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Fecha a rajada 1 por silêncio (dispara o fetch #1, ainda pendente).
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      // Fecha a rajada 2 por silêncio (dispara o fetch #2, ainda pendente).
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+
+      // A rajada 2 responde PRIMEIRO.
+      await act(async () => {
+        resolvers[1](new Response(JSON.stringify({ text: 'dois' }), { status: 200 }))
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+      // Ainda represada: não é a vez dela — a rajada 1 não respondeu ainda.
+      expect(onTexto).not.toHaveBeenCalled()
+
+      // A rajada 1 responde por último.
+      await act(async () => {
+        resolvers[0](new Response(JSON.stringify({ text: 'um' }), { status: 200 }))
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+
+      expect(onTexto.mock.calls.map((c) => c[0])).toEqual(['um', 'dois'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('falha de uma rajada não derruba a sessão, e avisa só uma vez mesmo que mais de uma rajada falhe', async () => {
+    vi.useFakeTimers()
+    try {
+      let chamada = 0
+      const fetchMock = vi.fn().mockImplementation(() => {
+        chamada += 1
+        if (chamada <= 2) return Promise.reject(new Error('Failed to fetch'))
+        return Promise.resolve(new Response(JSON.stringify({ text: 'terceira rajada' }), { status: 200 }))
+      })
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Três rajadas seguidas, cada uma fechando por silêncio.
+      for (let i = 0; i < 3; i++) {
+        analyser.nivel = 0.5
+        await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+        analyser.nivel = 0
+        await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      }
+
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      // Duas falharam, uma só é avisada — não é chuva de toast por rajada.
+      expect(toastMock.error).toHaveBeenCalledTimes(1)
+      expect(toastMock.error).toHaveBeenCalledWith('IA: Failed to fetch')
+      expect(onTexto).toHaveBeenCalledWith('terceira rajada')
+      // A sessão não foi derrubada pelas falhas — continua gravando.
+      expect(result.current.gravando).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sessão inteira sem texto nenhum avisa "Gravação muito curta" uma única vez, mesmo com várias rajadas', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn()
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Duas rajadas sem voz nenhuma: fecham por silêncio, nunca sobem.
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      // Clica pra parar: a rajada final sobe SEMPRE, mas sai sub-piso.
+      FakeRecorder.ultima!.bytesAoParar = 1
+      await act(async () => { await result.current.alternar() })
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(toastMock.error).toHaveBeenCalledTimes(1)
+      expect(toastMock.error).toHaveBeenCalledWith('Gravação muito curta, segure mais tempo')
+      expect(result.current.transcrevendo).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('AudioContext é fechado ao parar normalmente (segundo clique)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),
+    ) as unknown as typeof fetch
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() })
+    expect(FakeAudioContext.ultima?.closed).toBe(false)
+
+    await act(async () => { await result.current.alternar() }) // segundo clique: pára
+    expect(FakeAudioContext.ultima?.closed).toBe(true)
+  })
+
+  it('expõe o nível de áudio (RMS) da amostra mais recente, e zera ao parar', async () => {
+    vi.useFakeTimers()
+    try {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),
+      ) as unknown as typeof fetch
+      const { result } = renderHook(() => useDitado(vi.fn()))
+
+      expect(result.current.nivelAudio).toBe(0)
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+      analyser.nivel = 0.3
+      // Uma amostra (50ms) é suficiente pra atualizar o nível exposto.
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      expect(result.current.nivelAudio).toBeCloseTo(0.3, 5)
+
+      await act(async () => { await result.current.alternar() }) // pára
+      expect(result.current.nivelAudio).toBe(0)
     } finally {
       vi.useRealTimers()
     }

@@ -2,40 +2,101 @@
 // Ditado por voz reusando a rota Whisper que já serve a coleta. O texto
 // cai no campo de entrada e NÃO é enviado sozinho: o gestor revisa antes,
 // porque transcrição errada de nome próprio é comum.
+//
+// GRAVAÇÃO EM RAJADAS (Task 2 de docs/superpowers/plans/2026-09-22-ditado-em
+// -rajadas.md): um clique liga o mic, e o texto vai aparecendo em pedaços
+// ENQUANTO o gestor continua falando — não só depois do segundo clique. A
+// decisão de ONDE cortar cada pedaço (rajada) vive em `lib/audio/
+// deteccaoSilencio.ts` (Task 1, já revisada): aqui só ligamos um
+// `AnalyserNode` sobre o MESMO `MediaStream` do `MediaRecorder`, amostramos
+// o RMS a cada ~50ms, e alimentamos a máquina de decisão de lá.
+//
+// O truque técnico: `MediaRecorder` com `timeslice` entrega pedaços onde só
+// o PRIMEIRO tem o cabeçalho do contêiner — um pedaço isolado não é um
+// arquivo válido, o provedor recusa. Por isso, em vez de usar `timeslice`,
+// cada rajada é o seu PRÓPRIO `MediaRecorder`: quando a máquina de silêncio
+// manda fechar, paramos o gravador atual (isso produz um arquivo completo e
+// válido) e IMEDIATAMENTE começamos um gravador novo sobre o mesmo stream —
+// o gestor não percebe a troca, pra ele a gravação é contínua até o
+// segundo clique. Isso custa uns poucos ms de áudio a cada troca (o tempo
+// entre `stop()` e o `start()` seguinte), e só é aceitável porque o corte
+// cai DENTRO de um silêncio — a máquina de decisão só fecha rajada depois
+// de silêncio sustentado (ou do teto de duração). Se o corte caísse no meio
+// de uma palavra, as duas rajadas vizinhas saem degradadas; por isso a
+// máquina de silêncio não lê o relógio, quem chama aqui passa o instante.
+//
+// ORDEM DAS RESPOSTAS NÃO É A ORDEM DE CHEGADA: a rajada 3 pode responder
+// antes da 2 (a rede não garante nada sobre isso). Cada rajada que de fato
+// sobe pro servidor ganha um NÚMERO sequencial no momento em que é fechada
+// (não quando a resposta chega) — os números refletem a ordem real em que
+// as rajadas aconteceram, porque só existe UM gravador ativo por vez, então
+// o fechamento delas é sempre sequencial, mesmo que a resolução da
+// transcrição não seja. `onTexto` só é chamado respeitando essa ordem: uma
+// resposta que chega fora de ordem fica retida (`pendentes`) até a(s)
+// anterior(es) também terem resolvido.
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { mensagemDoErro, nomeDoErro } from '@/lib/utils/erro'
+import { avaliarRajada, calcularRms, criarEstadoRajada, type EstadoRajada } from '@/lib/audio/deteccaoSilencio'
 
 // A OpenRouter documenta que os provedores upstream cortam por volta de
 // 60s por requisição — uma gravação sem limite vira, mais cedo ou mais
 // tarde, um pedido que o provedor recusa por tempo, não pelo conteúdo.
 // Mesmo valor de `MAX_DURATION_MS` do `MicButton.tsx` (coleta), mas aqui
 // o botão não mostra cronômetro na tela: sem avisar o gestor, a parada
-// automática pareceria o botão mudando sozinho, do nada.
+// automática pareceria o botão mudando sozinho, do nada. Continua sendo um
+// teto de SESSÃO (clique a clique), não de rajada — uma rajada individual
+// já tem o próprio teto, bem mais curto, em `deteccaoSilencio.ts`
+// (`maxRajadaMs`).
 const MAX_DURATION_MS = 60_000
 
 // Mesmo piso do `MicButton.tsx:18`: um blob menor que isto não é fala, é
-// ruído de abrir/fechar o gravador. Diferente da coleta (segurar-para-falar,
-// com cronômetro na tela), o mic do chat é clicar-pra-alternar — um clique
-// duplo (começa, pára na hora) é interação NORMAL aqui, não uma borda rara,
-// e sem este piso ele caía direto no mesmo silêncio que esta task existe
-// pra fechar.
+// ruído de abrir/fechar o gravador. Continua valendo POR RAJADA (uma rajada
+// sub-piso é descartada, nunca sobe pro servidor) — o que mudou é o AVISO:
+// com rajadas, a última costuma ser um resto de silêncio entre o fim da
+// fala e o clique de parar, e um "Gravação muito curta" por rajada viraria
+// ruído em toda sessão. O aviso agora só dispara se a SESSÃO inteira não
+// entregou texto nenhum (ver `finalizarSessaoSeAcabou` mais abaixo).
 const MIN_BLOB_BYTES = 1024
 
-// Fato de uma tentativa específica: "fui descartada". Cada `alternar()`
-// que começa uma gravação nova cria o seu próprio objeto — nunca
-// compartilhado, nunca reaproveitado — e é só ESSE objeto que
-// `pararEDescartar()` pode marcar. Ver o comentário em cima de
-// `tentativaAtual` pra saber por que isto substitui um contador de
-// geração.
+// Fato de uma SESSÃO específica (clique a clique — pode abranger várias
+// rajadas): "fui descartada". Cada `alternar()` que começa uma sessão nova
+// cria o seu próprio objeto — nunca compartilhado, nunca reaproveitado — e
+// é só ESSE objeto que `pararEDescartar()` pode marcar. Todas as rajadas
+// da mesma sessão fecham sobre o MESMO `controle`, porque "esta sessão foi
+// descartada" é um fato da sessão inteira, não de uma rajada isolada.
+//
+// Isto substitui um contador de geração: um contador incremental confunde
+// "existe uma sessão mais nova" com "esta sessão foi cancelada" — são
+// fatos DIFERENTES. Ver o comentário em cima de `tentativaAtual` pra mais
+// detalhe (a razão é a mesma de antes da Task 2, só que agora "tentativa"
+// é a sessão inteira, não uma gravação única).
 type ControleDaTentativa = { descartado: boolean }
 
 export function useDitado(onTexto: (t: string) => void) {
   const [gravando, setGravando] = useState(false)
   const [transcrevendo, setTranscrevendo] = useState(false)
+  // Nível de áudio (RMS) da amostra mais recente, 0 quando não está
+  // gravando. Existe só pra alimentar uma UI futura (barra de gravação com
+  // forma de onda animada) — um valor só, atualizado a cada amostra; não
+  // guarda histórico nenhum, quem quiser desenhar uma forma de onda de
+  // verdade guarda o próprio buffer do lado de quem consome.
+  const [nivelAudio, setNivelAudio] = useState(0)
   const recorder = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  // Roda a cada ~50ms enquanto uma sessão está ativa: lê o `AnalyserNode` e
+  // alimenta a máquina de decisão de `deteccaoSilencio.ts`.
+  const amostraIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const estadoRajadaRef = useRef<EstadoRajada>(criarEstadoRajada(0))
+  // Ponte entre o fechamento MANUAL de rajada (`parar()`, que vive fora do
+  // closure da tentativa) e a função que sabe fechar a rajada atual e
+  // decidir se reinicia (`fecharRajadaAtual`, definida DENTRO do closure de
+  // `alternar()`, porque só lá existem `stream`/`mimeType`/`controle`).
+  // Setada uma vez por sessão, dentro de `alternar()`.
+  const fecharRajadaRef = useRef<((houveVoz: boolean, ultima: boolean) => void) | null>(null)
   // Agendado só enquanto uma gravação está de fato em andamento; qualquer
   // caminho que pára antes do limite (segundo toque no mic, folha
   // fechando) tem que desarmar — senão o timer dispara depois, sobre uma
@@ -48,57 +109,76 @@ export function useDitado(onTexto: (t: string) => void) {
   // primeiro stream fica órfão, sem referência, com as tracks nunca
   // paradas. Mesma proteção que `MicButton.tsx` (`pressedRef`) usa.
   const iniciando = useRef(false)
-  // Tentativa que `pararEDescartar()` pode cancelar AGORA, se for
-  // chamada. Cada `alternar()` que começa do zero cria seu próprio
+  // Tentativa (= sessão) que `pararEDescartar()` pode cancelar AGORA, se
+  // for chamada. Cada `alternar()` que começa do zero cria seu próprio
   // `ControleDaTentativa` e aponta esta ref pra ele; `parar()` (o
   // gestor pedindo a transcrição de propósito) APAGA essa referência
-  // antes de devolver o controle — a partir daí aquela tentativa está
-  // fora do alcance de `pararEDescartar()`, comprometida a transcrever
-  // não importa o que aconteça depois.
-  //
-  // Isto substitui um contador de geração (usado no round anterior): um
-  // contador incremental confunde "existe uma tentativa mais nova" com
-  // "esta tentativa foi cancelada" — são fatos DIFERENTES. Uma
-  // gravação nova pode nascer sem que isso, por si só, signifique que
-  // a anterior deveria ser jogada fora: se o gestor pediu
-  // explicitamente pra parar e transcrever (`parar()`), e só DEPOIS
-  // disso uma gravação nova começar antes do `onstop` (assíncrono,
-  // pode atrasar por thread ocupada, pausa de GC, celular lento — não
-  // é borda numa PWA) chegar, o contador achava (errado) que a
-  // tentativa velha tinha sido "superada" e descartava um pedido de
-  // transcrição legítimo, em silêncio. Um fato POR TENTATIVA
-  // (`descartado`, só setado por um cancelamento explícito) não tem
-  // essa ambiguidade: nascer uma tentativa nova nunca, por si só, marca
-  // NENHUMA outra tentativa como descartada.
+  // antes de devolver o controle — a partir daí a sessão está fora do
+  // alcance de `pararEDescartar()`, comprometida a transcrever a rajada
+  // final não importa o que aconteça depois. Ver comentário no tipo
+  // `ControleDaTentativa` acima pro porquê disto não ser um contador.
   const tentativaAtual = useRef<ControleDaTentativa | null>(null)
+  // Dados de fechamento da rajada CORRENTE — preenchidos por
+  // `fecharRajadaAtual` (dentro do closure de `alternar()`) no instante em
+  // que ela decide fechar, e lidos pelo `onstop` daquele mesmo gravador.
+  // Não dá pra saber o número (ou se a rajada vai subir) no momento em que
+  // o gravador começa, só quando termina — por isso é preenchido tarde,
+  // não na criação.
+  const infoFechamentoRef = useRef<{ numero: number | null; ultima: boolean; contabilizada: boolean } | null>(null)
+
+  // Fecha (idempotente) o AudioContext desta sessão, se houver. Chamado em
+  // TODO caminho de parada — `parar()`, `pararEDescartar()` e o catch de
+  // `alternar()` — senão cada ditado vaza um AudioContext. `close()` é
+  // assíncrono e pode rejeitar se o contexto já estiver fechando; não há
+  // nada a fazer com esse erro, mas ele não pode virar unhandled rejection.
+  const fecharAudioContext = useCallback(() => {
+    const ctx = audioContextRef.current
+    audioContextRef.current = null
+    analyserRef.current = null
+    if (!ctx) return
+    try {
+      ctx.close()?.catch(() => {})
+    } catch {
+      // Já fechando/fechado — idempotente o bastante pra ignorar.
+    }
+  }, [])
 
   const parar = useCallback(() => {
     // Pode ser o gestor tocando de novo OU o auto-stop de 60s chegando —
-    // nos dois casos o limite deixa de valer pra esta tentativa (ela já
+    // nos dois casos o limite deixa de valer pra esta sessão (ela já
     // está parando), então desarma antes de qualquer outra coisa.
     if (autoStopRef.current) {
       clearTimeout(autoStopRef.current)
       autoStopRef.current = null
     }
+    if (amostraIntervalRef.current) {
+      clearInterval(amostraIntervalRef.current)
+      amostraIntervalRef.current = null
+    }
+    fecharAudioContext()
     // O gestor pediu a transcrição (segundo toque no mic) — a partir
-    // daqui esta tentativa está comprometida a transcrever, não importa
-    // o que aconteça depois (uma gravação nova pode até começar antes
-    // do `onstop` assíncrono chegar): tirar a referência de
+    // daqui esta sessão está comprometida a transcrever a rajada final,
+    // não importa o que aconteça depois (uma sessão nova pode até
+    // começar antes do `onstop` assíncrono chegar): tirar a referência de
     // `tentativaAtual` agora é o que garante que nenhum
-    // `pararEDescartar()` futuro consiga alcançar ESTA tentativa.
+    // `pararEDescartar()` futuro consiga alcançar ESTA sessão.
     tentativaAtual.current = null
-    recorder.current?.stop()
-    recorder.current = null
+    // Liga `transcrevendo` JÁ, síncrono, e ANTES de fechar a rajada final
+    // — em cima de gravadores síncronos (dublês de teste, ou um provedor
+    // rápido o bastante), fechar a rajada pode resolver a sessão inteira
+    // dentro desta mesma chamada, e é ela quem desliga `transcrevendo` no
+    // fim. Se ligássemos DEPOIS, apagaríamos esse desligamento por cima.
     setGravando(false)
-    // Liga `transcrevendo` JÁ, síncrono — não só quando o `onstop`
-    // (assíncrono, pode demorar) finalmente rodar. Sem isto a tela
-    // fica com cara de ociosa entre o toque de parar e a transcrição
-    // realmente começar, e é essa janela "vazia" que convida o gestor
-    // a tocar de novo achando que nada aconteceu (foi exatamente essa
-    // falta de sinal que abriu espaço pra uma gravação nova nascer
-    // achando que a anterior tinha sumido).
     setTranscrevendo(true)
-  }, [])
+    setNivelAudio(0)
+    // Fecha a rajada em andamento como a ÚLTIMA da sessão: sobe sempre
+    // (ver comentário grande dentro de `fecharRajadaAtual` sobre a
+    // assimetria da guarda de `houveVoz`), e não reinicia gravador nenhum
+    // depois. Se por algum motivo a sessão não tinha rajada nenhuma em
+    // andamento (não deveria acontecer com `gravando=true`), a ref é nula
+    // e não há o que fazer.
+    fecharRajadaRef.current?.(estadoRajadaRef.current.houveVoz, true)
+  }, [fecharAudioContext])
 
   // Pára AGORA e descarta — nunca transcreve. Chamada ao desmontar o
   // hook ou quando a folha do chat fecha com o mic ligado. Não espera
@@ -119,13 +199,19 @@ export function useDitado(onTexto: (t: string) => void) {
       clearTimeout(autoStopRef.current)
       autoStopRef.current = null
     }
+    if (amostraIntervalRef.current) {
+      clearInterval(amostraIntervalRef.current)
+      amostraIntervalRef.current = null
+    }
+    fecharAudioContext()
+    setNivelAudio(0)
     if (tentativaAtual.current) tentativaAtual.current.descartado = true
     recorder.current?.stop()
     recorder.current = null
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     setGravando(false)
-  }, [])
+  }, [fecharAudioContext])
 
   const alternar = useCallback(async () => {
     if (gravando) {
@@ -153,11 +239,6 @@ export function useDitado(onTexto: (t: string) => void) {
     iniciando.current = true
     const controle: ControleDaTentativa = { descartado: false }
     tentativaAtual.current = controle
-    // Buffer PRÓPRIO desta tentativa — nunca compartilhado com nenhuma
-    // outra, passada ou futura. Não existe "limpar no início" porque
-    // não existe nada global pra limpar: cada `alternar()` que começa
-    // do zero cria o seu, isolado por closure.
-    const pedacos: Blob[] = []
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       if (controle.descartado) {
@@ -188,85 +269,267 @@ export function useDitado(onTexto: (t: string) => void) {
         : MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
           : 'audio/mp4'
-      const mr = new MediaRecorder(stream, { mimeType })
-      recorder.current = mr
-      iniciando.current = false
-      mr.ondataavailable = (e) => {
-        if (e.data && e.data.size) pedacos.push(e.data)
+
+      // Web Audio: OUTRO consumidor do MESMO stream, só pra observar o
+      // nível — não interfere no que o MediaRecorder grava. Criado uma
+      // única vez por SESSÃO (não por rajada): as rajadas trocam de
+      // MediaRecorder, mas o AnalyserNode continua o mesmo, olhando pro
+      // stream inteiro.
+      type JanelaComAudioContext = Window & { webkitAudioContext?: typeof AudioContext }
+      const AudioContextCtor =
+        typeof window !== 'undefined'
+          ? window.AudioContext ?? (window as JanelaComAudioContext).webkitAudioContext
+          : undefined
+      if (!AudioContextCtor) throw new Error('AudioContext indisponível neste navegador')
+      const audioCtx = new AudioContextCtor()
+      // Atribuído já aqui (antes de qualquer outro passo que possa
+      // lançar) pra garantir que o catch mais abaixo encontre e feche
+      // este contexto mesmo que a configuração do analyser falhe.
+      audioContextRef.current = audioCtx
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      source.connect(analyser)
+      analyserRef.current = analyser
+      const amostras = new Float32Array(analyser.fftSize)
+
+      // --- Estado da SESSÃO (todas as rajadas deste `alternar()` até o
+      // próximo `parar()`/`pararEDescartar()`) ---
+      // Número da PRÓXIMA rajada a enviar pro servidor — só é incrementado
+      // quando uma rajada de fato vai subir (rajadas sem voz não ganham
+      // número, nunca sobem). Como só existe um gravador ativo por vez, o
+      // fechamento das rajadas é sempre sequencial — atribuir o número no
+      // momento do FECHAMENTO (não no momento em que a resposta chega)
+      // garante a ordem certa mesmo que as respostas voltem trocadas.
+      let proximoNumeroParaEnviar = 1
+      // Número da PRÓXIMA rajada a entregar pro `onTexto`, em ordem.
+      let proximoNumeroParaEntregar = 1
+      // Respostas que já chegaram mas ainda não são a vez de entregar
+      // (`null` = rajada resolvida sem texto — sub-piso, transcrição
+      // vazia ou falha — ainda assim precisa ocupar a posição, senão o
+      // número seguinte fica bloqueado esperando pra sempre).
+      const pendentes = new Map<number, string | null>()
+      // Quantas rajadas estão em voo (gravador já parado, upload ainda não
+      // resolveu). `parar()` só pode desligar `transcrevendo` quando isto
+      // chegar a zero E a sessão já tiver sido encerrada.
+      let rajadasEmVoo = 0
+      // Vira `true` só dentro de `fecharRajadaAtual(..., true)` — a partir
+      // daí nenhuma rajada nova nasce mais nesta sessão.
+      let sessaoEncerrando = false
+      // Requisito B (falha de rede/HTTP) e "transcrição vazia" dividem o
+      // mesmo balde de "avisa só uma vez por sessão" — sem isso, uma
+      // instabilidade de rede vira um toast por rajada. Cada causa mantém
+      // a PRÓPRIA mensagem; só a primeira que acontecer é mostrada.
+      let avisoFalhaMostrado = false
+      // Se NENHUMA rajada da sessão entregou texto (todas descartadas por
+      // silêncio, sub-piso, ou falharam), avisa "Gravação muito curta" —
+      // mas só se nenhum outro aviso já explicou o motivo.
+      let textoEntregue = false
+      estadoRajadaRef.current = criarEstadoRajada(Date.now())
+
+      const avisarFalhaUmaVez = (mensagem: string) => {
+        if (avisoFalhaMostrado) return
+        avisoFalhaMostrado = true
+        toast.error(mensagem)
       }
-      mr.onstop = async () => {
-        // Sempre libera as tracks desta tentativa, atrasada ou não — os
-        // cinco caminhos de parada continuam liberando o microfone
-        // incondicionalmente, independente do que vier a seguir.
-        stream.getTracks().forEach((t) => t.stop())
-        // Só limpa a ref se ela ainda apontar pro stream DESTA tentativa
-        // — se este evento atrasou o bastante, uma tentativa mais nova
-        // pode já ter posto o próprio stream em `streamRef.current`, e
-        // não é este evento velho quem deveria apagar isso (senão o
-        // desligamento síncrono de um `pararEDescartar()` futuro, que
-        // depende de `streamRef.current` pra agir sem esperar o `onstop`
-        // da tentativa nova, ficaria sem efeito nenhum).
-        if (streamRef.current === stream) streamRef.current = null
-        if (controle.descartado) {
-          // `pararEDescartar()` cancelou ESTA tentativa especificamente
-          // (fechar a folha, desmontar) — não importa se foi enquanto
-          // gravava ou enquanto a permissão ainda estava pendente. Não
-          // toca em nenhum buffer, não transcreve. Uma tentativa nova
-          // ter nascido depois NÃO é, por si só, motivo pra descartar —
-          // só a passagem por aqui com `descartado === true` é.
-          return
-        }
-        const ext = mimeType.includes('mp4') ? 'mp4' : 'webm'
-        const blob = new Blob(pedacos, { type: mimeType })
-        // Mesmo piso do MicButton.tsx (ver MIN_BLOB_BYTES no topo do
-        // arquivo): cobre tanto o blob vazio (0 byte) quanto qualquer coisa
-        // curta demais pra ser fala — clique duplo é interação normal neste
-        // mic de clicar-pra-alternar, não uma borda rara a ignorar.
-        if (blob.size < MIN_BLOB_BYTES) {
-          toast.error('Gravação muito curta, segure mais tempo')
-          setTranscrevendo(false)
-          return
-        }
-        try {
-          const form = new FormData()
-          // Campo "audio": é o que a rota /api/groq/transcribe de fato lê
-          // (ver app/api/groq/transcribe/route.ts e MicButton.tsx, que já
-          // consome essa rota na coleta) — não "file".
-          form.append('audio', blob, `audio.${ext}`)
-          const res = await fetch('/api/groq/transcribe', { method: 'POST', body: form })
-          let json: { text?: string; error?: string } | null = null
-          try { json = await res.json() } catch { /* sem json: proxy, 502, corpo vazio */ }
-          if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
-          // Um 200 com `text` vazio/ausente (silêncio na gravação, só ruído
-          // de fundo, corpo sem o campo) é o MESMO sintoma relatado ("cliquei
-          // no mic e não aconteceu nada") como um 503 seria — `res.ok` sendo
-          // `true` não é garantia de que sobrou transcrição nenhuma pra
-          // devolver. Mesmo texto do `MicButton.tsx:68`, pra os dois mics não
-          // divergirem no que dizem pro gestor.
-          if (typeof json?.text === 'string' && json.text.trim()) {
-            onTexto(json.text.trim())
-          } else {
-            toast.error('Transcrição vazia')
+
+      // Entrega pro `onTexto`, EM ORDEM, tudo que já pode ser entregue —
+      // ou seja, avança enquanto a próxima posição esperada já tiver
+      // resposta (mesmo que seja um `null`, que só é pulado).
+      const entregarEmOrdem = () => {
+        while (pendentes.has(proximoNumeroParaEntregar)) {
+          const texto = pendentes.get(proximoNumeroParaEntregar) ?? null
+          pendentes.delete(proximoNumeroParaEntregar)
+          proximoNumeroParaEntregar += 1
+          if (texto) {
+            textoEntregue = true
+            onTexto(texto)
           }
-        } catch (e) {
-          // Avisa, não trava: nem um 503 (sem chave configurada) nem uma
-          // exceção de rede podem sumir sem passar por lugar nenhum — foi
-          // exatamente esse silêncio que fez o defeito relatado ("o mic não
-          // faz nada") passar despercebido em produção. O que o comentário
-          // antigo ("Silencioso de propósito") protegia de verdade era só
-          // "não travar o campo de texto" — o gestor continua podendo
-          // digitar normalmente, um toast não tira essa saída.
-          toast.error(`IA: ${mensagemDoErro(e, 'indisponível')}`)
-        } finally {
-          setTranscrevendo(false)
         }
       }
-      mr.start()
+
+      // Chamado no `finally` de TODA rajada que passou por `onstop`. Só
+      // finaliza a sessão (desliga `transcrevendo` e decide o aviso de
+      // "sessão sem texto") quando `parar()` já foi chamado E não sobra
+      // nenhuma rajada em voo.
+      const finalizarSessaoSeAcabou = () => {
+        if (!sessaoEncerrando || rajadasEmVoo > 0) return
+        setTranscrevendo(false)
+        if (!textoEntregue && !avisoFalhaMostrado) {
+          toast.error('Gravação muito curta, segure mais tempo')
+        }
+      }
+
+      // Guarda os dados de UMA rajada — criado de novo a cada chamada de
+      // `iniciarNovaRajada`, nunca reaproveitado entre rajadas (mesma
+      // razão do antigo comentário sobre `pedacos`, agora por rajada em
+      // vez de por sessão inteira).
+      const iniciarNovaRajada = () => {
+        const pedacos: Blob[] = []
+        // Preenchido por `fecharRajadaAtual` no instante em que ESTA
+        // rajada é fechada — não dá pra saber o número (ou se ela vai
+        // subir) no momento em que o gravador começa, só quando termina.
+        // `contabilizada` distingue duas causas BEM diferentes de
+        // `numero === null` no `onstop`: uma rajada que o DETECTOR fechou
+        // sem voz nenhuma (passou por `fecharRajadaAtual`, incrementou
+        // `rajadasEmVoo`, só não ganhou número) de uma rajada que nunca
+        // chegou a ser fechada por `fecharRajadaAtual` — porque
+        // `pararEDescartar()` parou o gravador DIRETAMENTE (sem passar por
+        // `fecharRajadaAtual`, que é só o caminho de fechamento NORMAL).
+        // Sem esta flag, o `finally` do `onstop` decrementaria
+        // `rajadasEmVoo` sem ele nunca ter sido incrementado pra esta
+        // rajada — inofensivo hoje (`finalizarSessaoSeAcabou` também exige
+        // `sessaoEncerrando`, que um descarte puro nunca liga), mas é uma
+        // contagem errada esperando um bug futuro.
+        const fechamento: { numero: number | null; ultima: boolean; contabilizada: boolean } = {
+          numero: null,
+          ultima: false,
+          contabilizada: false,
+        }
+        infoFechamentoRef.current = fechamento
+
+        const mr = new MediaRecorder(stream, { mimeType })
+        recorder.current = mr
+        iniciando.current = false
+        mr.ondataavailable = (e) => {
+          if (e.data && e.data.size) pedacos.push(e.data)
+        }
+        mr.onstop = async () => {
+          // Sempre libera as tracks do stream quando esta é a ÚLTIMA
+          // rajada da sessão — as rajadas do MEIO da sessão NÃO podem
+          // parar as tracks (o stream precisa continuar vivo pra rajada
+          // seguinte gravar em cima dele). "Sempre libera, atrasada ou
+          // não" continua valendo, só que agora "sempre" é por SESSÃO,
+          // não por rajada.
+          if (fechamento.ultima) {
+            stream.getTracks().forEach((t) => t.stop())
+            if (streamRef.current === stream) streamRef.current = null
+          }
+          const numero = fechamento.numero
+          try {
+            if (controle.descartado) return
+            if (numero === null) return // sem voz nesta rajada — nunca sobe
+            const ext = mimeType.includes('mp4') ? 'mp4' : 'webm'
+            const blob = new Blob(pedacos, { type: mimeType })
+            // Piso por RAJADA (ver MIN_BLOB_BYTES no topo do arquivo): o
+            // AVISO virou coisa de sessão, mas o descarte continua aqui,
+            // silencioso — evita gastar uma chamada de API com ruído.
+            if (blob.size < MIN_BLOB_BYTES) {
+              pendentes.set(numero, null)
+              return
+            }
+            const form = new FormData()
+            // Campo "audio": é o que a rota /api/groq/transcribe de fato lê
+            // (ver app/api/groq/transcribe/route.ts e MicButton.tsx, que já
+            // consome essa rota na coleta) — não "file".
+            form.append('audio', blob, `audio.${ext}`)
+            const res = await fetch('/api/groq/transcribe', { method: 'POST', body: form })
+            let json: { text?: string; error?: string } | null = null
+            try {
+              json = await res.json()
+            } catch {
+              /* sem json: proxy, 502, corpo vazio */
+            }
+            if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
+            // Um 200 com `text` vazio/ausente (silêncio na gravação, só ruído
+            // de fundo, corpo sem o campo) é o MESMO sintoma relatado ("cliquei
+            // no mic e não aconteceu nada") como um 503 seria — `res.ok` sendo
+            // `true` não é garantia de que sobrou transcrição nenhuma pra
+            // devolver. Mesmo texto do `MicButton.tsx:68`, pra os dois mics não
+            // divergirem no que dizem pro gestor.
+            if (typeof json?.text === 'string' && json.text.trim()) {
+              pendentes.set(numero, json.text.trim())
+            } else {
+              pendentes.set(numero, null)
+              avisarFalhaUmaVez('Transcrição vazia')
+            }
+          } catch (e) {
+            // Avisa (uma vez por sessão — ver `avisarFalhaUmaVez`), não
+            // trava: nem um 503 (sem chave configurada) nem uma exceção de
+            // rede podem sumir sem passar por lugar nenhum. Diferente de
+            // antes da Task 2, uma rajada falhando NÃO derruba a sessão —
+            // as próximas continuam normalmente.
+            if (numero !== null) pendentes.set(numero, null)
+            avisarFalhaUmaVez(`IA: ${mensagemDoErro(e, 'indisponível')}`)
+          } finally {
+            // Só mexe na contabilidade da sessão (`rajadasEmVoo`) se esta
+            // rajada foi de fato CONTADA por `fecharRajadaAtual` — uma
+            // rajada que `pararEDescartar()` parou diretamente (sem passar
+            // por lá, ver comentário em `fechamento` acima) nunca chegou a
+            // incrementar `rajadasEmVoo`, e decrementar aqui destrambelharia
+            // a contagem sem nenhum incremento correspondente.
+            if (fechamento.contabilizada) {
+              entregarEmOrdem()
+              rajadasEmVoo -= 1
+              finalizarSessaoSeAcabou()
+            }
+          }
+        }
+        mr.start()
+      }
+
+      // Fecha a rajada atual e, se não for a última, já começa a próxima —
+      // "imediatamente", sem esperar o `onstop` (assíncrono) do gravador
+      // que está parando: só assim o gestor não percebe a troca.
+      const fecharRajadaAtual = (houveVoz: boolean, ultima: boolean) => {
+        const fechamento = infoFechamentoRef.current
+        if (fechamento) {
+          fechamento.ultima = ultima
+          // A guarda de `houveVoz` (ver `EstadoRajada.houveVoz` em
+          // `deteccaoSilencio.ts`) só vale pra rajada que o PRÓPRIO
+          // DETECTOR fechou (silêncio sustentado ou teto de duração): sem
+          // nenhuma leitura de voz, não faz sentido gastar uma chamada de
+          // API — é exatamente o hazard de alucinação do Whisper que a
+          // Task 1 mediu. A rajada FINAL (clique manual do gestor, ou o
+          // teto de SESSÃO de 60s) é diferente: quem decidiu fechar foi o
+          // gestor, não o detector — ele pode ter clicado parar bem
+          // dentro da janela de amostragem, antes de qualquer leitura
+          // registrar a fala que ele acabou de soltar. Descartar isso
+          // jogaria fora áudio real; por isso a rajada final sobe sempre,
+          // sujeita só ao piso de tamanho (`MIN_BLOB_BYTES`), igual a
+          // qualquer outra.
+          fechamento.numero = ultima || houveVoz ? proximoNumeroParaEnviar++ : null
+          fechamento.contabilizada = true
+          rajadasEmVoo += 1
+        }
+        if (ultima) sessaoEncerrando = true
+        recorder.current?.stop()
+        recorder.current = null
+        if (!ultima) iniciarNovaRajada()
+      }
+
+      fecharRajadaRef.current = fecharRajadaAtual
+
+      iniciarNovaRajada() // primeira rajada da sessão
       setGravando(true)
+
+      amostraIntervalRef.current = setInterval(() => {
+        try {
+          const analyser = analyserRef.current
+          if (!analyser) return
+          analyser.getFloatTimeDomainData(amostras)
+          const rms = calcularRms(amostras)
+          setNivelAudio(rms)
+          const avaliacao = avaliarRajada(estadoRajadaRef.current, rms, Date.now())
+          estadoRajadaRef.current = avaliacao.estado
+          if (avaliacao.fecharRajada) {
+            fecharRajadaAtual(avaliacao.houveVoz, false)
+          }
+        } catch {
+          // Reinício de rajada falhou no meio da sessão (ex.: stream
+          // encerrado por fora, mic desconectado) — não pode deixar a
+          // exceção morrer silenciosa dentro de um `setInterval`. Encerra
+          // a sessão pelo mesmo caminho de descarte, com o mesmo aviso de
+          // falha de microfone usado no início.
+          toast.error('Falha ao acessar microfone')
+          pararEDescartar()
+        }
+      }, 50)
+
       // Auto-stop em MAX_DURATION_MS (ver comentário no topo do arquivo): o
       // gestor não pediu pra parar, então avisa por quê antes de chamar
       // `parar()` — sem isso o botão trocaria de "Parar gravação" pra
-      // "Ditar" sozinho, do nada.
+      // "Ditar" sozinho, do nada. Continua sendo teto de SESSÃO, não de
+      // rajada.
       autoStopRef.current = setTimeout(() => {
         autoStopRef.current = null
         toast('Gravação parada automaticamente após 60s')
@@ -275,18 +538,26 @@ export function useDitado(onTexto: (t: string) => void) {
     } catch (e) {
       // Cobre TUDO que pode falhar desde o pedido de permissão até o
       // gravador começar de fato: getUserMedia negado/indisponível, a
-      // escolha de mimeType, e `new MediaRecorder(...)`. Achado do review
-      // final: as duas últimas ficavam FORA do try antigo — uma exceção ali
-      // virava unhandled rejection de um onClick, e como o stream já podia
+      // escolha de mimeType, a configuração do Web Audio, e
+      // `new MediaRecorder(...)`. Achado do review final (pré-Task 2): as
+      // últimas ficavam FORA do try antigo — uma exceção ali virava
+      // unhandled rejection de um onClick, e como o stream já podia
       // estar em `streamRef.current`, a luz do microfone ficava acesa sem
       // nenhum controle na tela pra apagar. Nenhuma ref pode sobreviver a
       // este catch: é o que garante que `pararEDescartar()` (unmount, folha
       // fechando) encontra "nada em voo" depois de uma falha aqui.
       iniciando.current = false
+      if (amostraIntervalRef.current) {
+        clearInterval(amostraIntervalRef.current)
+        amostraIntervalRef.current = null
+      }
+      fecharAudioContext()
+      recorder.current?.stop()
       recorder.current = null
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
       setGravando(false)
+      setNivelAudio(0)
       // Mesma distinção do MicButton.tsx:134-140, mesmas frases — os dois
       // mics não podem divergir no que dizem pro gestor. `NotAllowedError`/
       // `SecurityError` são os nomes que getUserMedia usa pra "permissão
@@ -299,7 +570,7 @@ export function useDitado(onTexto: (t: string) => void) {
         toast.error('Falha ao acessar microfone')
       }
     }
-  }, [gravando, parar, onTexto])
+  }, [gravando, parar, onTexto, fecharAudioContext, pararEDescartar])
 
   // Cleanup ao desmontar: sem isso, navegar pra outra tela (ou a troca
   // de instância do componente) com o mic ligado deixa o stream aberto
@@ -311,5 +582,5 @@ export function useDitado(onTexto: (t: string) => void) {
     }
   }, [pararEDescartar])
 
-  return { gravando, transcrevendo, alternar, pararEDescartar }
+  return { gravando, transcrevendo, alternar, pararEDescartar, nivelAudio }
 }
