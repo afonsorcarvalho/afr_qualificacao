@@ -46,7 +46,7 @@ describe('openrouterTranscribe', () => {
     ['audio/webm', 'webm'],
     ['audio/mp4', 'mp4'],
     ['audio/wav', 'wav'],
-  ])('deriva input_audio.format=%s a partir do mime %s do blob', async (mime, formatoEsperado) => {
+  ])('mime %s do blob vira input_audio.format %s', async (mime, formatoEsperado) => {
     const fetchMock = vi.fn().mockResolvedValue(respond({ text: 'ok' }))
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
