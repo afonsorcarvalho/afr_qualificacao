@@ -9,6 +9,15 @@ import { LlmError } from '@/lib/llm/client'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+// 25MB é um teto de sanidade sobre o que o navegador pode enviar, não um
+// limite do provedor — o "(limite Groq)" de antes era sobre multipart, que
+// não usamos mais. `openrouterTranscribe` (lib/llm/transcribe.ts) manda o
+// áudio como JSON+base64, ~1/3 maior que o Blob medido aqui: uma requisição
+// no teto vira ~33MB na rede, e isso é esperado, não um bug. O que de fato
+// aperta neste caminho é tempo, não byte — a OpenRouter documenta timeout de
+// uns 60s por requisição nos provedores upstream; quem segura isso é o teto
+// de duração da gravação no cliente (`MAX_DURATION_MS` em
+// `MicButton.tsx`), não este arquivo.
 const MAX_SIZE = 25 * 1024 * 1024 // 25MB
 
 export async function POST(request: NextRequest) {
