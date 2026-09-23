@@ -1,18 +1,22 @@
 // app/api/groq/transcribe/route.ts
+// Caminho histórico: continua em /api/groq/transcribe (renomear forçaria
+// mudança de proxy Apache em produção só por motivo cosmético — ver task 2
+// da migração Groq→OpenRouter). O provedor por trás agora é o OpenRouter.
 import { NextRequest, NextResponse } from 'next/server'
-import { groqTranscribe, GroqError } from '@/lib/groq/client'
+import { openrouterTranscribe } from '@/lib/llm/transcribe'
+import { LlmError } from '@/lib/llm/client'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-const MAX_SIZE = 25 * 1024 * 1024 // 25MB (limite Groq)
+const MAX_SIZE = 25 * 1024 * 1024 // 25MB
 
 export async function POST(request: NextRequest) {
   const session = request.cookies.get('session_id')?.value
   if (!session) {
     return NextResponse.json({ error: 'Sessão expirada' }, { status: 401 })
   }
-  if (!process.env.GROQ_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return NextResponse.json({ error: 'IA não configurada' }, { status: 503 })
   }
   let form: FormData
@@ -33,10 +37,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await groqTranscribe(audio, { language: 'pt' })
+    const result = await openrouterTranscribe(audio, { language: 'pt' })
     return NextResponse.json(result)
   } catch (e) {
-    if (e instanceof GroqError) {
+    if (e instanceof LlmError) {
       return NextResponse.json({ error: e.message }, { status: e.status })
     }
     return NextResponse.json({ error: 'Erro ao transcrever' }, { status: 500 })

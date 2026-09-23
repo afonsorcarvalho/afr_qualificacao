@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
-vi.mock('@/lib/groq/client', () => ({
-  groqChat: vi.fn(),
-  GroqError: class GroqError extends Error {
+vi.mock('@/lib/llm/client', () => ({
+  llmChat: vi.fn(),
+  LlmError: class LlmError extends Error {
     status: number
     constructor(msg: string, status: number) {
       super(msg)
       this.status = status
-      this.name = 'GroqError'
+      this.name = 'LlmError'
     }
   },
 }))
 
-import { groqChat, GroqError } from '@/lib/groq/client'
+import { llmChat, LlmError } from '@/lib/llm/client'
 import { POST } from './route'
 
 function makeRequest(body: unknown, opts: { withCookie?: boolean } = { withCookie: true }) {
@@ -40,12 +40,12 @@ const validBody = {
 }
 
 beforeEach(() => {
-  process.env.GROQ_API_KEY = 'gsk_test'
-  vi.mocked(groqChat).mockReset()
+  process.env.OPENROUTER_API_KEY = 'sk-or-test'
+  vi.mocked(llmChat).mockReset()
 })
 
 afterEach(() => {
-  delete process.env.GROQ_API_KEY
+  delete process.env.OPENROUTER_API_KEY
 })
 
 describe('POST /api/groq/review', () => {
@@ -54,8 +54,8 @@ describe('POST /api/groq/review', () => {
     expect(res.status).toBe(401)
   })
 
-  it('retorna 503 sem GROQ_API_KEY', async () => {
-    delete process.env.GROQ_API_KEY
+  it('retorna 503 sem OPENROUTER_API_KEY', async () => {
+    delete process.env.OPENROUTER_API_KEY
     const res = await POST(makeRequest(validBody) as any)
     expect(res.status).toBe(503)
   })
@@ -66,7 +66,7 @@ describe('POST /api/groq/review', () => {
   })
 
   it('parseia JSON do LLM e retorna issues válidas', async () => {
-    vi.mocked(groqChat).mockResolvedValue({
+    vi.mocked(llmChat).mockResolvedValue({
       content: JSON.stringify({
         verdict: 'warnings',
         issues: [
@@ -79,6 +79,7 @@ describe('POST /api/groq/review', () => {
           },
         ],
       }),
+      tool_calls: [],
     })
     const res = await POST(makeRequest(validBody) as any)
     expect(res.status).toBe(200)
@@ -89,15 +90,18 @@ describe('POST /api/groq/review', () => {
     expect(json.issues[0].item_id).toBe(42)
   })
 
-  it('passa response_format json_object e temperature baixa pro groqChat', async () => {
-    vi.mocked(groqChat).mockResolvedValue({
+  it('passa response_format json_object, temperature baixa e modelo OpenRouter pro llmChat', async () => {
+    vi.mocked(llmChat).mockResolvedValue({
       content: JSON.stringify({ verdict: 'ok', issues: [] }),
+      tool_calls: [],
     })
     await POST(makeRequest(validBody) as any)
-    const [, opts] = vi.mocked(groqChat).mock.calls[0]
+    const [, opts] = vi.mocked(llmChat).mock.calls[0]
     expect(opts.response_format).toEqual({ type: 'json_object' })
     expect(opts.temperature).toBe(0.1)
-    expect(opts.model).toBe('llama-3.3-70b-versatile')
+    expect(opts.baseUrl).toBe('https://openrouter.ai/api/v1')
+    expect(opts.apiKey).toBe('sk-or-test')
+    expect(opts.model).toBe('meta-llama/llama-3.3-70b-instruct')
   })
 
   it('descarta issues com type inválido e limita em 8', async () => {
@@ -109,8 +113,9 @@ describe('POST /api/groq/review', () => {
       suggestion: 's',
     }))
     eight.push({ severity: 'warning', item_id: 99, type: 'nao_existe' as any, message: 'x', suggestion: 'y' })
-    vi.mocked(groqChat).mockResolvedValue({
+    vi.mocked(llmChat).mockResolvedValue({
       content: JSON.stringify({ verdict: 'warnings', issues: eight }),
+      tool_calls: [],
     })
     const res = await POST(makeRequest(validBody) as any)
     const json = await res.json()
@@ -119,15 +124,21 @@ describe('POST /api/groq/review', () => {
   })
 
   it('retorna verdict ok se LLM devolve JSON quebrado', async () => {
-    vi.mocked(groqChat).mockResolvedValue({ content: 'not json' })
+    vi.mocked(llmChat).mockResolvedValue({ content: 'not json', tool_calls: [] })
     const res = await POST(makeRequest(validBody) as any)
     const json = await res.json()
     expect(json.verdict).toBe('ok')
     expect(json.issues).toEqual([])
   })
 
-  it('propaga status code de GroqError', async () => {
-    vi.mocked(groqChat).mockRejectedValue(new (GroqError as any)('rate limit', 429))
+  it('retorna 502 se llmChat devolve content nulo', async () => {
+    vi.mocked(llmChat).mockResolvedValue({ content: null, tool_calls: [] })
+    const res = await POST(makeRequest(validBody) as any)
+    expect(res.status).toBe(502)
+  })
+
+  it('propaga status code de LlmError', async () => {
+    vi.mocked(llmChat).mockRejectedValue(new (LlmError as any)('rate limit', 429))
     const res = await POST(makeRequest(validBody) as any)
     expect(res.status).toBe(429)
   })
