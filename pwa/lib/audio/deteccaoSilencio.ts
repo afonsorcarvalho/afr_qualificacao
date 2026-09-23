@@ -50,18 +50,30 @@ export const LIMIARES_RAJADA_PADRAO: LimiaresRajada = {
 
 /**
  * Estado mínimo que a máquina carrega entre leituras: desde quando a
- * rajada atual começou, e desde quando (se houver) o silêncio atual vem
- * durando sem interrupção. `silencioDesdeMs: null` significa "a leitura
- * mais recente foi voz", não "nunca houve silêncio nesta rajada".
+ * rajada atual começou, desde quando (se houver) o silêncio atual vem
+ * durando sem interrupção, e se alguma leitura desta rajada já foi voz.
+ * `silencioDesdeMs: null` significa "a leitura mais recente foi voz", não
+ * "nunca houve silêncio nesta rajada".
+ *
+ * `houveVoz` existe apesar do pedido de "estado mínimo" do desenho
+ * original porque, sem ele, uma rajada inteiramente silenciosa (o gestor
+ * clica o mic e não chega a falar) fecha do mesmo jeito — e quem chama não
+ * tinha como saber, antes de mandar pro Whisper, que não havia nada pra
+ * transcrever. `MIN_BLOB_BYTES` não pega isso (o blob de ~2.2s de silêncio
+ * codificado não é minúsculo) e "transcrição vazia" também não (medido: um
+ * tom puro sem fala pode voltar HTTP 200 com texto alucinado, não string
+ * vazia). Um campo é mais barato que uma chamada de API desperdiçada e um
+ * texto inventado na caixa do gestor.
  */
 export interface EstadoRajada {
   inicioMs: number
   silencioDesdeMs: number | null
+  houveVoz: boolean
 }
 
 /** Estado de uma rajada nova, começando em `instanteMs`. */
 export function criarEstadoRajada(instanteMs: number): EstadoRajada {
-  return { inicioMs: instanteMs, silencioDesdeMs: null }
+  return { inicioMs: instanteMs, silencioDesdeMs: null, houveVoz: false }
 }
 
 export interface AvaliacaoRajada {
@@ -71,6 +83,12 @@ export interface AvaliacaoRajada {
    * montar `criarEstadoRajada` de novo na mão. */
   estado: EstadoRajada
   fecharRajada: boolean
+  /** Verdadeiro se alguma leitura desta rajada — incluindo a leitura
+   * atual — teve RMS >= `limiarSilencio`. Espelha `estado.houveVoz` ANTES
+   * do reset, então no instante do fechamento é o valor da rajada que
+   * está fechando (não da próxima, já zerada). Ver o comentário em
+   * `EstadoRajada.houveVoz` para o porquê deste campo existir. */
+  houveVoz: boolean
 }
 
 /**
@@ -91,19 +109,26 @@ export function avaliarRajada(
   limiares: LimiaresRajada = LIMIARES_RAJADA_PADRAO,
 ): AvaliacaoRajada {
   const duracaoRajadaMs = instanteMs - estado.inicioMs
+  const emSilencio = rms < limiares.limiarSilencio
+  // Calculado uma vez e reusado nos três retornos: "houve voz" inclui a
+  // leitura ATUAL, não só o histórico — uma leitura de voz que por acaso
+  // coincide com o instante do fechamento por `maxRajadaMs` ainda conta.
+  const houveVoz = estado.houveVoz || !emSilencio
 
   if (duracaoRajadaMs >= limiares.maxRajadaMs) {
-    return { estado: criarEstadoRajada(instanteMs), fecharRajada: true }
+    return { estado: criarEstadoRajada(instanteMs), fecharRajada: true, houveVoz }
   }
-
-  const emSilencio = rms < limiares.limiarSilencio
 
   if (!emSilencio) {
     // Voz (de novo ou ainda): zera o início do silêncio. É este reset que
     // faz uma vírgula (pausa curta) não se somar a uma pausa futura — sem
     // ele, duas pausas curtas separadas por fala poderiam ultrapassar
     // `silencioMs` juntas e fechar a rajada no meio de uma frase.
-    return { estado: { ...estado, silencioDesdeMs: null }, fecharRajada: false }
+    return {
+      estado: { ...estado, silencioDesdeMs: null, houveVoz },
+      fecharRajada: false,
+      houveVoz,
+    }
   }
 
   const silencioDesdeMs = estado.silencioDesdeMs ?? instanteMs
@@ -112,8 +137,8 @@ export function avaliarRajada(
   const rajadaJaAtingiuOPiso = duracaoRajadaMs >= limiares.minRajadaMs
 
   if (silencioSustentado && rajadaJaAtingiuOPiso) {
-    return { estado: criarEstadoRajada(instanteMs), fecharRajada: true }
+    return { estado: criarEstadoRajada(instanteMs), fecharRajada: true, houveVoz }
   }
 
-  return { estado: { ...estado, silencioDesdeMs }, fecharRajada: false }
+  return { estado: { ...estado, silencioDesdeMs, houveVoz }, fecharRajada: false, houveVoz }
 }

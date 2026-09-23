@@ -186,15 +186,81 @@ describe('avaliarRajada', () => {
     expect(rPadrao.fecharRajada).toBe(false)
   })
 
-  it('valores default batem com o acordado: silencioMs=700, minRajadaMs=1500, maxRajadaMs=8000', () => {
+  it('valores default batem com o acordado: limiarSilencio=0.01, silencioMs=700, minRajadaMs=1500, maxRajadaMs=8000', () => {
     expect(LIMIARES_RAJADA_PADRAO.limiarSilencio).toBe(0.01)
     expect(LIMIARES_RAJADA_PADRAO.silencioMs).toBe(700)
     expect(LIMIARES_RAJADA_PADRAO.minRajadaMs).toBe(1500)
     expect(LIMIARES_RAJADA_PADRAO.maxRajadaMs).toBe(8000)
   })
 
+  it('silêncio bate EXATAMENTE em silencioMs (700ms) fecha; um instante antes (699ms) não — mesma fronteira exata que minRajadaMs e maxRajadaMs já têm, contra um `>`/`>=` trocado por engano', () => {
+    let estado = criarEstadoRajada(0)
+    let r = avaliarRajada(estado, VOZ, 0)
+    estado = r.estado
+    r = avaliarRajada(estado, VOZ, 1600) // rajada já > minRajadaMs (1500)
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 1600) // silêncio começa aqui
+    estado = r.estado
+
+    r = avaliarRajada(estado, SILENCIO, 1600 + 699)
+    expect(r.fecharRajada).toBe(false)
+    estado = r.estado // ainda não fechou: silencioDesdeMs continua 1600
+
+    r = avaliarRajada(estado, SILENCIO, 1600 + 700)
+    expect(r.fecharRajada).toBe(true)
+  })
+
+  it('rajada inteira sem nenhuma leitura de voz fecha com houveVoz=false — sem isto a Task 2 mandaria um tom puro pro Whisper, que pode voltar HTTP 200 com texto alucinado (medido: " E aí" / " ." para 440Hz sem fala)', () => {
+    let estado = criarEstadoRajada(0)
+    // silêncio contínuo desde o próprio início da rajada — nunca houve
+    // voz. Com minRajadaMs=1500 > silencioMs=700, as DUAS condições de
+    // fechamento ficam satisfeitas juntas exatamente em t=1500 (a mais
+    // tardia das duas), não em 1500+700: silencioDesdeMs já é 0 desde a
+    // primeira leitura, então em t=1500 a duração de silêncio (1500) já
+    // passou de sobra dos 700 exigidos.
+    let r = avaliarRajada(estado, SILENCIO, 0)
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 1500)
+    expect(r.fecharRajada).toBe(true)
+    expect(r.houveVoz).toBe(false)
+  })
+
+  it('rajada com pelo menos uma leitura de voz fecha com houveVoz=true mesmo quando a leitura que fecha é silêncio — houveVoz precisa olhar o histórico da rajada, não só a leitura atual', () => {
+    let estado = criarEstadoRajada(0)
+    let r = avaliarRajada(estado, VOZ, 0) // uma única leitura de voz basta
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 1600)
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 1600 + 700) // fecha por silêncio
+    expect(r.fecharRajada).toBe(true)
+    expect(r.houveVoz).toBe(true)
+  })
+
+  it('houveVoz reseta ao fechar — a rajada seguinte não herda "true" mesmo que a anterior tenha tido voz', () => {
+    let estado = criarEstadoRajada(0)
+    let r = avaliarRajada(estado, VOZ, 0)
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 1600)
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 2300) // fecha com houveVoz=true
+    expect(r.fecharRajada).toBe(true)
+    expect(r.houveVoz).toBe(true)
+    estado = r.estado
+
+    // Hazard: se `houveVoz` não fosse zerado junto com o resto do estado,
+    // a rajada seguinte — mesmo inteiramente silenciosa — reportaria
+    // houveVoz=true por engano, herdado da rajada anterior.
+    expect(estado.houveVoz).toBe(false)
+
+    r = avaliarRajada(estado, SILENCIO, 2300 + 1500) // rajada nova, só silêncio
+    estado = r.estado
+    r = avaliarRajada(estado, SILENCIO, 2300 + 1500 + 700)
+    expect(r.fecharRajada).toBe(true)
+    expect(r.houveVoz).toBe(false)
+  })
+
   it('leitura exatamente NO limiar conta como voz — um limiar que "vaza" pra cima classifica fala baixinho como silêncio e corta no meio da palavra', () => {
-    const estadoEmVoz: EstadoRajada = { inicioMs: 0, silencioDesdeMs: null }
+    const estadoEmVoz: EstadoRajada = { inicioMs: 0, silencioDesdeMs: null, houveVoz: true }
 
     const noLimiar = avaliarRajada(estadoEmVoz, LIMIARES_RAJADA_PADRAO.limiarSilencio, 100)
     // no limiar exato: ainda é voz (corte é `rms < limiar`, não `<=`)
