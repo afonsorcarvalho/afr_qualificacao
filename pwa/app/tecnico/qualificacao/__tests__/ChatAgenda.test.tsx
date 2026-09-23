@@ -418,7 +418,8 @@ describe('ChatAgenda', () => {
       constructor(public stream: unknown) {}
       start() {}
       stop() {
-        this.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+        // >= MIN_BLOB_BYTES (useDitado.ts): abaixo disso cai no piso de "muito curta" em vez de transcrever, que não é o que este teste exercita.
+        this.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
         this.onstop?.()
       }
     }
@@ -498,7 +499,8 @@ describe('ChatAgenda', () => {
       constructor(public stream: unknown) {}
       start() {}
       stop() {
-        this.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+        // >= MIN_BLOB_BYTES (useDitado.ts): este teste espera transcrição de verdade.
+        this.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
         this.onstop?.()
       }
     }

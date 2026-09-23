@@ -26,9 +26,24 @@ class FakeRecorder {
   start() { this.state = 'recording' }
   stop() {
     this.state = 'inactive'
-    this.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+    // >= MIN_BLOB_BYTES de propósito: este dublê serve o caminho feliz da
+    // maioria dos testes deste arquivo — um blob de 1 byte (como era antes)
+    // cairia no piso de "gravação muito curta" assim que ele existisse, e
+    // derrubaria toda transcrição esperada nesses testes por um motivo que
+    // não é o que eles querem exercitar. O teste do piso em si usa
+    // `FakeRecorderAtrasado` com um chunk pequeno deliberado.
+    this.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
     this.onstop?.()
   }
+}
+
+/** Mesmo `name`/`message` que um erro real de `getUserMedia` negado/bloqueado
+ *  traz — é o `name`, não a `message`, que `nomeDoErro`/`useDitado` usam para
+ *  distinguir "permissão negada" de "falha genérica" (ver lib/utils/erro.ts). */
+function erroComNome(name: string, message = name) {
+  const e = new Error(message)
+  e.name = name
+  return e
 }
 
 // Gravador cujo `stop()` NÃO dispara `onstop` sozinho — o teste dispara
@@ -153,12 +168,130 @@ describe('useDitado', () => {
     expect(toastMock.error).toHaveBeenCalledWith('Transcrição vazia')
   })
 
-  it('permissão de microfone negada não quebra', async () => {
-    ;(globalThis as any).navigator.mediaDevices.getUserMedia =
-      vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+  it('permissão de microfone negada (NotAllowedError) avisa com o texto de permissão, e o mic continua utilizável depois', async () => {
+    // Antes deste fix: catch fazia `iniciando=false; setGravando(false);
+    // return` sem toast nenhum — clicar no mic e a permissão ser negada não
+    // produzia texto, erro nem qualquer pista na tela. Requisito: mesma
+    // mensagem que `MicButton.tsx:137` usa para o mesmo `name` de erro, os
+    // dois mics não podem divergir no que dizem pro gestor.
+    const getUserMediaMock = vi.fn().mockRejectedValue(erroComNome('NotAllowedError'))
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = getUserMediaMock
     const { result } = renderHook(() => useDitado(vi.fn()))
+
     await act(async () => { await result.current.alternar() })
+
+    expect(toastMock.error).toHaveBeenCalledWith('Permita microfone nas configurações do navegador')
     expect(result.current.gravando).toBe(false)
+    expect(getUserMediaMock).toHaveBeenCalledTimes(1)
+
+    // Não basta não travar em `gravando=true` — o `iniciando` guard (usado
+    // pra bloquear reentrância) tem que ter sido limpo também, senão o botão
+    // fica morto pra sempre depois da primeira negação. Prova: uma tentativa
+    // seguinte, agora concedida, tem que conseguir gravar.
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    await act(async () => { await result.current.alternar() })
+    expect(result.current.gravando).toBe(true)
+  })
+
+  it('getUserMedia rejeitando com outro erro (não permissão) avisa com o texto genérico', async () => {
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia =
+      vi.fn().mockRejectedValue(new Error('dispositivo ocupado'))
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() })
+
+    expect(toastMock.error).toHaveBeenCalledWith('Falha ao acessar microfone')
+    expect(result.current.gravando).toBe(false)
+  })
+
+  it('MediaRecorder lançando na construção avisa (não vira unhandled rejection) e para as tracks do stream já obtido', async () => {
+    // O achado do review final: getUserMedia já tinha resolvido e
+    // `streamRef.current` já apontava pro stream quando a escolha de
+    // mimeType/`new MediaRecorder(...)` rodava FORA de qualquer try — uma
+    // exceção ali virava unhandled rejection de um onClick, e a luz do
+    // microfone ficava acesa sem nenhum controle na tela pra apagar.
+    class FakeRecorderQuebrado {
+      static isTypeSupported() { return true }
+      constructor() {
+        throw new Error('mimeType não suportado')
+      }
+    }
+    ;(globalThis as any).MediaRecorder = FakeRecorderQuebrado
+    const pararTrack = vi.fn()
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: pararTrack }] })
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() })
+
+    expect(toastMock.error).toHaveBeenCalledWith('Falha ao acessar microfone')
+    expect(result.current.gravando).toBe(false)
+    // A asserção que importa de verdade: o stream JÁ obtido não pode ficar
+    // órfão — assert no stop de verdade, não só na flag `gravando`.
+    expect(pararTrack).toHaveBeenCalled()
+
+    // Nenhuma ref pode ficar pendurada: `pararEDescartar()` (que roda no
+    // unmount / fechar a folha) tem que encontrar "nada em voo" e não tentar
+    // parar a mesma track de novo.
+    act(() => { result.current.pararEDescartar() })
+    expect(pararTrack).toHaveBeenCalledTimes(1)
+  })
+
+  it('navegador sem MediaRecorder avisa "não suportado" e nunca chama getUserMedia', async () => {
+    ;(globalThis as any).MediaRecorder = undefined
+    const getUserMediaMock = (globalThis as any).navigator.mediaDevices.getUserMedia
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() })
+
+    expect(toastMock.error).toHaveBeenCalledWith('Gravação não suportada neste navegador')
+    expect(getUserMediaMock).not.toHaveBeenCalled()
+    expect(result.current.gravando).toBe(false)
+  })
+
+  it('sem internet (navigator.onLine === false) avisa e nunca chama getUserMedia', async () => {
+    // Não adianta gravar se a transcrição não vai conseguir ser enviada —
+    // mesmo pré-check que `MicButton.tsx:85-88` já faz antes de pedir o mic.
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const getUserMediaMock = (globalThis as any).navigator.mediaDevices.getUserMedia
+    const { result } = renderHook(() => useDitado(vi.fn()))
+
+    await act(async () => { await result.current.alternar() })
+
+    expect(toastMock.error).toHaveBeenCalledWith('Sem internet — IA indisponível')
+    expect(getUserMediaMock).not.toHaveBeenCalled()
+    expect(result.current.gravando).toBe(false)
+  })
+
+  it('blob abaixo de MIN_BLOB_BYTES (clique duplo, sem tempo de capturar áudio) avisa "muito curta" e NÃO chama onTexto', async () => {
+    // Diferente do MicButton (segurar-para-falar, com cronômetro visível): o
+    // mic do chat é clicar-pra-alternar, e um clique duplo (começa, pára na
+    // hora) é interação NORMAL aqui — sem o mesmo piso que MicButton.tsx:114
+    // já usa, isso cai direto no silêncio que a task inteira existe pra
+    // fechar.
+    ;(globalThis as any).MediaRecorder = FakeRecorderAtrasado
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const fetchMock = vi.fn()
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const onTexto = vi.fn()
+    const { result } = renderHook(() => useDitado(onTexto))
+
+    await act(async () => { await result.current.alternar() }) // inicia
+    const mr = FakeRecorderAtrasado.instancias[FakeRecorderAtrasado.instancias.length - 1]
+    mr.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) }) // 1 byte, < MIN_BLOB_BYTES
+    await act(async () => { await result.current.alternar() }) // pede pra parar
+
+    await act(async () => { await mr.onstop?.() })
+
+    expect(toastMock.error).toHaveBeenCalledWith('Gravação muito curta, segure mais tempo')
+    expect(onTexto).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.current.transcrevendo).toBe(false)
   })
 
   it('dois cliques sem esperar o primeiro abrem só um stream de microfone', async () => {
@@ -321,7 +454,9 @@ describe('useDitado', () => {
     await act(async () => { await result.current.alternar() })
     expect(result.current.gravando).toBe(true)
     const mrB = FakeRecorderAtrasado.instancias[1]
-    mrB.ondataavailable?.({ data: new Blob(['audio de B'], { type: 'audio/webm' }) })
+    // >= MIN_BLOB_BYTES: este teste segue até B transcrever de verdade lá
+    // embaixo, não é o teste do piso.
+    mrB.ondataavailable?.({ data: new Blob(['audio de B'.repeat(200)], { type: 'audio/webm' }) })
 
     // SÓ AGORA o evento atrasado de A finalmente chega.
     await act(async () => { await mrA.onstop?.() })
@@ -401,14 +536,16 @@ describe('useDitado', () => {
     // mic, via `alternar()`).
     await act(async () => { await result.current.alternar() })
     const mrA = FakeRecorderAtrasado.instancias[0]
-    mrA.ondataavailable?.({ data: new Blob(['audio de A'], { type: 'audio/webm' }) })
+    // >= MIN_BLOB_BYTES: A e B são transcritas de verdade neste teste, não é
+    // o teste do piso.
+    mrA.ondataavailable?.({ data: new Blob(['audio de A'.repeat(200)], { type: 'audio/webm' }) })
     await act(async () => { await result.current.alternar() }) // pede pra parar A
 
     // Sem esperar o onstop de A (que ainda não chegou), o gestor toca
     // de novo — B começa.
     await act(async () => { await result.current.alternar() })
     const mrB = FakeRecorderAtrasado.instancias[1]
-    mrB.ondataavailable?.({ data: new Blob(['audio de B'], { type: 'audio/webm' }) })
+    mrB.ondataavailable?.({ data: new Blob(['audio de B'.repeat(200)], { type: 'audio/webm' }) })
 
     // SÓ AGORA o onstop atrasado de A chega — ele TEM que transcrever,
     // mesmo com B já em andamento.
@@ -448,7 +585,9 @@ describe('useDitado', () => {
     // A começa, recebe áudio, e é parada NORMALMENTE.
     await act(async () => { await result.current.alternar() })
     const mrA = FakeRecorderAtrasado.instancias[0]
-    mrA.ondataavailable?.({ data: new Blob(['audio de A'], { type: 'audio/webm' }) })
+    // >= MIN_BLOB_BYTES: este teste espera transcrição de verdade lá
+    // embaixo, não é o teste do piso.
+    mrA.ondataavailable?.({ data: new Blob(['audio de A'.repeat(200)], { type: 'audio/webm' }) })
     await act(async () => { await result.current.alternar() }) // pede pra parar A
 
     // A folha fecha logo em seguida — SEM nenhuma gravação nova ter
@@ -483,7 +622,9 @@ describe('useDitado', () => {
 
     await act(async () => { await result.current.alternar() }) // inicia
     const mr1 = FakeRecorderAtrasado.instancias[FakeRecorderAtrasado.instancias.length - 1]
-    mr1.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+    // >= MIN_BLOB_BYTES: este teste precisa passar pelo fetch de verdade
+    // (sucesso e falha), não pelo piso de "muito curta".
+    mr1.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
     expect(result.current.transcrevendo).toBe(false) // só gravando, ainda não parou
 
     await act(async () => { await result.current.alternar() }) // pede pra parar
@@ -504,7 +645,7 @@ describe('useDitado', () => {
 
     await act(async () => { await result.current.alternar() }) // inicia de novo
     const mr2 = FakeRecorderAtrasado.instancias[FakeRecorderAtrasado.instancias.length - 1]
-    mr2.ondataavailable?.({ data: new Blob(['x'], { type: 'audio/webm' }) })
+    mr2.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
 
     await act(async () => { await result.current.alternar() }) // pede pra parar
     expect(result.current.transcrevendo).toBe(true)
