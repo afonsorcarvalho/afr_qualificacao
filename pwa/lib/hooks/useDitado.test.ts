@@ -1601,4 +1601,236 @@ describe('useDitado', () => {
       vi.useRealTimers()
     }
   })
+
+  // --- Onda de resíduos (2026-09-22-ditado-em-rajadas, residuos-report) ---
+
+  // Resíduo 1 (crítico): `pararEDescartar()` não abortava o
+  // `AbortController` de 30s da rajada em voo — o timer corria até o fim e,
+  // MEIO MINUTO depois do ✕, disparava `avisarFalhaUmaVez('IA: demorou
+  // demais...')`. Por essa hora uma sessão nova plausivelmente já está em
+  // andamento, com seu próprio `avisoFalhaMostrado` (closure separado, não
+  // suprime nada) — um erro vermelho no meio de uma gravação que funciona.
+  it('resíduo 1: descartar (✕) uma rajada em voo não deixa o timeout de 30s disparar um toast de erro depois, mesmo que o fetch acabe rejeitando', async () => {
+    vi.useFakeTimers()
+    try {
+      // Fetch que só rejeita quando o `AbortController` INTERNO do hook
+      // disparar (o timeout de 30s) — mesmo padrão do teste do item 6.
+      const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted', 'AbortError'))
+          })
+        })
+      })
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Fecha uma rajada por silêncio — dispara o fetch, que fica em voo
+      // (só resolve/rejeita quando o timeout interno abortar).
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // ✕ — descarta a sessão AINDA com a rajada em voo.
+      act(() => { result.current.pararEDescartar() })
+      expect(result.current.gravando).toBe(false)
+      toastMock.error.mockClear()
+
+      // Passam os 30s do timeout interno da rajada — sem o fix, é agora
+      // que o toast de erro dispararia, meio minuto depois do ✕.
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+
+      expect(toastMock.error).not.toHaveBeenCalled()
+      expect(onTexto).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Resíduo 2 (crítico): um `MediaRecorder` de verdade cujas tracks morrem
+  // por fora vira `state='inactive'` SINCRONAMENTE e `stop()` lança — mas o
+  // browser AINDA enfileira os eventos `dataavailable`/`stop`, que chegam
+  // como uma task separada, atrasada. O catch de `fecharRajadaAtual` (item
+  // 4) já trata o throw como falha, mas sem zerar `fechamento.numero`/
+  // `contabilizada`, o `onstop` enfileirado que chega depois encontra os
+  // dois ainda "vivos" e REENVIA a rajada pro servidor — e o `finally` dele
+  // decrementa `rajadasEmVoo` uma SEGUNDA vez, o que pode fazer a sessão
+  // finalizar cedo demais enquanto uma rajada legítima ainda está em voo.
+  it('resíduo 2: MediaRecorder cujo stop() lança E AINDA ASSIM dispara onstop depois não reenvia a rajada, e rajadasEmVoo não vai a negativo (a sessão finaliza uma única vez, no momento certo)', async () => {
+    class FakeRecorderPrimeiraQuebraDepoisDisparaOnstop {
+      static instancias: FakeRecorderPrimeiraQuebraDepoisDisparaOnstop[] = []
+      static isTypeSupported() { return true }
+      ondataavailable: ((e: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      state = 'recording'
+      ehPrimeira: boolean
+      constructor(public stream: unknown) {
+        this.ehPrimeira = FakeRecorderPrimeiraQuebraDepoisDisparaOnstop.instancias.length === 0
+        FakeRecorderPrimeiraQuebraDepoisDisparaOnstop.instancias.push(this)
+      }
+      start() { this.state = 'recording' }
+      stop() {
+        // A 1ª rajada simula o hazard de verdade: `state` vira 'inactive'
+        // SINCRONAMENTE e `stop()` lança — mas o browser real AINDA
+        // enfileira `dataavailable`/`stop`, que o teste dispara manualmente
+        // mais tarde (`instancias[0].ondataavailable?.(...)` + `.onstop?.()`),
+        // simulando essa task atrasada. As rajadas seguintes se comportam
+        // como um `MediaRecorder` normal (mesmo formato do `FakeRecorder`
+        // do topo do arquivo).
+        if (this.ehPrimeira) {
+          this.state = 'inactive'
+          throw new DOMException('already inactive', 'InvalidStateError')
+        }
+        this.state = 'inactive'
+        this.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
+        this.onstop?.()
+      }
+    }
+    ;(globalThis as any).MediaRecorder = FakeRecorderPrimeiraQuebraDepoisDisparaOnstop
+    ;(globalThis as any).navigator.mediaDevices.getUserMedia = vi
+      .fn()
+      .mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+
+    // A 2ª rajada (legítima) fica PENDENTE até o teste resolver na mão — é
+    // essa janela em voo que expõe o contador indo a negativo.
+    let resolveBurst2: ((r: Response) => void) | null = null
+    const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveBurst2 = resolve }))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+    const onTexto = vi.fn()
+    vi.useFakeTimers()
+    try {
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Fecha a 1ª rajada por silêncio — cai em `fecharRajadaAtual`, que
+      // tenta `stop()` e apanha o throw. O catch (item 4) trata como falha;
+      // como não é a última rajada, a 2ª (legítima) já começa sozinha.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+
+      expect(FakeRecorderPrimeiraQuebraDepoisDisparaOnstop.instancias).toHaveLength(2)
+      expect(fetchMock).not.toHaveBeenCalled() // 1ª rajada falhou, nada subiu ainda
+
+      // Dá voz pra 2ª rajada antes de encerrar a sessão (senão o carve-out
+      // da rajada final sem voz entra em jogo e ela nunca sobe).
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+      // Clica em ✓: encerra a sessão com a 2ª rajada ainda em voo (fetch
+      // pendente, controlado pelo teste).
+      await act(async () => { await result.current.alternar() })
+      expect(fetchMock).toHaveBeenCalledTimes(1) // só a 2ª rajada, de verdade
+      expect(result.current.transcrevendo).toBe(true) // ainda tem rajada em voo
+
+      // SÓ AGORA a task enfileirada da 1ª rajada (throw + onstop atrasado)
+      // finalmente chega — com áudio de verdade, como um MediaRecorder
+      // real entregaria mesmo depois do throw.
+      // Sem `await` direto em `mr1.onstop?.()`: sem o fix, esse onstop
+      // atrasado chama `fetch` de novo, e o dublê reatribui o resolver
+      // capturado a ESSA chamada — esperar essa promise resolver aqui
+      // travaria o teste pra sempre (é a própria manifestação do bug: a
+      // rajada 1 nunca deveria ter voltado a depender de rede nenhuma).
+      // Só drena as microtasks já agendadas, como o teste de "fora de
+      // ordem" já faz.
+      const mr1 = FakeRecorderPrimeiraQuebraDepoisDisparaOnstop.instancias[0]
+      await act(async () => {
+        mr1.ondataavailable?.({ data: new Blob(['x'.repeat(2000)], { type: 'audio/webm' }) })
+        mr1.onstop?.()
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+
+      // O ponto central do fix: a 1ª rajada já tinha sido dada como falha
+      // pelo catch — o evento atrasado NÃO pode reenviá-la pro servidor.
+      expect(fetchMock).toHaveBeenCalledTimes(1) // continua só a 2ª — sem o fix, viraria 2
+      // E o contador não foi a negativo: a sessão NÃO finalizou ainda,
+      // porque a 2ª rajada (legítima) continua em voo.
+      expect(result.current.transcrevendo).toBe(true)
+      expect(toastMock.error).not.toHaveBeenCalled()
+
+      // A 2ª rajada finalmente responde — a sessão finaliza UMA ÚNICA vez,
+      // com o texto de verdade entregue.
+      await act(async () => {
+        resolveBurst2!(new Response(JSON.stringify({ text: 'segunda rajada' }), { status: 200 }))
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      })
+
+      expect(onTexto).toHaveBeenCalledWith('segunda rajada')
+      expect(result.current.transcrevendo).toBe(false)
+      expect(toastMock.error).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Resíduo 3 (importante): o `clearTimeout` do timeout de 30s ficava num
+  // `finally` que envolvia só o `fetch` — o timer era desarmado ANTES de
+  // `res.json()` rodar. Um proxy que devolve cabeçalhos 200 e trava o corpo
+  // (sem nunca fechar a conexão) passava incólume pelo `fetch` e travava
+  // pra sempre em `res.json()`, sem o abort nunca disparar — a mesma classe
+  // de falha que o item 6 original queria fechar, só que numa forma mais
+  // estreita.
+  it('resíduo 3: fetch cujo header resolve mas o corpo (json()) trava usa o abort — não fica pendurado pra sempre', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+        // Cabeçalhos resolvem NA HORA (200 ok) — só o corpo trava, até o
+        // abort (interno, 30s) disparar.
+        const res = {
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => {
+                reject(new DOMException('The operation was aborted', 'AbortError'))
+              })
+            }),
+        } as unknown as Response
+        return Promise.resolve(res)
+      })
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      // Encerra a sessão — a rajada fica represada em `res.json()`.
+      await act(async () => { await result.current.alternar() })
+      expect(result.current.transcrevendo).toBe(true) // ainda travada no corpo
+
+      // Sem o fix, o `clearTimeout` já rodou (no finally do fetch) e este
+      // avanço não teria efeito nenhum — a rajada ficaria pendurada pra
+      // sempre, `transcrevendo` travado em `true`.
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+
+      // O `catch` em volta de `res.json()` (linha ~508, pré-existente,
+      // fora do escopo deste fix) já engole QUALQUER erro de leitura do
+      // corpo — inclusive o `AbortError` que o abort produz — tratando
+      // como "sem json: proxy, 502, corpo vazio". Por isso a rajada cai no
+      // balde de "transcrição vazia", não no de falha de rede: o que
+      // importa pra este item é que ela CAI em algum balde terminal (não
+      // fica pendurada pra sempre, nem finge sucesso).
+      expect(result.current.transcrevendo).toBe(false)
+      expect(onTexto).not.toHaveBeenCalled()
+      expect(toastMock.error).toHaveBeenCalledWith('Transcrição vazia')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

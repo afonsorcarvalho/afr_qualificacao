@@ -495,20 +495,29 @@ export function useDitado(onTexto: (t: string) => void) {
             const abortCtrl = new AbortController()
             const timeoutId = setTimeout(() => abortCtrl.abort(), 30_000)
             let res: Response
+            let json: { text?: string; error?: string } | null = null
             try {
               res = await fetch('/api/groq/transcribe', {
                 method: 'POST',
                 body: form,
                 signal: abortCtrl.signal,
               })
+              try {
+                json = await res.json()
+              } catch {
+                /* sem json: proxy, 502, corpo vazio */
+              }
             } finally {
+              // `clearTimeout` tem que ficar DEPOIS do `res.json()`, não
+              // só do `fetch`: um proxy que devolve os cabeçalhos 200 e
+              // depois trava o corpo (sem nunca fechar a conexão) passava
+              // incólume pelo `fetch` (que já tinha resolvido) e travava
+              // pra sempre em `res.json()` — o abort nunca disparava
+              // porque o timer já tinha sido desarmado. Cobrindo os dois
+              // `await`s com o mesmo `finally`, o `signal` continua válido
+              // (e o abort continua útil) durante a leitura do corpo
+              // inteira, exatamente o que o timeout já deveria garantir.
               clearTimeout(timeoutId)
-            }
-            let json: { text?: string; error?: string } | null = null
-            try {
-              json = await res.json()
-            } catch {
-              /* sem json: proxy, 502, corpo vazio */
             }
             if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)
             // Um 200 com `text` vazio/ausente (silêncio na gravação, só ruído
@@ -527,6 +536,20 @@ export function useDitado(onTexto: (t: string) => void) {
               algumaTranscricaoVazia = true
             }
           } catch (e) {
+            // Descartada (✕, folha fechando, unmount) ANTES de cair aqui:
+            // o `finally` logo abaixo ainda dá baixa em `rajadasEmVoo` e
+            // drena `pendentes` (que `entregarEmOrdem` já limpa sozinho
+            // quando `controle.descartado`), então a contabilidade não
+            // fica pendurada — só o AVISO é que não pode disparar. Sem
+            // este retorno cedo, o `AbortController` de 30s (linha ~495)
+            // continua correndo mesmo depois do ✕: ele dispara sozinho
+            // MEIO MINUTO depois, chamando `avisarFalhaUmaVez` sobre uma
+            // sessão que o gestor já descartou de propósito — por essa
+            // hora uma sessão NOVA plausivelmente já está gravando, com
+            // seu próprio `avisoFalhaMostrado` (closure separado, não
+            // suprime nada), e o gestor vê um erro vermelho no meio de uma
+            // gravação que está funcionando bem.
+            if (controle.descartado) return
             // Avisa (uma vez por sessão — ver `avisarFalhaUmaVez`), não
             // trava: nem um 503 (sem chave configurada) nem uma exceção de
             // rede podem sumir sem passar por lugar nenhum. Diferente de
@@ -637,12 +660,32 @@ export function useDitado(onTexto: (t: string) => void) {
           // adiante, sem engolir o problema em silêncio.
           if (fechamento) {
             if (fechamento.numero !== null) pendentes.set(fechamento.numero, null)
+            // Zera ANTES do settle (`entregarEmOrdem`/decremento logo
+            // abaixo): um `MediaRecorder` de VERDADE cujas tracks morrem
+            // por fora vira `state='inactive'` SINCRONAMENTE (é por isso
+            // que `stop()` lança aqui), mas o browser AINDA enfileira os
+            // eventos `dataavailable`/`stop` dele — chegam depois, como
+            // uma task atrasada, mesmo com a exceção já lançada. Sem
+            // zerar `numero`, aquele `onstop` atrasado (mais abaixo,
+            // ~469) encontra `fechamento.numero` ainda setado, passa da
+            // guarda `numero === null` e REENVIA esta rajada pro
+            // servidor — já demos ela como falha aqui.
+            fechamento.numero = null
             try {
               entregarEmOrdem()
             } finally {
               rajadasEmVoo -= 1
               finalizarSessaoSeAcabou()
             }
+            // Idem, zerado só DEPOIS do settle (mesma ordem do `numero`
+            // acima): sem isto, o `finally` do `onstop` atrasado (~550)
+            // encontra `contabilizada` ainda `true` e decrementa
+            // `rajadasEmVoo` uma SEGUNDA vez — o contador vai a negativo,
+            // e se outra rajada desta sessão ainda estiver em voo, a
+            // sessão finaliza cedo demais (`transcrevendo` desliga com
+            // texto de verdade ainda a caminho). Com os dois campos já
+            // zerados aqui, o `onstop` atrasado vira um no-op completo.
+            fechamento.contabilizada = false
           }
           // `onstop` também é quem soltaria as tracks quando esta é a
           // ÚLTIMA rajada da sessão (ver dentro de `iniciarNovaRajada`) —
