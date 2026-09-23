@@ -427,8 +427,17 @@ describe('ChatAgenda', () => {
     ;(globalThis as any).navigator.mediaDevices = {
       getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
     }
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 }),
+    // `mockImplementation` (não `mockResolvedValue`): com o fallback de
+    // `AudioContext` de `tests/setup.ts` (silêncio constante), se tempo
+    // real suficiente passar entre os dois cliques (>2.2s — timers reais
+    // aqui, sem `vi.useFakeTimers()`), o ditado fecha uma rajada por
+    // silêncio ANTES do clique de parar, e a rajada final dispara um
+    // SEGUNDO `fetch`. Um único objeto `Response` reaproveitado só deixa o
+    // corpo ser lido (`.json()`) uma vez — a segunda leitura falha em
+    // silêncio (`json` vira `null`), some. Mesmo achado documentado em
+    // `useDitado.test.ts` (teste do auto-stop de 60s).
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 })),
     ) as unknown as typeof fetch
 
     montar()
@@ -508,8 +517,11 @@ describe('ChatAgenda', () => {
     ;(globalThis as any).navigator.mediaDevices = {
       getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] }),
     }
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 }),
+    // `mockImplementation`, mesmo motivo do outro teste de ditado acima
+    // (fetch mock com `Response` única é frágil sob o fallback de
+    // `AudioContext` silencioso + timers reais — ver comentário lá).
+    globalThis.fetch = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify({ text: 'remarca a visita do João' }), { status: 200 })),
     ) as unknown as typeof fetch
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })

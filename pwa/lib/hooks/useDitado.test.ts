@@ -1088,6 +1088,56 @@ describe('useDitado', () => {
     }
   })
 
+  // Fix round 1 (review): a guarda de `houveVoz` inicialmente pulava a
+  // rajada FINAL incondicionalmente ("clique manual sempre sobe") — sem
+  // teste nenhum cobrindo o caso comum: o gestor termina de falar, o
+  // detector fecha a penúltima rajada ~700ms depois (silêncio sustentado),
+  // uma rajada nova nasce, e o clique de "parar" chega um pouco depois —
+  // essa última rajada é só o rabo de silêncio entre a fala e o clique,
+  // sem nenhuma leitura de voz. Sem a guarda, ela subia mesmo assim, e o
+  // hazard medido na Task 1 (Whisper alucinando texto tipo "E aí"/"." pra
+  // áudio sem fala, com HTTP 200) chegava na caixa de texto do gestor por
+  // cima do que ele já tinha ditado de verdade. A rajada final só tem
+  // direito a subir sem voz quando é a ÚLTIMA chance da sessão (nenhum
+  // texto foi entregue ainda) — ver o teste de "sessão inteira sem texto"
+  // logo acima, que cobre esse outro lado da mesma guarda.
+  it('rajada final sem nenhuma leitura de voz não é enviada quando a sessão já entregou texto (tail de silêncio depois da fala)', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn().mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ text: 'primeiro texto' }), { status: 200 })),
+      )
+      globalThis.fetch = fetchMock as unknown as typeof fetch
+      const onTexto = vi.fn()
+      const { result } = renderHook(() => useDitado(onTexto))
+
+      await act(async () => { await result.current.alternar() })
+      const analyser = FakeAudioContext.ultima!.analyser!
+
+      // Rajada 1: fala de verdade, fecha por silêncio, entrega texto —
+      // `textoEntregue` fica `true` a partir daqui.
+      analyser.nivel = 0.5
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      analyser.nivel = 0
+      await act(async () => { await vi.advanceTimersByTimeAsync(2_300) })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(onTexto).toHaveBeenCalledWith('primeiro texto')
+
+      // Rajada 2 nasce automaticamente (silêncio contínuo desde o início
+      // dela) — o gestor não fala mais nada, só demora um pouco pra
+      // clicar em "parar". Nenhuma leitura desta rajada é voz.
+      await act(async () => { await result.current.alternar() }) // clique manual de parar
+
+      // A rajada final (só silêncio, sessão já com texto) NÃO pode subir.
+      expect(fetchMock).toHaveBeenCalledTimes(1) // nenhuma chamada NOVA
+      expect(result.current.transcrevendo).toBe(false)
+      // E não é tratada como "sessão sem texto" — já tinha texto.
+      expect(toastMock.error).not.toHaveBeenCalledWith('Gravação muito curta, segure mais tempo')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('AudioContext é fechado ao parar normalmente (segundo clique)', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ text: 'ok' }), { status: 200 }),

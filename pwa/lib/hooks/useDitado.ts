@@ -458,9 +458,20 @@ export function useDitado(onTexto: (t: string) => void) {
             // incrementar `rajadasEmVoo`, e decrementar aqui destrambelharia
             // a contagem sem nenhum incremento correspondente.
             if (fechamento.contabilizada) {
-              entregarEmOrdem()
-              rajadasEmVoo -= 1
-              finalizarSessaoSeAcabou()
+              // `entregarEmOrdem()` chama `onTexto` (callback de quem
+              // consome o hook) — se ELE lançar, o decremento de
+              // `rajadasEmVoo`/`finalizarSessaoSeAcabou()` não pode ficar
+              // pra trás: sem este `try/finally` aninhado, uma exceção do
+              // consumidor deixava `rajadasEmVoo` positivo pra sempre,
+              // `transcrevendo` travado em `true`, e o mic sem nenhum
+              // controle na tela pra religar — a MESMA classe de falha que
+              // já custou uma rodada de review nesta feature.
+              try {
+                entregarEmOrdem()
+              } finally {
+                rajadasEmVoo -= 1
+                finalizarSessaoSeAcabou()
+              }
             }
           }
         }
@@ -475,19 +486,33 @@ export function useDitado(onTexto: (t: string) => void) {
         if (fechamento) {
           fechamento.ultima = ultima
           // A guarda de `houveVoz` (ver `EstadoRajada.houveVoz` em
-          // `deteccaoSilencio.ts`) só vale pra rajada que o PRÓPRIO
-          // DETECTOR fechou (silêncio sustentado ou teto de duração): sem
-          // nenhuma leitura de voz, não faz sentido gastar uma chamada de
-          // API — é exatamente o hazard de alucinação do Whisper que a
-          // Task 1 mediu. A rajada FINAL (clique manual do gestor, ou o
-          // teto de SESSÃO de 60s) é diferente: quem decidiu fechar foi o
-          // gestor, não o detector — ele pode ter clicado parar bem
-          // dentro da janela de amostragem, antes de qualquer leitura
-          // registrar a fala que ele acabou de soltar. Descartar isso
-          // jogaria fora áudio real; por isso a rajada final sobe sempre,
-          // sujeita só ao piso de tamanho (`MIN_BLOB_BYTES`), igual a
-          // qualquer outra.
-          fechamento.numero = ultima || houveVoz ? proximoNumeroParaEnviar++ : null
+          // `deteccaoSilencio.ts`) vale pra QUALQUER rajada, inclusive a
+          // FINAL — é o hazard de alucinação do Whisper que a Task 1 mediu
+          // (tom puro sem fala voltando `" E aí"`/`" ."` com HTTP 200, não
+          // corpo vazio). Round 1 de review desta task tinha essa guarda
+          // pulando a rajada final (clique manual, ou teto de sessão) sob a
+          // hipótese de que o gestor podia clicar parar dentro da janela de
+          // amostragem antes de qualquer leitura pegar a fala — refeitas as
+          // contas, isso não se sustenta: pra perder algo real, a fala
+          // teria que começar inteira nesse intervalo (~50ms), e ~40ms de
+          // áudio não é um trecho transcrevível. O CUSTO da exceção era
+          // rotineiro (a última rajada de toda sessão normal é só o rabo de
+          // silêncio entre o fim da fala e o clique de parar — o detector
+          // fecha a penúltima rajada ~700ms DEPOIS que a fala parou, então a
+          // final quase sempre nasce já em silêncio) — subia lixo em
+          // praticamente toda sessão bem-sucedida.
+          //
+          // A rajada final AINDA tem uma saída, mas só quando faz falta de
+          // verdade: se a sessão inteira não produziu texto nenhum até
+          // aqui, a última chance é deixá-la subir mesmo sem leitura de voz
+          // — melhor arriscar uma transcrição ruim do que garantir "Gravação
+          // muito curta" numa sessão onde o gestor efetivamente falou, só
+          // que a fala caiu inteira nesta rajada e a leitura de RMS ainda
+          // não tinha pego (o mesmo caso raro do parágrafo acima, agora sem
+          // custo pras sessões normais — só se aplica quando não sobrou
+          // texto nenhum).
+          fechamento.numero =
+            (ultima ? houveVoz || !textoEntregue : houveVoz) ? proximoNumeroParaEnviar++ : null
           fechamento.contabilizada = true
           rajadasEmVoo += 1
         }

@@ -30,7 +30,16 @@ import React from 'react'
 const { useChatAgendaMock } = vi.hoisted(() => ({ useChatAgendaMock: vi.fn() }))
 vi.mock('@/lib/hooks/useChatAgenda', () => ({ useChatAgenda: useChatAgendaMock }))
 vi.mock('@/lib/hooks/useDitado', () => ({
-  useDitado: () => ({ gravando: false, transcrevendo: false, alternar: vi.fn(), pararEDescartar: vi.fn() }),
+  // `nivelAudio` incluído mesmo sem uso hoje: sem ele, este dublê diverge
+  // silenciosamente do retorno real do hook (Task 2 de 2026-09-22-ditado-em
+  // -rajadas) assim que a tarefa do medidor de nível passar a consumi-lo.
+  useDitado: () => ({
+    gravando: false,
+    transcrevendo: false,
+    alternar: vi.fn(),
+    pararEDescartar: vi.fn(),
+    nivelAudio: 0,
+  }),
 }))
 
 import { ChatAgenda } from '../agenda/_ChatAgenda'
