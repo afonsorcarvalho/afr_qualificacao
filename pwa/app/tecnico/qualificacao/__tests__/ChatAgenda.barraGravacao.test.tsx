@@ -115,13 +115,23 @@ describe('ChatAgenda — barra de gravação (Task 3)', () => {
     expect(pararEDescartarMock).not.toHaveBeenCalled()
   })
 
-  it('o medidor reflete o nível exposto pelo hook', () => {
-    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.3 }))
+  it('o medidor reflete o nível exposto pelo hook, em níveis REALISTAS de fala', () => {
+    // 0.05/0.09 (não 0.3/0.9): `nivelAudio` é RMS cru do AnalyserNode, e
+    // fala captada por microfone de celular fica na casa de 0.01-0.15
+    // (ver `NIVEL_REFERENCIA_CHEIA` em `_ChatAgenda.tsx`), bem abaixo do
+    // topo teórico da escala (1.0). Testar só com valores altos (0.3/0.9)
+    // passaria mesmo se a barra ficasse colada no piso visual durante uma
+    // fala inteira — o defeito que motivou reescrever a fórmula.
+    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.05 }))
     const { rerender, container } = montar()
+    const medidor = screen.getByTestId('medidor-nivel')
+    expect(medidor).toHaveAttribute('aria-hidden', 'true')
     const barraBaixa = container.querySelector('[data-testid="medidor-barra-referencia"]') as HTMLElement
-    expect(barraBaixa.style.height).toBe('30%')
+    // Bem acima do piso visual (15%): prova que a fala normal MOVE o
+    // medidor, não só o silêncio total ou o grito.
+    expect(barraBaixa.style.height).toBe('50%')
 
-    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.9 }))
+    useDitadoMock.mockReturnValue(ditado({ gravando: true, nivelAudio: 0.09 }))
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     rerender(
       <QueryClientProvider client={qc}>
@@ -152,5 +162,34 @@ describe('ChatAgenda — barra de gravação (Task 3)', () => {
     useDitadoMock.mockReturnValue(ditado({ gravando: false }))
     montar()
     expect(screen.getByPlaceholderText('Escreva o que precisa')).toBeTruthy()
+  })
+
+  it('role="status" anuncia "Gravando" pra quem usa leitor de tela (as barras são aria-hidden e não bastam sozinhas)', () => {
+    useDitadoMock.mockReturnValue(ditado({ gravando: true }))
+    montar()
+    expect(screen.getByRole('status')).toHaveTextContent('Gravando')
+  })
+
+  it('parou de gravar e está transcrevendo: role="status" muda pra "Transcrevendo", e a barra some (mic volta, desabilitado; ✕/✓ somem)', () => {
+    useDitadoMock.mockReturnValue(ditado({ gravando: false, transcrevendo: true }))
+    montar()
+    expect(screen.getByRole('status')).toHaveTextContent('Transcrevendo')
+    // Mesma forma de "parado" (gravando=false): mic reaparece, mas
+    // desabilitado — não dá pra começar uma gravação nova em cima da
+    // transcrição ainda em voo. Enviar também volta (`!ditado.gravando`).
+    // Nenhum estado novo: é o `disabled={ocupado || ditado.transcrevendo}`
+    // que já existia antes desta task.
+    const mic = screen.getByRole('button', { name: /^ditar$/i })
+    expect(mic).toBeDisabled()
+    expect(screen.getByRole('button', { name: /enviar/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /descartar gravação/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /parar gravação/i })).toBeNull()
+    expect(screen.queryByTestId('medidor-nivel')).toBeNull()
+  })
+
+  it('parado de verdade (nem gravando, nem transcrevendo): role="status" fica vazio', () => {
+    useDitadoMock.mockReturnValue(ditado())
+    montar()
+    expect(screen.getByRole('status')).toHaveTextContent('')
   })
 })

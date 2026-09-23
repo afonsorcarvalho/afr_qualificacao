@@ -61,6 +61,21 @@ const PESOS_BARRA_MEDIDOR = [0.55, 1, 0.8, 0.45]
 // propósito) faria as quatro barras colapsarem pra uma linha reta, que
 // lê como "travou", não como "silêncio".
 const PISO_BARRA_PCT = 15
+// `nivelAudio` é RMS cru de `AnalyserNode.getFloatTimeDomainData` — a
+// ESCALA teórica é [0, 1] (senoide de amplitude cheia bate ~0.707, ver
+// `deteccaoSilencio.test.ts`), mas fala captada por microfone de celular
+// nunca chega perto disso: `limiarSilencio` (`deteccaoSilencio.ts`) marca
+// o piso de ruído em 0.01, e os testes da máquina de silêncio usam 0.5
+// como "voz" só pra ficar bem acima do piso, sem pretender medir uma fala
+// real. Sem uma referência de "cheio" abaixo de 1, `Math.min(1, nivelAudio)`
+// deixa a barra colada no piso visual (`PISO_BARRA_PCT`) durante uma frase
+// inteira — exatamente a linha reta que o piso existe pra evitar, só que
+// permanente. `NIVEL_REFERENCIA_CHEIA` é uma estimativa não medida (a
+// medição de áudio real falhou em ambiente headless nas Tasks 1-2, ver
+// `progress.md`), ~10x o piso de ruído — dá pra fala normal mover o
+// medidor sem exigir grito. Ajustável sem mudar o resto da task se o uso
+// real mostrar o medidor insensível ou saturado demais.
+const NIVEL_REFERENCIA_CHEIA = 0.1
 
 export function ChatAgenda({
   open,
@@ -223,7 +238,7 @@ export function ChatAgenda({
                   data-testid={peso === 1 ? 'medidor-barra-referencia' : undefined}
                   className="w-1 rounded-full bg-foreground transition-[height] duration-100 ease-out motion-reduce:transition-none"
                   style={{
-                    height: `${Math.max(PISO_BARRA_PCT, Math.min(1, Math.max(0, ditado.nivelAudio)) * peso * 100)}%`,
+                    height: `${Math.max(PISO_BARRA_PCT, Math.round(Math.min(1, Math.max(0, ditado.nivelAudio) / NIVEL_REFERENCIA_CHEIA) * peso * 100))}%`,
                   }}
                 />
               ))}
