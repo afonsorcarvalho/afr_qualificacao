@@ -2,6 +2,65 @@
 
 ## Pendente
 
+### `feat/fonte-ajustavel` — aguarda teste do user antes do merge (2026-09-24)
+
+Escala de fonte ajustável no PWA do técnico: provider de escala, preferência no Perfil e
+`OsCard` respeitando a escala. Implementação e testes escritos.
+
+**Gate: o user testar no aparelho.** Só depois commit → merge para `main`. Nada de merge
+sem esse OK.
+
+⚠️ **Nada está commitado.** A branch `feat/fonte-ajustavel` não tem commit próprio — está 3
+commits ATRÁS da `main` (`a34acaa`), e todo o trabalho vive como arquivo sujo no worktree
+`.worktrees/fonte-ajustavel` **desta máquina**, sem upstream. Um `git clean` ou um disco
+perdido leva tudo. Se o teste demorar, vale um commit na branch só para ter rede de segurança.
+
+Arquivos novos: `lib/utils/fontScale.ts`, `lib/utils/fontScaleBootstrap.ts`,
+`components/providers/FontScaleProvider.tsx`, mais os testes em
+`lib/utils/__tests__/fontScale*.test.ts`, `lib/store/__tests__/` e
+`app/tecnico/qualificacao/__tests__/{FontScaleProvider,LayoutFonte,OsCardEscalaFonte,PerfilFonte}`.
+
+Modificados: `app/globals.css`, `app/layout.tsx`,
+`app/tecnico/qualificacao/_components/OsCard.tsx`,
+`app/tecnico/qualificacao/perfil/page.tsx`, `lib/store/tecnicoSettings.ts`.
+
+
+### Ditado em rajadas — três follow-ups deixados de fora de propósito (2026-09-23)
+
+A feature está pronta e revisada (plano `docs/superpowers/plans/2026-09-22-ditado-em-rajadas.md`, 853 testes). Três coisas ficaram fora, cada uma por um motivo:
+
+**1. `NIVEL_REFERENCIA_CHEIA = 0.1` no medidor é palpite não medido.** Medir RMS de fala real falhou em ambiente headless nas três tasks — o navegador daqui não entrega `MediaRecorder`. Documentado como palpite no próprio código. **Só resolve com aparelho real:** se a barra saturar (cravada no topo em fala normal) a referência está baixa; se mal sair do piso de 15%, está alta. É ajuste de uma linha.
+
+**2. Foco é perdido ao trocar mic/enviar por ✕/✓.** O `role="status"` anuncia a mudança de estado, mas o foco cai no `<body>` até o próximo Tab. Mexe no trap de foco do `BottomSheet` — acessibilidade real que merece tarefa própria, não pressa no fim de uma onda de correção.
+
+**3. `AbortError` chega ao técnico como "Transcrição vazia".** Um `catch` pré-existente em volta do `res.json()` engole erro de leitura de corpo, inclusive o de timeout. Baixa gravidade porque a ação de recuperação é a mesma nos dois casos (falar de novo); vale separar por clareza de diagnóstico em campo, não por dano.
+
+**Contexto que a próxima pessoa vai querer:** o corte no silêncio depende de `limiarSilencio = 0.01`. Em local barulhento (autoclave, ventilação) o piso de ruído pode nunca descer disso — aí nenhuma rajada fecha por silêncio, todas fecham por tempo máximo, e os cortes caem **no meio da palavra**, que é exatamente o que o desenho existe para evitar. O medidor agora mostra o piso de ruído: se as barras ficarem visivelmente acima do piso com ninguém falando, o limiar está baixo demais para aquele local.
+
+
+### `ModoSemanaRace.test.tsx` falhou uma vez e não reproduziu (2026-09-23)
+
+`app/tecnico/qualificacao/__tests__/ModoSemanaRace.test.tsx` falhou numa
+execução da suíte inteira, numa query por role `/Ajustar/`, e passou na
+repetição imediata.
+
+**Não reproduziu em 11 tentativas:** 8 execuções isoladas do arquivo e 3 da
+suíte completa, todas verdes (818/818). Fica registrado em vez de rotulado
+"flakiness" porque o `docs/BASELINE.md` diz que falha ambiental não existe
+neste projeto e que qualquer falha é regressão.
+
+**O suspeito mais provável NÃO é corrida no componente.** Naquele momento
+havia outra sessão editando `app/tecnico/qualificacao/` na MESMA árvore de
+trabalho (ícone+cor por técnico/instrumento nos cards, commits `db4d1a4` e
+seguintes). O vitest pode ter lido um arquivo no meio de uma escrita. Uma
+terceira sessão rodou a suíte duas vezes no mesmo dia nessa árvore — 753/753 e
+774/774, as duas verdes — sem ver esta falha.
+
+**Se voltar:** anote primeiro se havia outra sessão editando `app/tecnico`
+naquele instante, antes de caçar corrida no código. O nome do arquivo convida
+à conclusão errada.
+
+
 ### ~~`/api/chat` fora do proxy do Apache~~ — RESOLVIDO (2026-09-22)
 
 Aplicado pelo user no `fitadigital` com `deploy/sync-rotas-apache.sh --apply`.
