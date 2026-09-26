@@ -43,6 +43,7 @@ class AfrProposalBlock(models.Model):
         comodel_name="afr.proposal.section",
         string="Seção de Origem",
         ondelete="set null",
+        domain=[("document_type", "=", "proposal")],
         help="Bloco de texto da biblioteca que originou este bloco.",
     )
     title = fields.Char(

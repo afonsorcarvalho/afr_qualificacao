@@ -48,6 +48,7 @@
                             <field name="display_label" string="Conteúdo" readonly="1"/>
                             <field name="section_id"
                                    optional="hide"
+                                   domain="[('document_type', '=', 'proposal')]"
                                    attrs="{'required': [('block_kind', '=', 'static')],
                                            'readonly': [('block_kind', '!=', 'static')]}"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
@@ -85,6 +86,7 @@
                             <field name="show_title"/>
                             <field name="page_break"/>
                             <field name="section_id"
+                                   domain="[('document_type', '=', 'proposal')]"
                                    attrs="{'required': [('block_kind','=','static')],
                                            'readonly': [('block_kind','!=','static')]}"/>
                         </group>

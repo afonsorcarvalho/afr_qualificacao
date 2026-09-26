@@ -106,3 +106,35 @@ class TestNumberingParity(AfrQualificacaoTestCommon):
         self.assertEqual(numbers[by_seq[50].id], "1.1")
         self.assertEqual(numbers[by_seq[60].id], "1")
         self.assertEqual(numbers[by_seq[20].id], "")
+
+
+class TestSectionDocumentType(TransactionCase):
+    """P3 Task 2 — document_type na biblioteca de seções + filtro na cotação."""
+
+    def test_default_is_proposal(self):
+        sec = self.env["afr.proposal.section"].create({"name": "Sec X"})
+        self.assertEqual(sec.document_type, "proposal")
+
+    def test_existing_seed_sections_are_proposal(self):
+        sec = self.env.ref("afr_qualificacao.proposal_section_objetivo")
+        self.assertEqual(sec.document_type, "proposal")
+
+    def test_quote_line_domain_only_offers_proposal_sections(self):
+        field = self.env["afr.proposal.template.line"]._fields["section_id"]
+        self.assertEqual(field.domain, [("document_type", "=", "proposal")])
+
+    def test_quote_section_action_filters_proposal(self):
+        action = self.env.ref("afr_qualificacao.action_proposal_section")
+        self.assertIn("document_type", action.domain or "")
+        self.assertIn("proposal", action.domain or "")
+
+    def test_quote_views_filter_section_by_document_type(self):
+        arch = self.env.ref("afr_qualificacao.view_proposal_template_form").arch_db
+        self.assertIn("('document_type', '=', 'proposal')", arch)
+
+    def test_block_section_domain_only_offers_proposal_sections(self):
+        """Ruling 3.4: afr.proposal.block.section_id também filtra por
+        document_type='proposal' — um relatório não pode ser montado com
+        seção de tipo 'report' pela aba de blocos da cotação."""
+        field = self.env["afr.proposal.block"]._fields["section_id"]
+        self.assertEqual(field.domain, [("document_type", "=", "proposal")])

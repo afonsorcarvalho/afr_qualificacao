@@ -90,6 +90,7 @@ class AfrProposalTemplateLine(models.Model):
         comodel_name="afr.proposal.section",
         string="Seção de Texto",
         ondelete="restrict",
+        domain=[("document_type", "=", "proposal")],
         help="Bloco de texto reutilizável (obrigatório quando tipo = Bloco de Texto).",
     )
     page_break = fields.Boolean(
