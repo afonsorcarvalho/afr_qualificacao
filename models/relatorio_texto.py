@@ -376,7 +376,8 @@ class AfrQualificacaoRelatorio(models.Model):
             rows.append({
                 "instrument": inst.name or "",
                 "identification": inst.id_number or inst.tag or "",
-                "resource_role": resource_labels.get(sel["resource_role"], ""),
+                "resource_role": resource_labels.get(
+                    sel["resource_role"], sel["resource_role"] or ""),
                 "role": role_labels.get(sel["role"], sel["role"] or ""),
                 "certificate": (cert.certificate_number or "—") if cert else "—",
                 "date": self._fmt_date(cert.date_calibration) if cert else "",

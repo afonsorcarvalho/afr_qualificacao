@@ -110,3 +110,48 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         html = self._render()
         self.assertIn("{{ relatorio.nao_existe }}", html)
         self.assertIn("TSN-001", html)
+
+    def test_cycle_order_uses_relatorio_sort_key(self):
+        """P1-M5: ciclos em QO < QD < demais (rank), não por string do
+        qualification_type ("calibration" < "operational") nem por
+        (sequence, id)."""
+        os = self.env["afr.qualificacao.os"].create({
+            "tecnico_default_id": self.env["hr.employee"].create(
+                {"name": "Técnico Ordem"}).id,
+            "date_planned_start": "2026-09-01 12:00:00",
+            "date_planned_end": "2026-09-03 18:00:00",
+        })
+        Cycle = self.env["afr.qualificacao.cycle"]
+
+        def qualif(qtype):
+            return self.env["afr.qualificacao"].create({
+                "name": "ORD-%s-%s" % (os.id, qtype),
+                "equipment_id": self.equip1.id,
+                "qualification_type": qtype,
+                "os_id": os.id,
+                "company_id": os.company_id.id,
+            })
+
+        def cycle(q, ctype, seq):
+            c = Cycle.create({"qualificacao_id": q.id,
+                              "cycle_type_id": ctype.id, "sequence": seq})
+            self.env["afr.relatorio.sensor.pos"].create(
+                {"cycle_id": c.id, "canal": "CH%03d" % seq})
+            return c
+
+        # Criados na ordem "errada" e com sequence invertida de propósito.
+        c_cal = cycle(qualif("calibration"), self.cycle_qo_test, 5)
+        c_qd = cycle(qualif("performance"), self.cycle_cmax, 10)
+        c_qo = cycle(qualif("operational"), self.cycle_qo_test, 30)
+        rel = os.action_generate_relatorios().filtered(
+            lambda r: r.equipment_id == self.equip1)
+        self.assertEqual(rel.cycle_ids, c_cal | c_qd | c_qo)
+
+        labels = dict(self.env["afr.qualificacao"]._fields["qualification_type"]
+                      ._description_selection(self.env))
+        self.assertEqual(
+            [r["etapa"] for r in rel._report_cycle_rows()],
+            [labels["operational"], labels["performance"], labels["calibration"]])
+        self.assertEqual(
+            [t["cycle"] for t in rel._report_sensor_tables()],
+            [c_qo.display_name, c_qd.display_name, c_cal.display_name])
