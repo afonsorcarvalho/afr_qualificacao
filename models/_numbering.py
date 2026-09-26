@@ -4,6 +4,21 @@ Função pura: não depende do ORM. Recebe qualquer iterável de objetos com
 `sequence`, `id`, `parent_id` (objeto com `.id`, falsy quando vazio) e
 `show_number`. Quem chama decide o que entra (ex.: só blocos `included`).
 """
+import re
+
+# Findings review P3 (final), achado 3: código de anexo usado pela P4 como
+# chave do marcador `@@RQ:anexo:<code>@@` (regex do localizador de página).
+# Compartilhado por afr.relatorio.anexo.code,
+# afr.relatorio.template.anexo.line.code, afr.relatorio.template.line.anexo_code
+# e afr.relatorio.block.anexo_code — os 4 lugares onde um código de anexo é
+# gravado. `fullmatch` (não `match`/`^...$`): `match` com `$` aceita um '\n'
+# final, que quebraria o localizador da P4 do mesmo jeito que um espaço.
+ANEXO_CODE_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def check_anexo_code_format(code):
+    """True quando `code` (já truthy) casa com o formato exigido pela P4."""
+    return bool(code) and ANEXO_CODE_RE.fullmatch(code) is not None
 
 
 def sort_key(record):

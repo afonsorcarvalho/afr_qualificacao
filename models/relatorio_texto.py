@@ -43,17 +43,35 @@ class AfrQualificacaoRelatorio(models.Model):
     # ── criação / template ───────────────────────────────────────────────
     @api.model_create_multi
     def create(self, vals_list):
-        records = super().create(vals_list)
-        for rec in records.filtered(lambda r: not r.template_id):
-            rec.template_id = rec._suggest_template()
-        return records
+        """Findings review P3 (final), achado 4: o template sugerido entra
+        em `vals` ANTES do `super().create()` — não é mais uma escrita
+        separada depois de criado (a P4 trataria isso como escrita
+        editorial fora do fluxo de criação).
 
-    def _suggest_template(self):
-        """Template cuja categoria = categoria do equipamento; senão o de menor sequence."""
-        self.ensure_one()
+        `default_template_id` no contexto é respeitado mesmo sem
+        `template_id` em `vals`: o Odoo aplica esse default DENTRO do
+        `super().create()`, depois deste laço. Se preenchêssemos `vals`
+        aqui mesmo com um `default_template_id` presente, o campo deixaria
+        de estar "ausente" e o default do contexto seria silenciosamente
+        sobrescrito pela sugestão.
+        """
+        for vals in vals_list:
+            if not vals.get("template_id") and not self.env.context.get("default_template_id"):
+                template = self._suggest_template_from_vals(vals)
+                if template:
+                    vals["template_id"] = template.id
+        return super().create(vals_list)
+
+    def _suggest_template_from_vals(self, vals):
+        """Sugestão de template a partir de um `vals` de criação (sem
+        depender do registro já existir): mesma regra de `_suggest_template()`
+        — categoria do equipamento primeiro, senão o de menor sequence."""
         Template = self.env["afr.relatorio.template"]
-        company_dom = [("company_id", "in", [(self.company_id or self.env.company).id, False])]
-        category = self.equipment_id.category_id
+        os = self.env["afr.qualificacao.os"].browse(vals.get("os_id"))
+        company_id = vals.get("company_id") or os.company_id.id or self.env.company.id
+        company_dom = [("company_id", "in", [company_id, False])]
+        equipment = self.env["engc.equipment"].browse(vals.get("equipment_id"))
+        category = equipment.category_id if equipment else False
         if category:
             tpl = Template.search(
                 company_dom + [("equipment_category_ids", "in", category.ids)],
@@ -61,6 +79,14 @@ class AfrQualificacaoRelatorio(models.Model):
             if tpl:
                 return tpl
         return Template.search(company_dom, order="sequence, id", limit=1)
+
+    def _suggest_template(self):
+        """Template cuja categoria = categoria do equipamento; senão o de menor sequence."""
+        self.ensure_one()
+        return self._suggest_template_from_vals({
+            "equipment_id": self.equipment_id.id,
+            "company_id": (self.company_id or self.env.company).id,
+        })
 
     def _apply_template(self):
         """Copia o template para blocos/anexos/checklist/aprovações. Idempotente."""
@@ -270,10 +296,21 @@ class AfrQualificacaoRelatorio(models.Model):
         if not body or is_html_empty(body):
             return Markup("")
         try:
-            # TODO(1.11): sudo() aqui expõe o objeto mail.render.mixin sem
-            # controle de acesso e o inline_template não escapa a saída da
-            # expressão — mesmo padrão de sale_order.py::_render_proposal_block_body
-            # (cotação), aceito na fase 1; ver ruling 1.11.
+            # TODO(1.11): mecanismo real do risco — `sudo()` faz
+            # `env.is_admin()` retornar True dentro do `inline_template`,
+            # pulando o check de `mail.group_mail_template_editor` que a
+            # mixin usaria pra restringir quem pode renderizar expressão
+            # arbitrária; `object`/`ctx` no `safe_eval` é o registro EM
+            # sudo (`self.env["mail.render.mixin"].sudo()`), então qualquer
+            # pessoa com acesso de escrita ao corpo do bloco (não só Gestor)
+            # pode embutir uma expressão que roda com privilégio de
+            # superusuário — mesmo padrão de
+            # sale_order.py::_render_proposal_block_body (cotação), aceito
+            # na fase 1; ver ruling 1.11. Fix fase 2: renderizar sem
+            # `sudo()` (aceitando que tokens que leem `os`/`equipment` fora
+            # do que o autor do bloco vê passem a falhar) ou restringir
+            # quem pode editar `body` a um grupo equivalente ao
+            # `mail.group_mail_template_editor`.
             rendered = self.env["mail.render.mixin"].sudo()._render_template(
                 str(body), self._name, [self.id], engine="inline_template",
                 add_context=self._token_context(),
@@ -287,6 +324,12 @@ class AfrQualificacaoRelatorio(models.Model):
 
 
     # ── helpers do corpo QWeb ────────────────────────────────────────────
+    def _fmt_num(self, value):
+        """Achado 7 (findings review P3 final): mesmo formatador pt-BR de
+        `_criterio_values` (3.0 → '3'; 1.5 → '1,5'), exposto como método
+        pro QWeb chamar (a função de módulo não é alcançável de `doc.`)."""
+        return _fmt_num(value)
+
     def _fmt_date(self, value):
         return fields.Date.to_date(value).strftime("%d/%m/%Y") if value else ""
 
@@ -340,7 +383,12 @@ class AfrQualificacaoRelatorio(models.Model):
         for cycle in self._report_cycles_sorted():
             key = (cycle.qualificacao_id.qualification_type, cycle.cycle_type_id.id)
             if key not in groups:
-                line = cycle.sale_order_line_id
+                # Achado 5 (findings review P3 final): sale.order.line não é
+                # legível pelo grupo Usuário (ACL de `sale`) — mas
+                # temperatura/tempo da linha da cotação são dados que o
+                # próprio relatório expõe a qualquer leitor. sudo() só na
+                # leitura destes 2 campos, nunca no `doc`/`cycle` inteiro.
+                line = cycle.sale_order_line_id.sudo()
                 ctype = cycle.cycle_type_id
                 groups[key] = {
                     "etapa": qtype_labels.get(key[0], ""),
@@ -401,7 +449,15 @@ class AfrQualificacaoOs(models.Model):
     def action_generate_relatorios_open(self):
         """Botão "Gerar relatórios finais": além de gerar (P1), aplica o
         template. `action_generate_relatorios()` (recordset) fica intacto —
-        testes de P1 dependem de relatório sem checklist semeado."""
+        testes de P1 dependem de relatório sem checklist semeado.
+
+        Findings review P3 (final), achado 2: só em relatórios 'draft' — a
+        P4 vai travar `create()` de blocos/anexos/aprovações fora do
+        rascunho (editorial lock); aplicar o template num relatório já
+        emitido derrubaria o botão pra toda a OS por um único equipamento
+        já finalizado.
+        """
         action = super().action_generate_relatorios_open()
-        self.mapped("relatorio_final_ids")._apply_template()
+        self.mapped("relatorio_final_ids").filtered(
+            lambda r: r.state == "draft")._apply_template()
         return action

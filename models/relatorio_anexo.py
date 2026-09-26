@@ -3,9 +3,10 @@
 Resolução de arquivos (`_resolve_files`, `_check_files`) é de P4.
 """
 
-from odoo import api, fields, models
+from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
-from ._numbering import sort_key
+from ._numbering import check_anexo_code_format, sort_key
 from .relatorio_template import ANEXO_SLOT_KINDS
 
 
@@ -38,6 +39,17 @@ class AfrRelatorioAnexo(models.Model):
         "ir.attachment", relation="afr_relatorio_anexo_attachment_rel",
         column1="anexo_id", column2="attachment_id", string="Arquivos")
     numero = fields.Integer(string="Nº", compute="_compute_numero")
+
+    @api.constrains("code")
+    def _check_code_format(self):
+        """Findings review P3 (final), achado 3: casa com o regex do
+        marcador `@@RQ:anexo:<code>@@` que a P4 usa pra localizar a página."""
+        for rec in self:
+            if not check_anexo_code_format(rec.code):
+                raise ValidationError(_(
+                    "Código do anexo só pode conter letras, números, "
+                    "'_' e '-' (sem espaços ou acentos)."
+                ))
 
     @api.depends(
         "included", "sequence",

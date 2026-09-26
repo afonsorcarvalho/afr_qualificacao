@@ -232,6 +232,31 @@ class TestRelatorioTemplateModels(AfrQualificacaoTestCommon):
                 "template_id": self.tpl.id, "code": "dados", "title": "Dados de novo",
             })
 
+    def test_anexo_code_format_rejected_across_models(self):
+        """Achado 3 (findings review P3 final): P4 casa marcadores com o
+        regex `[A-Za-z0-9_-]+` — código de anexo fora disso (espaço, acento,
+        pontuação) quebraria o localizador de página. Vale nos 4 lugares
+        onde um código de anexo é gravado."""
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.template.anexo.line"].create({
+                "template_id": self.tpl.id, "code": "código errado", "title": "X",
+            })
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.template.line"].create({
+                "template_id": self.tpl.id, "block_kind": "anexo_separador",
+                "anexo_code": "tem espaço",
+            })
+        rel = _make_relatorio(self.env, self.equip1)
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.anexo"].create({
+                "relatorio_id": rel.id, "code": "acentuação", "title": "Y",
+            })
+        blk = self.env["afr.relatorio.block"].create({
+            "relatorio_id": rel.id, "sequence": 10, "block_kind": "static",
+        })
+        with self.assertRaises(ValidationError):
+            blk.write({"anexo_code": "código com espaço"})
+
     def test_template_line_parent_cycle_rejected(self):
         """Achado 6 (fix round 1)."""
         Line = self.env["afr.relatorio.template.line"]
@@ -363,6 +388,57 @@ class TestRelatorioAprovacaoGuard(AfrQualificacaoTestCommon):
             "ip": "10.0.0.1",
         })
         self.assertTrue(aprov.sudo().approved_at)
+
+    # ───────── findings review P3 (final), achado 1: nome_exibicao/registro/
+    # partner_id também invalidam elaborador/emissor/cliente; executor
+    # aprovado rejeita a troca (sem caminho de reaprovação) ─────────
+
+    def test_changing_nome_exibicao_on_approved_elaborador_clears_approval(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador", "nome_exibicao": "Fulano",
+        })
+        aprov.sudo().write({"approved_at": "2026-09-26 12:00:00", "ip": "10.0.0.1"})
+        aprov.with_user(self.user_usuario).write({"nome_exibicao": "Beltrano"})
+        self.assertFalse(aprov.sudo().approved_at)
+        self.assertFalse(aprov.sudo().ip)
+
+    def test_changing_nome_exibicao_on_approved_executor_as_user_raises(self):
+        """Executor não tem caminho de reaprovação: a linha aprovada
+        (assinatura já coletada no relatório diário) não pode ter o nome
+        trocado por um usuário comum — nem invalidando nem silenciosamente."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].sudo().create({
+            "relatorio_id": rel.id, "papel": "executor", "nome_exibicao": "Técnico X",
+            "approved_at": "2026-09-26 12:00:00",
+        })
+        with self.assertRaises(AccessError):
+            aprov.with_user(self.user_usuario).write({"nome_exibicao": "Outro Nome"})
+        self.assertEqual(aprov.sudo().nome_exibicao, "Técnico X")
+        self.assertTrue(aprov.sudo().approved_at)
+
+    def test_sudo_can_change_identity_fields_on_approved_executor(self):
+        """Caminho interno (sudo, P4) não é afetado pela rejeição do
+        achado — essa é só para escrita direta de usuário comum (b). Grava
+        nome_exibicao junto com approved_at (padrão do fluxo de aprovação da
+        P4): a aprovação não se autoinvalida (exemção existente)."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].sudo().create({
+            "relatorio_id": rel.id, "papel": "executor", "nome_exibicao": "Técnico X",
+            "approved_at": "2026-09-26 12:00:00",
+        })
+        aprov.sudo().write({
+            "nome_exibicao": "Reaprovado",
+            "approved_at": "2026-09-26 13:00:00",
+        })
+        self.assertEqual(aprov.sudo().nome_exibicao, "Reaprovado")
+        self.assertTrue(aprov.sudo().approved_at)
+
+        # Sudo trocando só o nome (sem approved_at) não é BLOQUEADO (não é a
+        # rejeição do achado, que só vale para chamador não-su) — mas invalida
+        # a aprovação como qualquer troca de identidade sem reaprovação junto.
+        aprov.sudo().write({"nome_exibicao": "Outro Nome Via Sudo"})
+        self.assertFalse(aprov.sudo().approved_at)
 
     # ───────── fix round 2, achado 1: create() guard dos campos de controle ─────────
 
@@ -739,6 +815,23 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.rel.write({"state": "issued"})
         with self.assertRaises(UserError):
             self.rel.action_reload_template()
+
+    def test_generate_relatorios_open_skips_non_draft_report(self):
+        """Achado 2 (findings review P3 final): a P4 vai travar create()
+        fora do estado 'draft' — o botão "Gerar relatórios finais" não pode
+        chamar `_apply_template()` num relatório já emitido, senão o botão
+        falha pra toda a OS. Relatório 'issued' sem blocos permanece
+        intocado, sem erro."""
+        so2 = self._apply(do_qi=True)
+        os2 = self._confirm_and_generate_os(so2)
+        rel2 = os2.action_generate_relatorios().filtered(
+            lambda r: r.equipment_id == self.equip1)
+        rel2.write({"state": "issued"})
+        os2.action_generate_relatorios_open()
+        self.assertFalse(rel2.block_ids)
+        self.assertFalse(rel2.anexo_ids)
+        self.assertFalse(rel2.checklist_ids)
+        self.assertFalse(rel2.aprovacao_ids)
 
     def test_reload_without_template_raises(self):
         """Ruling 1.7: template_id vazio levanta UserError ANTES de apagar

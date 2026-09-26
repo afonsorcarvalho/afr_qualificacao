@@ -148,7 +148,7 @@
 
         <div class="rq-subtitle">7. Instrumentos e Padrões</div>
         <table class="rq-table">
-            <thead><tr><th>Instrumento</th><th>Identificação</th><th>Função</th><th>Certificado</th><th>Nº</th><th>Calibração</th><th>Validade</th></tr></thead>
+            <thead><tr><th>Instrumento</th><th>Identificação</th><th>Função</th><th>Papel do certificado</th><th>Nº</th><th>Calibração</th><th>Validade</th></tr></thead>
             <tbody>
                 <t t-foreach="doc._report_instrument_rows()" t-as="row">
                     <tr>
@@ -181,7 +181,7 @@
                         <td t-esc="ind.modelo_tipo or ''"/>
                         <td t-esc="ind.lote or ''"/>
                         <td t-esc="doc._fmt_date(ind.validade)"/>
-                        <td t-esc="ind.valor_d or ''"/>
+                        <td t-esc="doc._fmt_num(ind.valor_d)"/>
                         <td t-esc="ind.populacao or ''"/>
                     </tr>
                 </t>

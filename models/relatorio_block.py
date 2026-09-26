@@ -3,6 +3,7 @@
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 
+from ._numbering import check_anexo_code_format
 from .relatorio_template import REPORT_BLOCK_KINDS
 
 
@@ -65,6 +66,16 @@ class AfrRelatorioBlock(models.Model):
             if not rec._check_recursion():
                 raise ValidationError(
                     _("Hierarquia circular detectada no bloco '%s'.") % (rec.title or rec.id))
+
+    @api.constrains("anexo_code")
+    def _check_anexo_code_format(self):
+        """Findings review P3 (final), achado 3."""
+        for rec in self:
+            if rec.anexo_code and not check_anexo_code_format(rec.anexo_code):
+                raise ValidationError(_(
+                    "Código do anexo só pode conter letras, números, "
+                    "'_' e '-' (sem espaços ou acentos)."
+                ))
 
     def name_get(self):
         labels = dict(REPORT_BLOCK_KINDS)

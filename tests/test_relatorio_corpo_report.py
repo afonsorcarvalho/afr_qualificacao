@@ -105,6 +105,48 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         self.assertIn("Quadro de Assinaturas", html)
         self.assertIn(self.rel.partner_id.name, html)
 
+    def test_full_render_as_plain_user_does_not_raise(self):
+        """Achado 5 (findings review P3 final): o corpo QWeb completo (com
+        marcadores) precisa renderizar para um Usuário comum sem
+        AccessError — inclusive lendo dados do plano de recursos/engc_os que
+        o próprio relatório expõe (instrumentos, certificados, IB, sensores).
+        `invalidate_all()` antes do render: cache compartilhado entre
+        usuários na mesma transação pularia o ACL check."""
+        user = self.env["res.users"].create({
+            "name": "Usuário RQ Corpo P3Fix", "login": "usuario.rqcorpo.p3fix.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        Inst = self.env["engc.calibration.instruments"]
+        validador = Inst.create({"name": "Validador RQ Corpo", "id_number": "VRQC-01"})
+        self.rel.os_id.resource_plan_line_ids.unlink()
+        self.env["afr.qualificacao.resource.plan.line"].create({
+            "os_id": self.rel.os_id.id, "resource_role": "validador",
+            "instrument_id": validador.id,
+        })
+        self.env["engc.calibration.instruments.certificates"].create({
+            "instrument_id": validador.id, "afr_role": "antes",
+            "date_calibration": "2026-08-01", "certificate_number": "CERT-RQ-CORPO-01",
+        })
+        self.env["afr.relatorio.indicador"].create({
+            "relatorio_id": self.rel.id, "tipo": "biologico", "valor_d": 1.5,
+        })
+        cycle = self.rel.cycle_ids[:1]
+        self.assertTrue(cycle, "fixture precisa gerar ao menos 1 ciclo")
+        self.env["afr.relatorio.sensor.pos"].create({
+            "cycle_id": cycle.id, "canal": "CH001",
+        })
+        self.env["afr.relatorio.leitura.ib"].create({
+            "relatorio_id": self.rel.id, "cycle_id": cycle.id,
+        })
+        self.env.invalidate_all()
+        html, _t = self.env["ir.actions.report"].with_user(user)._render_qweb_html(
+            REPORT, self.rel.ids, data={"with_markers": True})
+        html = html.decode() if isinstance(html, bytes) else html
+        self.assertIn("CERT-RQ-CORPO-01", html)
+
     def test_bad_token_does_not_break_render(self):
         self._block("Conclusão").body = "<p>{{ relatorio.nao_existe }}</p>"
         html = self._render()

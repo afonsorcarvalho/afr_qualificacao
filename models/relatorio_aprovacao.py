@@ -18,6 +18,10 @@ APROVACAO_PAPEIS = [
 # Fix round 1, achado 1: campos gravados só pelo fluxo interno de aprovação
 # (P4, via sudo) — nunca por escrita direta de um usuário comum.
 _APPROVAL_CONTROL_FIELDS = ("approved_at", "ip", "access_token")
+# Findings review P3 (final), achado 1: campos de IDENTIDADE de uma linha
+# já aprovada — trocar qualquer um deles é "trocar quem está aprovando",
+# não só user_id/papel. nome_exibicao/registro/partner_id entram aqui.
+_IDENTITY_FIELDS = ("user_id", "papel", "nome_exibicao", "registro", "partner_id")
 # Fix round 2, achado 1: mesma regra na criação — `approved_at`/`ip` nunca
 # aceitos de um chamador não-sudo (nasceria já aprovada). `access_token` não
 # entra aqui: na criação ele é apenas ignorado/substituído (ver create()),
@@ -94,20 +98,37 @@ class AfrRelatorioAprovacao(models.Model):
                 stray_tokens.write({"access_token": False})
         return records
 
+    def _identity_field_changed(self, field, vals):
+        """True quando `vals[field]` difere do valor atual do registro
+        (`self`, um único registro). Ausente de `vals` nunca é "mudança"."""
+        if field not in vals:
+            return False
+        new = vals.get(field)
+        if field in ("user_id", "partner_id"):
+            return self[field].id != (new or False)
+        return (self[field] or False) != (new or False)
+
     def write(self, vals):
-        """Fix round 1, achado 1.
+        """Fix round 1, achado 1 + findings review P3 (final), achado 1.
 
         `approved_at`/`ip`/`access_token` só podem ser gravados pelo sistema
         (sudo interno — fluxo de aprovação da P4), nunca por escrita direta
-        de um usuário comum via RPC/form. Trocar de fato o responsável
-        (`user_id`) ou o `papel` de uma linha já aprovada invalida a
-        aprovação: limpa `approved_at`/`ip` para forçar reaprovação.
+        de um usuário comum via RPC/form.
+
+        Trocar de fato quem está aprovando numa linha já aprovada
+        (`user_id`, `papel`, `nome_exibicao`, `registro` ou `partner_id`)
+        invalida a aprovação: limpa `approved_at`/`ip` para forçar
+        reaprovação — EXCETO para `papel='executor'`: esse papel não tem
+        fluxo de reaprovação (a "aprovação" é a assinatura já coletada no
+        relatório diário), então fora de `env.su` a troca é REJEITADA
+        (`AccessError`) em vez de invalidada. Dentro de `env.su` (fluxo
+        interno) a troca é permitida e invalida como qualquer outro papel.
 
         "Trocar de fato": só quando o valor novo difere do atual — regravar
-        o mesmo `user_id` não apaga a aprovação — e nunca quando o próprio
+        o mesmo valor não apaga a aprovação — e nunca quando o próprio
         `vals` já está definindo `approved_at` (uma aprovação interna via
-        sudo que grava `user_id` + `approved_at` juntos não deve se
-        autoinvalidar).
+        sudo que grava a identidade + `approved_at` juntos, como o próprio
+        fluxo de aprovação da P4 faz, não deve se autoinvalidar).
         """
         touched = set(vals) & set(_APPROVAL_CONTROL_FIELDS)
         if touched and not self.env.su:
@@ -115,13 +136,21 @@ class AfrRelatorioAprovacao(models.Model):
                 "Apenas o sistema pode alterar os campos de controle da "
                 "aprovação (%s)."
             ) % ", ".join(sorted(touched)))
-        to_invalidate = self.browse()
-        if ("user_id" in vals or "papel" in vals) and "approved_at" not in vals:
-            to_invalidate = self.filtered(lambda rec: rec.approved_at and (
-                ("user_id" in vals and rec.user_id.id != (vals.get("user_id") or False))
-                or ("papel" in vals and rec.papel != vals.get("papel"))
+        touched_identity = set(vals) & set(_IDENTITY_FIELDS)
+        changed = self.browse()
+        if touched_identity and "approved_at" not in vals:
+            changed = self.filtered(lambda rec: rec.approved_at and any(
+                rec._identity_field_changed(f, vals) for f in touched_identity
             ))
+        if changed and not self.env.su:
+            locked = changed.filtered(lambda rec: rec.papel == "executor")
+            if locked:
+                raise AccessError(_(
+                    "Uma aprovação de Executor já registrada não pode ser "
+                    "alterada (%s); não há fluxo de reaprovação para este "
+                    "papel."
+                ) % ", ".join(sorted(touched_identity)))
         result = super().write(vals)
-        if to_invalidate:
-            to_invalidate.sudo().write({"approved_at": False, "ip": False})
+        if changed:
+            changed.sudo().write({"approved_at": False, "ip": False})
         return result

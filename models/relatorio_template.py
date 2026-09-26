@@ -9,7 +9,7 @@ editáveis por relatório.
 from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 
-from ._numbering import hierarchical_numbering
+from ._numbering import check_anexo_code_format, hierarchical_numbering
 
 REPORT_BLOCK_KINDS = [
     ("static", "Bloco de Texto"),
@@ -123,6 +123,16 @@ class AfrRelatorioTemplateLine(models.Model):
             if rec.block_kind == "anexo_separador" and not rec.anexo_code:
                 raise ValidationError(_("Separador de anexo exige o código do anexo."))
 
+    @api.constrains("anexo_code")
+    def _check_anexo_code_format(self):
+        """Findings review P3 (final), achado 3."""
+        for rec in self:
+            if rec.anexo_code and not check_anexo_code_format(rec.anexo_code):
+                raise ValidationError(_(
+                    "Código do anexo só pode conter letras, números, "
+                    "'_' e '-' (sem espaços ou acentos)."
+                ))
+
     @api.constrains("parent_id")
     def _check_no_cycle(self):
         """Achado 6 (fix round 1)."""
@@ -183,3 +193,13 @@ class AfrRelatorioTemplateAnexoLine(models.Model):
     cert_roles = fields.Char(
         string="Papéis de certificado", help="afr_role separados por vírgula (antes,depois,externo).")
     included_default = fields.Boolean(string="Incluído por padrão", default=True)
+
+    @api.constrains("code")
+    def _check_code_format(self):
+        """Findings review P3 (final), achado 3."""
+        for rec in self:
+            if not check_anexo_code_format(rec.code):
+                raise ValidationError(_(
+                    "Código do anexo só pode conter letras, números, "
+                    "'_' e '-' (sem espaços ou acentos)."
+                ))
