@@ -8,6 +8,7 @@ from odoo.exceptions import AccessError, ValidationError
 from odoo.tests.common import TransactionCase
 from odoo.tools import mute_logger
 
+from odoo.addons.afr_qualificacao.hooks import _seed_relatorio_templates
 from odoo.addons.afr_qualificacao.models._numbering import hierarchical_numbering
 
 from .common import AfrQualificacaoTestCommon
@@ -482,3 +483,72 @@ class TestRelatorioAprovacaoGuard(AfrQualificacaoTestCommon):
                           "parent_id": a.id})
         with self.assertRaises(ValidationError):
             a.parent_id = b.id
+
+
+class TestRelatorioSeeds(TransactionCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _seed_relatorio_templates(cls.env)
+        cls.hosp = cls.env.ref("afr_qualificacao.relatorio_template_hosp")
+        cls.ind = cls.env.ref("afr_qualificacao.relatorio_template_ind")
+
+    def test_codes_and_category(self):
+        self.assertEqual((self.hosp.code, self.ind.code), ("RQT-HOSP", "RQT-IND"))
+        self.assertIn(self.env.ref("afr_qualificacao.cat_autoclave_vapor"),
+                      self.hosp.equipment_category_ids)
+
+    def test_hosp_anexos_order(self):
+        codes = self.hosp.anexo_line_ids.sorted(lambda l: (l.sequence, l.id)).mapped("code")
+        self.assertEqual(codes, ["protocolo", "dados", "graficos", "micro", "f0",
+                                 "malhas", "validador", "padroes"])
+        dados = self.hosp.anexo_line_ids.filtered(lambda l: l.code == "dados")
+        self.assertEqual(dados.slot_kind, "collect_section")
+        self.assertIn("qd_penetracao_ciclo1", dados.collect_sections)
+        validador = self.hosp.anexo_line_ids.filtered(lambda l: l.code == "validador")
+        self.assertEqual((validador.slot_kind, validador.cert_roles),
+                         ("instrument_certs", "antes,depois"))
+
+    def test_ind_anexos_order(self):
+        codes = self.ind.anexo_line_ids.sorted(lambda l: (l.sequence, l.id)).mapped("code")
+        self.assertEqual(codes, ["protocolo", "protocolo_cliente", "dados", "graficos",
+                                 "impressoes", "micro", "f0", "malhas", "validador",
+                                 "padroes"])
+        micro = self.ind.anexo_line_ids.filtered(lambda l: l.code == "micro")
+        self.assertEqual(micro.slot_kind, "upload")
+
+    def test_sections_are_report_and_use_tokens(self):
+        crit = self.env.ref("afr_qualificacao.rqt_sec_criterios")
+        self.assertEqual(crit.document_type, "report")
+        self.assertIn("criterio['tolerancia']", str(crit.body))
+        self.assertIn("anexo('protocolo')",
+                      str(self.env.ref("afr_qualificacao.rqt_sec_objetivo").body))
+
+    def test_hosp_lines_have_kinds_and_bloco_links(self):
+        kinds = set(self.hosp.line_ids.mapped("block_kind"))
+        self.assertTrue({"capa", "indice", "static", "protocolo", "laudo_micro",
+                         "assinaturas", "anexo_separador"} <= kinds)
+        proto = self.hosp.line_ids.filtered(lambda l: l.block_kind == "protocolo")
+        self.assertEqual(proto.anexo_code, "protocolo")
+        self.assertFalse(self.ind.line_ids.filtered(lambda l: l.block_kind == "laudo_micro"))
+
+    def test_checklist_seeded(self):
+        self.assertGreaterEqual(len(self.hosp.checklist_line_ids), 10)
+        self.assertGreater(len(self.ind.checklist_line_ids), len(self.hosp.checklist_line_ids))
+
+    def test_seed_is_idempotent(self):
+        before = (len(self.hosp.line_ids), len(self.hosp.anexo_line_ids),
+                  len(self.hosp.checklist_line_ids))
+        _seed_relatorio_templates(self.env)
+        _seed_relatorio_templates(self.env)
+        Tpl = self.env["afr.relatorio.template"].with_context(active_test=False)
+        self.assertEqual(Tpl.search_count([("code", "=", "RQT-HOSP")]), 1)
+        self.assertEqual(Tpl.search_count([("code", "=", "RQT-IND")]), 1)
+        self.assertEqual((len(self.hosp.line_ids), len(self.hosp.anexo_line_ids),
+                          len(self.hosp.checklist_line_ids)), before)
+
+    def test_quote_does_not_see_report_sections(self):
+        sec = self.env.ref("afr_qualificacao.rqt_sec_objetivo")
+        found = self.env["afr.proposal.section"].search([("document_type", "=", "proposal")])
+        self.assertNotIn(sec, found)

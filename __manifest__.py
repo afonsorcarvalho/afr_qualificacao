@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.8.1.0",
+    "version": "16.0.8.2.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -123,6 +123,20 @@
               já coletados. Nova aba "Certificados" (só leitura) no
               relatório final lista a seleção e marca "AUSENTE" quando
               falta certificado para o papel exigido.
+            P3 (16.0.8.2.0): template/blocos/anexos/aprovações do
+              relatório final — afr.relatorio.template (config, por
+              categoria de equipamento) espelha afr.proposal.template
+              (sem mixin); afr.relatorio.block/anexo copiam o template
+              para registros editáveis por relatório; afr.relatorio
+              .aprovacao (elaborador/emissor/executor/cliente, token de
+              acesso para o cliente). afr.proposal.section ganha
+              document_type (proposal/report) para a cotação não
+              oferecer seções de relatório. Seeds idempotentes
+              (hooks._seed_relatorio_templates, chamado no post_init e
+              na migração 16.0.8.2.0) criam os templates prontos
+              RQT-HOSP (Hospitalar, sugerido para autoclave a vapor) e
+              RQT-IND (Industrial), com checklist QI, seções de texto e
+              posições de anexo padrão.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

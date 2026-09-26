@@ -206,6 +206,338 @@ def _ensure_company_data_block(env):
     })
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Relatório Final de Qualificação (P3) — seções, templates, checklist, anexos
+# Texto genérico (sem cliente). Edições de norma NÃO fixadas: a edição
+# aplicável varia por cliente e é citada no protocolo.
+# ─────────────────────────────────────────────────────────────────────────
+
+# (xmlid_suffix, code, name, category, body_html)
+RELATORIO_SECTIONS = [
+    ("rqt_sec_objetivo", "RQT-OBJETIVO", "Objetivo", "objetivo",
+     "<p>Este relatório apresenta os resultados da Qualificação Térmica do "
+     "equipamento <strong>{{ equipment.name }}</strong>, número de série "
+     "<strong>{{ equipment.serial_number }}</strong>, de <strong>{{ partner.name }}</strong>, "
+     "realizada para demonstrar, por meio de evidências documentadas, que o equipamento "
+     "está instalado adequadamente, opera dentro dos limites especificados e produz, de "
+     "forma reprodutível, resultados que atendem aos critérios de aceitação estabelecidos.</p>"
+     "<p>Os ensaios seguiram o protocolo apresentado no Anexo {{ anexo('protocolo') }} "
+     "deste relatório.</p>"),
+    ("rqt_sec_normas", "RQT-NORMAS", "Normas e Referências", "normas",
+     "<ul>"
+     "<li>ABNT NBR ISO 17665 — Esterilização de produtos para saúde — Vapor — Requisitos "
+     "para o desenvolvimento, validação e controle de rotina de processos de esterilização.</li>"
+     "<li>ABNT NBR 16328 — Esterilização de produtos para saúde — Vapor — Esterilizadores "
+     "a vapor de pequeno porte.</li>"
+     "<li>ABNT NBR ISO 11138 — Esterilização de produtos para saúde — Indicadores biológicos.</li>"
+     "<li>ABNT NBR ISO 11140 — Esterilização de produtos para saúde — Indicadores químicos.</li>"
+     "<li>Legislação sanitária aplicável ao processamento de produtos para saúde.</li>"
+     "</ul>"
+     "<p>Aplicam-se as edições indicadas no protocolo (Anexo {{ anexo('protocolo') }}).</p>"),
+    ("rqt_sec_definicoes", "RQT-DEFINICOES", "Termos e Definições", "tecnico",
+     "<ul>"
+     "<li><strong>Qualificação de Instalação (QI):</strong> verificação documentada de que o "
+     "equipamento e suas utilidades foram fornecidos e instalados conforme a especificação.</li>"
+     "<li><strong>Qualificação de Operação (QO):</strong> verificação documentada de que o "
+     "equipamento opera dentro dos limites predeterminados, com a câmara vazia.</li>"
+     "<li><strong>Qualificação de Desempenho (QD):</strong> verificação documentada de que o "
+     "equipamento, operando com cargas de referência, produz resultados consistentes com os "
+     "critérios de aceitação.</li>"
+     "<li><strong>Tempo de equilíbrio:</strong> intervalo entre o instante em que o ponto de "
+     "referência atinge a temperatura de esterilização e o instante em que todos os pontos a "
+     "atingem.</li>"
+     "<li><strong>Tempo de manutenção (período de esterilização):</strong> intervalo em que todos "
+     "os pontos permanecem na faixa de temperatura de esterilização.</li>"
+     "<li><strong>F0:</strong> letalidade acumulada expressa em minutos equivalentes a 121,1 °C, "
+     "com z = 10 °C.</li>"
+     "<li><strong>Valor D:</strong> tempo, em minutos, para reduzir em 90% a população do "
+     "microrganismo de referência na condição especificada.</li>"
+     "<li><strong>Indicador biológico (IB) / Indicador químico (IQ):</strong> dispositivos de "
+     "desafio usados para evidenciar a letalidade e a exposição ao agente esterilizante.</li>"
+     "</ul>"),
+    ("rqt_sec_procedimento", "RQT-PROCEDIMENTO", "Procedimento de Qualificação", "tecnico",
+     "<p>A qualificação foi executada conforme o protocolo do Anexo {{ anexo('protocolo') }}, "
+     "com sensores de temperatura calibrados distribuídos na câmara e nas cargas segundo a "
+     "disposição registrada no protocolo. Os valores coletados pelo sistema de aquisição "
+     "encontram-se no Anexo {{ anexo('dados') }} e os gráficos no Anexo {{ anexo('graficos') }}.</p>"),
+    ("rqt_sec_qi", "RQT-QI", "Qualificação de Instalação (QI)", "tecnico",
+     "<p>Foram verificados as instalações elétricas, as utilidades, a documentação, os "
+     "componentes, as calibrações das malhas de controle e o treinamento dos operadores, "
+     "conforme a lista de verificação do protocolo. Itens reprovados, quando houver, estão "
+     "registrados com comentário e ação recomendada.</p>"),
+    ("rqt_sec_qo", "RQT-QO", "Qualificação de Operação (QO)", "tecnico",
+     "<p>Foram executados ciclos com a câmara vazia para verificar a distribuição de "
+     "temperatura, o funcionamento dos controles, indicadores e alarmes, e a repetibilidade "
+     "dos parâmetros programados.</p>"),
+    ("rqt_sec_qd", "RQT-QD", "Qualificação de Desempenho (QD)", "tecnico",
+     "<p>Foram executados ciclos com carga de referência representativa da pior condição de "
+     "uso, com sensores posicionados nos pontos de mais difícil penetração de calor e "
+     "indicadores biológicos e químicos distribuídos conforme o protocolo.</p>"),
+    ("rqt_sec_micro", "RQT-MICRO", "Avaliação Microbiológica", "tecnico",
+     "<p>Os indicadores biológicos processados foram incubados juntamente com um controle "
+     "positivo não processado do mesmo lote. Os resultados constam do laudo microbiológico "
+     "no Anexo {{ anexo('micro') }}.</p>"),
+    ("rqt_sec_qdf", "RQT-QDF", "Qualificação de Desempenho Física (QDF)", "tecnico",
+     "<p>Foram executados ciclos com carga de referência, com sensores de temperatura e "
+     "pressão posicionados nos pontos críticos da carga e da câmara. Quando aplicável, foram "
+     "realizados o teste de estanqueidade (vazamento de ar) e o teste de remoção de ar e "
+     "penetração de vapor (Bowie-Dick).</p>"),
+    ("rqt_sec_qdm", "RQT-QDM", "Qualificação de Desempenho Microbiológica (QDM)", "tecnico",
+     "<p>Os indicadores biológicos foram posicionados nos pontos de pior caso da carga e "
+     "encaminhados ao laboratório indicado pelo cliente. O laudo emitido pelo laboratório "
+     "consta do Anexo {{ anexo('micro') }}.</p>"),
+    ("rqt_sec_certificacao", "RQT-CERTIFICACAO", "Certificação dos Instrumentos", "normas",
+     "<p>O sistema de aquisição de dados foi calibrado antes e depois da campanha de ensaios "
+     "(Anexo {{ anexo('validador') }}), contra padrões com rastreabilidade metrológica "
+     "(Anexo {{ anexo('padroes') }}). Os certificados das malhas de controle do equipamento "
+     "constam do Anexo {{ anexo('malhas') }}.</p>"),
+    ("rqt_sec_criterios", "RQT-CRITERIOS", "Critérios de Aceitação", "tecnico",
+     "<ul>"
+     "<li>Durante o período de esterilização, todas as temperaturas medidas devem permanecer "
+     "entre a temperatura nominal do ciclo e a temperatura nominal acrescida de "
+     "{{ criterio['tolerancia'] }} °C.</li>"
+     "<li>O F0 acumulado em cada ponto deve ser igual ou superior a {{ criterio['f0_fator'] }} "
+     "vezes o valor D do indicador biológico utilizado (valor D = {{ criterio['valor_d'] }} min; "
+     "F0 mínimo = {{ criterio['f0_minimo'] }} min).</li>"
+     "<li>Todos os indicadores biológicos processados devem apresentar resultado negativo e o "
+     "controle positivo, crescimento.</li>"
+     "<li>Todos os indicadores químicos devem apresentar viragem completa.</li>"
+     "</ul>"),
+    ("rqt_sec_validade", "RQT-VALIDADE", "Validade", "condicoes",
+     "<p>Os resultados deste relatório são válidos por 12 (doze) meses a partir da data de "
+     "emissão, ou até que ocorra manutenção corretiva relevante, mudança do local de "
+     "instalação, alteração dos parâmetros dos ciclos ou da configuração das cargas — "
+     "situações que exigem requalificação.</p>"),
+    ("rqt_sec_conclusao", "RQT-CONCLUSAO", "Conclusão", "custom",
+     "<p>Com base nos resultados obtidos e nos critérios de aceitação estabelecidos, o "
+     "equipamento {{ equipment.name }}, número de série {{ equipment.serial_number }}, foi "
+     "considerado <strong>QUALIFICADO</strong> para os ciclos avaliados, conforme detalhado "
+     "nos anexos deste relatório.</p>"),
+    ("rqt_sec_protocolo_textos", "RQT-PROTOCOLO-TEXTOS",
+     "Procedimentos, Segurança da Informação e Responsabilidades", "custom",
+     "<p><strong>Procedimentos.</strong> Os sensores são instalados conforme a disposição "
+     "registrada neste protocolo; os ciclos são executados na quantidade e nos parâmetros "
+     "indicados; a aquisição é contínua, com intervalo configurado no sistema de aquisição.</p>"
+     "<p><strong>Segurança da informação.</strong> Os dados brutos do sistema de aquisição são "
+     "preservados sem edição, com acesso restrito à equipe técnica; os arquivos anexados a este "
+     "relatório são cópias fiéis dos originais.</p>"
+     "<p><strong>Responsabilidades.</strong> Contratada: planejamento, execução dos ensaios, "
+     "análise dos dados e emissão do relatório. Cliente ({{ partner.name }}): disponibilizar o "
+     "equipamento, as utilidades e as cargas representativas, e designar responsável para "
+     "acompanhar os ensaios.</p>"),
+]
+
+# Checklist QI: (grupo, descricao)
+RELATORIO_CHECKLIST_BASE = [
+    ("Instalações elétricas", "Tensão de alimentação compatível com a placa de identificação"),
+    ("Instalações elétricas", "Aterramento elétrico presente e adequado"),
+    ("Instalações elétricas", "Circuito de alimentação exclusivo, com proteção"),
+    ("Utilidades", "Água de alimentação com qualidade conforme recomendação do fabricante"),
+    ("Utilidades", "Ponto de drenagem/exaustão adequado"),
+    ("Utilidades", "Ventilação do ambiente de instalação adequada"),
+    ("Documentação", "Manual de operação do fabricante disponível"),
+    ("Documentação", "Registro do equipamento no órgão sanitário (quando aplicável)"),
+    ("Documentação", "Registros de manutenção preventiva disponíveis"),
+    ("Componentes", "Placa de identificação legível (fabricante, modelo, número de série)"),
+    ("Componentes", "Porta, trava e guarnição de vedação íntegras"),
+    ("Componentes", "Indicadores de temperatura e pressão funcionais"),
+    ("Componentes", "Registrador/impressora de ciclo funcional (quando aplicável)"),
+    ("Calibrações", "Malhas de controle (temperatura, pressão e tempo) com calibração vigente"),
+    ("Treinamentos", "Operadores treinados na operação do equipamento"),
+]
+RELATORIO_CHECKLIST_IND_EXTRA = [
+    ("Utilidades", "Linha de vapor/gerador de vapor com pressão e qualidade adequadas"),
+    ("Utilidades", "Ar comprimido com pressão adequada (quando aplicável)"),
+    ("Componentes", "Bomba de vácuo funcional"),
+    ("Componentes", "Filtro de ar de admissão íntegro e dentro da validade"),
+]
+
+# Linhas: (suffix, seq, block_kind, section_suffix|None, page_break,
+#          parent_suffix|None, show_number, show_title, anexo_code|None, title|None)
+_RQT_HEAD = [
+    ("l010", 10, "capa", None, False, None, False, False, None, "Capa"),
+    ("l020", 20, "indice", None, True, None, False, True, None, "Sumário"),
+    ("l030", 30, "static", "rqt_sec_objetivo", True, None, True, True, None, None),
+    ("l040", 40, "static", "rqt_sec_normas", False, None, True, True, None, None),
+    ("l050", 50, "static", "rqt_sec_definicoes", False, None, True, True, None, None),
+    ("l060", 60, "static", "rqt_sec_procedimento", True, None, True, True, None, None),
+    ("l070", 70, "static", "rqt_sec_qi", False, "l060", True, True, None, None),
+    ("l080", 80, "static", "rqt_sec_qo", False, "l060", True, True, None, None),
+]
+_RQT_TAIL = [
+    ("l110", 110, "static", "rqt_sec_certificacao", True, None, True, True, None, None),
+    ("l120", 120, "static", "rqt_sec_criterios", False, None, True, True, None, None),
+    ("l130", 130, "static", "rqt_sec_validade", False, None, True, True, None, None),
+    ("l140", 140, "static", "rqt_sec_conclusao", False, None, True, True, None, None),
+    ("l150", 150, "assinaturas", None, False, None, True, True, None, "Quadro de Assinaturas"),
+]
+
+
+def _rqt_separators(codes, start_seq):
+    return [
+        ("s_%s" % code, start_seq + i * 10, "anexo_separador", None, False, None,
+         False, False, code, None)
+        for i, code in enumerate(codes)
+    ]
+
+
+# Anexos: (code, seq, title, slot_kind, collect_sections, cert_roles, included_default)
+_RQT_DADOS_SECTIONS = (
+    "qo_mapeamento_ciclo1,qo_mapeamento_ciclo2,qo_mapeamento_ciclo3,"
+    "qd_penetracao_ciclo1,qd_penetracao_ciclo2,qd_penetracao_ciclo3"
+)
+RELATORIO_ANEXOS_HOSP = [
+    ("protocolo", 10, "Protocolo de Qualificação Térmica", "bloco", "", "", True),
+    ("dados", 20, "Resultados dos Valores Coletados", "collect_section", _RQT_DADOS_SECTIONS, "", True),
+    ("graficos", 30, "Gráficos dos Ciclos", "upload", "", "", True),
+    ("micro", 40, "Laudo Microbiológico", "bloco", "", "", True),
+    ("f0", 50, "Curvas de Letalidade (F0)", "upload", "", "", True),
+    ("malhas", 60, "Certificados de Calibração das Malhas de Controle", "malha_certs", "", "", True),
+    ("validador", 70, "Certificados de Calibração do Sistema de Aquisição", "instrument_certs", "", "antes,depois", True),
+    ("padroes", 80, "Certificados dos Padrões de Referência", "instrument_certs", "", "externo", True),
+]
+RELATORIO_ANEXOS_IND = [
+    ("protocolo", 10, "Protocolo de Qualificação Térmica", "bloco", "", "", True),
+    ("protocolo_cliente", 20, "Protocolo do Cliente", "upload", "", "", True),
+    ("dados", 30, "Resultados dos Valores Coletados", "collect_section", _RQT_DADOS_SECTIONS, "", True),
+    ("graficos", 40, "Gráficos dos Ciclos", "upload", "", "", True),
+    ("impressoes", 50, "Registros Impressos pelo Equipamento", "upload", "", "", True),
+    ("micro", 60, "Laudo Microbiológico (Laboratório do Cliente)", "upload", "", "", True),
+    ("f0", 70, "Curvas de Letalidade (F0)", "upload", "", "", True),
+    ("malhas", 80, "Certificados de Calibração das Malhas de Controle", "malha_certs", "", "", True),
+    ("validador", 90, "Certificados de Calibração do Sistema de Aquisição", "instrument_certs", "", "antes,depois", True),
+    ("padroes", 100, "Certificados dos Padrões de Referência", "instrument_certs", "", "externo", True),
+]
+
+RELATORIO_TEMPLATES = [
+    {
+        "xmlid": "relatorio_template_hosp",
+        "name": "Relatório de Qualificação — Hospitalar",
+        "code": "RQT-HOSP",
+        "sequence": 10,
+        "category_xmlids": ["cat_autoclave_vapor"],
+        "lines": (
+            _RQT_HEAD
+            + [
+                ("l090", 90, "static", "rqt_sec_qd", False, "l060", True, True, None, None),
+                ("l100", 100, "static", "rqt_sec_micro", False, "l060", True, True, None, None),
+            ]
+            + _RQT_TAIL
+            + _rqt_separators([a[0] for a in RELATORIO_ANEXOS_HOSP], 500)
+            + [
+                ("c_protocolo", 900, "protocolo", "rqt_sec_protocolo_textos", False, None,
+                 False, False, "protocolo", "Protocolo de Qualificação Térmica"),
+                ("c_micro", 910, "laudo_micro", None, False, None,
+                 False, False, "micro", "Laudo Microbiológico"),
+            ]
+        ),
+        "checklist": RELATORIO_CHECKLIST_BASE,
+        "anexos": RELATORIO_ANEXOS_HOSP,
+    },
+    {
+        "xmlid": "relatorio_template_ind",
+        "name": "Relatório de Qualificação — Industrial",
+        "code": "RQT-IND",
+        "sequence": 20,
+        "category_xmlids": [],
+        "lines": (
+            _RQT_HEAD
+            + [
+                ("l090", 90, "static", "rqt_sec_qdf", False, "l060", True, True, None, None),
+                ("l100", 100, "static", "rqt_sec_qdm", False, "l060", True, True, None, None),
+            ]
+            + _RQT_TAIL
+            + _rqt_separators([a[0] for a in RELATORIO_ANEXOS_IND], 500)
+            + [
+                ("c_protocolo", 900, "protocolo", "rqt_sec_protocolo_textos", False, None,
+                 False, False, "protocolo", "Protocolo de Qualificação Térmica"),
+            ]
+        ),
+        "checklist": RELATORIO_CHECKLIST_BASE + RELATORIO_CHECKLIST_IND_EXTRA,
+        "anexos": RELATORIO_ANEXOS_IND,
+    },
+]
+
+
+def _upsert_xmlid(env, name, record):
+    """Registra/reaponta afr_qualificacao.<name> (noupdate) para `record`."""
+    Imd = env["ir.model.data"]
+    imd = Imd.search([("module", "=", "afr_qualificacao"), ("name", "=", name)], limit=1)
+    vals = {"model": record._name, "res_id": record.id, "noupdate": True}
+    if imd:
+        imd.write(vals)
+    else:
+        Imd.create(dict(vals, name=name, module="afr_qualificacao"))
+
+
+def _seed_relatorio_templates(env):
+    """Cria seções de relatório e templates RQT-HOSP / RQT-IND.
+
+    Idempotente: registro cujo xmlid já resolve não é tocado (o usuário
+    controla o conteúdo depois do seed). Chamado pelo hook de install e pela
+    migração 16.0.8.2.0.
+    """
+    Section = env["afr.proposal.section"]
+    sections = {}
+    for seq, (suffix, code, name, category, body) in enumerate(RELATORIO_SECTIONS, start=1):
+        rec = env.ref("afr_qualificacao.%s" % suffix, raise_if_not_found=False)
+        if not rec:
+            rec = Section.create({
+                "name": name, "code": code, "category": category,
+                "document_type": "report", "body": body, "sequence": 1000 + seq * 10,
+            })
+            _upsert_xmlid(env, suffix, rec)
+        sections[suffix] = rec
+
+    Template = env["afr.relatorio.template"]
+    Line = env["afr.relatorio.template.line"]
+    for spec in RELATORIO_TEMPLATES:
+        if env.ref("afr_qualificacao.%s" % spec["xmlid"], raise_if_not_found=False):
+            continue
+        categories = [
+            env.ref("afr_qualificacao.%s" % x, raise_if_not_found=False)
+            for x in spec["category_xmlids"]
+        ]
+        template = Template.create({
+            "name": spec["name"],
+            "code": spec["code"],
+            "sequence": spec["sequence"],
+            "equipment_category_ids": [(6, 0, [c.id for c in categories if c])],
+            "checklist_line_ids": [
+                (0, 0, {"sequence": (i + 1) * 10, "grupo": grupo, "descricao": desc})
+                for i, (grupo, desc) in enumerate(spec["checklist"])
+            ],
+            "anexo_line_ids": [
+                (0, 0, {
+                    "code": code, "sequence": seq, "title": title, "slot_kind": slot,
+                    "collect_sections": sects or False, "cert_roles": roles or False,
+                    "included_default": inc,
+                })
+                for code, seq, title, slot, sects, roles, inc in spec["anexos"]
+            ],
+        })
+        _upsert_xmlid(env, spec["xmlid"], template)
+        by_suffix = {}
+        for (suffix, seq, kind, sec_suffix, page_break, _parent,
+             show_number, show_title, anexo_code, title) in spec["lines"]:
+            section = sections.get(sec_suffix) if sec_suffix else False
+            line = Line.create({
+                "template_id": template.id,
+                "sequence": seq,
+                "block_kind": kind,
+                "section_id": section.id if section else False,
+                "page_break": page_break,
+                "show_number": show_number,
+                "show_title": show_title,
+                "anexo_code": anexo_code or False,
+                "title": title or False,
+            })
+            by_suffix[suffix] = line
+        for (suffix, _seq, _kind, _sec, _pb, parent_suffix, *_rest) in spec["lines"]:
+            if parent_suffix and parent_suffix in by_suffix:
+                by_suffix[suffix].parent_id = by_suffix[parent_suffix].id
+
+
 def _install_proposal_template_seed(cr, registry):
     """Cria o template default ‘Proposta LabQuali QI/QO/QD’ no install.
 
@@ -218,6 +550,9 @@ def _install_proposal_template_seed(cr, registry):
 
     # Seed QI/QO/QS type.config (independente do template; idempotente).
     _install_qualif_type_configs(env)
+
+    # Relatório Final (P3) — seções/templates de relatório (idempotente).
+    _seed_relatorio_templates(env)
 
     template = env.ref(
         "afr_qualificacao.proposal_template_labquali",
