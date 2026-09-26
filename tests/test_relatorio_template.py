@@ -2,12 +2,29 @@
 
 from types import SimpleNamespace
 
-from odoo.exceptions import ValidationError
+from psycopg2 import IntegrityError
+
+from odoo.exceptions import AccessError, ValidationError
 from odoo.tests.common import TransactionCase
+from odoo.tools import mute_logger
 
 from odoo.addons.afr_qualificacao.models._numbering import hierarchical_numbering
 
 from .common import AfrQualificacaoTestCommon
+
+
+def _make_relatorio(env, equip):
+    """Cria um `afr.qualificacao.relatorio` real e mínimo (OS + 1 qualif QI
+    + `action_generate_relatorios()`) — usado pelos testes de fix round 1
+    que precisam de um relatório de verdade (aprovações exigem `relatorio_id`).
+    """
+    os = env["afr.qualificacao.os"].create({})
+    env["afr.qualificacao"].create({
+        "name": "RF-p3fix-%s" % os.id, "equipment_id": equip.id,
+        "qualification_type": "installation", "os_id": os.id,
+        "company_id": os.company_id.id,
+    })
+    return os.action_generate_relatorios()[0]
 
 
 def _rec(rid, seq, parent=None, show=True):
@@ -141,7 +158,7 @@ class TestSectionDocumentType(TransactionCase):
         self.assertEqual(field.domain, [("document_type", "=", "proposal")])
 
 
-class TestRelatorioTemplateModels(TransactionCase):
+class TestRelatorioTemplateModels(AfrQualificacaoTestCommon):
 
     def setUp(self):
         super().setUp()
@@ -188,9 +205,216 @@ class TestRelatorioTemplateModels(TransactionCase):
         self.assertEqual((capa.display_number, root.display_number, child.display_number),
                          ("", "1", "1.1"))
 
+    def test_separator_line_excluded_from_numbering(self):
+        """Achado 3 (fix round 1): anexo_separador não conta na numeração do
+        texto — como `_body_blocks()` já exclui blocos com `anexo_code`."""
+        Line = self.env["afr.relatorio.template.line"]
+        root = Line.create({"template_id": self.tpl.id, "sequence": 10,
+                            "block_kind": "static", "section_id": self.section.id})
+        separator = Line.create({"template_id": self.tpl.id, "sequence": 15,
+                                 "block_kind": "anexo_separador", "anexo_code": "dados"})
+        second = Line.create({"template_id": self.tpl.id, "sequence": 20,
+                              "block_kind": "static", "section_id": self.section.id})
+        self.assertEqual(
+            (root.display_number, separator.display_number, second.display_number),
+            ("1", "", "2"),
+        )
+
+    def test_anexo_line_code_unique_per_template(self):
+        """Achado 4 (fix round 1)."""
+        self.env["afr.relatorio.template.anexo.line"].create({
+            "template_id": self.tpl.id, "code": "dados", "title": "Dados",
+        })
+        with self.assertRaises(IntegrityError), mute_logger("odoo.sql_db"):
+            self.env["afr.relatorio.template.anexo.line"].create({
+                "template_id": self.tpl.id, "code": "dados", "title": "Dados de novo",
+            })
+
+    def test_template_line_parent_cycle_rejected(self):
+        """Achado 6 (fix round 1)."""
+        Line = self.env["afr.relatorio.template.line"]
+        a = Line.create({"template_id": self.tpl.id, "sequence": 10,
+                         "block_kind": "static", "section_id": self.section.id})
+        b = Line.create({"template_id": self.tpl.id, "sequence": 20,
+                         "block_kind": "static", "section_id": self.section.id,
+                         "parent_id": a.id})
+        with self.assertRaises(ValidationError):
+            a.parent_id = b.id
+
     def test_client_approval_gets_token(self):
-        # afr.relatorio.aprovacao exige relatorio_id; testado com relatório real
-        # na Task 5 (TestRelatorioApplyTemplate.test_default_approvals).
+        """Achado 7 (fix round 1): confere o token de verdade, não só a
+        selection de `papel`."""
         field = self.env["afr.relatorio.aprovacao"]._fields["papel"]
         self.assertEqual([k for k, _l in field.selection],
                          ["elaborador", "emissor", "executor", "cliente"])
+
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov_cliente = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "cliente",
+        })
+        aprov_elaborador = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+        })
+        self.assertTrue(aprov_cliente.sudo().access_token)
+        self.assertFalse(aprov_elaborador.sudo().access_token)
+
+
+class TestRelatorioAprovacaoGuard(AfrQualificacaoTestCommon):
+    """Fix round 1 — achados 1, 2 e 4 (metade `afr.relatorio.anexo`): guard de
+    escrita e visibilidade dos campos de controle da aprovação
+    (approved_at/ip/access_token), e unicidade de `code` por relatório."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.user_usuario = cls.env["res.users"].create({
+            "name": "Usuário RQ P3Fix",
+            "login": "usuario.rqp3fix.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        cls.user_tecnico = cls.env["res.users"].create({
+            "name": "Técnico RQ P3Fix",
+            "login": "tecnico.rqp3fix.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+        cls.user_manager = cls.env["res.users"].create({
+            "name": "Gestor RQ P3Fix",
+            "login": "gestor.rqp3fix.test",
+            "groups_id": [(6, 0, [
+                cls.env.ref("base.group_user").id,
+                cls.env.ref("afr_qualificacao.group_afr_qualificacao_manager").id,
+            ])],
+        })
+
+    # ───────── achado 1: write() guard dos campos de controle ─────────
+
+    def test_user_group_cannot_write_approval_control_fields(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+        })
+        with self.assertRaises(AccessError):
+            aprov.with_user(self.user_usuario).write({"approved_at": "2026-09-26 12:00:00"})
+        with self.assertRaises(AccessError):
+            aprov.with_user(self.user_usuario).write({"ip": "10.0.0.1"})
+        with self.assertRaises(AccessError):
+            aprov.with_user(self.user_usuario).write({"access_token": "forjado"})
+
+    def test_sudo_can_write_approval_control_fields(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+        })
+        aprov.sudo().write({"approved_at": "2026-09-26 12:00:00", "ip": "10.0.0.1"})
+        self.assertTrue(aprov.sudo().approved_at)
+        self.assertEqual(aprov.sudo().ip, "10.0.0.1")
+
+    def test_changing_approver_on_approved_line_clears_approval(self):
+        """O grupo Usuário reatribui responsável/papel — cenário real do
+        escritório reorganizando quem assina — numa linha já aprovada."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+        })
+        aprov.sudo().write({"approved_at": "2026-09-26 12:00:00", "ip": "10.0.0.1"})
+        aprov.with_user(self.user_usuario).write({"user_id": self.user_manager.id})
+        self.assertFalse(aprov.sudo().approved_at)
+        self.assertFalse(aprov.sudo().ip)
+
+        aprov2 = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "emissor",
+        })
+        aprov2.sudo().write({"approved_at": "2026-09-26 12:00:00", "ip": "10.0.0.1"})
+        aprov2.with_user(self.user_usuario).write({"papel": "executor"})
+        self.assertFalse(aprov2.sudo().approved_at)
+        self.assertFalse(aprov2.sudo().ip)
+
+    def test_rewriting_same_user_id_keeps_approval(self):
+        """Regravar o mesmo valor não é "trocar" — a aprovação sobrevive."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+            "user_id": self.user_manager.id,
+        })
+        aprov.sudo().write({"approved_at": "2026-09-26 12:00:00", "ip": "10.0.0.1"})
+        aprov.with_user(self.user_usuario).write({"user_id": self.user_manager.id})
+        self.assertTrue(aprov.sudo().approved_at)
+
+    def test_sudo_approving_with_user_id_does_not_self_invalidate(self):
+        """Um fluxo interno (sudo) que grava `user_id` e `approved_at` juntos
+        (aprovar em nome de outro papel, por exemplo) não deve se
+        autoinvalidar — só a troca feita SEM `approved_at` no mesmo `vals`
+        conta como "trocar o responsável de uma linha já aprovada"."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+        })
+        aprov.sudo().write({
+            "user_id": self.user_manager.id,
+            "approved_at": "2026-09-26 12:00:00",
+            "ip": "10.0.0.1",
+        })
+        self.assertTrue(aprov.sudo().approved_at)
+
+    # ───────── achado 2: access_token restrito ao Gestor ─────────
+
+    def test_access_token_denied_to_user_and_technician(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "cliente", "partner_id": self.partner.id,
+        })
+        with self.assertRaises(AccessError):
+            aprov.with_user(self.user_usuario).access_token
+        with self.assertRaises(AccessError):
+            aprov.with_user(self.user_tecnico).access_token
+
+    def test_access_token_readable_by_manager_and_sudo(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": rel.id, "papel": "cliente", "partner_id": self.partner.id,
+        })
+        self.assertTrue(aprov.with_user(self.user_manager).access_token)
+        self.assertTrue(aprov.sudo().access_token)
+
+    def test_user_group_can_create_client_approval_with_token(self):
+        """O grupo Usuário cria aprovações no fluxo normal (`_apply_template`
+        roda como o técnico/office user que aperta "Recarregar template" —
+        ACL `access_relatorio_aprovacao_user` tem `create=1`). `create()` não
+        passa por `check_field_access_rights` (só `write()`/`read()` fazem),
+        então injetar `access_token` no `vals` dentro do próprio `create()`
+        não é bloqueado pelo `groups=` do achado 2 mesmo para quem não é
+        Gestor."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).create({
+            "relatorio_id": rel.id, "papel": "cliente", "partner_id": self.partner.id,
+        })
+        self.assertTrue(aprov.sudo().access_token)
+
+    # ───────── achado 4 (metade anexo): unicidade de code por relatório ─────────
+
+    def test_anexo_code_unique_per_relatorio(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        self.env["afr.relatorio.anexo"].create({
+            "relatorio_id": rel.id, "code": "dados", "title": "Dados",
+        })
+        with self.assertRaises(IntegrityError), mute_logger("odoo.sql_db"):
+            self.env["afr.relatorio.anexo"].create({
+                "relatorio_id": rel.id, "code": "dados", "title": "Dados de novo",
+            })
+
+    # ───────── achado 6 (afr.relatorio.block): ciclo via _check_recursion ─────────
+
+    def test_block_parent_cycle_rejected(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        Block = self.env["afr.relatorio.block"]
+        a = Block.create({"relatorio_id": rel.id, "sequence": 10, "block_kind": "static"})
+        b = Block.create({"relatorio_id": rel.id, "sequence": 20, "block_kind": "static",
+                          "parent_id": a.id})
+        with self.assertRaises(ValidationError):
+            a.parent_id = b.id

@@ -14,6 +14,14 @@ class AfrRelatorioAnexo(models.Model):
     _description = "Anexo do Relatório Final"
     _order = "sequence, id"
 
+    _sql_constraints = [
+        (
+            "relatorio_anexo_code_uniq",
+            "unique(relatorio_id, code)",
+            "Já existe um anexo com este código neste relatório.",
+        ),
+    ]
+
     relatorio_id = fields.Many2one(
         "afr.qualificacao.relatorio", required=True, ondelete="cascade", index=True)
     sequence = fields.Integer(default=10)

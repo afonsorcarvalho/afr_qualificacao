@@ -46,6 +46,7 @@ class AfrRelatorioBlock(models.Model):
         "relatorio_id", "sequence", "parent_id", "show_number", "included", "anexo_code",
         "relatorio_id.block_ids.sequence", "relatorio_id.block_ids.parent_id",
         "relatorio_id.block_ids.show_number", "relatorio_id.block_ids.included",
+        "relatorio_id.block_ids.anexo_code",
     )
     def _compute_display_number(self):
         for block in self:
@@ -57,15 +58,13 @@ class AfrRelatorioBlock(models.Model):
 
     @api.constrains("parent_id")
     def _check_no_cycle(self):
+        """Achado 6 (fix round 1): `_check_recursion()` embutido do Odoo
+        substitui o loop manual — mesmo algoritmo (segue `parent_id` até
+        repetir ou chegar ao topo), sem mudança de comportamento."""
         for rec in self:
-            seen = {rec.id}
-            ancestor = rec.parent_id
-            while ancestor:
-                if ancestor.id in seen:
-                    raise ValidationError(
-                        _("Hierarquia circular detectada no bloco '%s'.") % (rec.title or rec.id))
-                seen.add(ancestor.id)
-                ancestor = ancestor.parent_id
+            if not rec._check_recursion():
+                raise ValidationError(
+                    _("Hierarquia circular detectada no bloco '%s'.") % (rec.title or rec.id))
 
     def name_get(self):
         labels = dict(REPORT_BLOCK_KINDS)

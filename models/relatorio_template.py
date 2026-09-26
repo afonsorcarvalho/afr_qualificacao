@@ -94,15 +94,20 @@ class AfrRelatorioTemplateLine(models.Model):
                 line.title or line.section_id.name or labels.get(line.block_kind, ""))
 
     @api.depends(
-        "template_id", "sequence", "parent_id", "show_number",
+        "template_id", "sequence", "parent_id", "show_number", "anexo_code",
         "template_id.line_ids.sequence", "template_id.line_ids.parent_id",
-        "template_id.line_ids.show_number",
+        "template_id.line_ids.show_number", "template_id.line_ids.anexo_code",
     )
     def _compute_display_number(self):
+        """Achado 3 (fix round 1): linhas com `anexo_code` (separador de
+        anexo) não contam na numeração — como `_body_blocks()` já as exclui
+        do corpo renderizado; manter os dois alinhados evita numeração que
+        diverge do PDF."""
         for line in self:
             line.display_number = ""
         for template in self.mapped("template_id"):
-            numbers = hierarchical_numbering(template.line_ids)
+            numbered_lines = template.line_ids.filtered(lambda l: not l.anexo_code)
+            numbers = hierarchical_numbering(numbered_lines)
             for line in template.line_ids:
                 line.display_number = numbers.get(line.id, "")
 
@@ -117,6 +122,14 @@ class AfrRelatorioTemplateLine(models.Model):
         for rec in self:
             if rec.block_kind == "anexo_separador" and not rec.anexo_code:
                 raise ValidationError(_("Separador de anexo exige o código do anexo."))
+
+    @api.constrains("parent_id")
+    def _check_no_cycle(self):
+        """Achado 6 (fix round 1)."""
+        for rec in self:
+            if not rec._check_recursion():
+                raise ValidationError(
+                    _("Hierarquia circular detectada na linha do template."))
 
     def action_edit_template_line(self):
         """Abre a seção (static) ou a própria linha em modal — igual à cotação."""
@@ -150,6 +163,14 @@ class AfrRelatorioTemplateAnexoLine(models.Model):
     _name = "afr.relatorio.template.anexo.line"
     _description = "Posição de Anexo Padrão do Template de Relatório"
     _order = "sequence, id"
+
+    _sql_constraints = [
+        (
+            "template_anexo_line_code_uniq",
+            "unique(template_id, code)",
+            "Já existe uma posição de anexo com este código neste template.",
+        ),
+    ]
 
     template_id = fields.Many2one(
         "afr.relatorio.template", required=True, ondelete="cascade", index=True)
