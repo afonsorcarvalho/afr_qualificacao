@@ -114,3 +114,4 @@ from . import test_relatorio_certificados
 
 # Relatório Final — P3: template, blocos, anexos, aprovações
 from . import test_relatorio_template
+from . import test_relatorio_corpo_report

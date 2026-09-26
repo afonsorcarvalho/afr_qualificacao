@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Corpo do Relatório Final. Variáveis opcionais (chaves de `data` do report):
+          page_map     {"bloco:<id>" | "anexo:<code>": nº página} — impresso no índice como veio
+          with_markers bool — emite <span class="rq-mark">@@RQ:...@@</span> (branco, 1pt)
+        Marcador SEMPRE como 1º filho do container que quebra página (P4 localiza
+        a página pelo texto extraído).
+    -->
+    <template id="rq_styles">
+        <style>
+            .rq-page { color: #212529; font-size: 12px; font-family: Arial, Helvetica, sans-serif; }
+            .rq-mark { color: #ffffff; font-size: 1pt; line-height: 1pt; }
+            .rq-page-break { page-break-before: always; }
+            .rq-title { font-size: 15px; font-weight: bold; margin: 14px 0 6px 0; color: #1f3b63; }
+            .rq-title-child { font-size: 13px; margin-left: 12px; }
+            .rq-body { text-align: justify; }
+            .rq-subtitle { font-weight: bold; margin: 10px 0 4px 0; }
+            .rq-table { width: 100%; border-collapse: collapse; margin: 4px 0 10px 0; }
+            .rq-table th, .rq-table td { border: 1px solid #999999; padding: 3px 5px; vertical-align: top; }
+            .rq-table th { background: #eef1f5; text-align: left; }
+            .rq-table tr { page-break-inside: avoid; }
+            .rq-cover { text-align: center; padding-top: 120px; }
+            .rq-cover-company { font-size: 16px; color: #555555; }
+            .rq-cover-title { font-size: 26px; font-weight: bold; margin: 30px 0 10px 0; color: #1f3b63; }
+            .rq-cover-number { font-size: 16px; margin-bottom: 40px; }
+            .rq-cover-meta { width: 80%; margin: 0 auto; text-align: left; }
+            .rq-toc { width: 100%; border-collapse: collapse; }
+            .rq-toc-row td { height: 18px; padding: 0 4px; border-bottom: 1px dotted #bbbbbb; }
+            .rq-toc-num { width: 50px; }
+            .rq-toc-child .rq-toc-title { padding-left: 16px; }
+            .rq-toc-page-cell { width: 50px; text-align: right; }
+            .rq-anexo-sep { page-break-before: always; page-break-after: always; text-align: center; padding-top: 260px; }
+            .rq-anexo-title { font-size: 22px; font-weight: bold; }
+            .rq-doc-header { text-align: center; margin-bottom: 10px; }
+            .rq-doc-title { font-size: 17px; font-weight: bold; }
+            .rq-doc-number { font-size: 13px; color: #555555; }
+        </style>
+    </template>
+
+    <template id="rq_block_capa">
+        <div class="rq-cover">
+            <div class="rq-cover-company" t-esc="doc.company_id.name or ''"/>
+            <div class="rq-cover-title">RELATÓRIO DE QUALIFICAÇÃO TÉRMICA</div>
+            <div class="rq-cover-number"><span t-esc="doc.name"/> — <span t-esc="doc.revision_label"/></div>
+            <table class="rq-table rq-cover-meta">
+                <tr><th style="width:35%;">Cliente</th><td t-esc="doc.partner_id.name or ''"/></tr>
+                <tr><th>Equipamento</th><td t-esc="doc.equipment_id.name or ''"/></tr>
+                <tr><th>Número de série</th><td t-esc="doc.equipment_id.serial_number or ''"/></tr>
+                <tr><th>TAG</th><td t-esc="doc.equipment_id.tag or ''"/></tr>
+                <tr><th>Período dos ensaios</th>
+                    <td><t t-esc="doc._fmt_date(doc.data_inicio_ensaios)"/> a <t t-esc="doc._fmt_date(doc.data_fim_ensaios)"/></td></tr>
+            </table>
+        </div>
+    </template>
+
+    <template id="rq_block_indice">
+        <table class="rq-toc">
+            <t t-foreach="doc._report_index_entries()" t-as="entry">
+                <tr t-attf-class="rq-toc-row#{' rq-toc-child' if entry['child'] else ''}">
+                    <td class="rq-toc-num" t-esc="entry['number']"/>
+                    <td class="rq-toc-title" t-esc="entry['title']"/>
+                    <td class="rq-toc-page-cell"><span class="rq-toc-page" t-esc="pmap.get(entry['key'], '')"/></td>
+                </tr>
+            </t>
+        </table>
+    </template>
+
+    <template id="rq_block_protocolo">
+        <div class="rq-doc-header">
+            <div class="rq-doc-title">PROTOCOLO DE QUALIFICAÇÃO TÉRMICA</div>
+            <div class="rq-doc-number" t-esc="doc._doc_number('PrQT')"/>
+        </div>
+
+        <div class="rq-subtitle">1. Identificação do Cliente</div>
+        <table class="rq-table">
+            <tr><th style="width:30%;">Cliente</th><td t-esc="doc.partner_id.name or ''"/></tr>
+            <tr><th>CNPJ/CPF</th><td t-esc="doc.partner_id.vat or ''"/></tr>
+            <tr><th>Endereço</th><td t-esc="doc.partner_id.contact_address or ''"/></tr>
+        </table>
+
+        <div class="rq-subtitle">2. Identificação do Equipamento</div>
+        <table class="rq-table">
+            <tr><th style="width:30%;">Equipamento</th><td t-esc="doc.equipment_id.name or ''"/></tr>
+            <tr><th>Categoria</th><td t-esc="doc.equipment_id.category_id.name or ''"/></tr>
+            <tr><th>Marca</th><td t-esc="doc.equipment_id.marca_id.name or ''"/></tr>
+            <tr><th>Modelo</th><td t-esc="doc.equipment_id.model or ''"/></tr>
+            <tr><th>Número de série</th><td t-esc="doc.equipment_id.serial_number or ''"/></tr>
+            <tr><th>TAG</th><td t-esc="doc.equipment_id.tag or ''"/></tr>
+            <tr><th>Patrimônio</th><td t-esc="doc.equipment_id.patrimony or ''"/></tr>
+        </table>
+
+        <div class="rq-subtitle">3. Condições Ambientais e Período</div>
+        <table class="rq-table">
+            <tr><th style="width:30%;">Temperatura ambiente</th><td t-esc="doc.amb_temperatura or ''"/></tr>
+            <tr><th>Umidade relativa</th><td t-esc="doc.amb_umidade or ''"/></tr>
+            <tr><th>Início dos ensaios</th><td t-esc="doc._fmt_date(doc.data_inicio_ensaios)"/></tr>
+            <tr><th>Fim dos ensaios</th><td t-esc="doc._fmt_date(doc.data_fim_ensaios)"/></tr>
+        </table>
+
+        <div class="rq-subtitle">4. Ciclos</div>
+        <table class="rq-table">
+            <thead><tr><th>Etapa</th><th>Ciclo</th><th>Qtd</th><th>Temperatura</th><th>Tempo</th></tr></thead>
+            <tbody>
+                <t t-foreach="doc._report_cycle_rows()" t-as="row">
+                    <tr>
+                        <td t-esc="row['etapa']"/>
+                        <td t-esc="row['name']"/>
+                        <td t-esc="row['qty']"/>
+                        <td t-esc="row['temperature']"/>
+                        <td t-esc="row['duration']"/>
+                    </tr>
+                </t>
+            </tbody>
+        </table>
+
+        <div class="rq-subtitle">5. Lista de Verificação (QI)</div>
+        <table class="rq-table">
+            <thead><tr><th>Grupo</th><th>Item</th><th>Resultado</th><th>Comentário</th></tr></thead>
+            <tbody>
+                <t t-foreach="doc.checklist_ids.sorted(lambda c: (c.sequence, c.id))" t-as="item">
+                    <tr>
+                        <td t-esc="item.grupo or ''"/>
+                        <td t-esc="item.descricao or ''"/>
+                        <td t-esc="doc._sel_label(item, 'status')"/>
+                        <td t-esc="item.comentario or ''"/>
+                    </tr>
+                </t>
+            </tbody>
+        </table>
+
+        <div class="rq-subtitle">6. Disposição dos Sensores</div>
+        <t t-foreach="doc._report_sensor_tables()" t-as="st">
+            <div t-esc="st['cycle']" style="font-weight:bold;"/>
+            <table class="rq-table">
+                <thead><tr><th>Canal</th><th>Posição</th><th>Indicador</th></tr></thead>
+                <tbody>
+                    <t t-foreach="st['rows']" t-as="pos">
+                        <tr>
+                            <td t-esc="pos.canal or ''"/>
+                            <td t-esc="pos.posicao or ''"/>
+                            <td t-esc="pos.ib_label or ''"/>
+                        </tr>
+                    </t>
+                </tbody>
+            </table>
+        </t>
+
+        <div class="rq-subtitle">7. Instrumentos e Padrões</div>
+        <table class="rq-table">
+            <thead><tr><th>Instrumento</th><th>Identificação</th><th>Função</th><th>Certificado</th><th>Nº</th><th>Calibração</th><th>Validade</th></tr></thead>
+            <tbody>
+                <t t-foreach="doc._report_instrument_rows()" t-as="row">
+                    <tr>
+                        <td t-esc="row['instrument']"/>
+                        <td t-esc="row['identification']"/>
+                        <td t-esc="row['resource_role']"/>
+                        <td t-esc="row['role']"/>
+                        <td t-esc="row['certificate']"/>
+                        <td t-esc="row['date']"/>
+                        <td t-esc="row['validade']"/>
+                    </tr>
+                </t>
+            </tbody>
+        </table>
+    </template>
+
+    <template id="rq_block_laudo_micro">
+        <div class="rq-doc-header">
+            <div class="rq-doc-title">LAUDO MICROBIOLÓGICO</div>
+            <div class="rq-doc-number" t-esc="doc._doc_number('ReQM')"/>
+        </div>
+        <div class="rq-subtitle">Indicadores utilizados</div>
+        <table class="rq-table">
+            <thead><tr><th>Tipo</th><th>Marca</th><th>Modelo / Tipo</th><th>Lote</th><th>Validade</th><th>Valor D (min)</th><th>População</th></tr></thead>
+            <tbody>
+                <t t-foreach="doc.indicador_ids" t-as="ind">
+                    <tr>
+                        <td t-esc="doc._sel_label(ind, 'tipo')"/>
+                        <td t-esc="ind.marca or ''"/>
+                        <td t-esc="ind.modelo_tipo or ''"/>
+                        <td t-esc="ind.lote or ''"/>
+                        <td t-esc="doc._fmt_date(ind.validade)"/>
+                        <td t-esc="ind.valor_d or ''"/>
+                        <td t-esc="ind.populacao or ''"/>
+                    </tr>
+                </t>
+            </tbody>
+        </table>
+        <div class="rq-subtitle">Leituras dos indicadores biológicos</div>
+        <table class="rq-table">
+            <thead><tr><th>Ciclo</th><th>Lote</th><th>Incubação</th><th>Leitura</th><th>Leitor</th><th>Resultado</th><th>Controle positivo</th></tr></thead>
+            <tbody>
+                <t t-foreach="doc.leitura_ib_ids" t-as="lt">
+                    <tr>
+                        <td t-esc="lt.cycle_id.display_name or ''"/>
+                        <td t-esc="lt.indicador_id.lote or ''"/>
+                        <td t-esc="doc._fmt_date(lt.data_incubacao)"/>
+                        <td t-esc="doc._fmt_date(lt.data_leitura)"/>
+                        <td t-esc="lt.leitor or ''"/>
+                        <td t-esc="doc._sel_label(lt, 'resultado')"/>
+                        <td t-esc="'Crescimento (OK)' if lt.controle_positivo_ok else 'Não conforme'"/>
+                    </tr>
+                </t>
+            </tbody>
+        </table>
+    </template>
+
+    <template id="rq_block_assinaturas">
+        <table class="rq-table">
+            <thead><tr><th>Papel</th><th>Nome</th><th>Registro</th><th>Aprovação</th></tr></thead>
+            <tbody>
+                <t t-foreach="doc._report_signature_rows()" t-as="row">
+                    <tr>
+                        <td t-esc="row['papel']"/>
+                        <td t-esc="row['nome']"/>
+                        <td t-esc="row['registro']"/>
+                        <td t-esc="row['approved_at'] or '______________________'"/>
+                    </tr>
+                </t>
+            </tbody>
+        </table>
+    </template>
+
+    <!-- Um bloco. Espera: doc, block, block_numbers, markers, pmap -->
+    <template id="rq_block">
+        <t t-set="blk_num" t-value="block_numbers.get(block.id, '')"/>
+        <div t-att-class="'rq-block rq-page-break' if block.page_break else 'rq-block'"
+             t-att-data-rq-block="block.id"><span t-if="markers" class="rq-mark" t-esc="'@@RQ:bloco:%s@@' % block.id"/>
+            <div t-if="block.show_title and block.block_kind != 'capa' and (block.title or blk_num)"
+                 t-attf-class="rq-title#{' rq-title-child' if block.parent_id else ''}">
+                <t t-if="blk_num"><span t-esc="blk_num"/> </t><span t-esc="block.title or ''"/>
+            </div>
+            <t t-if="block.block_kind == 'capa'"><t t-call="afr_qualificacao.rq_block_capa"/></t>
+            <t t-if="block.block_kind == 'indice'"><t t-call="afr_qualificacao.rq_block_indice"/></t>
+            <t t-if="block.block_kind == 'protocolo'"><t t-call="afr_qualificacao.rq_block_protocolo"/></t>
+            <t t-if="block.block_kind == 'laudo_micro'"><t t-call="afr_qualificacao.rq_block_laudo_micro"/></t>
+            <t t-if="block.block_kind == 'assinaturas'"><t t-call="afr_qualificacao.rq_block_assinaturas"/></t>
+            <div t-if="block.block_kind not in ('capa', 'indice', 'anexo_separador') and block.body"
+                 class="rq-body" t-out="doc._render_block_body(block)"/>
+        </div>
+    </template>
+
+    <!-- Uma posição de anexo incluída: separador (+ conteúdo se slot 'bloco'). Espera: doc, anexo, markers -->
+    <template id="rq_anexo">
+        <t t-set="sep" t-value="doc._anexo_separator_block(anexo.code)"/>
+        <div class="rq-anexo-sep" t-att-data-rq-anexo="anexo.code"><span t-if="markers" class="rq-mark" t-esc="'@@RQ:anexo:%s@@' % anexo.code"/><span t-if="markers and sep" class="rq-mark" t-esc="'@@RQ:bloco:%s@@' % sep.id"/>
+            <div class="rq-anexo-title" t-esc="'Anexo %s: %s' % (anexo.numero, anexo.title or '')"/>
+            <div t-if="sep and sep.body" class="rq-body" t-out="doc._render_block_body(sep)"/>
+        </div>
+        <t t-if="anexo.slot_kind == 'bloco' and anexo.block_id and anexo.block_id.included">
+            <t t-set="block" t-value="anexo.block_id"/>
+            <t t-call="afr_qualificacao.rq_block"/>
+        </t>
+    </template>
+
+    <template id="report_relatorio_corpo">
+        <t t-foreach="docs" t-as="doc">
+            <t t-call="web.basic_layout">
+                <t t-set="markers" t-value="bool(with_markers)"/>
+                <t t-set="pmap" t-value="page_map or {}"/>
+                <t t-set="block_numbers" t-value="doc._block_numbering()"/>
+                <t t-call="afr_qualificacao.rq_styles"/>
+                <div class="page rq-page">
+                    <t t-foreach="doc._body_blocks()" t-as="block">
+                        <t t-call="afr_qualificacao.rq_block"/>
+                    </t>
+                    <t t-foreach="doc._anexos_included()" t-as="anexo">
+                        <t t-call="afr_qualificacao.rq_anexo"/>
+                    </t>
+                </div>
+            </t>
+        </t>
+    </template>
+</odoo>

@@ -14,6 +14,7 @@ from odoo.tools import is_html_empty
 from odoo.tools.misc import clean_context
 
 from ._numbering import hierarchical_numbering, sort_key
+from .calibration_instruments import AFR_CERT_ROLES
 from .relatorio_template import REPORT_BLOCK_KINDS
 
 _logger = logging.getLogger(__name__)
@@ -283,6 +284,114 @@ class AfrQualificacaoRelatorio(models.Model):
                 self.display_name, block.id, exc_info=True)
             return Markup(str(body))
         return Markup(rendered.get(self.id) or "")
+
+
+    # ── helpers do corpo QWeb ────────────────────────────────────────────
+    def _fmt_date(self, value):
+        return fields.Date.to_date(value).strftime("%d/%m/%Y") if value else ""
+
+    def _fmt_datetime(self, value):
+        if not value:
+            return ""
+        return fields.Datetime.context_timestamp(self, value).strftime("%d/%m/%Y %H:%M")
+
+    def _sel_label(self, record, fname):
+        value = record[fname]
+        if not value:
+            return ""
+        return dict(record._fields[fname]._description_selection(self.env)).get(value, value)
+
+    def _report_index_entries(self):
+        """Linhas do índice: blocos titulados do texto + anexos incluídos.
+        `key` casa com as chaves de page_map."""
+        self.ensure_one()
+        numbers = self._block_numbering()
+        entries = []
+        for blk in self._body_blocks():
+            if blk.block_kind in ("capa", "indice") or not blk.show_title:
+                continue
+            entries.append({
+                "key": "bloco:%d" % blk.id,
+                "number": numbers.get(blk.id, ""),
+                "title": blk.title or blk.display_label or "",
+                "child": bool(blk.parent_id),
+            })
+        for anexo in self._anexos_included():
+            entries.append({
+                "key": "anexo:%s" % anexo.code,
+                "number": "",
+                "title": "Anexo %s — %s" % (anexo.numero, anexo.title or ""),
+                "child": False,
+            })
+        return entries
+
+    def _report_cycles_sorted(self):
+        """Ciclos na ordem do relatório (QI<QO<QD, tipo de ciclo, sequence)."""
+        self.ensure_one()
+        return self.cycle_ids.sorted(key=lambda c: c._relatorio_cycle_sort_key())
+
+    def _report_cycle_rows(self):
+        """Ciclos agrupados por (etapa, tipo de ciclo) com qtd/temperatura/tempo."""
+        self.ensure_one()
+        qtype_labels = dict(
+            self.env["afr.qualificacao"]._fields["qualification_type"]
+            ._description_selection(self.env))
+        groups, order = {}, []
+        for cycle in self._report_cycles_sorted():
+            key = (cycle.qualificacao_id.qualification_type, cycle.cycle_type_id.id)
+            if key not in groups:
+                line = cycle.sale_order_line_id
+                ctype = cycle.cycle_type_id
+                groups[key] = {
+                    "etapa": qtype_labels.get(key[0], ""),
+                    "name": ctype.name or cycle.display_name,
+                    "qty": 0,
+                    "temperature": line.temperature or ctype.temperature or "",
+                    "duration": line.duration or ctype.duration or "",
+                }
+                order.append(key)
+            groups[key]["qty"] += 1
+        return [groups[k] for k in order]
+
+    def _report_sensor_tables(self):
+        self.ensure_one()
+        return [
+            {"cycle": c.display_name,
+             "rows": c.sensor_pos_ids.sorted(lambda s: (s.sequence, s.id))}
+            for c in self._report_cycles_sorted()
+            if c.sensor_pos_ids
+        ]
+
+    def _report_instrument_rows(self):
+        """Validadores e padrões do plano de recursos com o certificado
+        selecionado (P2). Rótulos das mesmas fontes da aba Certificados."""
+        self.ensure_one()
+        role_labels = dict(AFR_CERT_ROLES)
+        resource_labels = dict(
+            self.env["afr.qualificacao.resource.plan.line"]
+            ._fields["resource_role"].selection)
+        rows = []
+        for sel in self._afr_certificate_selection():
+            inst, cert = sel["instrument"], sel["certificate"]
+            rows.append({
+                "instrument": inst.name or "",
+                "identification": inst.id_number or inst.tag or "",
+                "resource_role": resource_labels.get(sel["resource_role"], ""),
+                "role": role_labels.get(sel["role"], sel["role"] or ""),
+                "certificate": (cert.certificate_number or "—") if cert else "—",
+                "date": self._fmt_date(cert.date_calibration) if cert else "",
+                "validade": self._fmt_date(cert.validate_calibration) if cert else "",
+            })
+        return rows
+
+    def _report_signature_rows(self):
+        self.ensure_one()
+        return [{
+            "papel": self._sel_label(ap, "papel"),
+            "nome": ap.nome_exibicao or ap.user_id.name or ap.partner_id.name or "",
+            "registro": ap.registro or "",
+            "approved_at": self._fmt_datetime(ap.approved_at),
+        } for ap in self.aprovacao_ids.sorted(sort_key)]
 
 
 class AfrQualificacaoOs(models.Model):

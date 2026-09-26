@@ -262,6 +262,9 @@
         "reports/templates_blocos/block_sales_items.xml",
         "reports/templates_blocos/block_acceptance.xml",
         "reports/quotation_template.xml",
+        # Relatório Final P3 — corpo QWeb (sub-templates antes do report)
+        "reports/relatorio_corpo_templates.xml",
+        "reports/relatorio_corpo_report.xml",
     ],
     "external_dependencies": {
         "python": [
