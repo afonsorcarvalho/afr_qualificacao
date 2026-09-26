@@ -108,3 +108,6 @@ from . import test_scope_render
 
 # Relatório Final de Qualificação — P1 (16.0.8.0.0): modelo + dados de campo + ciclos
 from . import test_relatorio_model
+
+# Relatório final — P2 (16.0.8.1.0): biblioteca de certificados
+from . import test_relatorio_certificados

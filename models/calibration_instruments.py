@@ -7,8 +7,20 @@ F4.3 (16.0.3.4.0): mapeamento grandeza/unidade ↔ instrumento via certificados,
 F10  (16.0.5.0.0): Plano de recursos metrológicos — instrumento ganha papéis
                     (validador/padrão via tags), capacidade por grandeza e
                     horas de setup, alimentando o bin-packing em sale.order.
+P2   (16.0.8.1.0): biblioteca de certificados do relatório final — papel
+                    (antes/depois/externo) por certificado e seleção por
+                    data de ensaio (spec relatório final §4.4).
 """
+import base64
+
 from odoo import api, fields, models
+
+# P2 (16.0.8.1.0) — papel do certificado na biblioteca do relatório final.
+AFR_CERT_ROLES = [
+    ("antes", "Antes da campanha"),
+    ("depois", "Depois da campanha"),
+    ("externo", "Certificado externo (padrão)"),
+]
 
 
 class AfrQualificacaoInstrumentFunction(models.Model):
@@ -134,6 +146,32 @@ class EngcCalibrationInstrumentsCertificates(models.Model):
                 r.validate_calibration and r.validate_calibration >= today
             )
 
+    afr_role = fields.Selection(
+        AFR_CERT_ROLES,
+        string="Papel no relatório",
+        default="externo",
+        required=True,
+        help=(
+            "Como este certificado entra no relatório final de qualificação: "
+            "'Antes'/'Depois' = calibração do validador pré/pós campanha; "
+            "'Externo' = certificado de terceiro do padrão (vigência na data "
+            "dos ensaios)."
+        ),
+    )
+
+    def _afr_file_content(self):
+        """Bytes do certificado: binário principal; senão o primeiro arquivo
+        de idioma que tenha conteúdo; senão b"". `bin_size=False` garante
+        conteúdo e não o tamanho."""
+        self.ensure_one()
+        rec = self.with_context(bin_size=False)
+        if rec.certificate_calibration:
+            return base64.b64decode(rec.certificate_calibration)
+        for file_rec in rec.certificate_file_ids:
+            if file_rec.file:
+                return base64.b64decode(file_rec.file)
+        return b""
+
 
 class EngcCalibrationInstruments(models.Model):
     _inherit = "engc.calibration.instruments"
@@ -232,6 +270,52 @@ class EngcCalibrationInstruments(models.Model):
                         units |= line.unit_of_measurement
             r.measurement_unit_ids = units
             r.sensor_kind_ids = units.mapped("afr_sensor_kind_id")
+
+    # ------------------------------------------------------------------
+    # P2 (16.0.8.1.0) — seleção de certificado por data de ensaio
+    # ------------------------------------------------------------------
+    def _afr_select_certificate(self, role, date_start, date_end):
+        """Certificado (0 ou 1) do papel `role` para ensaios em
+        [date_start, date_end] — spec §4.4:
+
+        - antes:   afr_role='antes', maior date_calibration <= date_start;
+        - depois:  afr_role='depois', menor date_calibration >= date_end;
+        - externo: afr_role='externo', date_calibration <= date_start <=
+                   validate_calibration (o mais recente).
+
+        Bordas: data igual conta. Substituídos (superseded_by_id) e
+        certificados sem date_calibration são ignorados. Data de referência
+        ausente → vazio. Empate de data → maior id (cadastro mais recente).
+        """
+        self.ensure_one()
+        empty = self.env["engc.calibration.instruments.certificates"]
+        if role not in dict(AFR_CERT_ROLES):
+            raise ValueError("Papel de certificado desconhecido: %r" % (role,))
+        certs = self.certificate_ids.filtered(
+            lambda c: c.afr_role == role
+            and not c.superseded_by_id
+            and c.date_calibration
+        )
+        if role == "antes":
+            if not date_start:
+                return empty
+            cands = certs.filtered(lambda c: c.date_calibration <= date_start)
+            return cands.sorted(
+                key=lambda c: (c.date_calibration, c.id), reverse=True)[:1]
+        if role == "depois":
+            if not date_end:
+                return empty
+            cands = certs.filtered(lambda c: c.date_calibration >= date_end)
+            return cands.sorted(key=lambda c: (c.date_calibration, -c.id))[:1]
+        # externo
+        if not date_start:
+            return empty
+        cands = certs.filtered(
+            lambda c: c.validate_calibration
+            and c.date_calibration <= date_start <= c.validate_calibration
+        )
+        return cands.sorted(
+            key=lambda c: (c.date_calibration, c.id), reverse=True)[:1]
 
     def name_get(self):
         # Garante exibição consistente nos M2M widgets: usa name; se faltar,

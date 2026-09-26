@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.8.0.0",
+    "version": "16.0.8.1.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -111,6 +111,10 @@
             P1 (16.0.8.0.0): afr.qualificacao.relatorio por OS × equipamento
               + dados de campo (checklist, indicadores, leituras de IB)
               + ciclo com janela/posição de sensores.
+            P2 (16.0.8.1.0): biblioteca de certificados — afr_role
+              (antes/depois/externo) em engc.calibration.instruments
+              .certificates + _afr_select_certificate por data de ensaio
+              no instrumento (spec §4.4).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
