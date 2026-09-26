@@ -105,3 +105,6 @@ from . import test_os_por_grupo
 # Escopo por equipamento como tabela única — camada de agregação
 from . import test_scope_table
 from . import test_scope_render
+
+# Relatório Final de Qualificação — P1 (16.0.8.0.0): modelo + dados de campo + ciclos
+from . import test_relatorio_model
