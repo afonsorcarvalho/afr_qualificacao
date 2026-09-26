@@ -199,3 +199,141 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         arch = self.env["engc.calibration.instruments"].get_view(
             form.id, "form")["arch"]
         self.assertIn('name="afr_role"', arch)
+
+    # ------------------------------------------------ Task 2: relatório
+    def _by_key(self, selection):
+        return {(s["instrument"].id, s["role"]): s for s in selection}
+
+    def test_selection_shape_and_order(self):
+        sel = self.rel._afr_certificate_selection()
+        self.assertEqual(
+            [(s["instrument"], s["resource_role"], s["role"]) for s in sel],
+            [
+                (self.validador, "validador", "antes"),
+                (self.validador, "validador", "depois"),
+                (self.padrao, "padrao", "externo"),
+            ],
+        )
+        for s in sel:
+            self.assertEqual(set(s), {"instrument", "resource_role", "role", "certificate"})
+            self.assertFalse(s["certificate"], "sem certificados cadastrados → vazio")
+
+    def test_selection_picks_certificates_by_date(self):
+        antes = self._cert(self.validador, "antes", self.inicio, number="CERT-TST-A")
+        depois = self._cert(self.validador, "depois", self.fim, number="CERT-TST-D")
+        externo = self._cert(self.padrao, "externo", self.inicio - timedelta(days=10),
+                             number="CERT-TST-E")
+        by = self._by_key(self.rel._afr_certificate_selection())
+        self.assertEqual(by[(self.validador.id, "antes")]["certificate"], antes)
+        self.assertEqual(by[(self.validador.id, "depois")]["certificate"], depois)
+        self.assertEqual(by[(self.padrao.id, "externo")]["certificate"], externo)
+
+    def test_selection_skips_lines_without_instrument(self):
+        self.env["afr.qualificacao.resource.plan.line"].create({
+            "os_id": self.os.id, "resource_role": "padrao",
+        })
+        self.assertEqual(len(self.rel._afr_certificate_selection()), 3)
+
+    def test_selection_dedupes_instrument(self):
+        self.env["afr.qualificacao.resource.plan.line"].create({
+            "os_id": self.os.id, "resource_role": "validador",
+            "instrument_id": self.validador.id,
+        })
+        self.assertEqual(len(self.rel._afr_certificate_selection()), 3)
+
+    def test_selection_instrument_with_both_roles(self):
+        self.env["afr.qualificacao.resource.plan.line"].create({
+            "os_id": self.os.id, "resource_role": "padrao",
+            "instrument_id": self.validador.id,
+        })
+        sel = self.rel._afr_certificate_selection()
+        roles_validador = [s["role"] for s in sel if s["instrument"] == self.validador]
+        self.assertEqual(roles_validador, ["antes", "depois", "externo"])
+        self.assertEqual(len(sel), 4)
+
+    def test_selection_without_dates_all_empty(self):
+        self._cert(self.validador, "antes", self.inicio - timedelta(days=1))
+        self._cert(self.validador, "depois", self.fim + timedelta(days=1))
+        self._cert(self.padrao, "externo", self.inicio - timedelta(days=1))
+        self.rel.write({"data_inicio_ensaios": False, "data_fim_ensaios": False})
+        sel = self.rel._afr_certificate_selection()
+        self.assertEqual(len(sel), 3)
+        self.assertFalse(any(s["certificate"] for s in sel))
+
+    def test_selection_excludes_instrument_of_other_equipment(self):
+        outro = self.env["engc.calibration.instruments"].create(
+            {"name": "Validador Outro Equip", "id_number": "VT-02"})
+        self.env["afr.qualificacao.resource.plan.line"].create({
+            "os_id": self.os.id, "resource_role": "validador",
+            "instrument_id": outro.id,
+            "equipment_ids": [(6, 0, [self.equip2.id])],
+        })
+        sel = self.rel._afr_certificate_selection()
+        self.assertNotIn(outro, [s["instrument"] for s in sel])
+        self.assertEqual(len(sel), 3)
+
+    def test_selection_includes_line_for_this_equipment(self):
+        proprio = self.env["engc.calibration.instruments"].create(
+            {"name": "Padrão Deste Equip", "id_number": "PT-02"})
+        self.env["afr.qualificacao.resource.plan.line"].create({
+            "os_id": self.os.id, "resource_role": "padrao",
+            "instrument_id": proprio.id,
+            "equipment_ids": [(6, 0, [self.equip1.id, self.equip2.id])],
+        })
+        sel = self.rel._afr_certificate_selection()
+        self.assertIn(proprio, [s["instrument"] for s in sel])
+        self.assertEqual(len(sel), 4)
+
+    def test_selection_includes_line_with_empty_equipment_ids(self):
+        # line_val/line_pad do setUpClass não têm equipment_ids → entram.
+        self.assertFalse(self.line_val.equipment_ids)
+        self.assertFalse(self.line_pad.equipment_ids)
+        sel = self.rel._afr_certificate_selection()
+        self.assertEqual({s["instrument"] for s in sel}, {self.validador, self.padrao})
+
+    def test_selection_empty_plan(self):
+        self.os.resource_plan_line_ids.unlink()
+        self.assertEqual(self.rel._afr_certificate_selection(), [])
+
+    def test_files_filter_by_roles(self):
+        self._cert(self.validador, "antes", self.inicio, number="CERT-TST-A")
+        depois = self._cert(self.validador, "depois", self.fim, number="CERT-TST-D",
+                            content=None)
+        depois.certificate_file_ids = [
+            (0, 0, {"name": "EN", "file": _b64(b"%PDF-1.4 depois")}),
+        ]
+        self._cert(self.padrao, "externo", self.inicio, number="CERT-TST-E")
+
+        files = self.rel._afr_certificate_files(["antes", "depois"])
+        self.assertEqual(len(files), 2)
+        self.assertEqual(files[0][0], PDF_BYTES)
+        self.assertEqual(files[0][1], "application/pdf")
+        self.assertIn("CERT-TST-A", files[0][2])
+        self.assertIn("Validador Teste", files[0][2])
+        self.assertIn("Antes da campanha", files[0][2])
+        self.assertEqual(files[1][0], b"%PDF-1.4 depois")
+        self.assertIn("Depois da campanha", files[1][2])
+
+        ext = self.rel._afr_certificate_files(["externo"])
+        self.assertEqual(len(ext), 1)
+        self.assertIn("CERT-TST-E", ext[0][2])
+        self.assertIn("Padrão Teste", ext[0][2])
+
+    def test_files_image_mimetype(self):
+        self._cert(self.padrao, "externo", self.inicio, number="CERT-TST-IMG",
+                   content=_png_bytes())
+        files = self.rel._afr_certificate_files(["externo"])
+        self.assertEqual(files[0][1], "image/png")
+
+    def test_files_skip_certificate_without_any_file(self):
+        self._cert(self.padrao, "externo", self.inicio, number="CERT-TST-NF",
+                   content=None)
+        self.assertEqual(self.rel._afr_certificate_files(["externo"]), [])
+        # antes/depois ausentes também não geram tupla
+        self.assertEqual(self.rel._afr_certificate_files(["antes", "depois"]), [])
+
+    def test_files_caption_without_number(self):
+        self._cert(self.padrao, "externo", self.inicio, number=False)
+        files = self.rel._afr_certificate_files(["externo"])
+        self.assertTrue(files[0][2].startswith("Certificado s/nº — Padrão Teste"))
+        self.assertNotIn("False", files[0][2])
