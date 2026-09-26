@@ -362,6 +362,70 @@ class TestRelatorioAprovacaoGuard(AfrQualificacaoTestCommon):
         })
         self.assertTrue(aprov.sudo().approved_at)
 
+    # ───────── fix round 2, achado 1: create() guard dos campos de controle ─────────
+
+    def test_non_sudo_create_with_approved_at_raises(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        with self.assertRaises(AccessError):
+            self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).create({
+                "relatorio_id": rel.id, "papel": "elaborador",
+                "approved_at": "2026-09-26 12:00:00",
+            })
+
+    def test_non_sudo_create_with_ip_raises(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        with self.assertRaises(AccessError):
+            self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).create({
+                "relatorio_id": rel.id, "papel": "elaborador", "ip": "10.0.0.1",
+            })
+
+    def test_non_sudo_create_ignores_caller_supplied_access_token(self):
+        """Achado 1 (round 2): o token é sempre gerado no servidor para
+        `papel='cliente'` — um valor "escolhido" pelo chamador não-sudo é
+        descartado, nunca aceito."""
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).create({
+            "relatorio_id": rel.id, "papel": "cliente", "partner_id": self.partner.id,
+            "access_token": "token-escolhido-pelo-atacante",
+        })
+        self.assertTrue(aprov.sudo().access_token)
+        self.assertNotEqual(aprov.sudo().access_token, "token-escolhido-pelo-atacante")
+
+    def test_sudo_create_with_approved_at_works(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].sudo().create({
+            "relatorio_id": rel.id, "papel": "elaborador",
+            "approved_at": "2026-09-26 12:00:00", "ip": "10.0.0.1",
+        })
+        self.assertTrue(aprov.sudo().approved_at)
+        self.assertEqual(aprov.sudo().ip, "10.0.0.1")
+
+    def test_non_sudo_create_default_context_approved_at_raises(self):
+        """Task 13/14 já mordeu nisto uma vez: o guard só olha o `vals`
+        RECEBIDO — `default_<campo>` no contexto é aplicado DENTRO do
+        `super().create()`, depois do pré-check. Sem um pós-check, o vetor
+        `with_context(default_approved_at=...)` nascia a linha já aprovada
+        mesmo sem o campo no `vals`."""
+        rel = _make_relatorio(self.env, self.equip1)
+        with self.assertRaises(AccessError):
+            self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).with_context(
+                default_approved_at="2026-09-26 12:00:00"
+            ).create({"relatorio_id": rel.id, "papel": "elaborador"})
+
+    def test_non_sudo_create_default_context_ip_raises(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        with self.assertRaises(AccessError):
+            self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).with_context(
+                default_ip="10.0.0.1"
+            ).create({"relatorio_id": rel.id, "papel": "elaborador"})
+
+    def test_non_sudo_create_default_context_access_token_ignored_for_non_cliente(self):
+        rel = _make_relatorio(self.env, self.equip1)
+        aprov = self.env["afr.relatorio.aprovacao"].with_user(self.user_usuario).with_context(
+            default_access_token="escolhido-via-contexto"
+        ).create({"relatorio_id": rel.id, "papel": "elaborador"})
+        self.assertFalse(aprov.sudo().access_token)
+
     # ───────── achado 2: access_token restrito ao Gestor ─────────
 
     def test_access_token_denied_to_user_and_technician(self):

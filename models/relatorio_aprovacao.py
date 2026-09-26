@@ -18,6 +18,11 @@ APROVACAO_PAPEIS = [
 # Fix round 1, achado 1: campos gravados só pelo fluxo interno de aprovação
 # (P4, via sudo) — nunca por escrita direta de um usuário comum.
 _APPROVAL_CONTROL_FIELDS = ("approved_at", "ip", "access_token")
+# Fix round 2, achado 1: mesma regra na criação — `approved_at`/`ip` nunca
+# aceitos de um chamador não-sudo (nasceria já aprovada). `access_token` não
+# entra aqui: na criação ele é apenas ignorado/substituído (ver create()),
+# nunca levanta — o valor de verdade sempre nasce no servidor.
+_CREATE_BLOCKED_FIELDS = ("approved_at", "ip")
 
 
 class AfrRelatorioAprovacao(models.Model):
@@ -44,10 +49,50 @@ class AfrRelatorioAprovacao(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        """Fix round 2, achado 1.
+
+        `approved_at`/`ip` nunca podem vir de um `create()` não-sudo — sem
+        isto, um membro do grupo Usuário nascia a linha já aprovada. Um
+        `access_token` "escolhido" pelo chamador não-sudo é descartado (não
+        levanta, só é ignorado): o token de `papel='cliente'` é sempre
+        gerado aqui no servidor, nunca aceito de fora — sob `sudo()` (fluxo
+        interno confiável) um token fornecido é mantido.
+
+        O pré-check abaixo só vê o `vals` RECEBIDO. Como em
+        `qualificacao_os.py::create()` (Task 13/14), o Odoo aplica defaults
+        (`default_<campo>` do contexto, `ir.default`) DEPOIS deste override,
+        dentro do próprio `super().create()` — um `with_context(default_approved_at=...)`
+        não-sudo sobrevivia ao pré-check. O pós-check olha o valor EFETIVO
+        do registro já criado, agnóstico ao vetor usado.
+        """
         for vals in vals_list:
+            if not self.env.su:
+                touched = set(vals) & set(_CREATE_BLOCKED_FIELDS)
+                if touched:
+                    raise AccessError(_(
+                        "Apenas o sistema pode definir os campos de controle "
+                        "da aprovação (%s) na criação."
+                    ) % ", ".join(sorted(touched)))
+                vals.pop("access_token", None)
             if vals.get("papel") == "cliente" and not vals.get("access_token"):
                 vals["access_token"] = uuid.uuid4().hex
-        return super().create(vals_list)
+        records = super().create(vals_list)
+        if not self.env.su:
+            recs_su = records.sudo()
+            touched = set()
+            if any(recs_su.mapped("approved_at")):
+                touched.add("approved_at")
+            if any(recs_su.mapped("ip")):
+                touched.add("ip")
+            if touched:
+                raise AccessError(_(
+                    "Apenas o sistema pode definir os campos de controle "
+                    "da aprovação (%s) na criação."
+                ) % ", ".join(sorted(touched)))
+            stray_tokens = recs_su.filtered(lambda r: r.papel != "cliente" and r.access_token)
+            if stray_tokens:
+                stray_tokens.write({"access_token": False})
+        return records
 
     def write(self, vals):
         """Fix round 1, achado 1.
