@@ -804,3 +804,66 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
             [("company_id", "in", [self.rel.company_id.id, False])],
             order="sequence, id", limit=1)
         self.assertEqual(self.rel._suggest_template(), lowest)
+
+
+class TestRelatorioTokens(RelatorioTemplateFixture):
+    """Reusa a fixture da Task 5 (relatório com RQT-HOSP aplicado)."""
+
+    def _objetivo(self):
+        return self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+
+    def test_render_tokens_criterio_and_anexo(self):
+        blk = self._objetivo()
+        blk.body = ("<p>T={{ criterio['tolerancia'] }};A={{ anexo('micro') }};"
+                    "S={{ equipment.serial_number }}</p>")
+        self.assertIn("anexo('micro')", str(blk.body))  # sanitizer preserva aspas
+        self.rel.tolerancia_acima = 4.0
+        html = str(self.rel._render_block_body(blk))
+        self.assertIn("T=4;A=4;S=TSN-001", html)
+        self.rel.anexo_ids.filtered(lambda a: a.code == "micro").included = False
+        html = str(self.rel._render_block_body(blk))
+        self.assertIn("T=4;A=;S=TSN-001", html)
+
+    def test_criterio_values(self):
+        self.rel.write({"tolerancia_acima": 3.0, "criterio_f0_fator": 12.0})
+        self.assertEqual(self.rel._criterio_values()["valor_d"], "")
+        self.env["afr.relatorio.indicador"].create({
+            "relatorio_id": self.rel.id, "tipo": "biologico", "valor_d": 1.5,
+        })
+        crit = self.rel._criterio_values()
+        self.assertEqual(crit, {"tolerancia": "3", "f0_fator": "12",
+                                "valor_d": "1,5", "f0_minimo": "18"})
+
+    def test_token_context_keys(self):
+        ctx = self.rel._token_context()
+        self.assertEqual(set(ctx), {"relatorio", "os", "partner", "equipment",
+                                    "company", "criterio", "anexo"})
+        self.assertEqual(ctx["anexo"]("protocolo"), "1")
+
+    def test_seeded_bodies_render_without_braces(self):
+        for blk in self.rel.block_ids.filtered("body"):
+            self.assertNotIn("{{", str(self.rel._render_block_body(blk)), blk.title)
+
+    def test_bad_token_falls_back_to_raw_body(self):
+        blk = self._objetivo()
+        blk.body = "<p>{{ relatorio.campo_que_nao_existe }}</p>"
+        html = str(self.rel._render_block_body(blk))
+        self.assertIn("{{", html)
+
+    def test_empty_body(self):
+        blk = self._objetivo()
+        blk.body = False
+        self.assertEqual(str(self.rel._render_block_body(blk)), "")
+
+    def test_render_as_plain_user(self):
+        user = self.env["res.users"].create({
+            "name": "Usuário RQ", "login": "usuario_rq_p3",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        blk = self._objetivo()
+        blk.body = "<p>T={{ criterio['tolerancia'] }};A={{ anexo('dados') }}</p>"
+        html = str(self.rel.with_user(user)._render_block_body(blk.with_user(user)))
+        self.assertIn("T=3;A=2", html)

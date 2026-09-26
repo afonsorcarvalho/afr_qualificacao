@@ -4,12 +4,26 @@ Extensão por _inherit do modelo criado em P1 (models/relatorio.py), para não
 misturar dados de campo com montagem de texto.
 """
 
+import logging
+
+from markupsafe import Markup
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools import is_html_empty
 from odoo.tools.misc import clean_context
 
 from ._numbering import hierarchical_numbering, sort_key
 from .relatorio_template import REPORT_BLOCK_KINDS
+
+_logger = logging.getLogger(__name__)
+
+
+def _fmt_num(value):
+    """3.0 → '3'; 1.5 → '1,5'. None/False → ''."""
+    if value is None or value is False:
+        return ""
+    return ("%g" % value).replace(".", ",")
 
 
 class AfrQualificacaoRelatorio(models.Model):
@@ -218,6 +232,57 @@ class AfrQualificacaoRelatorio(models.Model):
         return self.block_ids.filtered(
             lambda b: b.block_kind == "anexo_separador" and b.anexo_code == code
             and b.included)[:1]
+
+    # ── tokens / render ──────────────────────────────────────────────────
+    def _criterio_values(self):
+        self.ensure_one()
+        bio = self.indicador_ids.filtered(
+            lambda i: i.tipo == "biologico" and i.valor_d)[:1]
+        valor_d = bio.valor_d if bio else 0.0
+        fator = self.criterio_f0_fator or 0.0
+        return {
+            "tolerancia": _fmt_num(self.tolerancia_acima),
+            "f0_fator": _fmt_num(fator),
+            "valor_d": _fmt_num(valor_d) if valor_d else "",
+            "f0_minimo": _fmt_num(fator * valor_d) if valor_d else "",
+        }
+
+    def _token_context(self):
+        """Contexto restrito do inline_template dos blocos."""
+        self.ensure_one()
+        rel = self
+        return {
+            "relatorio": self,
+            "os": self.os_id,
+            "partner": self.partner_id,
+            "equipment": self.equipment_id,
+            "company": self.company_id,
+            "criterio": self._criterio_values(),
+            "anexo": lambda code: rel._anexo_number(code),
+        }
+
+    def _render_block_body(self, block):
+        """Resolve {{ }} do corpo do bloco. Erro de expressão ⇒ corpo cru
+        (P5 acusa TOKEN_NAO_RESOLVIDO), nunca exceção no PDF."""
+        self.ensure_one()
+        body = block.body
+        if not body or is_html_empty(body):
+            return Markup("")
+        try:
+            # TODO(1.11): sudo() aqui expõe o objeto mail.render.mixin sem
+            # controle de acesso e o inline_template não escapa a saída da
+            # expressão — mesmo padrão de sale_order.py::_render_proposal_block_body
+            # (cotação), aceito na fase 1; ver ruling 1.11.
+            rendered = self.env["mail.render.mixin"].sudo()._render_template(
+                str(body), self._name, [self.id], engine="inline_template",
+                add_context=self._token_context(),
+            )
+        except UserError:
+            _logger.warning(
+                "Relatório %s: token inválido no bloco %s; corpo mantido sem render.",
+                self.display_name, block.id, exc_info=True)
+            return Markup(str(body))
+        return Markup(rendered.get(self.id) or "")
 
 
 class AfrQualificacaoOs(models.Model):
