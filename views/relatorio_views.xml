@@ -87,7 +87,7 @@
                                             <field name="valor_d"/>
                                             <field name="populacao"/>
                                             <field name="evidencia_collect_item_id"
-                                                   domain="[('os_id', '=', parent.os_id)]"
+                                                   domain="[('qualif_id', 'in', parent.qualificacao_ids)]"
                                                    options="{'no_create': True}"/>
                                         </tree>
                                     </field>

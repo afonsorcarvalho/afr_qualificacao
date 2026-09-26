@@ -182,6 +182,22 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
                     "index": 99,
                 })
 
+    def test_unique_os_index(self):
+        """Finding 1 (whole-plan review): `unique(os_id, index)` evita dois
+        relatórios com o mesmo ReQT-<OS>-<i> quando o índice vem explícito
+        (ex.: criação concorrente), mesmo para equipamentos diferentes."""
+        self.os.action_generate_relatorios()
+        rel1 = self._rel_for(self.os, self.equip1)
+        equip3 = self._make_equip("TSN-IDX")
+        self._make_qualif(self.os, equip3, "installation")
+        with mute_logger("odoo.sql_db"), self.assertRaises(IntegrityError):
+            with self.cr.savepoint():
+                self.Relatorio.create({
+                    "os_id": self.os.id,
+                    "equipment_id": equip3.id,
+                    "index": rel1.index,
+                })
+
     def test_equipment_must_belong_to_os(self):
         other_os = self._make_os()
         self._make_qualif(other_os, self.equip2, "installation")
@@ -526,6 +542,23 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
         self.assertEqual(action["res_id"], self.cycle_qd1.id)
         self.assertEqual(action["view_mode"], "form")
 
+    def test_open_relatorio_cycle_action_strips_default_context(self):
+        """Finding 2 (whole-plan review): o contexto herdado do form do
+        relatório (`default_os_id`, `default_relatorio_id`…) não deve vazar
+        pro form do ciclo aberto a partir da aba Ciclos."""
+        action = self.cycle_qd1.with_context(
+            default_os_id=self.os.id,
+            default_relatorio_id=999,
+            attach_to_relatorio_id=self.os.id,
+            other_key="keep",
+        ).action_open_relatorio_cycle()
+        context = action["context"]
+        self.assertFalse(
+            [k for k in context if k.startswith("default_")],
+            "context não deve ter chaves default_*: %s" % context,
+        )
+        self.assertEqual(context.get("other_key"), "keep")
+
     # ─────────────────────────────────────────────────────────────
     # UI (Task 4)
     # ─────────────────────────────────────────────────────────────
@@ -597,6 +630,47 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
         )["arch"]
         self.assertIn("action_copy_sensor_pos_from_previous", arch)
         self.assertIn('name="sensor_pos_ids"', arch)
+
+    def _make_tecnico_user(self, login):
+        """Usuário só do grupo `group_afr_qualificacao_technician` (sem
+        `..._user`): mesmo perfil ACL do preflight B8 (lê, não cria)."""
+        return self.env["res.users"].create({
+            "name": "Técnico Arch %s" % login,
+            "login": login,
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_technician").id,
+            ])],
+        })
+
+    def test_cycle_form_sensor_pos_readonly_for_technician_only(self):
+        """Finding 4 (Preflight B8): técnico não tem ACL de create em
+        `afr.relatorio.sensor.pos` (1,0,0,0) — o form precisa mostrar a
+        tabela somente leitura pra ele, e editável só pra quem tem o grupo
+        Usuário (que tem unlink/create nessa linha-filha)."""
+        import json
+
+        from lxml import etree
+
+        tecnico = self._make_tecnico_user("tecnico.arch.cycle.sensor.test")
+        usuario = self._make_usuario("usuario.arch.cycle.sensor.test")
+        view_id = self.env.ref("afr_qualificacao.view_afr_qualificacao_cycle_form").id
+
+        def sensor_pos_node(user):
+            arch = self.env["afr.qualificacao.cycle"].with_user(user).get_view(
+                view_id, view_type="form",
+            )["arch"]
+            tree = etree.fromstring(arch.encode())
+            nodes = tree.xpath('//field[@name="sensor_pos_ids"]')
+            self.assertEqual(len(nodes), 1, arch)
+            return nodes[0]
+
+        node_tec = sensor_pos_node(tecnico)
+        node_usr = sensor_pos_node(usuario)
+        modifiers_tec = json.loads(node_tec.get("modifiers") or "{}")
+        modifiers_usr = json.loads(node_usr.get("modifiers") or "{}")
+        self.assertTrue(modifiers_tec.get("readonly"))
+        self.assertFalse(modifiers_usr.get("readonly"))
 
     def test_menu_exists(self):
         menu = self.env.ref("afr_qualificacao.menu_afr_relatorio_final")

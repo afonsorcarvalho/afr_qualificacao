@@ -25,7 +25,25 @@
                     </group>
                 </group>
                 <separator string="Posição dos sensores"/>
-                <field name="sensor_pos_ids" nolabel="1">
+                <!-- Finding 4 (Preflight B8): técnico não tem ACL de create em
+                     afr.relatorio.sensor.pos (só leitura) — a tabela editável
+                     daria AccessError ao salvar. Dois nós do mesmo campo,
+                     cada um restrito por `groups`, para que só um sobreviva
+                     ao postprocess por usuário (o record field `groups_id`
+                     de ir.ui.view não vale pra view de extensão: Odoo
+                     rejeita com ValidationError, "Use 'groups' attributes
+                     inside the view definition" — daí o atributo aqui). -->
+                <field name="sensor_pos_ids" nolabel="1" readonly="1"
+                       groups="!afr_qualificacao.group_afr_qualificacao_user">
+                    <tree>
+                        <field name="sequence" widget="handle"/>
+                        <field name="canal"/>
+                        <field name="posicao"/>
+                        <field name="ib_label"/>
+                    </tree>
+                </field>
+                <field name="sensor_pos_ids" nolabel="1"
+                       groups="afr_qualificacao.group_afr_qualificacao_user">
                     <tree editable="bottom">
                         <field name="sequence" widget="handle"/>
                         <field name="canal"/>

@@ -78,7 +78,7 @@
 - `afr.qualificacao.relatorio._seed_checklist(lines)` — `lines`: list of dict `{grupo, descricao, sequence}`; idempotente (não duplica se já houver linhas).
 - `proxima_qualificacao` é **stored**; P4 acrescenta `current_emissao_id.issued_at` ao `depends` (recompute automático).
 - `action_copy_sensor_pos_from_previous()` busca o ciclo anterior em **todo o relatório** (ordem QI < QO < QD, depois `cycle_type_id`, `sequence`, `id`).
-- `afr.qualificacao.os.action_generate_relatorios()` → recordset (botão usa wrapper `action_generate_relatorios_open()` que devolve action) dos relatórios (cria os faltantes, um por equipamento, `index` pela ordem de `equipment_ids`); `relatorio_final_ids` (O2M), `relatorio_final_count`.
+- `afr.qualificacao.os.action_generate_relatorios()` → recordset (botão usa wrapper `action_generate_relatorios_open()` que devolve action) dos relatórios (cria os faltantes, um por equipamento, `index` pela ordem canônica `(name, id)` de `_relatorio_final_equipments()`); `relatorio_final_ids` (O2M), `relatorio_final_count`.
 - Views em `views/relatorio_views.xml`, xmlids `view_afr_qualificacao_relatorio_form`, `view_afr_qualificacao_relatorio_tree`, `view_afr_qualificacao_relatorio_search`, action `action_afr_qualificacao_relatorio`: form/tree/search do relatório com `<notebook>` contendo páginas `name="page_dados_campo"` e `name="page_ciclos"` (planos seguintes adicionam páginas por herança com xpath nesses `name`), header com `<header>` vazio exceto statusbar (planos seguintes adicionam botões por xpath `//header`). Menu `menu_afr_relatorio_final` sob o menu de Qualificação.
 
 ### P2 produz

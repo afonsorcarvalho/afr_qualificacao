@@ -28,6 +28,11 @@ class AfrQualificacaoRelatorio(models.Model):
             "unique(os_id, equipment_id)",
             "Já existe um relatório final para este equipamento nesta OS.",
         ),
+        (
+            "os_index_uniq",
+            "unique(os_id, index)",
+            "Já existe um relatório final com esta posição nesta OS.",
+        ),
     ]
 
     STATE_SELECTION = [

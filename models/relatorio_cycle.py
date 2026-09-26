@@ -147,6 +147,18 @@ class AfrQualificacaoCycleRelatorio(models.Model):
 
     def action_open_relatorio_cycle(self):
         """Abre o form do ciclo (janela, sensores, arquivos) a partir da aba
-        Ciclos do relatório final."""
+        Ciclos do relatório final.
+
+        Usa `action_open_for_collect()`, mas remove do contexto retornado as
+        chaves `default_*` (ex.: `default_os_id`, `default_relatorio_id`):
+        são do form do relatório que originou o clique e não fazem sentido
+        no form do ciclo (poluiriam onchanges/defaults dele).
+        """
         self.ensure_one()
-        return self.action_open_for_collect()
+        action = self.action_open_for_collect()
+        action["context"] = {
+            key: value
+            for key, value in (action.get("context") or {}).items()
+            if not key.startswith("default_")
+        }
+        return action
