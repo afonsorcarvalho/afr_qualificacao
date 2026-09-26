@@ -37,3 +37,8 @@ from . import relatorio_certificados     # Relatório final P2 (16.0.8.1.0)
 from . import relatorio_dados_campo      # Relatório Final P1 — checklist/indicador/leitura IB
 from . import relatorio_os               # Relatório Final P1 — extensão da OS
 from . import relatorio_cycle            # Relatório Final P1 — extensão do ciclo + sensor.pos
+from . import relatorio_template        # Relatório Final P3
+from . import relatorio_block           # Relatório Final P3
+from . import relatorio_anexo           # Relatório Final P3
+from . import relatorio_aprovacao       # Relatório Final P3
+from . import relatorio_texto           # Relatório Final P3 (_inherit relatorio + os)

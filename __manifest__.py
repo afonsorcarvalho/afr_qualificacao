@@ -220,6 +220,8 @@
         "wizards/qualificacao_os_generate_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
+        # Relatório Final P3 — config de templates (menus sob Configurações)
+        "views/relatorio_template_views.xml",
         "views/calibration_instruments_views.xml",
         # Views com menuitem que referencia menu_root (depois dos menus principais)
         "views/docx_template_views.xml",

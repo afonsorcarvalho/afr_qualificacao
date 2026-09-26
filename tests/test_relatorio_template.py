@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from odoo.exceptions import ValidationError
 from odoo.tests.common import TransactionCase
 
 from odoo.addons.afr_qualificacao.models._numbering import hierarchical_numbering
@@ -138,3 +139,58 @@ class TestSectionDocumentType(TransactionCase):
         seção de tipo 'report' pela aba de blocos da cotação."""
         field = self.env["afr.proposal.block"]._fields["section_id"]
         self.assertEqual(field.domain, [("document_type", "=", "proposal")])
+
+
+class TestRelatorioTemplateModels(TransactionCase):
+
+    def setUp(self):
+        super().setUp()
+        self.section = self.env["afr.proposal.section"].create({
+            "name": "Objetivo RQ", "document_type": "report", "body": "<p>x</p>",
+        })
+        self.tpl = self.env["afr.relatorio.template"].create({
+            "name": "Tpl Teste", "code": "RQT-TESTE",
+        })
+
+    def test_line_section_domain_is_report(self):
+        field = self.env["afr.relatorio.template.line"]._fields["section_id"]
+        self.assertEqual(field.domain, [("document_type", "=", "report")])
+
+    def test_block_kinds(self):
+        from odoo.addons.afr_qualificacao.models.relatorio_template import REPORT_BLOCK_KINDS
+        self.assertEqual(
+            [k for k, _l in REPORT_BLOCK_KINDS],
+            ["static", "capa", "indice", "protocolo", "laudo_micro",
+             "assinaturas", "anexo_separador"],
+        )
+
+    def test_static_line_requires_section(self):
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.template.line"].create({
+                "template_id": self.tpl.id, "block_kind": "static",
+            })
+
+    def test_separator_line_requires_anexo_code(self):
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.template.line"].create({
+                "template_id": self.tpl.id, "block_kind": "anexo_separador",
+            })
+
+    def test_template_line_display_number(self):
+        Line = self.env["afr.relatorio.template.line"]
+        root = Line.create({"template_id": self.tpl.id, "sequence": 10,
+                            "block_kind": "static", "section_id": self.section.id})
+        child = Line.create({"template_id": self.tpl.id, "sequence": 20,
+                             "block_kind": "static", "section_id": self.section.id,
+                             "parent_id": root.id})
+        capa = Line.create({"template_id": self.tpl.id, "sequence": 5,
+                            "block_kind": "capa", "show_number": False})
+        self.assertEqual((capa.display_number, root.display_number, child.display_number),
+                         ("", "1", "1.1"))
+
+    def test_client_approval_gets_token(self):
+        # afr.relatorio.aprovacao exige relatorio_id; testado com relatório real
+        # na Task 5 (TestRelatorioApplyTemplate.test_default_approvals).
+        field = self.env["afr.relatorio.aprovacao"]._fields["papel"]
+        self.assertEqual([k for k, _l in field.selection],
+                         ["elaborador", "emissor", "executor", "cliente"])
