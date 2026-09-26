@@ -111,3 +111,6 @@ from . import test_relatorio_model
 
 # Relatório final — P2 (16.0.8.1.0): biblioteca de certificados
 from . import test_relatorio_certificados
+
+# Relatório Final — P3: template, blocos, anexos, aprovações
+from . import test_relatorio_template

@@ -21,6 +21,8 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
 
+from ._numbering import hierarchical_numbering
+
 
 # Sufixo "— N ciclo(s)/malha(s)" anexado pelo configurador ao nome da linha.
 _QTY_SUFFIX_RE = re.compile(r"\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$")
@@ -1073,43 +1075,10 @@ class SaleOrder(models.Model):
         Ex: {1: '1', 2: '2', 3: '3', 4: '3.1', 5: '3.2', 6: '3.3', 7: '4'}
         Blocos com show_number=False recebem string vazia ''.
         Suporta profundidade arbitrária (1, 1.1, 1.1.1, …).
+        Implementação em models/_numbering.py (compartilhada com o relatório final).
         """
         self.ensure_one()
-        def _sort_key(b):
-            rec_id = b.id
-            if not isinstance(rec_id, int):
-                # NewId (registro virtual em onchange): usa origin ou 0
-                rec_id = getattr(rec_id, "origin", 0) or 0
-            return (b.sequence, rec_id)
-
-        blocks = self.proposal_block_ids.filtered("included").sorted(_sort_key)
-        numbers = {}
-        root_counter = 0
-        child_counters = {}  # parent_id → contagem de filhos vistos
-
-        for block in blocks:
-            if not block.parent_id:
-                if block.show_number:
-                    root_counter += 1
-                    numbers[block.id] = str(root_counter)
-                    child_counters[block.id] = 0
-                else:
-                    numbers[block.id] = ""
-            else:
-                pid = block.parent_id.id
-                child_counters.setdefault(pid, 0)
-                if block.show_number:
-                    child_counters[pid] += 1
-                    parent_num = numbers.get(pid, "")
-                    numbers[block.id] = (
-                        f"{parent_num}.{child_counters[pid]}"
-                        if parent_num
-                        else str(child_counters[pid])
-                    )
-                else:
-                    numbers[block.id] = ""
-
-        return numbers
+        return hierarchical_numbering(self.proposal_block_ids.filtered("included"))
 
     def action_reload_proposal_blocks(self):
         """Apaga blocos atuais e recarrega do template (descarta edições)."""
