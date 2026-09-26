@@ -114,7 +114,15 @@
             P2 (16.0.8.1.0): biblioteca de certificados — afr_role
               (antes/depois/externo) em engc.calibration.instruments
               .certificates + _afr_select_certificate por data de ensaio
-              no instrumento (spec §4.4).
+              no instrumento (spec §4.4). Relatório seleciona um
+              certificado por papel (validador → antes/depois; padrão →
+              externo) e fornece seus arquivos para o PDF (P4);
+              certificados de malha (D4) vêm do report engc_os quando há
+              calibração concluída vinculada (pela malha ou, na
+              ausência, pela qualificação), senão dos itens de coleta
+              já coletados. Nova aba "Certificados" (só leitura) no
+              relatório final lista a seleção e marca "AUSENTE" quando
+              falta certificado para o papel exigido.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador

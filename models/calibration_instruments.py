@@ -151,6 +151,7 @@ class EngcCalibrationInstrumentsCertificates(models.Model):
         string="Papel no relatório",
         default="externo",
         required=True,
+        tracking=True,
         help=(
             "Como este certificado entra no relatório final de qualificação: "
             "'Antes'/'Depois' = calibração do validador pré/pós campanha; "

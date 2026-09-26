@@ -105,6 +105,12 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         return self.Cert.create(vals)
 
     # ------------------------------------------------ Task 1: instrumento
+    def test_afr_role_has_tracking(self):
+        # Finding 4: reclassificar afr_role muda o certificado usado no
+        # relatório assinado — precisa ficar no chatter (mail.thread já
+        # herdado pelo model no engc_os).
+        self.assertTrue(self.Cert._fields["afr_role"].tracking)
+
     def test_afr_role_default_externo(self):
         cert = self.Cert.create({
             "instrument_id": self.padrao.id,
@@ -310,14 +316,17 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         self.assertEqual(files[0][1], "application/pdf")
         self.assertIn("CERT-TST-A", files[0][2])
         self.assertIn("Validador Teste", files[0][2])
-        self.assertIn("Antes da campanha", files[0][2])
+        self.assertIn("antes da campanha", files[0][2])
+        self.assertNotIn("(Certificado", files[0][2], "sem parênteses aninhados")
         self.assertEqual(files[1][0], b"%PDF-1.4 depois")
-        self.assertIn("Depois da campanha", files[1][2])
+        self.assertIn("depois da campanha", files[1][2])
 
         ext = self.rel._afr_certificate_files(["externo"])
         self.assertEqual(len(ext), 1)
         self.assertIn("CERT-TST-E", ext[0][2])
         self.assertIn("Padrão Teste", ext[0][2])
+        self.assertEqual(
+            ext[0][2], "Certificado CERT-TST-E — Padrão Teste (padrão externo)")
 
     def test_files_image_mimetype(self):
         self._cert(self.padrao, "externo", self.inicio, number="CERT-TST-IMG",
@@ -339,16 +348,18 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         self.assertNotIn("False", files[0][2])
 
     # ------------------------------------------------ Task 3: malhas
-    def _engc_calibration(self):
+    def _engc_calibration(self, state="done"):
         # Obrigatórios do engc_os: client_id, equipment_id, technician_id,
         # date_calibration, measurement_procedure (M2O required) e
         # instruments_ids (M2M required; o domínio do instrumento da medição
-        # sai daqui).
+        # sai daqui). create() do engc_os sempre cascateia para 'confirmed'
+        # (action_confirmed); ajustamos o state depois via write direto
+        # para poder testar 'done' (finding 2) e não-done (draft/confirmed).
         procedure = self.env["engc.calibration.measurement.procedure"].create({
             "codigo": "PROC-TST",
             "description": "Procedimento Teste",
         })
-        return self.env["engc.calibration"].create({
+        cal = self.env["engc.calibration"].create({
             "client_id": self.partner.id,
             "equipment_id": self.equip1.id,
             "technician_id": self.employee.id,
@@ -356,6 +367,9 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
             "measurement_procedure": procedure.id,
             "instruments_ids": [(6, 0, [self.padrao.id])],
         })
+        if state != "confirmed":
+            cal.write({"state": state})
+        return cal
 
     def _link_malha(self, malha, calibration):
         meas = self.env["engc.calibration.measurement"].create({
@@ -425,6 +439,57 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
             files = self.rel._afr_malha_certificate_files()
         self.assertEqual([f[0] for f in files], [b"%PDF-1.4 engc-cert"])
 
+    def test_malha_falls_back_to_qualificacao_engc_calibration_id(self):
+        # Finding 1: nenhuma malha tem link próprio, mas a qualificação tem
+        # engc_calibration_id (nível qualif) — ambas as malhas devem usar
+        # esse certificado (e renderizar uma vez só, mesma calibração).
+        cal = self._engc_calibration()
+        self.qualif.engc_calibration_id = cal.id
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_called_once()
+        self.assertEqual(render.call_args.args, (ENGC_REPORT, [cal.id]))
+        self.assertEqual(len(files), 1)
+
+    def test_malha_own_link_precedence_over_qualificacao_link(self):
+        # Finding 1: quando a malha TEM link próprio, ele vence o link da
+        # qualificação — cada malha deve render seu próprio certificado.
+        cal_a = self._engc_calibration()
+        cal_b = self._engc_calibration()
+        self._link_malha(self.malha_t, cal_a)
+        self.qualif.engc_calibration_id = cal_b.id
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(render.call_count, 2)
+        rendered_ids = {call.args[1][0] for call in render.call_args_list}
+        self.assertEqual(rendered_ids, {cal_a.id, cal_b.id})
+        self.assertEqual(len(files), 2)
+
+    def test_malha_own_link_not_done_falls_back_to_qualificacao_link(self):
+        # Finding 2: link próprio de calibração não concluída não conta
+        # como vinculado — cai para o link da qualificação.
+        draft_cal = self._engc_calibration(state="draft")
+        done_cal = self._engc_calibration()
+        self._link_malha(self.malha_t, draft_cal)
+        self.qualif.engc_calibration_id = done_cal.id
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_called_once()
+        self.assertEqual(render.call_args.args, (ENGC_REPORT, [done_cal.id]))
+        self.assertEqual(len(files), 1)
+
+    def test_malha_qualificacao_link_not_done_falls_back_to_collect_items(self):
+        # Finding 2: link da qualificação com calibração não concluída
+        # também não conta — se não houver mais nenhum fallback de
+        # calibração, cai para os itens de coleta da malha.
+        draft_cal = self._engc_calibration(state="confirmed")
+        self.qualif.engc_calibration_id = draft_cal.id
+        self._item(self.malha_t, "PDF anexado", PDF_BYTES, "application/pdf")
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_not_called()
+        self.assertEqual([f[0] for f in files], [PDF_BYTES])
+
     def test_malha_files_fallback_collect_items(self):
         png = _png_bytes()
         self._item(self.malha_t, "Foto certificado", png, "image/png", sequence=20)
@@ -439,6 +504,19 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         self.assertEqual(files[1][0], png)
         self.assertIn("PDF certificado", files[0][2])
         self.assertIn(self.malha_t.display_name, files[0][2])
+
+    def test_malha_files_skip_skipped_items(self):
+        # Finding 3: item 'skipped' com arquivo (ex.: pulado depois de
+        # coletado) não deve entrar no fallback — só state == 'collected'.
+        item = self._item(self.malha_t, "Depois pulado", PDF_BYTES, "application/pdf")
+        self.assertEqual(item.state, "collected")
+        item.action_mark_skipped()
+        self.assertEqual(item.state, "skipped")
+        self.assertTrue(item.file, "file continua no registro pulado")
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_not_called()
+        self.assertEqual(files, [])
 
     def test_malha_files_guess_mimetype_when_missing(self):
         self._item(self.malha_p, "Sem mimetype", PDF_BYTES, False)

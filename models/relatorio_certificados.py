@@ -4,8 +4,10 @@
 Seleção automática, por data de ensaio, do certificado de cada instrumento
 do plano de recursos da OS (validador → antes + depois; padrão → externo) e
 fornecimento dos bytes para a montagem do PDF (P4). Certificados de malha
-seguem D4: PDF do report engc_os quando a malha tem calibração vinculada,
-senão os arquivos anexados à malha.
+seguem D4 (híbrido): PDF do report engc_os quando há calibração concluída
+vinculada — pela malha (`engc_calibration_measurement_id`) ou, na ausência
+dessa, pela qualificação (`qualificacao.engc_calibration_id`) — senão os
+arquivos anexados (coletados) à malha.
 """
 import base64
 
@@ -24,6 +26,17 @@ _ROLES_BY_RESOURCE = (
 
 # Report QWeb do certificado de calibração do engc_os (model engc.calibration).
 ENGC_CALIBRATION_REPORT = "engc_os.report_engc_os_calibration_certificate"
+
+# Legenda curta do papel para a legenda do anexo (finding 5 do review P2):
+# rótulos de AFR_CERT_ROLES têm parênteses próprios ("Certificado externo
+# (padrão)") que ficam duplicados/aninhados dentro da legenda "Certificado
+# X — inst (<rótulo>)"; este mapa fica só para a legenda, sem tocar os
+# rótulos de seleção do campo afr_role.
+_CAPTION_ROLE_LABELS = {
+    "antes": "antes da campanha",
+    "depois": "depois da campanha",
+    "externo": "padrão externo",
+}
 
 
 def _mimetype_of(content):
@@ -173,7 +186,6 @@ class AfrQualificacaoRelatorio(models.Model):
         """(bytes, mimetype, legenda) dos certificados selecionados com
         role em `roles` e arquivo presente, na ordem da seleção."""
         self.ensure_one()
-        role_labels = dict(AFR_CERT_ROLES)
         files = []
         for entry in self._afr_certificate_selection():
             cert = entry["certificate"]
@@ -185,7 +197,7 @@ class AfrQualificacaoRelatorio(models.Model):
             caption = "Certificado %s — %s (%s)" % (
                 cert.certificate_number or "s/nº",
                 entry["instrument"].display_name,
-                role_labels[entry["role"]],
+                _CAPTION_ROLE_LABELS[entry["role"]],
             )
             files.append((content, _mimetype_of(content), caption))
         return files
@@ -193,22 +205,36 @@ class AfrQualificacaoRelatorio(models.Model):
     # ------------------------------------------------------------------
     # Malhas de controle (D4 — híbrido)
     # ------------------------------------------------------------------
+    def _afr_resolve_malha_calibration(self, malha):
+        """Calibração 'oficial' da malha, na ordem de fallback do review
+        P2 (findings 1+2): link próprio da malha
+        (`engc_calibration_measurement_id.calibration_id`); na ausência,
+        o link da qualificação (`qualificacao_id.engc_calibration_id`).
+        Uma calibração só conta como vinculada quando concluída
+        (`state == 'done'`) — em rascunho/andamento ela ainda não tem
+        certificado assinado, então cai para o próximo fallback (incluindo
+        os itens de coleta da malha). Retorna recordset vazio quando
+        nenhuma das duas se qualifica."""
+        for calibration in (
+            malha.engc_calibration_measurement_id.calibration_id,
+            malha.qualificacao_id.engc_calibration_id,
+        ):
+            if calibration and calibration.state == "done":
+                return calibration
+        return self.env["engc.calibration"]
+
     def _afr_malha_certificate_files(self):
         """Por malha dos qualificacao_ids: PDF do certificado engc_os quando
-        há calibração vinculada (uma vez por calibração); senão PDFs/imagens
-        dos itens de coleta da malha.
+        há calibração concluída vinculada (uma vez por calibração, via
+        `_afr_resolve_malha_calibration`); senão PDFs/imagens dos itens de
+        coleta já coletados (`state == 'collected'`) da malha.
         """
-        # TODO(4.9): qualificacao.engc_calibration_id (nível qualif, não
-        # malha) é ignorado de propósito — D4 é por malha
-        # (engc_calibration_measurement_id), não por qualificação; P5
-        # detecta anexo vazio (ANEXO_VAZIO) se isso deixar uma malha sem
-        # certificado.
         self.ensure_one()
         Report = self.env["ir.actions.report"].sudo()
         files = []
         rendered = set()
         for malha in self.qualificacao_ids.mapped("malha_ids"):
-            calibration = malha.engc_calibration_measurement_id.calibration_id
+            calibration = self._afr_resolve_malha_calibration(malha)
             if calibration:
                 if calibration.id in rendered:
                     continue
@@ -219,7 +245,9 @@ class AfrQualificacaoRelatorio(models.Model):
                     calibration.name, malha.display_name)
                 files.append((pdf, "application/pdf", caption))
                 continue
-            items = malha.collect_item_ids.with_context(bin_size=False).sorted(
+            items = malha.collect_item_ids.filtered(
+                lambda i: i.state == "collected"
+            ).with_context(bin_size=False).sorted(
                 key=lambda i: (i.sequence, i.id))
             for item in items:
                 if not item.file:
