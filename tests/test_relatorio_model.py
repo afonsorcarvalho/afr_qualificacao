@@ -301,3 +301,117 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
             self.Relatorio.with_user(tech_user).create({
                 "os_id": self.os.id, "equipment_id": self.equip2.id, "index": 50,
             })
+
+    # ─────────────────────────────────────────────────────────────
+    # DADOS DE CAMPO (Task 2)
+    # ─────────────────────────────────────────────────────────────
+    CHECKLIST_LINES = [
+        {"grupo": "Instalações elétricas", "descricao": "Tensão conforme placa", "sequence": 10},
+        {"grupo": "Instalações elétricas", "descricao": "Aterramento presente", "sequence": 20},
+        {"grupo": "Utilidades", "descricao": "Água de alimentação disponível", "sequence": 30},
+    ]
+
+    def test_seed_checklist_creates_lines_in_order(self):
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        created = rel._seed_checklist(self.CHECKLIST_LINES)
+        self.assertEqual(len(created), 3)
+        self.assertEqual(
+            rel.checklist_ids.mapped("descricao"),
+            ["Tensão conforme placa", "Aterramento presente",
+             "Água de alimentação disponível"],
+        )
+        self.assertEqual(rel.checklist_ids[0].grupo, "Instalações elétricas")
+        self.assertFalse(rel.checklist_ids[0].status)
+
+    def test_seed_checklist_is_idempotent(self):
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        rel._seed_checklist(self.CHECKLIST_LINES)
+        rel.checklist_ids[0].status = "aprovado"
+        again = rel._seed_checklist(self.CHECKLIST_LINES)
+        self.assertFalse(again)
+        self.assertEqual(len(rel.checklist_ids), 3)
+        self.assertEqual(rel.checklist_ids[0].status, "aprovado")
+
+    def test_seed_checklist_empty_lines_is_noop(self):
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        self.assertFalse(rel._seed_checklist([]))
+        self.assertFalse(rel.checklist_ids)
+
+    def _make_indicador(self, rel, **extra):
+        vals = {
+            "relatorio_id": rel.id,
+            "tipo": "biologico",
+            "marca": "Marca Teste",
+            "modelo_tipo": "Geobacillus stearothermophilus",
+            "lote": "L-TESTE-01",
+            "validade": date(2027, 1, 31),
+            "valor_d": 1.5,
+            "populacao": "1,0 x 10^6",
+        }
+        vals.update(extra)
+        return self.env["afr.relatorio.indicador"].create(vals)
+
+    def test_leitura_ib_valid(self):
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        ind = self._make_indicador(rel)
+        leitura = self.env["afr.relatorio.leitura.ib"].create({
+            "relatorio_id": rel.id,
+            "cycle_id": self.cycle_qd1.id,
+            "indicador_id": ind.id,
+            "data_incubacao": date(2026, 9, 2),
+            "data_leitura": date(2026, 9, 3),
+            "leitor": "Eng. Responsável",
+            "resultado": "negativo",
+            "controle_positivo_ok": True,
+        })
+        self.assertIn(leitura, rel.leitura_ib_ids)
+        self.assertIn(ind, rel.indicador_ids)
+
+    def test_leitura_ib_rejects_foreign_cycle(self):
+        """Review Focus 3: ciclo de outro equipamento."""
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.leitura.ib"].create({
+                "relatorio_id": rel.id,
+                "cycle_id": self.cycle_other.id,
+                "resultado": "negativo",
+            })
+
+    def test_leitura_ib_rejects_foreign_indicador(self):
+        """Review Focus 3: indicador de outro relatório."""
+        self.os.action_generate_relatorios()
+        rel1 = self._rel_for(self.os, self.equip1)
+        rel2 = self._rel_for(self.os, self.equip2)
+        ind2 = self._make_indicador(rel2)
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.leitura.ib"].create({
+                "relatorio_id": rel1.id,
+                "cycle_id": self.cycle_qd1.id,
+                "indicador_id": ind2.id,
+                "resultado": "negativo",
+            })
+
+    def test_indicador_evidencia_collect_item(self):
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        item = self.env["afr.qualificacao.collect.item"].create({
+            "name": "Foto da bula do IB",
+            "qualif_id": self.q1_qd.id,
+        })
+        ind = self._make_indicador(rel, evidencia_collect_item_id=item.id)
+        self.assertEqual(ind.evidencia_collect_item_id, item)
+
+    def test_relatorio_unlink_cascades_children(self):
+        self.os.action_generate_relatorios()
+        rel = self._rel_for(self.os, self.equip1)
+        rel._seed_checklist(self.CHECKLIST_LINES)
+        ind = self._make_indicador(rel)
+        checklist = rel.checklist_ids
+        rel.unlink()
+        self.assertFalse(checklist.exists())
+        self.assertFalse(ind.exists())

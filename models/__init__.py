@@ -33,4 +33,5 @@ from . import res_partner                 # F10.6 (16.0.5.5.0)
 from . import engc_equipment_category
 from . import product_product
 from . import relatorio                  # Relatório Final P1 (16.0.8.0.0)
+from . import relatorio_dados_campo      # Relatório Final P1 — checklist/indicador/leitura IB
 from . import relatorio_os               # Relatório Final P1 — extensão da OS

@@ -148,6 +148,25 @@ class AfrQualificacaoRelatorio(models.Model):
         ),
     )
 
+    # ───────── Dados de campo (filhos) ─────────
+    checklist_ids = fields.One2many(
+        "afr.relatorio.checklist",
+        "relatorio_id",
+        string="Checklist",
+        copy=True,
+    )
+    indicador_ids = fields.One2many(
+        "afr.relatorio.indicador",
+        "relatorio_id",
+        string="Indicadores",
+        copy=True,
+    )
+    leitura_ib_ids = fields.One2many(
+        "afr.relatorio.leitura.ib",
+        "relatorio_id",
+        string="Leituras de IB",
+    )
+
     # ═════════════════════════════════════════════════════════════
     # CREATE — índice automático
     # ═════════════════════════════════════════════════════════════
@@ -239,3 +258,28 @@ class AfrQualificacaoRelatorio(models.Model):
         """
         self.ensure_one()
         return "%s-%s-%d" % (prefix, self.os_id.name, self.index or 0)
+
+    def _seed_checklist(self, lines):
+        """Semeia o checklist a partir de `lines` (list de dict
+        `{grupo, descricao, sequence}`). Idempotente: relatório que já tem
+        qualquer linha não é tocado (não duplica nem sobrescreve status).
+
+        Retorna as linhas criadas (vazio quando nada foi semeado).
+        """
+        Checklist = self.env["afr.relatorio.checklist"]
+        created = Checklist
+        if not lines:
+            return created
+        for rel in self:
+            if rel.checklist_ids:
+                continue
+            created |= Checklist.create([
+                {
+                    "relatorio_id": rel.id,
+                    "sequence": line.get("sequence", (i + 1) * 10),
+                    "grupo": line.get("grupo") or False,
+                    "descricao": line["descricao"],
+                }
+                for i, line in enumerate(lines)
+            ])
+        return created
