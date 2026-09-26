@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from psycopg2 import IntegrityError
 
+from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase
 from odoo.tools import mute_logger
@@ -664,6 +665,67 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.assertTrue(executor.approved_at)
         cliente = rel2.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
         self.assertEqual(len(cliente.sudo().access_token or ""), 32)
+
+    def test_default_approvals_ignore_forged_context_defaults(self):
+        """Fix round 1: `.sudo()` bypasses `afr.relatorio.aprovacao.create()`'s
+        guard entirely (gated on `not self.env.su`) — but Odoo still fills any
+        field ABSENT from `vals` from `context['default_<field>']` inside
+        `super().create()`, regardless of su. The elaborador/emissor vals
+        carried no `user_id`/`approved_at`/`ip` key, so an RPC caller of
+        `action_generate_relatorios_open()` with
+        `context={"default_approved_at": ..., "default_user_id": <other uid>,
+        "default_ip": ...}` got those roles born pre-approved and attributed
+        to an arbitrary user — forging the internal-approval gate P4 relies
+        on. `_apply_default_aprovacoes()` must call `.sudo().with_context(
+        clean_context(self.env.context))` AND set approved_at/ip/user_id
+        explicitly in every vals dict so no field is ever "missing" for the
+        context-default mechanism to fill.
+        """
+        other_user = self.env["res.users"].create({
+            "name": "Outro Usuário (forjado)",
+            "login": "outro.forjado.task5fix1.test",
+            "groups_id": [(6, 0, [self.env.ref("base.group_user").id])],
+        })
+        user = self.env["res.users"].create({
+            "name": "Usuário RQ P3 Task5 Fix1",
+            "login": "usuario.rqp3task5fix1.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        so2 = self._apply(do_qi=True)
+        os2 = self._confirm_and_generate_os(so2)
+        employee2 = self.env["hr.employee"].create({"name": "Técnico Teste Fix1"})
+        self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os2.id,
+            "descricao": "Dia 1",
+            "data_inicio": "2026-09-01 08:00:00",
+            "data_fim": "2026-09-01 17:00:00",
+            "tecnico_ids": [(6, 0, employee2.ids)],
+            "signature_technician_date": "2026-09-01 17:05:00",
+        })
+        forged_ctx = {
+            "default_approved_at": "2000-01-01 00:00:00",
+            "default_user_id": other_user.id,
+            "default_ip": "6.6.6.6",
+        }
+        os2.with_user(user).with_context(**forged_ctx).action_generate_relatorios_open()
+        rel2 = os2.relatorio_final_ids
+        ap = rel2.aprovacao_ids
+        for papel in ("elaborador", "emissor"):
+            row = ap.filtered(lambda a, p=papel: a.papel == p)
+            self.assertFalse(row.approved_at, papel)
+            self.assertFalse(row.user_id, papel)
+            self.assertFalse(row.sudo().ip, papel)
+        executor = ap.filtered(lambda a: a.papel == "executor")
+        self.assertNotEqual(executor.user_id.id, other_user.id)
+        self.assertTrue(executor.approved_at)
+        self.assertNotEqual(executor.approved_at, fields.Datetime.to_datetime("2000-01-01 00:00:00"))
+        self.assertFalse(executor.sudo().ip)
+        cliente = ap.filtered(lambda a: a.papel == "cliente")
+        self.assertFalse(cliente.sudo().ip)
+        self.assertNotEqual(cliente.user_id.id, other_user.id)
 
     def test_apply_template_is_idempotent(self):
         counts = (len(self.rel.block_ids), len(self.rel.anexo_ids),

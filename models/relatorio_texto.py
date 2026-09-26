@@ -6,6 +6,7 @@ misturar dados de campo com montagem de texto.
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools.misc import clean_context
 
 from ._numbering import hierarchical_numbering, sort_key
 from .relatorio_template import REPORT_BLOCK_KINDS
@@ -121,11 +122,28 @@ class AfrQualificacaoRelatorio(models.Model):
         chamado por um usuário comum (grupo Usuário). O `access_token` do
         cliente continua nascendo no servidor, dentro do `create()` do
         próprio modelo.
+
+        Fix round 1 (P3 Task 5): `.sudo()` sozinho não bastava. Ele só
+        contorna o guard do `create()` (que olha `env.su`); a aplicação de
+        `context['default_<campo>']` a campos AUSENTES de `vals`, dentro do
+        `super().create()` do ORM, roda sempre — sudo ou não. As linhas de
+        elaborador/emissor não traziam `user_id`/`approved_at`/`ip`, então um
+        chamador RPC de `action_generate_relatorios_open()` com contexto
+        `{"default_approved_at": ..., "default_user_id": <uid qualquer>}`
+        forjava essas aprovações já assinadas por um usuário arbitrário —
+        furando o gate de aprovação interna de que a P4 depende. Duas
+        camadas: (1) `with_context(clean_context(...))` tira todo
+        `default_*` do contexto antes do `create()`; (2) todo vals grava
+        `user_id`/`approved_at`/`ip` explicitamente (mesmo que `False`), para
+        que nenhum campo fique "ausente" e a defesa não dependa só do
+        contexto estar limpo.
         """
         self.ensure_one()
         vals = [
-            {"relatorio_id": self.id, "sequence": 10, "papel": "elaborador"},
-            {"relatorio_id": self.id, "sequence": 20, "papel": "emissor"},
+            {"relatorio_id": self.id, "sequence": 10, "papel": "elaborador",
+             "user_id": False, "approved_at": False, "ip": False},
+            {"relatorio_id": self.id, "sequence": 20, "papel": "emissor",
+             "user_id": False, "approved_at": False, "ip": False},
         ]
         daily = self.os_id.sudo().relatorio_ids.filtered(lambda d: d.state != "cancel")
         seq = 30
@@ -139,6 +157,7 @@ class AfrQualificacaoRelatorio(models.Model):
                 "user_id": emp.user_id.id or False,
                 "nome_exibicao": emp.name,
                 "approved_at": max(signed.mapped("signature_technician_date")) if signed else False,
+                "ip": False,
             })
             seq += 1
         vals.append({
@@ -147,8 +166,12 @@ class AfrQualificacaoRelatorio(models.Model):
             "papel": "cliente",
             "partner_id": self.partner_id.id or False,
             "nome_exibicao": self.partner_id.name or False,
+            "user_id": False,
+            "approved_at": False,
+            "ip": False,
         })
-        self.env["afr.relatorio.aprovacao"].sudo().create(vals)
+        clean_ctx = clean_context(self.env.context)
+        self.env["afr.relatorio.aprovacao"].sudo().with_context(clean_ctx).create(vals)
 
     def action_reload_template(self):
         """Descarta blocos e anexos (inclusive arquivos anexados) e reaplica.
