@@ -84,3 +84,28 @@ class AfrQualificacaoOsRelatorioFinal(models.Model):
         return self.mapped("relatorio_final_ids").sorted(
             key=lambda r: (r.os_id.id, r.index, r.id)
         )
+
+    def _relatorio_final_action(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Relatórios Finais"),
+            "res_model": "afr.qualificacao.relatorio",
+            "view_mode": "tree,form",
+            "domain": [("os_id", "=", self.id)],
+            "context": {"default_os_id": self.id, "create": False},
+        }
+
+    def action_generate_relatorios_open(self):
+        """Botão "Gerar relatórios finais": gera os faltantes e abre a lista.
+
+        Wrapper de UI: `action_generate_relatorios()` retorna recordset
+        (contrato P1), que o web client não sabe serializar.
+        """
+        self.ensure_one()
+        self.action_generate_relatorios()
+        return self._relatorio_final_action()
+
+    def action_view_relatorios_finais(self):
+        """Smart button: só abre a lista, não gera."""
+        return self._relatorio_final_action()

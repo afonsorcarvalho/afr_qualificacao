@@ -96,6 +96,12 @@ class AfrQualificacaoRelatorio(models.Model):
         compute="_compute_cycle_ids",
         string="Ciclos",
     )
+    os_collect_item_ids = fields.Many2many(
+        "afr.qualificacao.collect.item",
+        compute="_compute_os_collect_item_ids",
+        string="Itens de coleta",
+        help="Itens de coleta das qualificações deste equipamento (consulta).",
+    )
 
     # ───────── Estado e revisão ─────────
     state = fields.Selection(
@@ -217,6 +223,11 @@ class AfrQualificacaoRelatorio(models.Model):
     def _compute_cycle_ids(self):
         for rel in self:
             rel.cycle_ids = rel.qualificacao_ids.cycle_ids
+
+    @api.depends("qualificacao_ids.collect_item_ids")
+    def _compute_os_collect_item_ids(self):
+        for rel in self:
+            rel.os_collect_item_ids = rel.qualificacao_ids.collect_item_ids
 
     @api.depends("revision")
     def _compute_revision_label(self):

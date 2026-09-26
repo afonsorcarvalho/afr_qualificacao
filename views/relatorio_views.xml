@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Relatório Final de Qualificação — P1 (16.0.8.0.0).
+
+    O form expõe pontos de extensão estáveis para P2–P5 (herança por xpath):
+      //header                          → botões (minuta, verificar, emitir…)
+      //div[@name='button_box']         → smart buttons
+      //notebook                        → novas páginas
+      //page[@name='page_dados_campo']   → dados de campo
+      //page[@name='page_ciclos']        → ciclos
+    Não renomear esses `name`.
+-->
+<odoo>
+
+    <!-- ======================================================== -->
+    <!-- FORM                                                      -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_relatorio_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.relatorio.form</field>
+        <field name="model">afr.qualificacao.relatorio</field>
+        <field name="arch" type="xml">
+            <form string="Relatório Final" create="0">
+                <header>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="draft,issued,client_approved"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box"/>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                        <h3><field name="revision_label"/></h3>
+                    </div>
+                    <group>
+                        <group string="Identificação">
+                            <field name="os_id" readonly="1"/>
+                            <field name="equipment_id" readonly="1"/>
+                            <field name="partner_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Controle">
+                            <field name="index" readonly="1"/>
+                            <field name="revision" readonly="1"/>
+                            <field name="proxima_qualificacao"/>
+                            <field name="qualificacao_ids" widget="many2many_tags" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Dados de campo" name="page_dados_campo">
+                            <div class="row">
+                                <div class="col-lg-8">
+                                    <group>
+                                        <group string="Período dos ensaios">
+                                            <field name="data_inicio_ensaios"/>
+                                            <field name="data_fim_ensaios"/>
+                                        </group>
+                                        <group string="Ambiente">
+                                            <field name="amb_temperatura" placeholder="22 a 25 °C"/>
+                                            <field name="amb_umidade" placeholder="41 %UR"/>
+                                        </group>
+                                    </group>
+                                    <group>
+                                        <group string="Critérios de aceitação">
+                                            <field name="tolerancia_acima"/>
+                                            <field name="criterio_f0_fator"/>
+                                        </group>
+                                    </group>
+                                    <separator string="Checklist de instalação"/>
+                                    <field name="checklist_ids" nolabel="1">
+                                        <tree editable="bottom"
+                                              decoration-danger="status == 'reprovado'"
+                                              decoration-muted="status == 'na'">
+                                            <field name="sequence" widget="handle"/>
+                                            <field name="grupo"/>
+                                            <field name="descricao"/>
+                                            <field name="status"/>
+                                            <field name="comentario"/>
+                                        </tree>
+                                    </field>
+                                    <separator string="Indicadores biológicos e químicos"/>
+                                    <field name="indicador_ids" nolabel="1">
+                                        <tree editable="bottom">
+                                            <field name="tipo"/>
+                                            <field name="marca"/>
+                                            <field name="modelo_tipo"/>
+                                            <field name="lote"/>
+                                            <field name="validade"/>
+                                            <field name="valor_d"/>
+                                            <field name="populacao"/>
+                                            <field name="evidencia_collect_item_id"
+                                                   domain="[('os_id', '=', parent.os_id)]"
+                                                   options="{'no_create': True}"/>
+                                        </tree>
+                                    </field>
+                                    <separator string="Leituras de IB"/>
+                                    <field name="leitura_ib_ids" nolabel="1">
+                                        <tree editable="bottom"
+                                              decoration-danger="resultado == 'positivo'">
+                                            <field name="cycle_id"
+                                                   domain="[('id', 'in', parent.cycle_ids)]"
+                                                   options="{'no_create': True}"/>
+                                            <field name="indicador_id"
+                                                   domain="[('relatorio_id', '=', parent.id)]"
+                                                   options="{'no_create': True}"/>
+                                            <field name="data_incubacao"/>
+                                            <field name="data_leitura"/>
+                                            <field name="leitor"/>
+                                            <field name="resultado"/>
+                                            <field name="controle_positivo_ok"/>
+                                        </tree>
+                                    </field>
+                                </div>
+                                <div class="col-lg-4">
+                                    <separator string="Itens de coleta (consulta)"/>
+                                    <field name="os_collect_item_ids" nolabel="1" readonly="1">
+                                        <tree>
+                                            <field name="name"/>
+                                            <field name="cycle_id" optional="show"/>
+                                            <field name="state" widget="badge"/>
+                                            <field name="filename" optional="hide"/>
+                                        </tree>
+                                    </field>
+                                </div>
+                            </div>
+                        </page>
+                        <page string="Ciclos" name="page_ciclos">
+                            <field name="cycle_ids" nolabel="1" readonly="1">
+                                <tree>
+                                    <field name="qualificacao_id"/>
+                                    <field name="cycle_type_id"/>
+                                    <field name="sequence" optional="hide"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="janela_inicio"/>
+                                    <field name="janela_fim"/>
+                                    <field name="sensor_pos_count"/>
+                                    <button name="action_open_relatorio_cycle" type="object"
+                                            icon="fa-pencil" title="Editar janela e sensores"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- TREE                                                      -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_relatorio_tree" model="ir.ui.view">
+        <field name="name">afr.qualificacao.relatorio.tree</field>
+        <field name="model">afr.qualificacao.relatorio</field>
+        <field name="arch" type="xml">
+            <tree create="0">
+                <field name="name"/>
+                <field name="os_id"/>
+                <field name="equipment_id"/>
+                <field name="partner_id"/>
+                <field name="revision_label" string="Rev."/>
+                <field name="data_fim_ensaios" optional="show"/>
+                <field name="proxima_qualificacao" optional="show"/>
+                <field name="state" widget="badge"
+                       decoration-info="state == 'draft'"
+                       decoration-success="state in ('issued', 'client_approved')"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- SEARCH                                                    -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_relatorio_search" model="ir.ui.view">
+        <field name="name">afr.qualificacao.relatorio.search</field>
+        <field name="model">afr.qualificacao.relatorio</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="os_id"/>
+                <field name="equipment_id"/>
+                <field name="partner_id"/>
+                <filter name="filter_draft" string="Rascunho"
+                        domain="[('state', '=', 'draft')]"/>
+                <filter name="filter_issued" string="Emitidos"
+                        domain="[('state', '=', 'issued')]"/>
+                <filter name="filter_client_approved" string="Aprovados pelo cliente"
+                        domain="[('state', '=', 'client_approved')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_os" string="OS" context="{'group_by': 'os_id'}"/>
+                    <filter name="group_partner" string="Cliente" context="{'group_by': 'partner_id'}"/>
+                    <filter name="group_state" string="Status" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ======================================================== -->
+    <!-- ACTION + MENU                                             -->
+    <!-- ======================================================== -->
+    <record id="action_afr_qualificacao_relatorio" model="ir.actions.act_window">
+        <field name="name">Relatórios Finais</field>
+        <field name="res_model">afr.qualificacao.relatorio</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_afr_qualificacao_relatorio_search"/>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Nenhum relatório final ainda</p>
+            <p>Abra uma OS de Qualificação e use "Gerar relatórios finais":
+               é criado um relatório por equipamento.</p>
+        </field>
+    </record>
+
+    <menuitem
+        id="menu_afr_relatorio_final"
+        name="Relatórios Finais"
+        parent="menu_afr_qualificacao_root"
+        action="action_afr_qualificacao_relatorio"
+        sequence="16"
+        groups="afr_qualificacao.group_afr_qualificacao_technician"
+    />
+
+    <!-- ======================================================== -->
+    <!-- OS: smart button + botão Gerar                            -->
+    <!-- ======================================================== -->
+    <record id="view_afr_qualificacao_os_form_relatorio_final" model="ir.ui.view">
+        <field name="name">afr.qualificacao.os.form.relatorio.final</field>
+        <field name="model">afr.qualificacao.os</field>
+        <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_os_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_view_relatorios_finais" type="object"
+                        class="oe_stat_button" icon="fa-file-pdf-o"
+                        attrs="{'invisible': [('relatorio_final_count', '=', 0)]}">
+                    <field name="relatorio_final_count" widget="statinfo"
+                           string="Relatórios Finais"/>
+                </button>
+            </xpath>
+            <xpath expr="//header/field[@name='state']" position="before">
+                <!-- Sem `groups=`: o atributo remove o nó do arch para quem não tem
+                     o grupo (inclusive o superusuário dos testes, sem grupos de
+                     aplicação) — a restrição real já vem da ACL do modelo
+                     (Usuário+ tem create em afr.qualificacao.relatorio; Técnico não). -->
+                <button name="action_generate_relatorios_open" type="object"
+                        string="Gerar relatórios finais" class="btn-secondary"
+                        attrs="{'invisible': [('state', '=', 'cancelled')]}"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

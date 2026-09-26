@@ -525,3 +525,61 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
         self.assertEqual(action["res_model"], "afr.qualificacao.cycle")
         self.assertEqual(action["res_id"], self.cycle_qd1.id)
         self.assertEqual(action["view_mode"], "form")
+
+    # ─────────────────────────────────────────────────────────────
+    # UI (Task 4)
+    # ─────────────────────────────────────────────────────────────
+    def test_generate_open_action(self):
+        action = self.os.action_generate_relatorios_open()
+        self.assertEqual(action["type"], "ir.actions.act_window")
+        self.assertEqual(action["res_model"], "afr.qualificacao.relatorio")
+        self.assertEqual(action["domain"], [("os_id", "=", self.os.id)])
+        self.assertEqual(self.os.relatorio_final_count, 2)
+
+    def test_view_relatorios_finais_action_does_not_generate(self):
+        action = self.os.action_view_relatorios_finais()
+        self.assertEqual(action["res_model"], "afr.qualificacao.relatorio")
+        self.assertEqual(self.os.relatorio_final_count, 0)
+
+    def test_os_collect_item_ids_same_equipment(self):
+        item1 = self.env["afr.qualificacao.collect.item"].create({
+            "name": "PDF do validador", "qualif_id": self.q1_qd.id,
+            "cycle_id": self.cycle_qd1.id,
+        })
+        item2 = self.env["afr.qualificacao.collect.item"].create({
+            "name": "PDF do validador", "qualif_id": self.q2_qd.id,
+        })
+        self.os.action_generate_relatorios()
+        rel1 = self._rel_for(self.os, self.equip1)
+        self.assertIn(item1, rel1.os_collect_item_ids)
+        self.assertNotIn(item2, rel1.os_collect_item_ids)
+
+    def test_form_view_exposes_contract_hooks(self):
+        """P2–P5 herdam por xpath nesses nomes — não podem sumir."""
+        arch = self.env["afr.qualificacao.relatorio"].get_view(view_type="form")["arch"]
+        self.assertIn('name="page_dados_campo"', arch)
+        self.assertIn('name="page_ciclos"', arch)
+        self.assertIn("<header", arch)
+        self.assertIn('name="button_box"', arch)
+
+    def test_os_form_has_relatorio_final_buttons(self):
+        arch = self.env["afr.qualificacao.os"].get_view(
+            self.env.ref("afr_qualificacao.view_afr_qualificacao_os_form").id,
+            view_type="form",
+        )["arch"]
+        self.assertIn("action_view_relatorios_finais", arch)
+        self.assertIn("action_generate_relatorios_open", arch)
+
+    def test_cycle_form_has_copy_button(self):
+        arch = self.env["afr.qualificacao.cycle"].get_view(
+            self.env.ref("afr_qualificacao.view_afr_qualificacao_cycle_form").id,
+            view_type="form",
+        )["arch"]
+        self.assertIn("action_copy_sensor_pos_from_previous", arch)
+        self.assertIn('name="sensor_pos_ids"', arch)
+
+    def test_menu_exists(self):
+        menu = self.env.ref("afr_qualificacao.menu_afr_relatorio_final")
+        self.assertEqual(
+            menu.parent_id, self.env.ref("afr_qualificacao.menu_afr_qualificacao_root")
+        )

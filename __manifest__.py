@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.7.5.0",
+    "version": "16.0.8.0.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -107,6 +107,10 @@
               padronizadas sem abreviação parentética. cycle_specs
               default title → "Tabela Resumo de Ciclos". CSS margin
               entre seções aumentada.
+          F11 (16.0.8.x): Relatório Final de Qualificação (montador).
+            P1 (16.0.8.0.0): afr.qualificacao.relatorio por OS × equipamento
+              + dados de campo (checklist, indicadores, leituras de IB)
+              + ciclo com janela/posição de sensores.
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -207,6 +211,9 @@
         "views/calibration_instruments_views.xml",
         # Views com menuitem que referencia menu_root (depois dos menus principais)
         "views/docx_template_views.xml",
+        # Relatório Final P1 (16.0.8.0.0) — menuitem sob menu_root, depois dos menus
+        "views/relatorio_views.xml",
+        "views/relatorio_cycle_views.xml",
         # Reports
         "reports/qualificacao_certificate_template.xml",
         "reports/qualificacao_certificate_report.xml",
