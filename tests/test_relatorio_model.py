@@ -415,3 +415,113 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
         rel.unlink()
         self.assertFalse(checklist.exists())
         self.assertFalse(ind.exists())
+
+    # ─────────────────────────────────────────────────────────────
+    # CICLOS (Task 3)
+    # ─────────────────────────────────────────────────────────────
+    def _set_positions(self, cycle, rows):
+        self.env["afr.relatorio.sensor.pos"].create([
+            {
+                "cycle_id": cycle.id,
+                "sequence": (i + 1) * 10,
+                "canal": canal,
+                "posicao": posicao,
+                "ib_label": ib_label,
+            }
+            for i, (canal, posicao, ib_label) in enumerate(rows)
+        ])
+
+    @staticmethod
+    def _rows(cycle):
+        return [
+            (p.sequence, p.canal, p.posicao, p.ib_label)
+            for p in cycle.sensor_pos_ids
+        ]
+
+    POSITIONS = [
+        ("CH001", "Dreno", "IB1"),
+        ("CH002", "Centro geométrico", "IB2"),
+        ("CH003", "Porta", False),
+    ]
+
+    def test_janela_fim_before_inicio_rejected(self):
+        """Review Focus 4."""
+        with self.assertRaises(ValidationError):
+            self.cycle_qd1.write({
+                "janela_inicio": datetime(2026, 9, 2, 10, 30),
+                "janela_fim": datetime(2026, 9, 2, 10, 0),
+            })
+
+    def test_janela_valid_and_extracted_json(self):
+        self.cycle_qd1.write({
+            "janela_inicio": datetime(2026, 9, 2, 10, 0),
+            "janela_fim": datetime(2026, 9, 2, 10, 15),
+            "extracted_json": "{}",
+        })
+        self.assertEqual(self.cycle_qd1.janela_fim, datetime(2026, 9, 2, 10, 15))
+        self.assertEqual(self.cycle_qd1.extracted_json, "{}")
+
+    def test_copy_sensor_pos_from_previous(self):
+        self._set_positions(self.cycle_qd1, self.POSITIONS)
+        self.assertTrue(self.cycle_qd2.action_copy_sensor_pos_from_previous())
+        self.assertEqual(self._rows(self.cycle_qd2), self._rows(self.cycle_qd1))
+        self.assertEqual(self.cycle_qd2.sensor_pos_count, 3)
+        # As linhas são cópias, não as mesmas.
+        self.assertFalse(self.cycle_qd2.sensor_pos_ids & self.cycle_qd1.sensor_pos_ids)
+
+    def test_copy_sensor_pos_first_cycle_is_noop(self):
+        # cycle_qo é o 1º ciclo do relatório do equip1 (QI não tem ciclo):
+        # não há anterior → False, sem exceção.
+        self._set_positions(self.cycle_qd1, self.POSITIONS)
+        self.assertFalse(self.cycle_qo.action_copy_sensor_pos_from_previous())
+        self.assertFalse(self.cycle_qo.sensor_pos_ids)
+
+    def test_copy_sensor_pos_first_qd_copies_from_last_qo(self):
+        """1º ciclo de QD copia do último ciclo de QO do mesmo equipamento
+        (ordem QI < QO < QD, atravessando qualificações)."""
+        self._set_positions(self.cycle_qo, self.POSITIONS)
+        self.assertTrue(self.cycle_qd1.action_copy_sensor_pos_from_previous())
+        self.assertEqual(self._rows(self.cycle_qd1), self._rows(self.cycle_qo))
+
+    def test_copy_sensor_pos_ignores_other_equipment(self):
+        # cycle_other (equip2) é o único ciclo do relatório do equip2: os
+        # ciclos do equip1 com posições não contam.
+        self._set_positions(self.cycle_qo, self.POSITIONS)
+        self._set_positions(self.cycle_qd1, self.POSITIONS)
+        self.assertFalse(self.cycle_other.action_copy_sensor_pos_from_previous())
+        self.assertFalse(self.cycle_other.sensor_pos_ids)
+
+    def test_copy_sensor_pos_ignores_cancelled_qualif(self):
+        self._set_positions(self.cycle_qo, self.POSITIONS)
+        self.q1_qo.write({"state": "cancelled"})
+        self.assertFalse(self.cycle_qd1.action_copy_sensor_pos_from_previous())
+
+    def test_copy_sensor_pos_skips_empty_previous(self):
+        self._set_positions(self.cycle_qd1, self.POSITIONS)
+        # cycle_qd2 vazio → cycle_qd3 copia do qd1 (anterior mais próximo com posições).
+        self.assertTrue(self.cycle_qd3.action_copy_sensor_pos_from_previous())
+        self.assertEqual(self._rows(self.cycle_qd3), self._rows(self.cycle_qd1))
+
+    def test_copy_sensor_pos_as_usuario_replaces(self):
+        """Review Focus 5: Usuário (não Gestor) copia por cima de linhas já
+        existentes — substitui, não soma, e não dá AccessError."""
+        self._set_positions(self.cycle_qd1, self.POSITIONS)
+        self._set_positions(self.cycle_qd2, [("CH099", "Antiga", False)])
+        usuario = self.env["res.users"].create({
+            "name": "Usuário Relatório",
+            "login": "usuario.relatorio.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        done = self.cycle_qd2.with_user(usuario).action_copy_sensor_pos_from_previous()
+        self.assertTrue(done)
+        self.cycle_qd2.invalidate_recordset()
+        self.assertEqual(self._rows(self.cycle_qd2), self._rows(self.cycle_qd1))
+
+    def test_open_relatorio_cycle_action(self):
+        action = self.cycle_qd1.action_open_relatorio_cycle()
+        self.assertEqual(action["res_model"], "afr.qualificacao.cycle")
+        self.assertEqual(action["res_id"], self.cycle_qd1.id)
+        self.assertEqual(action["view_mode"], "form")

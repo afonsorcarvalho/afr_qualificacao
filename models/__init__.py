@@ -35,3 +35,4 @@ from . import product_product
 from . import relatorio                  # Relatório Final P1 (16.0.8.0.0)
 from . import relatorio_dados_campo      # Relatório Final P1 — checklist/indicador/leitura IB
 from . import relatorio_os               # Relatório Final P1 — extensão da OS
+from . import relatorio_cycle            # Relatório Final P1 — extensão do ciclo + sensor.pos
