@@ -9,7 +9,9 @@ senão os arquivos anexados à malha.
 """
 import base64
 
-from odoo import models
+from markupsafe import Markup, escape
+
+from odoo import api, fields, models
 from odoo.tools.mimetypes import guess_mimetype
 
 from .calibration_instruments import AFR_CERT_ROLES
@@ -43,6 +45,90 @@ def _afr_resolve_mimetype(stored_mimetype, content):
 
 class AfrQualificacaoRelatorio(models.Model):
     _inherit = "afr.qualificacao.relatorio"
+
+    # ------------------------------------------------------------------
+    # Task 4 — aba "Certificados" (só leitura)
+    # ------------------------------------------------------------------
+    certificados_html = fields.Html(
+        string="Certificados",
+        compute="_compute_certificados_html",
+        sanitize=False,
+        help=(
+            "Certificados escolhidos automaticamente pelas datas dos ensaios "
+            "para os instrumentos do plano de recursos da OS."
+        ),
+    )
+
+    @api.depends(
+        "data_inicio_ensaios",
+        "data_fim_ensaios",
+        "equipment_id",
+        "os_id.resource_plan_line_ids.instrument_id",
+        "os_id.resource_plan_line_ids.resource_role",
+        "os_id.resource_plan_line_ids.equipment_ids",
+        "os_id.resource_plan_line_ids.instrument_id.name",
+        "os_id.resource_plan_line_ids.instrument_id.id_number",
+        "os_id.resource_plan_line_ids.instrument_id.tag",
+        "os_id.resource_plan_line_ids.instrument_id.marca",
+        "os_id.resource_plan_line_ids.instrument_id.modelo",
+        "os_id.resource_plan_line_ids.instrument_id.certificate_ids.afr_role",
+        "os_id.resource_plan_line_ids.instrument_id.certificate_ids.certificate_number",
+        "os_id.resource_plan_line_ids.instrument_id.certificate_ids.date_calibration",
+        "os_id.resource_plan_line_ids.instrument_id.certificate_ids.validate_calibration",
+        "os_id.resource_plan_line_ids.instrument_id.certificate_ids.superseded_by_id",
+    )
+    def _compute_certificados_html(self):
+        for rel in self:
+            rel.certificados_html = rel._afr_certificados_html()
+
+    def _afr_certificados_html(self):
+        """Tabela só de leitura da seleção; 'AUSENTE' em vermelho quando
+        não há certificado para o papel exigido."""
+        self.ensure_one()
+        selection = self._afr_certificate_selection() if self.os_id else []
+        if not selection:
+            return Markup(
+                '<p class="text-muted">Nenhum instrumento no plano de recursos '
+                'da OS. Gere/ajuste o plano de recursos para listar os '
+                'certificados.</p>')
+        role_labels = dict(AFR_CERT_ROLES)
+        resource_labels = dict(
+            self.env["afr.qualificacao.resource.plan.line"]
+            ._fields["resource_role"].selection)
+
+        def fmt(value):
+            return value.strftime("%d/%m/%Y") if value else "—"
+
+        rows = Markup("")
+        for entry in selection:
+            cert = entry["certificate"]
+            if cert:
+                number = escape(cert.certificate_number or "s/nº")
+                cal_date = escape(fmt(cert.date_calibration))
+                validity = escape(fmt(cert.validate_calibration))
+            else:
+                number = Markup(
+                    '<span style="color:#c00;font-weight:bold;">AUSENTE</span>')
+                cal_date = validity = Markup("—")
+            rows += (
+                Markup("<tr><td>") + escape(entry["instrument"].display_name)
+                + Markup("</td><td>")
+                + escape(resource_labels.get(entry["resource_role"], ""))
+                + Markup("</td><td>") + escape(role_labels[entry["role"]])
+                + Markup("</td><td>") + number
+                + Markup("</td><td>") + cal_date
+                + Markup("</td><td>") + validity
+                + Markup("</td></tr>")
+            )
+        return (
+            Markup(
+                '<table class="table table-sm table-bordered o_afr_cert_table">'
+                "<thead><tr><th>Instrumento</th><th>Papel no plano</th>"
+                "<th>Certificado exigido</th><th>Nº</th><th>Calibração</th>"
+                "<th>Validade</th></tr></thead><tbody>")
+            + rows
+            + Markup("</tbody></table>")
+        )
 
     # ------------------------------------------------------------------
     # Instrumentos (validador / padrão)

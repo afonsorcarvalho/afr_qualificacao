@@ -218,6 +218,8 @@
         # Relatório Final P1 (16.0.8.0.0) — menuitem sob menu_root, depois dos menus
         "views/relatorio_views.xml",
         "views/relatorio_cycle_views.xml",
+        # Relatório Final P2 (16.0.8.1.0) — aba Certificados
+        "views/relatorio_certificados_views.xml",
         # Reports
         "reports/qualificacao_certificate_template.xml",
         "reports/qualificacao_certificate_report.xml",

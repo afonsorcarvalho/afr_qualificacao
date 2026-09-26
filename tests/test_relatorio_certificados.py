@@ -462,3 +462,44 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         with self._patch_report() as render:
             self.assertEqual(self.rel._afr_malha_certificate_files(), [])
         render.assert_not_called()
+
+    # ------------------------------------------------ Task 4: aba
+    def _html(self):
+        self.rel.invalidate_recordset(["certificados_html"])
+        return str(self.rel.certificados_html or "")
+
+    def test_html_lists_selection(self):
+        self._cert(self.validador, "antes", self.inicio, number="CERT-TST-HA",
+                   validate=date(2027, 7, 10))
+        html = self._html()
+        self.assertIn("Validador Teste", html)
+        self.assertIn("Padrão Teste", html)
+        self.assertIn("CERT-TST-HA", html)
+        self.assertIn("Antes da campanha", html)
+        self.assertIn("10/07/2026", html)
+        self.assertIn("10/07/2027", html)
+        self.assertIn("AUSENTE", html, "depois/externo sem certificado")
+
+    def test_html_marks_missing_when_validator_only_has_externo(self):
+        # Base existente após -u: certificado antigo nasce 'externo'.
+        self._cert(self.validador, "externo", self.inicio - timedelta(days=5),
+                   number="CERT-TST-LEGADO")
+        html = self._html()
+        self.assertEqual(html.count("AUSENTE"), 3)
+        self.assertNotIn("CERT-TST-LEGADO", html)
+
+    def test_html_empty_plan(self):
+        self.os.resource_plan_line_ids.unlink()
+        self.assertIn("Nenhum instrumento", self._html())
+
+    def test_html_escapes_names(self):
+        self.validador.name = "<b>Val</b>"
+        html = self._html()
+        self.assertIn("&lt;b&gt;Val&lt;/b&gt;", html)
+        self.assertNotIn("<b>Val</b>", html)
+
+    def test_form_has_page_certificados(self):
+        form = self.env.ref("afr_qualificacao.view_afr_qualificacao_relatorio_form")
+        arch = self.env["afr.qualificacao.relatorio"].get_view(form.id, "form")["arch"]
+        self.assertIn('name="page_certificados"', arch)
+        self.assertIn('name="certificados_html"', arch)
