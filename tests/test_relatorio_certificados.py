@@ -337,3 +337,128 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         files = self.rel._afr_certificate_files(["externo"])
         self.assertTrue(files[0][2].startswith("Certificado s/nº — Padrão Teste"))
         self.assertNotIn("False", files[0][2])
+
+    # ------------------------------------------------ Task 3: malhas
+    def _engc_calibration(self):
+        # Obrigatórios do engc_os: client_id, equipment_id, technician_id,
+        # date_calibration, measurement_procedure (M2O required) e
+        # instruments_ids (M2M required; o domínio do instrumento da medição
+        # sai daqui).
+        procedure = self.env["engc.calibration.measurement.procedure"].create({
+            "codigo": "PROC-TST",
+            "description": "Procedimento Teste",
+        })
+        return self.env["engc.calibration"].create({
+            "client_id": self.partner.id,
+            "equipment_id": self.equip1.id,
+            "technician_id": self.employee.id,
+            "date_calibration": self.inicio,
+            "measurement_procedure": procedure.id,
+            "instruments_ids": [(6, 0, [self.padrao.id])],
+        })
+
+    def _link_malha(self, malha, calibration):
+        meas = self.env["engc.calibration.measurement"].create({
+            "calibration_id": calibration.id,
+            "instrument_id": self.padrao.id,
+        })
+        malha.engc_calibration_measurement_id = meas.id
+        return meas
+
+    def _item(self, malha, name, content, mimetype, sequence=10):
+        vals = {
+            "qualif_id": self.qualif.id,
+            "malha_id": malha.id,
+            "name": name,
+            "kind": "pdf",
+            "sequence": sequence,
+            "mimetype": mimetype,
+        }
+        if content:
+            vals["file"] = _b64(content)
+        return self.env["afr.qualificacao.collect.item"].create(vals)
+
+    def _patch_report(self):
+        Report = type(self.env["ir.actions.report"])
+        return patch.object(
+            Report, "_render_qweb_pdf",
+            return_value=(b"%PDF-1.4 engc-cert", "pdf"),
+        )
+
+    def test_engc_report_xmlid_exists(self):
+        report = self.env.ref(ENGC_REPORT)
+        self.assertEqual(report.model, "engc.calibration")
+
+    def test_malha_collect_item_ids_inverse(self):
+        item = self._item(self.malha_t, "Cert malha T", PDF_BYTES, "application/pdf")
+        self.assertIn(item, self.malha_t.collect_item_ids)
+        self.assertNotIn(item, self.malha_p.collect_item_ids)
+
+    def test_malha_files_from_engc_calibration(self):
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_called_once()
+        self.assertEqual(render.call_args.args, (ENGC_REPORT, [cal.id]))
+        self.assertEqual(len(files), 1, "malha_p sem calibração e sem arquivo → nada")
+        content, mimetype, caption = files[0]
+        self.assertEqual(content, b"%PDF-1.4 engc-cert")
+        self.assertEqual(mimetype, "application/pdf")
+        self.assertIn(cal.name, caption)
+        self.assertIn(self.malha_t.display_name, caption)
+
+    def test_malha_same_calibration_rendered_once(self):
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        self._link_malha(self.malha_p, cal)
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_called_once()
+        self.assertEqual(len(files), 1)
+
+    def test_malha_engc_wins_over_collect_items(self):
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        self._item(self.malha_t, "PDF anexado", PDF_BYTES, "application/pdf")
+        with self._patch_report():
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual([f[0] for f in files], [b"%PDF-1.4 engc-cert"])
+
+    def test_malha_files_fallback_collect_items(self):
+        png = _png_bytes()
+        self._item(self.malha_t, "Foto certificado", png, "image/png", sequence=20)
+        self._item(self.malha_t, "PDF certificado", PDF_BYTES, "application/pdf", sequence=10)
+        self._item(self.malha_t, "Planilha", b"a;b\n1;2\n", "text/csv", sequence=5)
+        self._item(self.malha_t, "Pendente", None, "application/pdf", sequence=1)
+        with self._patch_report() as render:
+            files = self.rel._afr_malha_certificate_files()
+        render.assert_not_called()
+        self.assertEqual([f[1] for f in files], ["application/pdf", "image/png"])
+        self.assertEqual(files[0][0], PDF_BYTES)
+        self.assertEqual(files[1][0], png)
+        self.assertIn("PDF certificado", files[0][2])
+        self.assertIn(self.malha_t.display_name, files[0][2])
+
+    def test_malha_files_guess_mimetype_when_missing(self):
+        self._item(self.malha_p, "Sem mimetype", PDF_BYTES, False)
+        with self._patch_report():
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0][1], "application/pdf")
+
+    def test_malha_files_sniffs_octet_stream(self):
+        # PWA grava mimetype 'application/octet-stream' (untrustworthy);
+        # o conteúdo real é PDF e deve ser reconhecido pela sniff dos bytes.
+        self._item(self.malha_p, "PWA sem mimetype confiável", PDF_BYTES,
+                   "application/octet-stream")
+        with self._patch_report():
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0][0], PDF_BYTES)
+        self.assertEqual(files[0][1], "application/pdf")
+
+    def test_malha_files_empty_without_malhas_data(self):
+        with self._patch_report() as render:
+            self.assertEqual(self.rel._afr_malha_certificate_files(), [])
+        render.assert_not_called()

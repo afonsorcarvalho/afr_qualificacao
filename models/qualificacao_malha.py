@@ -111,6 +111,14 @@ class AfrQualificacaoMalha(models.Model):
         store=False,
     )
 
+    # Relatório final P2 (16.0.8.1.0) — inverso de collect.item.malha_id;
+    # fonte dos certificados de malha quando não há calibração engc_os.
+    collect_item_ids = fields.One2many(
+        "afr.qualificacao.collect.item",
+        "malha_id",
+        string="Itens de Coleta",
+    )
+
     @api.depends("state", "relatorio_id")
     def _compute_collected_without_relatorio(self):
         for r in self:

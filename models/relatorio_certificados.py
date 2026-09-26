@@ -7,6 +7,8 @@ fornecimento dos bytes para a montagem do PDF (P4). Certificados de malha
 seguem D4: PDF do report engc_os quando a malha tem calibração vinculada,
 senão os arquivos anexados à malha.
 """
+import base64
+
 from odoo import models
 from odoo.tools.mimetypes import guess_mimetype
 
@@ -18,9 +20,25 @@ _ROLES_BY_RESOURCE = (
     ("padrao", ("externo",)),
 )
 
+# Report QWeb do certificado de calibração do engc_os (model engc.calibration).
+ENGC_CALIBRATION_REPORT = "engc_os.report_engc_os_calibration_certificate"
+
 
 def _mimetype_of(content):
     return guess_mimetype(content, default="application/octet-stream")
+
+
+def _afr_resolve_mimetype(stored_mimetype, content):
+    """Mimetype confiável de um arquivo anexado.
+
+    O mimetype armazenado é aceito quando já é PDF ou `image/*`; em
+    qualquer outro caso (ausente, ou `application/octet-stream` — como o
+    PWA grava) ele é sniffado a partir dos próprios bytes. Reusado por P4
+    para os arquivos de `collect_section`.
+    """
+    if stored_mimetype == "application/pdf" or (stored_mimetype or "").startswith("image/"):
+        return stored_mimetype
+    return _mimetype_of(content)
 
 
 class AfrQualificacaoRelatorio(models.Model):
@@ -84,4 +102,46 @@ class AfrQualificacaoRelatorio(models.Model):
                 role_labels[entry["role"]],
             )
             files.append((content, _mimetype_of(content), caption))
+        return files
+
+    # ------------------------------------------------------------------
+    # Malhas de controle (D4 — híbrido)
+    # ------------------------------------------------------------------
+    def _afr_malha_certificate_files(self):
+        """Por malha dos qualificacao_ids: PDF do certificado engc_os quando
+        há calibração vinculada (uma vez por calibração); senão PDFs/imagens
+        dos itens de coleta da malha.
+        """
+        # TODO(4.9): qualificacao.engc_calibration_id (nível qualif, não
+        # malha) é ignorado de propósito — D4 é por malha
+        # (engc_calibration_measurement_id), não por qualificação; P5
+        # detecta anexo vazio (ANEXO_VAZIO) se isso deixar uma malha sem
+        # certificado.
+        self.ensure_one()
+        Report = self.env["ir.actions.report"].sudo()
+        files = []
+        rendered = set()
+        for malha in self.qualificacao_ids.mapped("malha_ids"):
+            calibration = malha.engc_calibration_measurement_id.calibration_id
+            if calibration:
+                if calibration.id in rendered:
+                    continue
+                rendered.add(calibration.id)
+                pdf, _fmt = Report._render_qweb_pdf(
+                    ENGC_CALIBRATION_REPORT, [calibration.id])
+                caption = "Certificado de calibração %s — %s" % (
+                    calibration.name, malha.display_name)
+                files.append((pdf, "application/pdf", caption))
+                continue
+            items = malha.collect_item_ids.with_context(bin_size=False).sorted(
+                key=lambda i: (i.sequence, i.id))
+            for item in items:
+                if not item.file:
+                    continue
+                content = base64.b64decode(item.file)
+                mimetype = _afr_resolve_mimetype(item.mimetype, content)
+                if mimetype != "application/pdf" and not mimetype.startswith("image/"):
+                    continue
+                caption = "%s — %s" % (item.name, malha.display_name)
+                files.append((content, mimetype, caption))
         return files
