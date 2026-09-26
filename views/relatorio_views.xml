@@ -239,13 +239,10 @@
                 </button>
             </xpath>
             <xpath expr="//header/field[@name='state']" position="before">
-                <!-- Sem `groups=`: o atributo remove o nó do arch para quem não tem
-                     o grupo (inclusive o superusuário dos testes, sem grupos de
-                     aplicação) — a restrição real já vem da ACL do modelo
-                     (Usuário+ tem create em afr.qualificacao.relatorio; Técnico não). -->
                 <button name="action_generate_relatorios_open" type="object"
                         string="Gerar relatórios finais" class="btn-secondary"
-                        attrs="{'invisible': [('state', '=', 'cancelled')]}"/>
+                        attrs="{'invisible': [('state', '=', 'cancelled')]}"
+                        groups="afr_qualificacao.group_afr_qualificacao_user"/>
             </xpath>
         </field>
     </record>

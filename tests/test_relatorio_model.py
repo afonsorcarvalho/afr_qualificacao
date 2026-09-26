@@ -562,18 +562,38 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
         self.assertIn("<header", arch)
         self.assertIn('name="button_box"', arch)
 
+    def _make_usuario(self, login):
+        """Usuário do grupo `group_afr_qualificacao_user`.
+
+        Os botões de header desta task têm `groups=...`: o postprocess do
+        `get_view` remove o nó do arch para quem não tem o grupo — inclusive
+        o superusuário dos testes, que não tem grupos de aplicação. Por isso
+        os testes de arch abaixo chamam `get_view` como Usuário, não como
+        `self.env` puro.
+        """
+        return self.env["res.users"].create({
+            "name": "Usuário Arch %s" % login,
+            "login": login,
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+
     def test_os_form_has_relatorio_final_buttons(self):
-        arch = self.env["afr.qualificacao.os"].get_view(
-            self.env.ref("afr_qualificacao.view_afr_qualificacao_os_form").id,
-            view_type="form",
+        usuario = self._make_usuario("usuario.arch.os.test")
+        view_id = self.env.ref("afr_qualificacao.view_afr_qualificacao_os_form").id
+        arch = self.env["afr.qualificacao.os"].with_user(usuario).get_view(
+            view_id, view_type="form",
         )["arch"]
         self.assertIn("action_view_relatorios_finais", arch)
         self.assertIn("action_generate_relatorios_open", arch)
 
     def test_cycle_form_has_copy_button(self):
-        arch = self.env["afr.qualificacao.cycle"].get_view(
-            self.env.ref("afr_qualificacao.view_afr_qualificacao_cycle_form").id,
-            view_type="form",
+        usuario = self._make_usuario("usuario.arch.cycle.test")
+        view_id = self.env.ref("afr_qualificacao.view_afr_qualificacao_cycle_form").id
+        arch = self.env["afr.qualificacao.cycle"].with_user(usuario).get_view(
+            view_id, view_type="form",
         )["arch"]
         self.assertIn("action_copy_sensor_pos_from_previous", arch)
         self.assertIn('name="sensor_pos_ids"', arch)
