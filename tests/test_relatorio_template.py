@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from psycopg2 import IntegrityError
 
-from odoo.exceptions import AccessError, ValidationError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase
 from odoo.tools import mute_logger
 
@@ -552,3 +552,193 @@ class TestRelatorioSeeds(TransactionCase):
         sec = self.env.ref("afr_qualificacao.rqt_sec_objetivo")
         found = self.env["afr.proposal.section"].search([("document_type", "=", "proposal")])
         self.assertNotIn(sec, found)
+
+
+class RelatorioTemplateFixture(AfrQualificacaoTestCommon):
+    """Fixture sem testes (reusada por Apply e Tokens): OS + técnico com
+    relatório diário assinado + relatório final com RQT-HOSP aplicado."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _seed_relatorio_templates(cls.env)
+        cls.hosp = cls.env.ref("afr_qualificacao.relatorio_template_hosp")
+
+    def setUp(self):
+        super().setUp()
+        so = self._apply(do_qi=True, qo_cycles=1)
+        self.os = self._confirm_and_generate_os(so)
+        self.employee = self.env["hr.employee"].create({"name": "Técnico Teste"})
+        self.daily = self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": self.os.id,
+            "descricao": "Dia 1",
+            "data_inicio": "2026-09-01 08:00:00",
+            "data_fim": "2026-09-01 17:00:00",
+            "tecnico_ids": [(6, 0, self.employee.ids)],
+            "signature_technician_date": "2026-09-01 17:05:00",
+        })
+        self.os.action_generate_relatorios_open()
+        self.rel = self.os.relatorio_final_ids.filtered(
+            lambda r: r.equipment_id == self.equip1)
+        self.rel.template_id = self.hosp
+        self.rel.action_reload_template()
+
+
+class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
+
+    def test_generate_applies_template(self):
+        self.assertTrue(self.rel.block_ids)
+        self.assertEqual(len(self.rel.block_ids), len(self.hosp.line_ids))
+        self.assertEqual(len(self.rel.anexo_ids), len(self.hosp.anexo_line_ids))
+        self.assertEqual(len(self.rel.checklist_ids), len(self.hosp.checklist_line_ids))
+
+    def test_programmatic_generate_only_suggests_template(self):
+        """Compatibilidade com P1: action_generate_relatorios() (recordset)
+        não semeia nada; só o template é sugerido no create()."""
+        so2 = self._apply(do_qi=True)
+        os2 = self._confirm_and_generate_os(so2)
+        rels2 = os2.action_generate_relatorios()
+        self.assertTrue(rels2)
+        self.assertTrue(all(r.template_id for r in rels2))
+        self.assertFalse(rels2.mapped("block_ids"))
+        self.assertFalse(rels2.mapped("checklist_ids"))
+        self.assertFalse(rels2.mapped("aprovacao_ids"))
+
+    def test_block_hierarchy_copied(self):
+        qi = self.rel.block_ids.filtered(lambda b: b.title == "Qualificação de Instalação (QI)")
+        self.assertEqual(qi.parent_id.title, "Procedimento de Qualificação")
+        self.assertIn("{{", str(qi.parent_id.body))  # corpo copiado da seção
+
+    def test_bloco_anexo_linked_to_content_block(self):
+        proto = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        self.assertEqual(proto.block_id.block_kind, "protocolo")
+        micro = self.rel.anexo_ids.filtered(lambda a: a.code == "micro")
+        self.assertEqual(micro.block_id.block_kind, "laudo_micro")
+        dados = self.rel.anexo_ids.filtered(lambda a: a.code == "dados")
+        self.assertFalse(dados.block_id)
+
+    def test_default_approvals(self):
+        ap = self.rel.aprovacao_ids
+        self.assertEqual(ap.sorted("sequence").mapped("papel"),
+                         ["elaborador", "emissor", "executor", "cliente"])
+        executor = ap.filtered(lambda a: a.papel == "executor")
+        self.assertEqual(executor.nome_exibicao, "Técnico Teste")
+        self.assertTrue(executor.approved_at)
+        cliente = ap.filtered(lambda a: a.papel == "cliente")
+        self.assertEqual(cliente.partner_id, self.rel.partner_id)
+        self.assertEqual(cliente.nome_exibicao, self.rel.partner_id.name)
+        self.assertEqual(len(cliente.access_token or ""), 32)
+
+    def test_default_approvals_created_via_sudo_for_plain_user(self):
+        """T3 guard: `afr.relatorio.aprovacao.create()` rejeita `approved_at`
+        vindo de um chamador não-`env.su` (Task 3). `_apply_default_aprovacoes()`
+        roda dentro do wrapper de UI `action_generate_relatorios_open()`, que um
+        usuário do grupo Usuário (não Gestor) pode disparar — sem `sudo()` na
+        criação da aprovação do executor, este fluxo estouraria `AccessError`.
+
+        Usa uma OS nova (não `self.os`, cujas aprovações já existem — reaplicar
+        seria pulado pela idempotência e o teste não provaria nada).
+        """
+        user = self.env["res.users"].create({
+            "name": "Usuário RQ P3 Task5",
+            "login": "usuario.rqp3task5.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        so2 = self._apply(do_qi=True)
+        os2 = self._confirm_and_generate_os(so2)
+        employee2 = self.env["hr.employee"].create({"name": "Técnico Teste 2"})
+        self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os2.id,
+            "descricao": "Dia 1",
+            "data_inicio": "2026-09-01 08:00:00",
+            "data_fim": "2026-09-01 17:00:00",
+            "tecnico_ids": [(6, 0, employee2.ids)],
+            "signature_technician_date": "2026-09-01 17:05:00",
+        })
+        os2.with_user(user).action_generate_relatorios_open()
+        rel2 = os2.relatorio_final_ids
+        executor = rel2.aprovacao_ids.filtered(lambda a: a.papel == "executor")
+        self.assertTrue(executor.approved_at)
+        cliente = rel2.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
+        self.assertEqual(len(cliente.sudo().access_token or ""), 32)
+
+    def test_apply_template_is_idempotent(self):
+        counts = (len(self.rel.block_ids), len(self.rel.anexo_ids),
+                  len(self.rel.checklist_ids), len(self.rel.aprovacao_ids))
+        self.rel._apply_template()
+        self.os.action_generate_relatorios_open()
+        self.assertEqual((len(self.rel.block_ids), len(self.rel.anexo_ids),
+                          len(self.rel.checklist_ids), len(self.rel.aprovacao_ids)), counts)
+
+    def test_reload_blocked_outside_draft(self):
+        self.rel.write({"state": "issued"})
+        with self.assertRaises(UserError):
+            self.rel.action_reload_template()
+
+    def test_reload_without_template_raises(self):
+        """Ruling 1.7: template_id vazio levanta UserError ANTES de apagar
+        blocos/anexos já existentes (não pode destruir dados sem template
+        para reaplicar)."""
+        self.rel.template_id = False
+        blocks_before = self.rel.block_ids
+        anexos_before = self.rel.anexo_ids
+        with self.assertRaises(UserError):
+            self.rel.action_reload_template()
+        self.assertEqual(self.rel.block_ids, blocks_before)
+        self.assertEqual(self.rel.anexo_ids, anexos_before)
+
+    def test_reload_discards_block_edits(self):
+        blk = self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        blk.body = "<p>editado</p>"
+        self.rel.action_reload_template()
+        blk = self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        self.assertNotIn("editado", str(blk.body))
+
+    def test_reload_with_another_template_keeps_checklist_and_approvals(self):
+        """Ruling 1.9: recarregar com outro template mantém checklist e
+        aprovações (só blocos/anexos são descartados e reaplicados)."""
+        checklist_before = self.rel.checklist_ids
+        approvals_before = self.rel.aprovacao_ids
+        other = self.env["afr.relatorio.template"].create({
+            "name": "Tpl Outro", "code": "RQT-OUTRO", "sequence": 50,
+        })
+        self.rel.template_id = other
+        self.rel.action_reload_template()
+        self.assertEqual(self.rel.checklist_ids, checklist_before)
+        self.assertEqual(self.rel.aprovacao_ids, approvals_before)
+
+    def test_anexo_numbering_skips_excluded(self):
+        num = {a.code: a.numero for a in self.rel.anexo_ids}
+        self.assertEqual((num["protocolo"], num["dados"], num["graficos"], num["micro"]),
+                         (1, 2, 3, 4))
+        self.rel.anexo_ids.filtered(lambda a: a.code == "dados").included = False
+        self.assertEqual(self.rel._anexo_number("dados"), "")
+        self.assertEqual(self.rel._anexo_number("graficos"), "2")
+        self.assertEqual(self.rel._anexo_number("micro"), "3")
+        self.assertEqual(self.rel._anexo_number("nao_existe"), "")
+
+    def test_block_numbering_ignores_anexo_blocks(self):
+        numbers = self.rel._block_numbering()
+        anexo_blocks = self.rel.block_ids.filtered("anexo_code")
+        self.assertTrue(anexo_blocks)
+        for blk in anexo_blocks:
+            self.assertNotIn(blk.id, numbers)
+        objetivo = self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        self.assertEqual(numbers[objetivo.id], "1")
+        qi = self.rel.block_ids.filtered(lambda b: b.title == "Qualificação de Instalação (QI)")
+        self.assertEqual(numbers[qi.id], "4.1")
+
+    def test_suggest_template_by_category_then_sequence(self):
+        tpl = self.env["afr.relatorio.template"].create({
+            "name": "Tpl Categoria", "code": "RQT-CAT", "sequence": 99,
+            "equipment_category_ids": [(6, 0, self.category.ids)],
+        })
+        self.assertEqual(self.rel._suggest_template(), tpl)
+        tpl.equipment_category_ids = [(5, 0, 0)]
+        lowest = self.env["afr.relatorio.template"].search(
+            [("company_id", "in", [self.rel.company_id.id, False])],
+            order="sequence, id", limit=1)
+        self.assertEqual(self.rel._suggest_template(), lowest)

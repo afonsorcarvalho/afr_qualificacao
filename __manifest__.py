@@ -244,6 +244,8 @@
         "views/relatorio_cycle_views.xml",
         # Relatório Final P2 (16.0.8.1.0) — aba Certificados
         "views/relatorio_certificados_views.xml",
+        # Relatório Final P3 — abas Texto / Anexos / Aprovações
+        "views/relatorio_texto_views.xml",
         # Reports
         "reports/qualificacao_certificate_template.xml",
         "reports/qualificacao_certificate_report.xml",
