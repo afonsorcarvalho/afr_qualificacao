@@ -604,8 +604,8 @@ class TestRelatorioStagedBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon)
         self.blocks, self.anexos = self._standard_layout(self.rel)
         self.Pdf = self.env["afr.relatorio.pdf"]
         # anexo extra: 4 páginas (paisagem, /Rotate 90, retrato, retrato)
-        extra = self._attachment(make_pdf([["X p1"], ["X p2"]], size=(842, 595))
-                                 + b"", "paisagem.pdf", "application/pdf")
+        extra = self._attachment(make_pdf([["X p1"], ["X p2"]], size=(842, 595)),
+                                 "paisagem.pdf", "application/pdf")
         rot = self._attachment(make_pdf([["R p1"], ["R p2"]], rotate=90), "rot.pdf",
                                "application/pdf")
         self.anexos["dados"].attachment_ids = [(4, extra.id), (4, rot.id)]
@@ -658,7 +658,7 @@ class TestRelatorioStagedBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon)
         self.assertTrue(any("página 2 ignorada" in w for w in got_w), got_w)
 
     def test_stamp_pdf_honours_offset_and_total(self):
-        two = rp.make_pdf if False else make_pdf([["a"], ["b"]])
+        two = make_pdf([["a"], ["b"]])
         header = {"title": "T", "page_offset": 5, "page_total": 9,
                   "qr_page_index": 6, "verify_url": "https://x/verify/abc"}
         pages = pdf_pages_text(rp.stamp_pdf(two, header, False))

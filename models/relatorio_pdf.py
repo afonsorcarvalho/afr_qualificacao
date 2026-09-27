@@ -291,7 +291,7 @@ MAX_PASSES = 3
 # Pipeline em etapas (emenda P4): cada fatia cabe no limite de CPU do worker.
 CHUNK_PAGES_PARAM = "afr_qualificacao.relatorio_build_chunk_pages"
 STEP_CPU_PARAM = "afr_qualificacao.relatorio_build_step_cpu"
-DEFAULT_CHUNK_PAGES = 15
+DEFAULT_CHUNK_PAGES = 12  # vetorial pesado: 12 × ~1.4 s < 20 s de CPU
 DEFAULT_STEP_CPU = 20.0
 BODY_PAGE_COST = 0.05  # s de CPU estimados p/ carimbar uma página do corpo
 
