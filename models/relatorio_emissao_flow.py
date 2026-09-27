@@ -400,16 +400,28 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
         self.env["afr.relatorio.aprovacao"].invalidate_model(["approved_at", "ip"])
 
     def _update_client_approval_state(self):
-        """issued → client_approved quando todos os aprovadores do cliente aprovaram."""
+        """issued ↔ client_approved conforme as aprovações do cliente.
+
+        issued → client_approved quando todos os aprovadores do cliente
+        aprovaram; client_approved → issued quando uma aprovação do cliente
+        deixa de valer (troca de contato/papel da linha — fix round 1 do
+        Task 9). Rascunho (revisão aberta) não é tocado.
+        """
         self._rq_lock_for_update()
         for rel in self:
-            clientes = rel.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
-            if rel.state == "issued" and clientes and all(clientes.mapped("approved_at")):
-                rel.sudo().with_context(clean_context(rel.env.context)).write(
-                    {"state": "client_approved"})
-                rel.message_post(body=_(
+            rel_su = rel.sudo().with_context(clean_context(rel.env.context))
+            clientes = rel_su.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
+            all_approved = bool(clientes) and all(clientes.mapped("approved_at"))
+            if rel.state == "issued" and all_approved:
+                rel_su.write({"state": "client_approved"})
+                rel_su.message_post(body=_(
                     "Todos os aprovadores do cliente aprovaram a %s."
                 ) % rel.revision_label)
+            elif rel.state == "client_approved" and not all_approved:
+                rel_su.write({"state": "issued"})
+                rel_su.message_post(body=_(
+                    "Aprovação do cliente da %s deixou de valer (aprovador alterado); "
+                    "o relatório voltou para Emitido.") % rel.revision_label)
 
     # ------------------------------------------------------------------
     # Task 9 — envio do link do portal ao cliente

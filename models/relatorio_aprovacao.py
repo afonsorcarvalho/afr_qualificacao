@@ -227,4 +227,12 @@ class AfrRelatorioAprovacao(models.Model):
             missing._rotate_client_token(clear_approval=False)
         if not self.env.su:
             self._check_client_partner()
+        # Aprovação do cliente zerada/linha que entra ou sai de 'cliente':
+        # o estado issued/client_approved do relatório é recalculado (mesmo
+        # caminho do portal: trava da linha do relatório, sudo + clean_context).
+        if changed or rotate or drop:
+            rels = (changed | rotate | drop).relatorio_id.sudo().filtered(
+                lambda r: r.state in ("issued", "client_approved"))
+            if rels:
+                rels.with_context(clean_context(self.env.context))._update_client_approval_state()
         return result

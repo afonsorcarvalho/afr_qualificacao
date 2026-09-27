@@ -1027,3 +1027,13 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
         self.assertIn("Aprovado por", html)
         self.assertNotIn("/aprovar", html)
         self.assertEqual(_portal_page_values(line, token, "<script>")["message"], None)
+
+    def test_client_partner_change_after_client_approved_reverts_to_issued(self):
+        self._approve_and_emit()
+        self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        self.assertEqual(self.rel.state, "client_approved")
+        old = self.line_cli.access_token
+        self.line_cli.with_user(self.office).write({"partner_id": self._contact().id})
+        self.assertFalse(self.line_cli.approved_at)
+        self.assertNotEqual(self.line_cli.access_token, old)
+        self.assertEqual(self.rel.state, "issued")
