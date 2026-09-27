@@ -3,6 +3,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from odoo.tests import tagged
+from odoo.tools import mute_logger
 
 from ..models import relatorio_rules
 from ..models.relatorio_rules import RULES, run_rules
@@ -138,6 +139,86 @@ class TestRelatorioRulesBloqueia(_RulesMixin, RelatorioTestCommon):
         self._block("<p>Nº {{ relatorio.name }}</p>", title="Objetivo")
         self.assertEqual(self._run("TOKEN_NAO_RESOLVIDO"), [])
 
+    def test_token_nao_resolvido_ignora_capa_e_indice(self):
+        """Fix round 1, achado 1: `reports/relatorio_corpo_templates.xml`
+        (`rq_block`) só chama `doc._render_block_body(block)` para
+        `block_kind not in ('capa', 'indice', 'anexo_separador')` — capa e
+        índice têm sub-template próprio (`rq_block_capa`/`rq_block_indice`)
+        e nunca passam pelo render de `{{ }}`. Um '{{' cru no body de uma
+        capa/índice nunca aparece no PDF; `rendered_blocks()` precisa
+        excluir os dois, senão a regra acusa um bloqueio falso."""
+        self._block("<p>{{ relatorio.name</p>", title="Capa", kind="capa")
+        self._block("<p>{{ relatorio.name</p>", title="Índice", kind="indice")
+        self.assertEqual(self._run("TOKEN_NAO_RESOLVIDO"), [])
+
+    def test_token_nao_resolvido_erro_de_render_isola_e_loga(self):
+        """Fix round 1, achado 2: erro de render de UM bloco não pode
+        deixar o cursor num estado ruim pros blocos seguintes (savepoint
+        por bloco, no mesmo padrão de `run_rules`) nem passar em silêncio
+        (log). Precisa ser um erro de BANCO (divisão por zero), não um
+        `RuntimeError` comum: este último nunca aborta a transação do
+        Postgres, então o teste passaria com ou sem o savepoint por bloco.
+        Com o erro de banco, sem o savepoint a transação fica "aborted" e o
+        render do `late_block` (depois do `boom_block` na ordem de
+        `_body_blocks()`, mesma `sequence`, id maior) também falharia — o
+        que prova que o savepoint recupera o cursor entre um bloco e o
+        seguinte."""
+        ok_block = self._block("<p>Nº {{ relatorio.name }}</p>", title="Ok")
+        boom_block = self._block("<p>Boom</p>", title="Boom")
+        late_block = self._block("<p>{{ relatorio.name</p>", title="Depois do boom")
+        original = type(self.rel)._render_block_body
+
+        def fake_render(rel_self, block):
+            if block.id == boom_block.id:
+                rel_self.env.cr.execute("SELECT 1/0")
+                return ""
+            return original(rel_self, block)
+
+        with patch.object(type(self.rel), "_render_block_body", fake_render), \
+                mute_logger("odoo.sql_db"):
+            with self.assertLogs(relatorio_rules.__name__, level="ERROR") as cm:
+                out = run_rules(self.rel)
+
+        self.assertTrue(any(str(boom_block.id) in msg for msg in cm.output))
+        boom_onde = "Bloco: %s" % relatorio_rules.block_label(boom_block)
+        boom_findings = [
+            f for f in out
+            if f["codigo"] == "TOKEN_NAO_RESOLVIDO" and f["onde"] == boom_onde
+        ]
+        self.assertEqual(len(boom_findings), 1)
+        self.assertIn("division by zero", boom_findings[0]["mensagem"].lower())
+
+        # o savepoint recupera o cursor: o bloco seguinte é avaliado
+        # normalmente (achado de token não resolvido DELE MESMO, não um
+        # "erro ao renderizar" causado pela transação abortada do bloco
+        # anterior).
+        late_onde = "Bloco: %s" % relatorio_rules.block_label(late_block)
+        late_findings = [f for f in out if f["onde"] == late_onde]
+        self.assertEqual(len(late_findings), 1)
+        self.assertIn("Token '{{' não resolvido", late_findings[0]["mensagem"])
+
+        ok_onde = "Bloco: %s" % relatorio_rules.block_label(ok_block)
+        self.assertFalse([f for f in out if f["onde"] == ok_onde])
+        # outras regras do registro seguiram rodando normalmente
+        self.assertTrue(any(f["codigo"] == "CERT_DEPOIS_AUSENTE" for f in out))
+
+    def test_anexo_check_files_memoizado_por_run(self):
+        """Fix round 1, achado 3: ANEXO_VAZIO e ANEXO_ILEGIVEL percorrem o
+        MESMO conjunto de anexos incluídos; sem memoização, cada anexo
+        chamava `_check_files()` duas vezes por `run_rules()`."""
+        self._anexo(code="dados", pdfs=[make_pdf("ok")])
+        Anexo = self.env["afr.relatorio.anexo"]
+        original = type(Anexo)._check_files
+        calls = []
+
+        def counting(self_anexo):
+            calls.append(self_anexo.id)
+            return original(self_anexo)
+
+        with patch.object(type(Anexo), "_check_files", counting):
+            run_rules(self.rel)
+        self.assertEqual(len(calls), 1)
+
     def test_token_nao_resolvido_ignora_bloco_de_anexo_excluido(self):
         """Ruling 1.4/1.6: a regra só percorre `rendered_blocks(rel)` — um
         bloco de conteúdo de anexo (`slot_kind='bloco'`) só entra quando o
@@ -160,7 +241,9 @@ class TestRelatorioRulesBloqueia(_RulesMixin, RelatorioTestCommon):
             raise RuntimeError("falha simulada")
 
         with patch.dict(relatorio_rules.RULES, {"CERT_ANTES_AUSENTE": boom}):
-            out = run_rules(self.rel)
+            with self.assertLogs(relatorio_rules.__name__, level="ERROR") as cm:
+                out = run_rules(self.rel)
+        self.assertTrue(any("CERT_ANTES_AUSENTE" in msg for msg in cm.output))
         broken = [f for f in out if f["codigo"] == "CERT_ANTES_AUSENTE"]
         self.assertEqual(len(broken), 1)
         self.assertEqual(broken[0]["gravidade"], "bloqueia")

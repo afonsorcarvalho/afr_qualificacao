@@ -51,22 +51,38 @@ def _anexo_label(anexo):
     return anexo.title or anexo.code or ("Anexo #%d" % anexo.id)
 
 
+# Kinds cujo `body` nunca passa por `_render_block_body` no template
+# (`reports/relatorio_corpo_templates.xml::rq_block`, div `rq-body`: só
+# renderiza para `block_kind not in ('capa', 'indice', 'anexo_separador')`
+# — capa/índice têm sub-template próprio, `rq_block_capa`/`rq_block_indice`).
+# `anexo_separador` fica fora desta lista porque, apesar do `rq_block`
+# excluir esse kind também, o `rq_anexo` renderiza o separador via
+# `doc._render_block_body(sep)` direto — por isso ele CONTINUA em
+# `rendered_blocks()` (Fix round 1, achado 1).
+_TOKEN_SKIP_KINDS = ("capa", "indice")
+
+
 def rendered_blocks(rel):
     """Blocos que efetivamente aparecem no documento renderizado (Ruling
-    1.4/1.6 — P5 preflight): o corpo principal (`_body_blocks()`) mais, para
-    cada anexo incluído, o separador (`_anexo_separator_block(code)`) e —
-    só quando `slot_kind == 'bloco'` e o bloco vinculado está incluído — o
-    próprio `anexo.block_id`. A condição do `t-if` é copiada literalmente de
-    `reports/relatorio_corpo_templates.xml` (`anexo.slot_kind == 'bloco' and
-    anexo.block_id and anexo.block_id.included`), reforçada por
-    `tests/relatorio_fakes.py::FakeCorpo.render`, para as regras de token não
-    acusarem falso positivo num bloco que nunca é impresso (bloco excluído
-    do corpo, ou vinculado a um anexo excluído/trocado)."""
+    1.4/1.6 — P5 preflight, + Fix round 1 achado 1): o corpo principal
+    (`_body_blocks()`, sem capa/índice — `_TOKEN_SKIP_KINDS`) mais, para
+    cada anexo incluído, o separador (`_anexo_separator_block(code)`,
+    sempre renderizado por `rq_anexo`) e — só quando `slot_kind == 'bloco'`,
+    o bloco vinculado está incluído e não é capa/índice — o próprio
+    `anexo.block_id`. As duas condições (kind do `t-if` de `rq_anexo` e a
+    exclusão de capa/índice do `rq_block`) são copiadas literalmente de
+    `reports/relatorio_corpo_templates.xml`, reforçadas por
+    `tests/relatorio_fakes.py::FakeCorpo.render`, para as regras de token
+    não acusarem falso positivo num bloco que nunca é impresso (bloco
+    excluído do corpo, vinculado a um anexo excluído/trocado, ou capa/índice
+    cujo body nunca é resolvido)."""
     rel.ensure_one()
-    blocks = rel._body_blocks()
+    blocks = rel._body_blocks().filtered(
+        lambda b: b.block_kind not in _TOKEN_SKIP_KINDS)
     for anexo in rel._anexos_included():
         blocks |= rel._anexo_separator_block(anexo.code)
-        if anexo.slot_kind == "bloco" and anexo.block_id and anexo.block_id.included:
+        if (anexo.slot_kind == "bloco" and anexo.block_id and anexo.block_id.included
+                and anexo.block_id.block_kind not in _TOKEN_SKIP_KINDS):
             blocks |= anexo.block_id
     return blocks
 
@@ -175,6 +191,30 @@ def rule_ib_vencido(rel):
     return out
 
 
+_ANEXO_FILES_CACHE_KEY = "_afr_anexo_files_cache"
+
+
+def _anexo_problems(rel, anexo):
+    """`anexo._check_files()`, memoizado dentro de uma única chamada de
+    `run_rules()` (Fix round 1, achado 3): `rule_anexo_vazio` e
+    `rule_anexo_ilegivel` percorrem o MESMO conjunto de anexos incluídos, e
+    sem isso cada anexo tinha `_check_files()` recalculado duas vezes por
+    varredura. O cache vive só no `context` que `run_rules()` cria — um
+    dict NOVO a cada chamada — nunca em cache de módulo nem em outro lugar
+    que sobreviva entre chamadas/transações: uma regra chamada direto (como
+    os testes fazem, sem passar por `run_rules`) não encontra a chave no
+    contexto e recalcula sempre, sem risco de devolver resultado velho de
+    outra transação. Continua uma regra pura de `rel` — o cache é
+    carregado pelo próprio `rel` (via `context`), não por um parâmetro
+    extra na assinatura."""
+    cache = rel.env.context.get(_ANEXO_FILES_CACHE_KEY)
+    if cache is None:
+        return anexo._check_files()
+    if anexo.id not in cache:
+        cache[anexo.id] = anexo._check_files()
+    return cache[anexo.id]
+
+
 def rule_anexo_vazio(rel):
     """P4: `_check_files()` contém PROBLEM_EMPTY ⇔ anexo sem nenhum
     arquivo. Ruling 1.3 (P5 T2): roda em TODO anexo incluído — inclusive
@@ -182,7 +222,7 @@ def rule_anexo_vazio(rel):
     quando o `block_id` está ausente ou o bloco vinculado foi excluído."""
     out = []
     for anexo in rel._anexos_included():
-        if PROBLEM_EMPTY in anexo._check_files():
+        if PROBLEM_EMPTY in _anexo_problems(rel, anexo):
             out.append(finding(
                 "ANEXO_VAZIO", "bloqueia",
                 "Anexo '%s' incluído sem arquivo." % _anexo_label(anexo),
@@ -199,7 +239,7 @@ def rule_anexo_ilegivel(rel):
     incluído, sem pular `slot_kind='bloco'`."""
     out = []
     for anexo in rel._anexos_included():
-        for problema in anexo._check_files():
+        for problema in _anexo_problems(rel, anexo):
             if problema == PROBLEM_EMPTY:
                 continue
             out.append(finding(
@@ -214,13 +254,22 @@ def rule_token_nao_resolvido(rel):
     """Ruling 1.4/1.6 (P5 preflight): só percorre `rendered_blocks(rel)` —
     o corpo principal mais separadores/conteúdo de anexo que de fato entram
     no documento — para não acusar token não resolvido num bloco que nunca
-    é impresso."""
+    é impresso.
+
+    Fix round 1, achado 2: o render de cada bloco roda no seu próprio
+    savepoint — igual ao isolamento por regra de `run_rules` — para que um
+    erro de render de UM bloco não deixe o cursor num estado que quebre o
+    render dos blocos seguintes; a exceção é sempre logada (`id` do bloco e
+    do relatório) antes de virar achado, nunca engolida em silêncio."""
     out = []
     for block in rendered_blocks(rel):
         label = block_label(block)
         try:
-            html = str(rel._render_block_body(block) or "")
+            with rel.env.cr.savepoint():
+                html = str(rel._render_block_body(block) or "")
         except Exception as exc:  # noqa: BLE001 — erro de render é o achado
+            _logger.exception(
+                "Falha ao renderizar o bloco %s do relatório %s", block.id, rel.id)
             out.append(finding(
                 "TOKEN_NAO_RESOLVIDO", "bloqueia",
                 "Erro ao renderizar o bloco: %s" % exc,
@@ -249,7 +298,13 @@ RULES = OrderedDict([
 
 
 def run_rules(rel):
-    """Executa todas as regras do registro. Regra que falha vira bloqueio."""
+    """Executa todas as regras do registro. Regra que falha vira bloqueio.
+
+    Fix round 1, achado 3: injeta um cache NOVO de `_check_files()` por
+    anexo (via `context`) só para esta chamada — `_anexo_problems` usa
+    quando presente, e as regras chamadas direto (sem `run_rules`) não o
+    veem e recalculam sempre."""
+    rel = rel.with_context(**{_ANEXO_FILES_CACHE_KEY: {}})
     out = []
     for code, fn in list(RULES.items()):
         try:
