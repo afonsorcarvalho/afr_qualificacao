@@ -101,7 +101,7 @@
   `afr.relatorio.template.anexo.line` (`template_id`, `sequence`, `code`, `title`, `slot_kind`, `collect_sections`, `cert_roles`, `included_default` Boolean).
 - `afr.relatorio.block` (`relatorio_id`, `sequence`, `block_kind`, `section_id`, `title`, `body`, `included`, `page_break`, `parent_id`, `show_number`, `show_title`, `anexo_code`).
 - `afr.relatorio.anexo` (`relatorio_id`, `sequence`, `included`, `code`, `title`, `slot_kind` Selection `collect_section/instrument_certs/malha_certs/bloco/upload`, `collect_sections`, `cert_roles`, `block_id`, `attachment_ids` M2M `ir.attachment`, `numero` Integer compute).
-- `afr.relatorio.aprovacao` (`relatorio_id`, `sequence`, `papel` Selection `elaborador/emissor/executor/cliente`, `user_id`, `partner_id`, `nome_exibicao`, `registro`, `approved_at` Datetime, `ip` Char, `access_token` Char).
+- `afr.relatorio.aprovacao` (`relatorio_id`, `sequence`, `papel` Selection `elaborador/emissor/executor/cliente`, `user_id`, `partner_id`, `nome_exibicao`, `registro`, `approved_at` Datetime, `ip` Char, `access_token` Char compute não armazenado, só su/Gestor; o token vive em `afr.relatorio.aprovacao.secret` (sem ACL, sudo only)).
 - Em `afr.qualificacao.relatorio`: `template_id`, `block_ids`, `anexo_ids`, `aprovacao_ids`;
   `_apply_template()` (cria blocos, anexos, checklist via `_seed_checklist`, aprovações default: elaborador/emissor vazios, executor dos técnicos dos relatórios diários, cliente = `partner_id`), idempotente;
   `action_reload_template()`; `_block_numbering()` → dict; `_anexo_number(code)` → `str` (`""` se excluído/inexistente);
@@ -124,19 +124,25 @@
 ### P4 produz
 - `afr.relatorio.anexo._resolve_files()` → `list[tuple[bytes, str, str]]` (só arquivos utilizáveis).
 - `afr.relatorio.anexo._check_files()` → `list[str]` (problemas: vazio, PDF ilegível/criptografado, tipo não suportado) — consumido por P5 (`ANEXO_VAZIO`, `ANEXO_ILEGIVEL`).
-- `afr.relatorio.pdf` (AbstractModel, `models/relatorio_pdf.py`): `build(relatorio, watermark=False)` → `bytes`; helpers `_image_to_pdf`, `_find_markers(pdf_bytes)` → `dict[str, int]` (0-based), `_stamp(pdf_bytes, header: dict, watermark: bool)` → `bytes`.
+- `afr.relatorio.pdf` (AbstractModel, `models/relatorio_pdf.py`): `build(relatorio, watermark=False)` → `bytes` (síncrono — testes e fixtures; a UI monta pelo pipeline em etapas `_stage_init`/`_stage_run`, o mesmo código de `_build`); helpers `_image_to_pdf`, `_find_markers(pdf_bytes)` → `dict[str, int]` (0-based), `_stamp(pdf_bytes, header: dict, watermark: bool)` → `bytes`.
 - `afr.relatorio.emissao` (`relatorio_id`, `revision`, `pdf_attachment_id`, `sha256`, `token`, `issued_at`, `issued_by`, `blocks_snapshot` Text/JSON, `scan_snapshot` Text/JSON, `superseded` Boolean); imutável (write/unlink bloqueados fora de sudo interno).
-- Em `afr.qualificacao.relatorio`: `emissao_ids`, `current_emissao_id`, `minuta_attachment_id`, `verify_url` (compute);
-  `action_gerar_minuta()`, `action_aprovar_interno()` (aprova a linha do papel cujo `user_id == env.user`), `action_emitir()`, `action_revisar()`;
+- `afr.relatorio.build.job` (`relatorio_id`, `kind` `minuta/emissao`, `state` `queued/running/done/failed/cancelled`, `requested_by`, `token`, `issued_at`, `scan_snapshot`, `blocks_snapshot`, `progress`, `error`); cron `afr_qualificacao.ir_cron_relatorio_build_job` (`model._cron_process()`); um job ativo por relatório.
+- Em `afr.qualificacao.relatorio`: `emissao_ids`, `current_emissao_id`, `minuta_attachment_id`, `verify_url` (compute), `rq_editorial_seq`, `rq_build_job_id` (+ `rq_build_state/kind/progress/error`);
+  `action_baixar_minuta()`, `action_cancelar_montagem()`, `action_enviar_aprovacao_cliente()` (só Gestor);
+  `action_gerar_minuta()`, `action_aprovar_interno()` (aprova a linha do papel cujo `user_id == env.user`), `action_emitir()`, `action_revisar()`; `action_gerar_minuta()` e `action_emitir()` **enfileiram** e devolvem `display_notification`;
   `_check_emission_gate()` → `list[str]` de impedimentos (P4: aprovações internas elaborador+emissor; P5 estende com `super()`);
   `_scan_snapshot()` → `str` JSON (P4: `"[]"`; P5 sobrescreve);
   `_invalidate_internal_approvals()` chamado em `write()` de campos editoriais quando `state == draft`.
 - **Fatos fixados pelo plano P4:** `action_emitir` levanta `UserError` se o gate falhar;
+  gate e aprovações são síncronos no clique (`UserError` antes de enfileirar); emissão, `state`, `revision`,
+  reset das aprovações do cliente e minuta são gravados só no finalize do job; edição editorial recusada
+  enquanto houver emissão em montagem;
   `action_aprovar_interno` aprova **todas** as linhas pendentes (elaborador/emissor) do usuário;
   itens de `_check_files()` = constante `PROBLEM_EMPTY` ou `"<legenda>: <motivo>"`; anexo `bloco` →
   `_resolve_files()` devolve `[]` (conteúdo já está no corpo); QR carimbado via reportlab;
-  testes mockam `ir.actions.report._render_qweb_pdf` (em modo teste ele devolve HTML).
-- Controllers: `/qualificacao/relatorio/verify/<token>` (público), `/my/relatorio/<int:aprovacao_id>?access_token=` (aprovação cliente).
+  testes mockam `ir.actions.report._render_qweb_pdf` (em modo teste ele devolve HTML); testes que emitem ou
+  geram minuta chamam `tests/relatorio_fakes.py::run_build_jobs(env)` dentro do `FakeCorpo().patch(env)`.
+- Controllers: `/qualificacao/relatorio/verify/<token>` (público), `/my/relatorio/<int:aprovacao_id>?access_token=` (aprovação cliente), `/my/relatorio/<int:aprovacao_id>/pdf?access_token=` (PDF inline), `/my/relatorio/<int:aprovacao_id>/aprovar` (POST com CSRF).
 
 ### P5 produz
 - `afr.relatorio.achado` (`relatorio_id`, `origem` `regra/ia`, `codigo`, `gravidade` `bloqueia/alerta/info`, `mensagem`, `onde`, `decisao` `pendente/procede/descartado`, `motivo`, `decidido_por`, `decidido_em`).

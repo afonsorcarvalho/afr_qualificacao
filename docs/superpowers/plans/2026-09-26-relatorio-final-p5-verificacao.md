@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Odoo **16.0**. Módulo `afr_qualificacao` é **git submodule** em `addons/afr_qualificacao/`. Trabalhar na branch `feat/relatorio-final` **dentro do submodule** (já existe, criada em P1).
-- P1–P4 já estão implementados e verdes antes de começar P5. Os únicos pontos de apoio são os nomes do contrato do índice: `_afr_certificate_selection()`, `afr.relatorio.anexo._resolve_files()` / `_check_files()`, `_render_block_body(block)`, `_anexo_number(code)`, `_check_emission_gate()`, `_scan_snapshot()`, `action_emitir()`, `action_aprovar_interno()`, `PROBLEM_EMPTY` (`models/relatorio_anexo_files.py`), `tests/relatorio_fakes.py::FakeCorpo`, `cycle_ids`, `janela_inicio/fim`, `sensor_pos_ids`, `leitura_ib_ids`, `indicador_ids`, `checklist_ids`, `aprovacao_ids`, `anexo_ids`, `block_ids`.
+- P1–P4 já estão implementados e verdes antes de começar P5. Os únicos pontos de apoio são os nomes do contrato do índice: `_afr_certificate_selection()`, `afr.relatorio.anexo._resolve_files()` / `_check_files()`, `_render_block_body(block)`, `_anexo_number(code)`, `_check_emission_gate()`, `_scan_snapshot()`, `action_emitir()`, `action_aprovar_interno()`, `PROBLEM_EMPTY` (`models/relatorio_anexo_files.py`), `tests/relatorio_fakes.py::FakeCorpo` e `run_build_jobs`, `cycle_ids`, `janela_inicio/fim`, `sensor_pos_ids`, `leitura_ib_ids`, `indicador_ids`, `checklist_ids`, `aprovacao_ids`, `anexo_ids`, `block_ids`.
 - **Fatos de P4 (plano `2026-09-26-relatorio-final-p4-montagem-emissao.md`, confirmados — não redescobrir):**
   - Form do relatório: xmlid `afr_qualificacao.view_afr_qualificacao_relatorio_form`; P4 adiciona `page_revisoes` no fim do notebook e os botões do header antes do statusbar.
   - `action_emitir()` falha no gate com **`UserError`** `"Não é possível emitir o relatório <name>:\n- <problema>…"`; é manager-only via `_check_manager_only` (passa com `env.su`).
@@ -21,7 +21,7 @@
   - `afr.relatorio.anexo._check_files()` → itens `PROBLEM_EMPTY` (constante em `models/relatorio_anexo_files.py`) **ou** `"<legenda>: <motivo>"`. `ANEXO_VAZIO` ⇔ `PROBLEM_EMPTY` na lista; `ANEXO_ILEGIVEL` ⇔ qualquer outro item (anexo com todos os arquivos ilegíveis → ILEGIVEL, não VAZIO).
   - `slot_kind='bloco'` → `_resolve_files()` devolve `[]` por design (conteúdo sai no corpo): as regras **pulam** anexos `bloco`.
   - `_invalidate_internal_approvals()` dispara em `write` do relatório nos campos `equipment_id, template_id, data_inicio_ensaios, data_fim_ensaios, amb_temperatura, amb_umidade, tolerancia_acima, criterio_f0_fator, block_ids, anexo_ids, checklist_ids, indicador_ids, leitura_ib_ids`, em create/write/unlink de block/anexo/checklist/indicador/leitura.ib/sensor.pos e em write de `janela_inicio/janela_fim/sensor_pos_ids` do ciclo; **não** em `achado_ids` nem `minuta_attachment_id`. Nas fixtures: montar os dados **antes** de aprovar.
-  - Testes que emitem fazem patch de `ir.actions.report._render_qweb_pdf` com `tests/relatorio_fakes.py::FakeCorpo` (`with FakeCorpo().patch(self.env): ...`), como os testes de P4 — em modo teste o `_render_qweb_pdf` real devolve HTML. **Não** mockar `afr.relatorio.pdf.build`.
+  - Testes que emitem fazem patch de `ir.actions.report._render_qweb_pdf` com `tests/relatorio_fakes.py::FakeCorpo` (`with FakeCorpo().patch(self.env): ...`), como os testes de P4 — em modo teste o `_render_qweb_pdf` real devolve HTML — e chamam `run_build_jobs(self.env)` **dentro** do mesmo `with`: `action_emitir()` só valida o gate e enfileira; a emissão (estado `issued`, `current_emissao_id`, `scan_snapshot`) é gravada pelo job. **Não** mockar `afr.relatorio.pdf.build`.
   - `_apply_template()` não roda no create: a fixture de P5 não o chama (parte de relatório sem blocos/anexos/aprovações e cria só o que cada teste exercita).
 - Commits sempre de dentro de `addons/afr_qualificacao/`, via agente `git-commit-push` (haiku), com paths relativos ao submodule. **Não** fazer push nem bump do pointer no monorepo sem o usuário pedir. Mensagens em inglês, Conventional Commits, terminando com `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Testes do orquestrador rodam pelo agente `test-runner` (sonnet). Comando base: `docker exec odoo_engenapp-web-1 /entrypoint.sh -d odoo_ecm_test -u afr_qualificacao --test-enable --test-tags /afr_qualificacao:<Classe> --stop-after-init --no-http`. `-u` é obrigatório (P5 cria model e XML); `--no-http` também. Falhas pré-existentes conhecidas, que devem ser ignoradas: `TestResourcePlan.test_fleet_single_logger_two_temp_standards`, `TestProposalReport.test_render_equipment_scope_omits_cronograma_footer`, `TestProposalReport.test_render_schedule_block`.
@@ -2209,22 +2209,25 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 - Modify: `tests/test_relatorio_gate.py` (nova classe `TestGateEmissao`)
 
 **Interfaces:**
-- Consumes (P4): `super()._check_emission_gate() -> list[str]` (aprovações internas); `action_emitir()`, que chama o gate (UserError se houver problema), monta o PDF e grava `emissao.scan_snapshot = self._scan_snapshot()`; `current_emissao_id`; `state`; `tests/relatorio_fakes.py::FakeCorpo`.
+- Consumes (P4): `super()._check_emission_gate() -> list[str]` (aprovações internas); `action_emitir()`, que roda o gate síncrono no clique (UserError se houver problema) e enfileira (`afr.relatorio.build.job`, com `scan_snapshot = self._scan_snapshot()` congelado no clique); a emissão é gravada no finalize do job (testes: `run_build_jobs` dentro do `FakeCorpo().patch(env)`); `current_emissao_id`; `state`; `tests/relatorio_fakes.py::FakeCorpo`.
 - Produces:
   - `_check_emission_gate() -> list[str]`: `super()` + bloqueios pendentes (exceto `APROVACAO_INTERNA`) + **todo** alerta pendente, de regra ou de IA. `info` é ignorado. Antes de montar a lista, roda `_run_verificacao()` com `afr_emission_check` e `afr_skip_ai`.
   - `_scan_snapshot() -> str`: JSON (lista ordenada por id) com `origem, codigo, gravidade, mensagem, onde, decisao, motivo, decidido_por, decidido_em`.
 
 - [ ] **Step 1: Escrever os testes**
 
-Acrescente a `tests/test_relatorio_gate.py` (imports no topo: `import json` e `from .relatorio_fakes import FakeCorpo`):
+Acrescente a `tests/test_relatorio_gate.py` (imports no topo: `import json` e `from .relatorio_fakes import FakeCorpo, run_build_jobs`):
 ```python
 @tagged("post_install", "-at_install", "afr_qualificacao")
 class TestGateEmissao(RelatorioTestCommon):
 
     def _emit(self):
-        # mesmo mock dos testes de P4: _render_qweb_pdf devolve HTML em modo teste
+        # mesmo mock dos testes de P4: _render_qweb_pdf devolve HTML em modo teste;
+        # action_emitir só enfileira — o job roda em linha aqui (emenda P4)
         with FakeCorpo().patch(self.env):
-            return self.rel.action_emitir()
+            result = self.rel.action_emitir()
+            run_build_jobs(self.env)
+        return result
 
     def test_gate_bloqueia_com_bloqueio_pendente(self):
         self._approve_internal()
@@ -2655,4 +2658,4 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 **Tipos e nomes:** `SCAN_CTX`/`afr_scan_internal` (Task 1) são usados em `_mk_achado` e `_run_verificacao`. `EMISSION_CTX` (Task 2) é usado nas Tasks 3 e 6. `AI_SKIP_CTX`/`afr_skip_ai` (Task 4) é usado nos testes das Tasks 4 e 6. `cycle_counts` (Task 3) é usado na Task 5. `_ai_findings` é trocado na Task 5. `RULES`/`run_rules`/`finding` batem entre as Tasks 2 e 3.
 
-**Fatos de P4 incorporados** (ver Global Constraints): xmlid do form; `UserError` em `action_emitir`; `action_aprovar_interno` aprova tudo numa chamada; classificação `PROBLEM_EMPTY` → VAZIO / demais → ILEGIVEL; `bloco` sem arquivo por design; campos que zeram aprovações (achado_ids fora — fixado por `test_decisao_pelo_form_nao_zera_aprovacoes`); mock `FakeCorpo` em `_render_qweb_pdf`; `_apply_template()` explícito (não usado nas fixtures de P5).
+**Fatos de P4 incorporados** (ver Global Constraints): xmlid do form; `UserError` em `action_emitir`; `action_aprovar_interno` aprova tudo numa chamada; classificação `PROBLEM_EMPTY` → VAZIO / demais → ILEGIVEL; `bloco` sem arquivo por design; campos que zeram aprovações (achado_ids fora — fixado por `test_decisao_pelo_form_nao_zera_aprovacoes`); mock `FakeCorpo` em `_render_qweb_pdf`; emissão enfileirada (gate síncrono; `run_build_jobs` nos testes); `_apply_template()` explícito (não usado nas fixtures de P5).

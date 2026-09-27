@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Emenda "Fila + etapas" (2026-09-26):** a montagem do PDF roda num job (`afr.relatorio.build.job` + cron, pipeline `_stage_init`/`_stage_run`); ver `.superpowers/sdd/2026-09-26-relatorio-final-p4-montagem-emissao/amendment-async-build.md` (fora do versionamento). O **Task 6 não foi executado** (o spike do Task 1 passou) e o **Task 8 foi substituído pelos Tasks 8A/8B/8R** da emenda; o texto original desses tasks fica como histórico.
+
 **Goal:** Transformar o `afr.qualificacao.relatorio` (P1–P3) em um PDF único e numerado (corpo QWeb + anexos intercalados + carimbo "Página X de Y" + QR), com minuta com marca d'água, emissão imutável com SHA-256 e token, revisão Rev.N+1, página pública de verificação e aprovação do cliente pelo portal.
 
 **Architecture:** Um AbstractModel `afr.relatorio.pdf` concentra a montagem: renderiza o corpo (`action_report_relatorio_corpo` de P3) com marcadores invisíveis, localiza as páginas com pdfminer, intercala as páginas de `afr.relatorio.anexo._resolve_files()` normalizadas para a área útil A4, re-renderiza o corpo com `page_map` para o índice e carimba cabeçalho/rodapé/QR/marca d'água com reportlab. A emissão (`afr.relatorio.emissao`) é imutável como os campos `_CERTIFICATE_FIELDS` de `afr.qualificacao`; edição editorial em `draft` zera aprovações internas e é bloqueada fora de `draft`. Controllers públicos seguem o padrão de `controllers/main.py` (lógica em funções de módulo testáveis sem HTTP).
@@ -45,8 +47,8 @@ Consumido exatamente como no índice: `afr.qualificacao.relatorio` (`name`, `os_
 ## P4 produz (nomes vinculantes para P5)
 
 - `afr.relatorio.anexo._resolve_files()` → `list[tuple[bytes, str, str]]` (só arquivos utilizáveis; `slot_kind='bloco'` → `[]`, o conteúdo está no corpo); `afr.relatorio.anexo._check_files()` → `list[str]`, cada item é `PROBLEM_EMPTY` (`"Nenhum arquivo encontrado para este anexo."`) **ou** `"<legenda do arquivo>: <motivo>"` (motivos: `arquivo vazio`, `PDF protegido por senha`, `PDF com criptografia não suportada`, `PDF sem páginas`, `PDF ilegível (<erro>)`, `imagem ilegível (<erro>)`, `tipo de arquivo não suportado (<mimetype>)`). Sugestão para P5: `problem == PROBLEM_EMPTY` → `ANEXO_VAZIO`, qualquer outro → `ANEXO_ILEGIVEL` (o plano P5 classifica "vazio" por `_resolve_files()` vazio; as duas regras só divergem quando **todos** os arquivos de um anexo são ilegíveis — P5 diria VAZIO, esta diria ILEGÍVEL; qualquer uma bloqueia a emissão).
-- `afr.relatorio.pdf`: `build(relatorio, watermark=False)` → `bytes` (**ponto de entrada do PDF usado por `action_emitir`; é o que se mocka nos testes de P5**); `_build(relatorio, watermark=False)` → `tuple[bytes, list[str]]` (avisos: arquivo ignorado, marcador de anexo não achado, índice não estabilizou; usado pela minuta); `_image_to_pdf(content, caption)` → `bytes`; `_find_markers(pdf_bytes)` → `dict[str, int]` (0-based); `_stamp(pdf_bytes, header, watermark)` → `bytes`; `_render_report(relatorio, data)` → `bytes` (único chamador de `ir.actions.report._render_qweb_pdf`, o que os testes de P4 mockam); `_render_body_and_markers(relatorio, page_map)` → `tuple[bytes, dict[str, int]]`.
-- `afr.relatorio.emissao` (imutável). Em `afr.qualificacao.relatorio`: `emissao_ids`, `current_emissao_id`, `minuta_attachment_id`, `verify_url`; `action_gerar_minuta()`, `action_aprovar_interno()` (aprova **todas** as linhas elaborador/emissor pendentes cujo `user_id == env.user`, numa chamada), `action_emitir()` (gate falho ⇒ **`UserError`** "Não é possível emitir o relatório <name>:\n- …"), `action_revisar()`, `action_enviar_aprovacao_cliente()`; `_check_emission_gate()` → `list[str]`; `_scan_snapshot()` → `str` (`"[]"`); `_invalidate_internal_approvals()` (disparado por `write` do relatório nos campos `equipment_id, template_id, data_inicio_ensaios, data_fim_ensaios, amb_temperatura, amb_umidade, tolerancia_acima, criterio_f0_fator, block_ids, anexo_ids, checklist_ids, indicador_ids, leitura_ib_ids` e por create/write/unlink de `afr.relatorio.block/anexo/checklist/indicador/leitura.ib/sensor.pos` e write de `afr.qualificacao.cycle.janela_inicio/janela_fim/sensor_pos_ids`; **não** por `achado_ids`, `minuta_attachment_id`, chatter nem aprovações); `_check_editable()`; `_update_client_approval_state()`.
+- `afr.relatorio.pdf`: `build(relatorio, watermark=False)` → `bytes` (entrada síncrona — testes e fixtures; `action_emitir` usa o job, que roda o mesmo pipeline em etapas; P5 usa `FakeCorpo` + `run_build_jobs`); `_build(relatorio, watermark=False)` → `tuple[bytes, list[str]]` (avisos: arquivo ignorado, marcador de anexo não achado, índice não estabilizou; usado pela minuta); `_image_to_pdf(content, caption)` → `bytes`; `_find_markers(pdf_bytes)` → `dict[str, int]` (0-based); `_stamp(pdf_bytes, header, watermark)` → `bytes`; `_render_report(relatorio, data)` → `bytes` (único chamador de `ir.actions.report._render_qweb_pdf`, o que os testes de P4 mockam); `_render_body_and_markers(relatorio, page_map)` → `tuple[bytes, dict[str, int]]`.
+- `afr.relatorio.emissao` (imutável). Em `afr.qualificacao.relatorio`: `emissao_ids`, `current_emissao_id`, `minuta_attachment_id`, `verify_url`; `action_gerar_minuta()` (enfileira; devolve `display_notification`), `action_aprovar_interno()` (aprova **todas** as linhas elaborador/emissor pendentes cujo `user_id == env.user`, numa chamada), `action_emitir()` (gate síncrono no clique; falho ⇒ **`UserError`** "Não é possível emitir o relatório <name>:\n- …"; senão enfileira e devolve `display_notification`), `action_revisar()`, `action_enviar_aprovacao_cliente()`; `_check_emission_gate()` → `list[str]`; `_scan_snapshot()` → `str` (`"[]"`); `_invalidate_internal_approvals()` (disparado por `write` do relatório nos campos `equipment_id, template_id, data_inicio_ensaios, data_fim_ensaios, amb_temperatura, amb_umidade, tolerancia_acima, criterio_f0_fator, block_ids, anexo_ids, checklist_ids, indicador_ids, leitura_ib_ids` e por create/write/unlink de `afr.relatorio.block/anexo/checklist/indicador/leitura.ib/sensor.pos` e write de `afr.qualificacao.cycle.janela_inicio/janela_fim/sensor_pos_ids`; **não** por `achado_ids`, `minuta_attachment_id`, chatter nem aprovações); `_check_editable()`; `_update_client_approval_state()`.
 - `afr.relatorio.aprovacao._portal_url()` → `str`; `afr.relatorio.aprovacao._portal_approve(nome, ip)` → `bool`.
 - Controllers `/qualificacao/relatorio/verify/<token>` e `/my/relatorio/<int:aprovacao_id>` (+ `/pdf`, `/aprovar`); funções de módulo `controllers/relatorio.py::_relatorio_verify_values(env, token)` e `_portal_aprovacao(env, aprovacao_id, access_token)`.
 - Página `name="page_revisoes"` no form do relatório; botões no `//header`.
@@ -2072,7 +2074,7 @@ git commit -m "feat(relatorio): assemble body, annexes, index pass and stamp"
 
 ---
 
-### Task 6 (EXECUTAR SÓ SE O SPIKE DO TASK 1 FALHAR): fallback — corpo renderizado em pedaços
+### Task 6 (EXECUTAR SÓ SE O SPIKE DO TASK 1 FALHAR): fallback — corpo renderizado em pedaços — **NÃO EXECUTADO** (spike passou)
 
 Se os marcadores não forem confiáveis no template real, o corpo passa a ser renderizado em pedaços, um PDF por pedaço, e a posição de cada bloco/separador vem da **contagem direta de páginas**. O resto do pipeline (Task 5) não muda: só `_render_body_and_markers` é trocado, devolvendo o mesmo `(bytes, markers)`.
 
@@ -2695,6 +2697,8 @@ git commit -m "feat(relatorio): internal approvals, emission gate and edit lock"
 ---
 
 ### Task 8: Minuta, Emitir, Revisar, `proxima_qualificacao`
+
+> **SUBSTITUÍDO** pelos Tasks 8A/8B/8R da emenda (fila + etapas): minuta e emissão enfileiram; emissão, estado, revisão, reset do cliente e minuta são gravados no finalize do job. O texto abaixo é o plano original.
 
 **Files:**
 - Modify: `models/relatorio_emissao_flow.py`
@@ -3734,12 +3738,10 @@ agent-browser open "<verify_url copiada da aba Revisões>"   # página pública:
 
 Registrar no relatório da task: tempo de montagem da minuta com o maior relatório de exemplo disponível (risco §12 "Tamanho") e se o QR do PDF abre a página de verificação.
 
-**Gate de desempenho (obrigatório antes de fechar P4):** montar uma minuta com ~150 páginas de anexo
-sintéticas (ex.: 6 anexos × 25 páginas geradas com reportlab e anexadas como `upload`) e medir o tempo
-de `action_gerar_minuta()` (`time.monotonic()` no shell Odoo). Comparar com o `limit_time_real` do
-deploy de produção (repo `odoo-qualificacao-deploy`, `conf/odoo.conf`, `workers=4`; se não definido, o
-default do Odoo é 120 s). Se passar de **metade** do limite, **parar e reportar ao usuário** antes de
-seguir: a montagem terá de ir para fila (`queue_job`), item hoje fora de escopo.
+**Gate de desempenho (obrigatório antes de fechar P4; substituído pela §8 da emenda):** minuta e
+emissão de um relatório com ~150 páginas de anexo sintéticas montadas pelo job, medindo cada invocação
+de `_cron_process()` no shell Odoo: toda invocação < 30 s de CPU e < 60 s de parede, e o job termina
+`done`.
 
 - [ ] **Step 8: Commit**
 
@@ -3764,4 +3766,4 @@ git commit -m "feat(relatorio): emission buttons, revisions tab and bump 16.0.8.
 
 **Nomes/assinaturas conferidos entre tasks:** `open_pdf`, `file_problem`, `fit_page_to_usable`, `image_to_pdf`, `stamp_pdf`, `find_markers`, `compute_layout`, `MAX_PASSES`, `REPORT_CORPO` (relatorio_pdf); `PROBLEM_EMPTY` (relatorio_anexo_files); `INTERNAL_CTX` (relatorio_emissao); `SKIP_CTX` (relatorio_editorial); `INTERNAL_ROLES`, `ROLE_LABELS`, `USER_GROUP` (relatorio_emissao_flow); `FakeCorpo.patch(env)`/`.calls[i]["data"|"context"|"report_ref"|"res_ids"]`, `RelatorioEmissaoBase._approve/_emit/_approve_and_emit/_revise_and_emit`.
 
-**Contrato do índice:** todos os nomes de "P4 produz" existem com as assinaturas do índice; adições (`_build`, `_render_report`, `_render_body_and_markers`, `_file_anexos`, `_blocks_snapshot`, `_reset_client_approvals`, `_update_client_approval_state`, `_check_editable`, `action_enviar_aprovacao_cliente`, `portal_url`, `_portal_approve`) não conflitam com P5. P5 mocka `afr.relatorio.pdf.build` — é exatamente o que `action_emitir` chama.
+**Contrato do índice:** todos os nomes de "P4 produz" existem com as assinaturas do índice; adições (`_build`, `_render_report`, `_render_body_and_markers`, `_file_anexos`, `_blocks_snapshot`, `_reset_client_approvals`, `_update_client_approval_state`, `_check_editable`, `action_enviar_aprovacao_cliente`, `portal_url`, `_portal_approve`) não conflitam com P5. P5 usa `FakeCorpo().patch(env)` + `run_build_jobs(env)` (emenda): `action_emitir` enfileira e o job monta pelo mesmo pipeline de `build`.
