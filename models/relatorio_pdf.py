@@ -10,6 +10,7 @@ do sistema; `ImageOps.exif_transpose` existe em ambas).
 import base64
 import io
 import re
+import time
 
 from PIL import Image, ImageOps
 from PyPDF2.pdf import PageObject
@@ -261,23 +262,97 @@ def stamp_pdf(content, header, watermark):
 
     `header`: dict com `logo` (bytes|None), `title`, `equipment`, `revision`,
     `date`, `footer`, `verify_url` (str|False), `qr_page_index` (int|None,
-    0-based: página que recebe o QR).
+    0-based no documento final: página que recebe o QR) e, opcionais,
+    `page_offset` (int, 0-based: índice final da 1ª página de `content`) e
+    `page_total` (int: nº de páginas do documento final) — o pipeline em
+    etapas carimba o documento por faixas. Sem eles, `content` é o
+    documento inteiro.
     """
     reader = PdfFileReader(io.BytesIO(content), strict=False)
-    total = reader.getNumPages()
+    count = reader.getNumPages()
+    # Pipeline em etapas: o conteúdo pode ser só um PEDAÇO do documento.
+    offset = int(header.get("page_offset") or 0)
+    total = int(header.get("page_total") or (offset + count))
     qr_index = header.get("qr_page_index")
     writer = PdfFileWriter()
-    for idx in range(total):
+    for idx in range(count):
+        number = offset + idx
         page = reader.getPage(idx)
         page.mergePage(_overlay_page(
-            header, idx + 1, total, watermark,
-            with_qr=bool(header.get("verify_url")) and qr_index == idx,
+            header, number + 1, total, watermark,
+            with_qr=bool(header.get("verify_url")) and qr_index == number,
         ))
         writer.addPage(page)
     return pdf_bytes(writer)
 
 
 MAX_PASSES = 3
+
+# Pipeline em etapas (emenda P4): cada fatia cabe no limite de CPU do worker.
+CHUNK_PAGES_PARAM = "afr_qualificacao.relatorio_build_chunk_pages"
+STEP_CPU_PARAM = "afr_qualificacao.relatorio_build_step_cpu"
+DEFAULT_CHUNK_PAGES = 15
+DEFAULT_STEP_CPU = 20.0
+BODY_PAGE_COST = 0.05  # s de CPU estimados p/ carimbar uma página do corpo
+
+
+class Budget:
+    """Limite de UMA unidade: nº de páginas e prazo absoluto de CPU
+    (`time.process_time()`). Toda unidade processa ≥ 1 página. `retry`
+    (1 = 1ª tentativa) divide `max_pages` por 2^(retry-1): a fatia que
+    derrubou o worker volta menor."""
+
+    def __init__(self, max_pages=None, cpu_deadline=None, retry=1):
+        if max_pages and retry > 1:
+            max_pages = max(1, max_pages >> (retry - 1))
+        self.max_pages = max_pages
+        self.cpu_deadline = cpu_deadline
+
+    @property
+    def unlimited(self):
+        return not self.max_pages and self.cpu_deadline is None
+
+    def exhausted(self, done):
+        if done < 1:
+            return False
+        if self.max_pages and done >= self.max_pages:
+            return True
+        return self.cpu_deadline is not None and time.process_time() >= self.cpu_deadline
+
+
+UNLIMITED = Budget()
+
+
+class MemoryStore:
+    """Store de blobs do `_build` síncrono (o job usa ir.attachment)."""
+
+    def __init__(self):
+        self._blobs = {}
+
+    def put(self, name, data):
+        key = "m%d" % (len(self._blobs) + 1)
+        self._blobs[key] = data
+        return key
+
+    def get(self, key):
+        return self._blobs[key]
+
+
+def stage_progress(st):
+    """0–99 para a UI (100 = finalize do job)."""
+    phase = st.get("phase")
+    if phase == "sources":
+        return 2
+    if phase == "fit":
+        done = sum(a["count"] for a in st["annexes"])
+        return 5 + int(40 * min(done / max(st.get("annex_pages") or 1, 1), 1.0))
+    if phase == "body":
+        return 46
+    if phase == "stamp":
+        return 50 + int(45 * st["stamp"] / max(st["total"], 1))
+    if phase == "concat":
+        return 96
+    return 99
 
 
 def compute_layout(markers, body_count, annex_counts, codes):
@@ -367,56 +442,6 @@ class AfrRelatorioPdf(models.AbstractModel):
         return self._build(relatorio, watermark=watermark)[0]
 
     @api.model
-    def _build(self, relatorio, watermark=False):
-        """Corpo + anexos intercalados + índice + carimbo.
-
-        Sem efeitos colaterais no banco (nenhum write): quem emite chama
-        isto ANTES de gravar o estado da emissão — a 1ª renderização sem
-        assets em cache faz `cr.commit()` (`commit_assetsbundle` do core).
-
-        :return: `(pdf_bytes, avisos)` — avisos são textos pt-BR sobre
-            arquivos ignorados, anexos sem separador e índice que não
-            estabilizou (P5 pode transformá-los em achados).
-        """
-        relatorio.ensure_one()
-        warnings = []
-        codes, annex_data, annex_counts = [], {}, {}
-        for anexo in self._file_anexos(relatorio):
-            code = anexo.code or "anexo-%d" % anexo.id
-            data, count = self._annex_pdf(anexo, warnings)
-            codes.append(code)
-            annex_data[code] = data
-            annex_counts[code] = count
-
-        page_map = {}
-        for attempt in range(1, MAX_PASSES + 1):
-            body, markers = self._render_body_and_markers(relatorio, page_map)
-            body_count = PdfFileReader(io.BytesIO(body), strict=False).getNumPages()
-            layout = compute_layout(markers, body_count, annex_counts, codes)
-            if layout["page_map"] == page_map:
-                break
-            if attempt == MAX_PASSES:
-                warnings.append(_(
-                    "A numeração do índice não estabilizou após %d renderizações; "
-                    "confira o índice."
-                ) % MAX_PASSES)
-                break
-            page_map = layout["page_map"]
-
-        for code in layout["trailing"]:
-            if annex_counts.get(code):
-                warnings.append(_(
-                    "Anexo '%s': marcador do separador não encontrado no corpo; "
-                    "páginas incluídas no fim do documento."
-                ) % code)
-        merged = self._assemble(body, body_count, layout, annex_data)
-        header = self._header(
-            relatorio, watermark,
-            qr_page_index=self._qr_page_index(relatorio, markers, layout),
-        )
-        return self._stamp(merged, header, watermark), warnings
-
-    @api.model
     def _body_render_data(self, relatorio, page_map):
         """`data` do report (fato fixado P3 #1): marcadores + page_map."""
         return {"with_markers": True, "page_map": dict(page_map)}
@@ -439,71 +464,228 @@ class AfrRelatorioPdf(models.AbstractModel):
         """
         return relatorio._anexos_included().filtered(lambda a: a.slot_kind != "bloco")
 
+    # ------------------------------------------------------------------
+    # Pipeline em etapas: sources → fit → body → stamp → concat
+    # ------------------------------------------------------------------
     @api.model
-    def _annex_pdf(self, anexo, warnings):
-        """`(pdf_bytes, nº de páginas)` do anexo, páginas prontas para carimbo."""
+    def _build(self, relatorio, watermark=False):
+        """Corpo + anexos + índice + carimbo, síncrono: as MESMAS fases do job
+        (`afr.relatorio.build.job`), em memória e sem limite. Sem writes no
+        banco. :return: `(pdf_bytes, avisos)`."""
+        relatorio.ensure_one()
+        st, store = self._stage_init(watermark), MemoryStore()
+        while st["phase"] != "done":
+            self._stage_run(relatorio, st, store, UNLIMITED)
+        return store.get(st["final_blob"]), st["warnings"]
+
+    @api.model
+    def _stage_init(self, watermark):
+        return {
+            "phase": "sources", "watermark": bool(watermark), "warnings": [],
+            "annexes": [], "annex_pages": 0, "fit": [0, 0, 0], "page_cost": {},
+            "final_pages": [], "total": 0, "qr_page_index": None,
+            "stamp": 0, "stamped": [], "final_blob": None,
+        }
+
+    @api.model
+    def _stage_run(self, relatorio, st, store, budget):
+        """Executa UMA unidade da fase atual; avança `st["phase"]` ao concluir."""
+        relatorio.ensure_one()
+        handler = {
+            "sources": self._stage_sources, "fit": self._stage_fit,
+            "body": self._stage_body, "stamp": self._stage_stamp,
+            "concat": self._stage_concat,
+        }.get(st["phase"])
+        if handler is None:
+            raise UserError(_("Etapa de montagem inválida: %s") % st["phase"])
+        handler(relatorio, st, store, budget)
+
+    @api.model
+    def _stage_sources(self, relatorio, st, store, budget):
+        """Arquivos utilizáveis de cada anexo → store. Tudo é RESOLVIDO antes
+        do 1º `store.put`: `_raw_files()` pode renderizar o PDF do engc e o
+        core pode dar `cr.commit()` (commit_assetsbundle) nesse render."""
         # Import tardio: relatorio_anexo_files importa este módulo.
         from .relatorio_anexo_files import PROBLEM_NO_ACCESS
 
-        label = _("Anexo %s (%s)") % (anexo.numero or "?", anexo.title or anexo.code or "")
-        raw = anexo._raw_files()
-        if not raw:
-            warnings.append(_("%s: nenhum arquivo — só o separador foi incluído.") % label)
-            return b"", 0
-        writer = PdfFileWriter()
-        keep_alive = []  # PyPDF2 lê os streams de forma preguiçosa até o write
-        for content, mimetype, caption in raw:
-            # `None` = sem permissão de leitura (T3): nunca entra no PDF.
-            problem = (PROBLEM_NO_ACCESS if content is None
-                       else file_problem(content, mimetype))
-            if problem:
-                warnings.append(_("%s: '%s' ignorado — %s.") % (label, caption, problem))
-                continue
-            if guess_mimetype(content, default=mimetype or "") == "application/pdf":
+        resolved = []
+        for anexo in self._file_anexos(relatorio):
+            label = _("Anexo %s (%s)") % (anexo.numero or "?", anexo.title or anexo.code or "")
+            resolved.append((anexo.code or "anexo-%d" % anexo.id, label, anexo._raw_files()))
+        annexes, total_pages = [], 0
+        for code, label, raw in resolved:
+            entry = {"code": code, "label": label, "files": [], "chunks": [], "count": 0}
+            if not raw:
+                st["warnings"].append(_("%s: nenhum arquivo — só o separador foi incluído.") % label)
+            for content, mimetype, caption in raw:
+                # `None` = sem permissão de leitura (T3): nunca entra no PDF.
+                problem = (PROBLEM_NO_ACCESS if content is None
+                           else file_problem(content, mimetype))
+                if problem:
+                    st["warnings"].append(_("%s: '%s' ignorado — %s.") % (label, caption, problem))
+                    continue
+                is_pdf = guess_mimetype(content, default=mimetype or "") == "application/pdf"
+                pages = open_pdf(content).getNumPages() if is_pdf else 1
+                total_pages += pages
+                entry["files"].append({"kind": "pdf" if is_pdf else "image",
+                                       "caption": caption, "pages": pages, "_content": content})
+            annexes.append(entry)
+        for entry in annexes:  # writes só agora, depois de toda renderização
+            for item in entry["files"]:
+                item["blob"] = store.put("src", item.pop("_content"))
+        st.update(annexes=annexes, annex_pages=total_pages, fit=[0, 0, 0], phase="fit")
+
+    @api.model
+    def _stage_fit(self, relatorio, st, store, budget):
+        """Encaixa na área útil as páginas de UM anexo, do cursor até o orçamento."""
+        a_idx, f_idx, p_idx = st["fit"]
+        annexes = st["annexes"]
+        if a_idx < len(annexes):
+            entry = annexes[a_idx]
+            # keep_alive: PyPDF2 lê os streams de forma preguiçosa até o write.
+            writer, keep_alive, tried = PdfFileWriter(), [], 0
+            cpu0 = time.process_time()
+            while f_idx < len(entry["files"]) and not budget.exhausted(tried):
+                item = entry["files"][f_idx]
+                content = store.get(item["blob"])
+                if item["kind"] == "image":
+                    reader = PdfFileReader(io.BytesIO(image_to_pdf(content, item["caption"])))
+                    keep_alive.append(reader)
+                    writer.addPage(reader.getPage(0))
+                    tried += 1
+                    f_idx, p_idx = f_idx + 1, 0
+                    continue
                 reader = open_pdf(content)
                 keep_alive.append(reader)
-                for idx in range(reader.getNumPages()):
+                count = reader.getNumPages()
+                while p_idx < count and not budget.exhausted(tried):
+                    tried += 1
                     # open_pdf só valida a página 0: uma página seguinte
                     # corrompida (stream/objeto ilegível) é pulada com aviso,
                     # nunca derruba a montagem inteira.
                     try:
-                        page = fit_page_to_usable(reader.getPage(idx))
+                        page = fit_page_to_usable(reader.getPage(p_idx))
                     except Exception as exc:  # zlib.error, PdfReadError, KeyError...
-                        warnings.append(_(
+                        st["warnings"].append(_(
                             "%s: '%s', página %d ignorada — página ilegível (%s)."
-                        ) % (label, caption, idx + 1, exc))
-                        continue
-                    writer.addPage(page)
-            else:
-                img_reader = PdfFileReader(io.BytesIO(image_to_pdf(content, caption)))
-                keep_alive.append(img_reader)
-                writer.addPage(img_reader.getPage(0))
-        count = writer.getNumPages()
-        return (pdf_bytes(writer) if count else b""), count
+                        ) % (entry["label"], item["caption"], p_idx + 1, exc))
+                    else:
+                        writer.addPage(page)
+                    p_idx += 1
+                if p_idx >= count:
+                    f_idx, p_idx = f_idx + 1, 0
+            pages = writer.getNumPages()
+            if pages:
+                key = store.put("fit", pdf_bytes(writer))
+                entry["chunks"].append({"blob": key, "pages": pages})
+                entry["count"] += pages
+                st["page_cost"][key] = (time.process_time() - cpu0) / pages
+            if f_idx >= len(entry["files"]):
+                a_idx, f_idx, p_idx = a_idx + 1, 0, 0
+        st["fit"] = [a_idx, f_idx, p_idx]
+        if a_idx >= len(annexes):
+            st["phase"] = "body"
 
     @api.model
-    def _assemble(self, body, body_count, layout, annex_data):
-        """Intercala as páginas dos anexos depois da página do separador."""
-        writer = PdfFileWriter()
-        body_reader = PdfFileReader(io.BytesIO(body), strict=False)
-        keep_alive = [body_reader]
-
-        def add_annex(code):
-            data = annex_data.get(code)
-            if not data:
-                return
-            reader = PdfFileReader(io.BytesIO(data), strict=False)
-            keep_alive.append(reader)
-            for idx in range(reader.getNumPages()):
-                writer.addPage(reader.getPage(idx))
-
-        for idx in range(body_count):
-            writer.addPage(body_reader.getPage(idx))
-            for code in layout["insert_after"].get(idx, []):
-                add_annex(code)
+    def _stage_body(self, relatorio, st, store, budget):
+        """Corpo com marcadores até o índice convergir; ordem final das páginas."""
+        codes = [a["code"] for a in st["annexes"]]
+        counts = {a["code"]: a["count"] for a in st["annexes"]}
+        page_map = {}
+        for attempt in range(1, MAX_PASSES + 1):
+            body, markers = self._render_body_and_markers(relatorio, page_map)
+            body_count = PdfFileReader(io.BytesIO(body), strict=False).getNumPages()
+            layout = compute_layout(markers, body_count, counts, codes)
+            if layout["page_map"] == page_map:
+                break
+            if attempt == MAX_PASSES:
+                st["warnings"].append(_(
+                    "A numeração do índice não estabilizou após %d renderizações; "
+                    "confira o índice."
+                ) % MAX_PASSES)
+                break
+            page_map = layout["page_map"]
         for code in layout["trailing"]:
-            add_annex(code)
+            if counts.get(code):
+                st["warnings"].append(_(
+                    "Anexo '%s': marcador do separador não encontrado no corpo; "
+                    "páginas incluídas no fim do documento."
+                ) % code)
+        body_key = store.put("body", body)  # depois de TODOS os renders
+        annex_refs = {
+            a["code"]: [[c["blob"], i] for c in a["chunks"] for i in range(c["pages"])]
+            for a in st["annexes"]
+        }
+        final = []
+        for idx in range(body_count):
+            final.append([body_key, idx])
+            for code in layout["insert_after"].get(idx, []):
+                final.extend(annex_refs[code])
+        for code in layout["trailing"]:
+            final.extend(annex_refs[code])
+        st.update(
+            final_pages=final, total=len(final), stamp=0, stamped=[], phase="stamp",
+            qr_page_index=self._qr_page_index(relatorio, markers, layout),
+        )
+
+    @api.model
+    def _stage_stamp_count(self, st, budget):
+        """Quantas páginas carimbar nesta unidade (≥ 1)."""
+        remaining = st["total"] - st["stamp"]
+        if budget.unlimited:
+            return remaining
+        cap = min(budget.max_pages or remaining, remaining)
+        if budget.cpu_deadline is None:
+            return max(cap, 1)
+        allowance = 0.8 * max(budget.cpu_deadline - time.process_time(), 0.0)
+        count, spent = 0, 0.0
+        for blob, _idx in st["final_pages"][st["stamp"]:st["stamp"] + cap]:
+            # Carimbar reparseia o content stream: custa ~ o que o fit custou.
+            spent += st["page_cost"].get(blob, BODY_PAGE_COST)
+            if count and spent > allowance:
+                break
+            count += 1
+        return max(count, 1)
+
+    @api.model
+    def _assemble_range(self, refs, store):
+        """PDF só com as páginas `refs` ([blob, índice]) na ordem dada."""
+        writer, readers = PdfFileWriter(), {}
+        for blob, idx in refs:
+            reader = readers.get(blob)
+            if reader is None:
+                reader = readers[blob] = PdfFileReader(io.BytesIO(store.get(blob)), strict=False)
+            writer.addPage(reader.getPage(idx))
         return pdf_bytes(writer)
+
+    @api.model
+    def _stage_stamp(self, relatorio, st, store, budget):
+        """Monta a faixa `[stamp, stamp+n)` a partir das fontes e carimba."""
+        start = st["stamp"]
+        end = start + self._stage_stamp_count(st, budget)
+        content = self._assemble_range(st["final_pages"][start:end], store)
+        header = self._header(relatorio, st["watermark"], qr_page_index=st["qr_page_index"])
+        header.update(page_offset=start, page_total=st["total"])
+        st["stamped"].append(store.put("stamp", self._stamp(content, header, st["watermark"])))
+        st["stamp"] = end
+        if end >= st["total"]:
+            st["phase"] = "concat"
+
+    @api.model
+    def _stage_concat(self, relatorio, st, store, budget):
+        """Junta as faixas carimbadas (uma só faixa: reaproveita o blob)."""
+        stamped = st["stamped"]
+        if len(stamped) == 1:
+            st["final_blob"] = stamped[0]
+        else:
+            writer, keep_alive = PdfFileWriter(), []
+            for key in stamped:
+                reader = PdfFileReader(io.BytesIO(store.get(key)), strict=False)
+                keep_alive.append(reader)
+                for idx in range(reader.getNumPages()):
+                    writer.addPage(reader.getPage(idx))
+            st["final_blob"] = store.put("final", pdf_bytes(writer))
+        st["phase"] = "done"
 
     @api.model
     def _qr_page_index(self, relatorio, markers, layout):

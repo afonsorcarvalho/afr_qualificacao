@@ -1,6 +1,8 @@
 """P4 — montagem do PDF do Relatório Final (núcleo + anexos + build)."""
 import base64
 import io
+import json
+import time
 from datetime import datetime
 from unittest.mock import patch
 
@@ -68,6 +70,23 @@ def _single_page_pdf(page):
 
 def _first_page(data):
     return PdfFileReader(io.BytesIO(data)).getPage(0)
+
+
+def _pdf_with_corrupt_middle_page():
+    """PDF de 3 páginas; a do meio tem content stream corrompido (a 0 é boa,
+    então open_pdf/file_problem aceitam o arquivo)."""
+    reader = PdfFileReader(io.BytesIO(make_pdf([["BOA p1"], ["RUIM p2"], ["BOA p3"]])))
+    writer = PdfFileWriter()
+    for idx in range(reader.getNumPages()):
+        page = reader.getPage(idx)
+        if idx == 1:
+            stream = page["/Contents"].getObject()
+            stream._data = b"\x00lixo que nao e zlib"
+            stream[NameObject("/Filter")] = NameObject("/FlateDecode")
+        writer.addPage(page)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
 
 
 @tagged("post_install", "-at_install", "afr_relatorio_final")
@@ -517,19 +536,9 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
     def test_build_skips_corrupt_page_beyond_first_with_warning(self):
         # open_pdf/_check_files só validam a página 0: uma página ≥ 1 com
         # content stream corrompido não pode derrubar o _build() inteiro.
-        reader = PdfFileReader(io.BytesIO(make_pdf([["BOA p1"], ["RUIM p2"], ["BOA p3"]])))
-        writer = PdfFileWriter()
-        for idx in range(reader.getNumPages()):
-            page = reader.getPage(idx)
-            if idx == 1:
-                stream = page["/Contents"].getObject()
-                stream._data = b"\x00lixo que nao e zlib"
-                stream[NameObject("/Filter")] = NameObject("/FlateDecode")
-            writer.addPage(page)
-        buf = io.BytesIO()
-        writer.write(buf)
-        bad = self._attachment(buf.getvalue(), "meio_corrompido.pdf", "application/pdf")
-        self.assertIsNone(rp.file_problem(buf.getvalue(), "application/pdf"))
+        corrupt = _pdf_with_corrupt_middle_page()
+        bad = self._attachment(corrupt, "meio_corrompido.pdf", "application/pdf")
+        self.assertIsNone(rp.file_problem(corrupt, "application/pdf"))
         self.anexos["dados"].attachment_ids = [(6, 0, bad.ids)]
         pdf, warnings, _f = self._build()
         pages = pdf_pages_text(pdf)
@@ -584,3 +593,90 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         with fake.patch(self.env):
             pdf = self.Pdf.build(self.rel)
         self.assertTrue(pdf.startswith(b"%PDF"))
+
+
+@tagged("post_install", "-at_install", "afr_relatorio_final")
+class TestRelatorioStagedBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
+
+    def setUp(self):
+        super().setUp()
+        self.rel, _q = self._make_relatorio()
+        self.blocks, self.anexos = self._standard_layout(self.rel)
+        self.Pdf = self.env["afr.relatorio.pdf"]
+        # anexo extra: 4 páginas (paisagem, /Rotate 90, retrato, retrato)
+        extra = self._attachment(make_pdf([["X p1"], ["X p2"]], size=(842, 595))
+                                 + b"", "paisagem.pdf", "application/pdf")
+        rot = self._attachment(make_pdf([["R p1"], ["R p2"]], rotate=90), "rot.pdf",
+                               "application/pdf")
+        self.anexos["dados"].attachment_ids = [(4, extra.id), (4, rot.id)]
+
+    def _staged(self, rel, watermark, budget_factory):
+        """Roda as fases como o job: uma unidade por vez, estado via JSON."""
+        st, store, units = self.Pdf._stage_init(watermark), rp.MemoryStore(), 0
+        while st["phase"] != "done":
+            self.Pdf._stage_run(rel, st, store, budget_factory())
+            st = json.loads(json.dumps(st))  # o job persiste o estado assim
+            units += 1
+        return store.get(st["final_blob"]), st["warnings"], units
+
+    def _same_pdf(self, got, expected):
+        self.assertEqual(pdf_pages_text(got), pdf_pages_text(expected))
+        a = PdfFileReader(io.BytesIO(got)); b = PdfFileReader(io.BytesIO(expected))
+        self.assertEqual(
+            [tuple(map(float, a.getPage(i).mediaBox)) for i in range(a.getNumPages())],
+            [tuple(map(float, b.getPage(i).mediaBox)) for i in range(b.getNumPages())])
+
+    def test_one_page_units_equal_sync_build_minuta_and_final(self):
+        for watermark in (True, False):
+            rel = self.rel.with_context(tz="UTC", rq_emission_token="c" * 32,
+                                        rq_emission_date=datetime(2026, 7, 15, 12, 0))
+            with self.subTest(watermark=watermark), FakeCorpo().patch(self.env):
+                expected, exp_w = self.Pdf._build(rel, watermark=watermark)
+                got, got_w, units = self._staged(rel, watermark, lambda: rp.Budget(max_pages=1))
+            self._same_pdf(got, expected)
+            self.assertEqual(got_w, exp_w)
+            self.assertGreater(units, 10)  # fatias de 1 página de verdade
+
+    def test_budget_always_progresses_one_page(self):
+        past = lambda: rp.Budget(max_pages=50, cpu_deadline=time.process_time() - 1)
+        with FakeCorpo().patch(self.env):
+            expected, _w = self.Pdf._build(self.rel, watermark=True)
+            got, _w2, units = self._staged(self.rel, True, past)
+        self._same_pdf(got, expected)
+        self.assertGreater(units, 10)
+
+    def test_corrupt_page_skipped_across_chunks(self):
+        # mesma construção do test_build_skips_corrupt_page_beyond_first_with_warning
+        bad = self._attachment(_pdf_with_corrupt_middle_page(), "meio_corrompido.pdf",
+                               "application/pdf")
+        self.anexos["dados"].attachment_ids = [(6, 0, bad.ids)]
+        with FakeCorpo().patch(self.env):
+            expected, exp_w = self.Pdf._build(self.rel, watermark=True)
+            got, got_w, _u = self._staged(self.rel, True, lambda: rp.Budget(max_pages=1))
+        self._same_pdf(got, expected)
+        self.assertEqual(got_w, exp_w)
+        self.assertTrue(any("página 2 ignorada" in w for w in got_w), got_w)
+
+    def test_stamp_pdf_honours_offset_and_total(self):
+        two = rp.make_pdf if False else make_pdf([["a"], ["b"]])
+        header = {"title": "T", "page_offset": 5, "page_total": 9,
+                  "qr_page_index": 6, "verify_url": "https://x/verify/abc"}
+        pages = pdf_pages_text(rp.stamp_pdf(two, header, False))
+        self.assertIn("Página 6 de 9", pages[0])
+        self.assertIn("Página 7 de 9", pages[1])
+
+    def test_budget_retry_halves_page_cap(self):
+        self.assertEqual(rp.Budget(max_pages=8, retry=1).max_pages, 8)
+        self.assertEqual(rp.Budget(max_pages=8, retry=3).max_pages, 2)
+        self.assertEqual(rp.Budget(max_pages=1, retry=5).max_pages, 1)
+        self.assertTrue(rp.UNLIMITED.unlimited)
+
+    def test_progress_is_monotonic(self):
+        seen = []
+        with FakeCorpo().patch(self.env):
+            st, store = self.Pdf._stage_init(True), rp.MemoryStore()
+            while st["phase"] != "done":
+                self.Pdf._stage_run(self.rel, st, store, rp.Budget(max_pages=1))
+                seen.append(rp.stage_progress(st))
+        self.assertEqual(seen, sorted(seen))
+        self.assertLess(seen[-1], 100)  # 100 só no finalize do job
