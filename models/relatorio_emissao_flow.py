@@ -247,6 +247,22 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
             ))
         return True
 
+    def _rq_reset_alerta_decisions(self):
+        """Item 2 (P5 final fix wave): Revisar zera a decisão de achados
+        `alerta` (regra OU IA) já decididos — mesmo princípio de
+        `_invalidate_internal_approvals` / spec §4.6 ("aprovar uma versão
+        não aprova a próxima"). `bloqueia` nunca tem decisão (não precisa) e
+        `info` nunca bloqueia, então só `alerta` importa aqui. Sudo +
+        clean_context: o `write` de `afr.relatorio.achado` só aceita
+        decisao/motivo fora de `env.su`, e mesmo esses só com o relatório em
+        rascunho — já é o caso aqui (a escrita acima já abriu a Rev.N+1),
+        mas sudo evita depender dessa ordem."""
+        clean_ctx = clean_context(self.env.context)
+        achados = self.sudo().with_context(clean_ctx).achado_ids.filtered(
+            lambda a: a.gravidade == "alerta" and a.decisao != "pendente")
+        if achados:
+            achados.write({"decisao": "pendente", "motivo": False})
+
     def action_aprovar_interno(self):
         """Aprova TODAS as linhas elaborador/emissor pendentes do usuário atual."""
         self.ensure_one()
@@ -429,6 +445,7 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
         # Revisão nova = conteúdo novo: uma minuta em montagem é descartada.
         self._rq_bump_editorial_seq()
         self._invalidate_internal_approvals()
+        self._rq_reset_alerta_decisions()
         self.with_context(clean_context(self.env.context)).message_post(body=_(
             "Revisão %s aberta. A emissão anterior continua vigente até a nova "
             "ser emitida.") % self.revision_label)
