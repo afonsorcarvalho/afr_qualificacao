@@ -11,7 +11,10 @@ from PIL import Image
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
-from odoo.addons.afr_qualificacao.models.relatorio_anexo_files import PROBLEM_EMPTY
+from odoo.addons.afr_qualificacao.models.relatorio_anexo_files import (
+    PROBLEM_EMPTY,
+    PROBLEM_NO_ACCESS,
+)
 
 from .common import AfrQualificacaoTestCommon
 from .relatorio_fakes import (
@@ -20,6 +23,7 @@ from .relatorio_fakes import (
     encrypt_pdf,
     make_pdf,
     make_png,
+    make_user,
     pdf_pages_text,
     squash,
 )
@@ -206,6 +210,54 @@ class TestRelatorioAnexoFiles(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         self.assertEqual(anexo._resolve_files(), [])
         self.assertEqual(anexo._check_files(), [PROBLEM_EMPTY])
 
+    def test_unsaved_upload_attachment_readable_via_sudo(self):
+        # Fix round 1, finding 2(a): res_id=0 (upload ainda não vinculado,
+        # como o widget many2many_binary grava) de OUTRO usuário — o
+        # próprio anexo (mesmo res_model/res_id em (0, anexo.id)) precisa
+        # continuar legível via sudo, mesmo pra quem não é o autor do
+        # upload.
+        uploader = make_user(
+            self.env, "outro_tecnico_upload",
+            "afr_qualificacao.group_afr_qualificacao_technician")
+        att = self.env["ir.attachment"].with_user(uploader).create({
+            "name": "grafico.pdf",
+            "raw": make_pdf([["p"]]),
+            "mimetype": "application/pdf",
+            "res_model": "afr.relatorio.anexo",
+            "res_id": 0,
+        })
+        anexo = self._anexo(self.rel, "dados", "Dados", 10, attachments=att)
+        viewer = make_user(
+            self.env, "tecnico_view_a",
+            "afr_qualificacao.group_afr_qualificacao_technician")
+        files = anexo.with_user(viewer)._resolve_files()
+        self.assertEqual([f[2] for f in files], ["grafico.pdf"])
+        self.assertEqual(anexo.with_user(viewer)._check_files(), [])
+
+    def test_foreign_attachment_user_cannot_read_is_not_embedded(self):
+        # Fix round 1, finding 2(b) (segurança): um ir.attachment de
+        # terceiro que o usuário atual não tem direito de ler (criado por
+        # outro usuário, sem vínculo com este anexo) NUNCA pode entrar no
+        # PDF só porque seu id foi colado em attachment_ids — vira
+        # problema listado, não bytes embutidos.
+        other_user = make_user(
+            self.env, "dono_privado",
+            "afr_qualificacao.group_afr_qualificacao_technician")
+        foreign_att = self.env["ir.attachment"].with_user(other_user).create({
+            "name": "sigiloso.pdf",
+            "raw": make_pdf([["segredo"]]),
+            "mimetype": "application/pdf",
+        })
+        anexo = self._anexo(self.rel, "dados", "Dados", 10, attachments=foreign_att)
+        viewer = make_user(
+            self.env, "tecnico_view_b",
+            "afr_qualificacao.group_afr_qualificacao_technician")
+        self.assertEqual(anexo.with_user(viewer)._resolve_files(), [])
+        problems = anexo.with_user(viewer)._check_files()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("sigiloso.pdf", problems[0])
+        self.assertIn(PROBLEM_NO_ACCESS, problems[0])
+
     def test_user_password_pdf_is_reported_and_skipped(self):
         ok = self._attachment(make_pdf([["ok"]]), "ok.pdf", "application/pdf")
         enc = self._attachment(
@@ -264,6 +316,28 @@ class TestRelatorioAnexoFiles(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
                             collect_sections="anexos, qd_carga")
         names = [f[2].split(" — ")[-1] for f in anexo._resolve_files()]
         self.assertEqual(names, ["sem ciclo", "c1 seq10", "c1 seq20", "c2 item"])
+
+    def test_cancelled_qualification_of_same_equipment_is_excluded(self):
+        # Fix round 1, finding 4 (ruling 1.6): item de coleta de uma
+        # qualificação CANCELADA do MESMO equipamento não pode entrar —
+        # `rel.qualificacao_ids` já filtra `state != 'cancelled'` (P1); o
+        # domínio de `_collect_items` não pode reabrir isso por
+        # os_id/equipment_id.
+        pdf = make_pdf([["p"]])
+        self._item("ativo", "anexos", pdf, sequence=10)
+        qualif_cancelada = self.env["afr.qualificacao"].create({
+            "name": "Qualif cancelada mesmo equipamento",
+            "equipment_id": self.equip1.id,
+            "qualification_type": "installation",
+            "company_id": self.company.id,
+            "os_id": self.rel.os_id.id,
+        })
+        self._item("cancelada", "anexos", pdf, qualif=qualif_cancelada)
+        qualif_cancelada.write({"state": "cancelled"})
+        anexo = self._anexo(self.rel, "dados", "Dados", 10,
+                            slot_kind="collect_section", collect_sections="anexos")
+        names = [f[2] for f in anexo._resolve_files()]
+        self.assertEqual(names, ["ativo"])
 
     def test_attachment_override_replaces_collect_items(self):
         self._item("coleta", "anexos", make_pdf([["p"]]))

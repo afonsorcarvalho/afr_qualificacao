@@ -8,12 +8,14 @@ causa de arquivo ruim — arquivo de terceiro exótico vira problema listado.
 import base64
 
 from odoo import _, models
+from odoo.exceptions import AccessError
 from odoo.tools.mimetypes import guess_mimetype
 
 from .relatorio_certificados import _afr_resolve_mimetype
 from .relatorio_pdf import file_problem
 
 PROBLEM_EMPTY = "Nenhum arquivo encontrado para este anexo."
+PROBLEM_NO_ACCESS = "sem permissão de acesso"
 ALL_CERT_ROLES = ("antes", "depois", "externo")
 
 
@@ -63,25 +65,60 @@ class AfrRelatorioAnexoFiles(models.Model):
 
         return items.sorted(key=sort_key)
 
+    def _raw_attachment_files(self):
+        """`(bytes|None, mimetype, legenda)` de `attachment_ids`.
+
+        Fix round 1, finding 2 (segurança): `sudo()` só é usado para o
+        upload ainda não vinculado ao PRÓPRIO anexo (`res_model` desta
+        classe e `res_id` em `(0, self.id)` — o widget `many2many_binary`
+        grava o `ir.attachment` com `res_id=0` antes do anexo ser salvo, e
+        a ACL padrão do Odoo nega leitura de um anexo com `res_id=0`
+        criado por outro usuário, mesmo sendo o próprio upload do anexo em
+        edição). Qualquer OUTRO `ir.attachment` (ex.: um id de terceiro que
+        um chamador RPC tentasse colar em `attachment_ids`) é lido com o
+        direito do usuário atual: sem permissão → `AccessError` → o
+        arquivo NUNCA entra no PDF (`content=None`, diferente de `b""` =
+        "arquivo vazio") e `_check_files()` relata o problema. `name`/
+        `mimetype` são sempre lidos via `sudo()` só para identificar o
+        arquivo na mensagem de erro — não expõe o conteúdo.
+
+        `with_context(prefetch_fields=False)` no `meta` sudo é
+        obrigatório: sem isso, o Odoo faz prefetch em lote de TODAS as
+        colunas simples do registro (inclusive `store_fname`/`db_datas`,
+        de quem `raw` depende) na MESMA query — como o cache de campo é
+        da transação (compartilhado entre `sudo()` e o env do usuário
+        atual, não por env), o `att.raw` não-sudo mais abaixo encontraria
+        o valor JÁ em cache e nunca chamaria `check('read')`, deixando
+        passar o AccessError que este método existe pra impor. É o mesmo
+        padrão que `ir.attachment.validate_access` usa no core (base) por
+        exatamente este motivo.
+        """
+        self.ensure_one()
+        files = []
+        for att in self.attachment_ids.sorted("id"):
+            meta = att.sudo().with_context(prefetch_fields=False)
+            caption = meta.name or ""
+            if meta.res_model == self._name and meta.res_id in (0, self.id):
+                files.append((meta.raw or b"", meta.mimetype or "", caption))
+                continue
+            try:
+                files.append((att.raw or b"", att.mimetype or "", caption))
+            except AccessError:
+                files.append((None, meta.mimetype or "", caption))
+        return files
+
     def _raw_files(self):
         """Candidatos `(bytes, mimetype, legenda)` sem validação.
 
         `attachment_ids` substitui a resolução automática do slot quando
-        preenchido (override manual). Lidos via `sudo()` (Ruling 1.4/5.2):
-        um upload `many2many_binary` num anexo ainda não salvo grava o
-        `ir.attachment` com `res_id=0`, que a ACL padrão não deixa ler sem
-        sudo.
+        preenchido (override manual) — ver `_raw_attachment_files`.
         """
         self.ensure_one()
         if self.slot_kind == "bloco":
             # Conteúdo renderizado no próprio corpo (P3), logo após o separador.
             return []
         if self.attachment_ids:
-            attachments = self.attachment_ids.sudo().sorted("id")
-            return [
-                (att.raw or b"", att.mimetype or "", att.name or "")
-                for att in attachments
-            ]
+            return self._raw_attachment_files()
         if self.slot_kind == "collect_section":
             files = []
             for item in self._collect_items():
@@ -101,10 +138,18 @@ class AfrRelatorioAnexoFiles(models.Model):
         return []
 
     def _resolve_files(self):
-        """Lista ordenada `(bytes, mimetype, legenda)` só com arquivos utilizáveis."""
+        """Lista ordenada `(bytes, mimetype, legenda)` só com arquivos utilizáveis.
+
+        `content is None` (sentinela de `_raw_attachment_files` para
+        "sem permissão de acesso") nunca entra — diferente de `b""`
+        (arquivo vazio de verdade), que passa por `file_problem` como
+        qualquer outro.
+        """
         self.ensure_one()
         files = []
         for content, mimetype, caption in self._raw_files():
+            if content is None:
+                continue
             if file_problem(content, mimetype) is None:
                 detected = guess_mimetype(content, default=mimetype or "")
                 files.append((content, detected, caption))
@@ -115,7 +160,8 @@ class AfrRelatorioAnexoFiles(models.Model):
 
         Formato dos itens: `PROBLEM_EMPTY` sozinho, ou
         `"<legenda do arquivo>: <motivo>"` (motivo de `file_problem`, ex.:
-        `"cert.pdf: PDF protegido por senha"`).
+        `"cert.pdf: PDF protegido por senha"`, ou `PROBLEM_NO_ACCESS`
+        quando `content is None`).
         """
         self.ensure_one()
         if self.slot_kind == "bloco":
@@ -126,7 +172,11 @@ class AfrRelatorioAnexoFiles(models.Model):
             return [PROBLEM_EMPTY]
         problems = []
         for content, mimetype, caption in raw:
+            name = caption or _("arquivo sem nome")
+            if content is None:
+                problems.append("%s: %s" % (name, PROBLEM_NO_ACCESS))
+                continue
             problem = file_problem(content, mimetype)
             if problem:
-                problems.append("%s: %s" % (caption or _("arquivo sem nome"), problem))
+                problems.append("%s: %s" % (name, problem))
         return problems

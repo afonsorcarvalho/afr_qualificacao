@@ -10,6 +10,7 @@ dessa, pela qualificação (`qualificacao.engc_calibration_id`) — senão os
 arquivos anexados (coletados) à malha.
 """
 import base64
+import logging
 
 from markupsafe import Markup, escape
 
@@ -17,6 +18,8 @@ from odoo import api, fields, models
 from odoo.tools.mimetypes import guess_mimetype
 
 from .calibration_instruments import AFR_CERT_ROLES
+
+_logger = logging.getLogger(__name__)
 
 # resource_role do plano → papéis de certificado exigidos, na ordem do anexo.
 _ROLES_BY_RESOURCE = (
@@ -225,14 +228,21 @@ class AfrQualificacaoRelatorio(models.Model):
 
     def _afr_render_engc_certificate(self, calibration):
         """`bytes` do certificado de calibração do engc_os, com cache por
-        transação (Ruling P2 final 4.3/5.4: `_afr_malha_certificate_files`
-        é chamado ≥3× por emissão — check/resolve/scan — e o report do
+        cursor (Ruling P2 final 4.3/5.4: `_afr_malha_certificate_files` é
+        chamado ≥3× por emissão — check/resolve/scan — e o report do
         engc_os pode falhar, por exemplo sem wkhtmltopdf disponível).
 
         Qualquer falha (exceção do render, ou formato != 'pdf') devolve
         bytes vazios em vez de propagar — `_check_files()` reporta
         "arquivo vazio" (não utilizável) ao invés de a montagem inteira
-        estourar por causa de um certificado de terceiro.
+        estourar por causa de um certificado de terceiro. O render roda
+        dentro de um `savepoint()` (fix round 1, finding 1): se ele
+        estourar depois de já ter feito alguma query, a transação toda
+        ficaria "abortada" (Postgres) sem o rollback pro savepoint — o
+        `_check_emission_gate`/scan que chama isto depois travaria numa
+        query qualquer, não só neste certificado. A falha é registrada
+        via `_logger.exception` (nunca silenciosa) com o id da
+        calibração, pra dar rastro de qual certificado engc_os falhou.
         """
         self.ensure_one()
         cache = getattr(self.env.cr, "_afr_malha_cert_cache", None)
@@ -242,10 +252,17 @@ class AfrQualificacaoRelatorio(models.Model):
         if calibration.id in cache:
             return cache[calibration.id]
         try:
-            content, fmt = self.env["ir.actions.report"].sudo()._render_qweb_pdf(
-                ENGC_CALIBRATION_REPORT, [calibration.id])
+            with self.env.cr.savepoint():
+                content, fmt = self.env["ir.actions.report"].sudo()._render_qweb_pdf(
+                    ENGC_CALIBRATION_REPORT, [calibration.id])
             result = content if fmt == "pdf" else b""
         except Exception:
+            _logger.exception(
+                "Falha ao renderizar o certificado de calibração do "
+                "engc_os (engc.calibration id=%s) para o relatório final; "
+                "tratado como arquivo ilegível na montagem.",
+                calibration.id,
+            )
             result = b""
         cache[calibration.id] = result
         return result

@@ -469,6 +469,48 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
             self.rel._afr_malha_certificate_files()
         render.assert_called_once()
 
+    def test_malha_render_exception_is_logged_and_transaction_stays_usable(self):
+        # Fix round 1, finding 1: a falha não pode ficar silenciosa (log)
+        # nem deixar a transação "abortada" (savepoint) — uma query comum
+        # feita DEPOIS do render que falhou precisa continuar funcionando.
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        with patch.object(
+            type(self.env["ir.actions.report"]), "_render_qweb_pdf",
+            side_effect=Exception("wkhtmltopdf indisponível"),
+        ), patch(
+            "odoo.addons.afr_qualificacao.models.relatorio_certificados._logger"
+        ) as mock_logger:
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(files[0][0], b"")
+        mock_logger.exception.assert_called_once()
+        self.assertIn(cal.id, mock_logger.exception.call_args.args)
+        # A query abaixo estouraria "current transaction is aborted" se o
+        # render tivesse deixado a transação sem rollback pro savepoint.
+        self.assertTrue(self.env["engc.calibration"].search([("id", "=", cal.id)]))
+
+    def test_malha_render_cache_does_not_cross_contaminate_between_calibrations(self):
+        # Fix round 1, finding 3: o cache é por id de calibração — o
+        # resultado de uma não pode "vazar" pra outra.
+        cal_a = self._engc_calibration()
+        cal_b = self._engc_calibration()
+        self._link_malha(self.malha_t, cal_a)
+        self._link_malha(self.malha_p, cal_b)
+        seen_ids = []
+
+        def fake(report_self, report_ref, res_ids=None, data=None):
+            seen_ids.append(list(res_ids))
+            return (b"cert-%d" % res_ids[0], "pdf")
+
+        with patch.object(
+            type(self.env["ir.actions.report"]), "_render_qweb_pdf", fake
+        ):
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(sorted(seen_ids), sorted([[cal_a.id], [cal_b.id]]))
+        contents = {f[0] for f in files}
+        self.assertEqual(
+            contents, {b"cert-%d" % cal_a.id, b"cert-%d" % cal_b.id})
+
     def test_malha_engc_wins_over_collect_items(self):
         cal = self._engc_calibration()
         self._link_malha(self.malha_t, cal)
