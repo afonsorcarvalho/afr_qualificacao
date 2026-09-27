@@ -60,6 +60,11 @@ CPU_LIMIT_MESSAGE = "CPU time limit exceeded."
 USER_GROUP = "afr_qualificacao.group_afr_qualificacao_user"
 # Fases que renderizam (engc da malha em `sources`, corpo em `body`).
 RENDER_PHASES = ("sources", "body")
+JOB_KINDS = [("minuta", "Minuta"), ("emissao", "Emissão")]
+JOB_STATES = [
+    ("queued", "Na fila"), ("running", "Montando"), ("done", "Concluída"),
+    ("failed", "Falhou"), ("cancelled", "Cancelada"),
+]
 
 
 def _internal_ctx(env):
@@ -108,12 +113,9 @@ class AfrRelatorioBuildJob(models.Model):
 
     relatorio_id = fields.Many2one("afr.qualificacao.relatorio", required=True,
                                    ondelete="cascade", index=True, readonly=True)
-    kind = fields.Selection([("minuta", "Minuta"), ("emissao", "Emissão")],
-                            required=True, readonly=True)
-    state = fields.Selection([
-        ("queued", "Na fila"), ("running", "Montando"), ("done", "Concluída"),
-        ("failed", "Falhou"), ("cancelled", "Cancelada"),
-    ], required=True, default="queued", readonly=True, index=True)
+    kind = fields.Selection(JOB_KINDS, required=True, readonly=True)
+    state = fields.Selection(JOB_STATES, required=True, default="queued",
+                             readonly=True, index=True)
     requested_by = fields.Many2one("res.users", required=True, readonly=True)
     revision = fields.Integer(readonly=True)
     editorial_seq = fields.Integer(readonly=True)
@@ -490,18 +492,31 @@ class AfrQualificacaoRelatorioBuild(models.Model):
                                       copy=False, default=0)
     build_job_ids = fields.One2many("afr.relatorio.build.job", "relatorio_id",
                                     string="Montagens de PDF", readonly=True)
+    # Computados juntos (não `related` num m2o computado não pesquisável, que
+    # gerava UserWarning no carregamento do registry). compute_sudo: Técnico e
+    # Usuário leem o status sem depender da ACL do job.
     rq_build_job_id = fields.Many2one("afr.relatorio.build.job",
-                                      compute="_compute_rq_build_job",
+                                      compute="_compute_rq_build_job", compute_sudo=True,
                                       string="Última montagem")
-    rq_build_state = fields.Selection(related="rq_build_job_id.state", string="Montagem")
-    rq_build_kind = fields.Selection(related="rq_build_job_id.kind", string="Tipo de montagem")
-    rq_build_progress = fields.Integer(related="rq_build_job_id.progress", string="Progresso")
-    rq_build_error = fields.Text(related="rq_build_job_id.error", string="Erro da montagem")
+    rq_build_state = fields.Selection(JOB_STATES, compute="_compute_rq_build_job",
+                                      compute_sudo=True, string="Montagem")
+    rq_build_kind = fields.Selection(JOB_KINDS, compute="_compute_rq_build_job",
+                                     compute_sudo=True, string="Tipo de montagem")
+    rq_build_progress = fields.Integer(compute="_compute_rq_build_job",
+                                       compute_sudo=True, string="Progresso")
+    rq_build_error = fields.Text(compute="_compute_rq_build_job",
+                                 compute_sudo=True, string="Erro da montagem")
 
-    @api.depends("build_job_ids.state")
+    @api.depends("build_job_ids.state", "build_job_ids.kind",
+                 "build_job_ids.progress", "build_job_ids.error")
     def _compute_rq_build_job(self):
         for rel in self:
-            rel.rq_build_job_id = rel.build_job_ids[:1]  # _order id desc
+            job = rel.build_job_ids[:1]  # _order id desc
+            rel.rq_build_job_id = job
+            rel.rq_build_state = job.state
+            rel.rq_build_kind = job.kind
+            rel.rq_build_progress = job.progress
+            rel.rq_build_error = job.error
 
     def _rq_bump_editorial_seq(self):
         """+1 na versão editorial (SQL: sem guardas/tracking; o gatilho pode ser
