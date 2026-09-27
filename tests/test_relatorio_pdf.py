@@ -1,5 +1,7 @@
 """P4 — montagem do PDF do Relatório Final (núcleo + anexos + build)."""
+import base64
 import io
+from unittest.mock import patch
 
 from PyPDF2 import PdfFileReader, PdfFileWriter
 from pdfminer.high_level import extract_pages
@@ -9,8 +11,18 @@ from PIL import Image
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
+from odoo.addons.afr_qualificacao.models.relatorio_anexo_files import PROBLEM_EMPTY
 
-from .relatorio_fakes import encrypt_pdf, make_pdf, make_png, pdf_pages_text, squash
+from .common import AfrQualificacaoTestCommon
+from .relatorio_fakes import (
+    FakeCorpo,
+    RelatorioFixtureMixin,
+    encrypt_pdf,
+    make_pdf,
+    make_png,
+    pdf_pages_text,
+    squash,
+)
 
 HEADER = {
     "logo": None,
@@ -155,3 +167,152 @@ class TestRelatorioPdfCore(TransactionCase):
     def test_open_pdf_rejects_garbage(self):
         with self.assertRaisesRegex(ValueError, "ilegível"):
             rp.open_pdf(b"nao e pdf")
+
+
+@tagged("post_install", "-at_install", "afr_relatorio_final")
+class TestRelatorioAnexoFiles(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
+
+    def setUp(self):
+        super().setUp()
+        self.rel, self.qualif = self._make_relatorio()
+
+    def _item(self, name, section, content, sequence=10, cycle=None, qualif=None,
+              mimetype="application/pdf"):
+        item = self.env["afr.qualificacao.collect.item"].create({
+            "name": name,
+            "qualif_id": (qualif or self.qualif).id,
+            "kind": "foto",
+            "required": True,
+            "sequence": sequence,
+            "cycle_id": cycle.id if cycle else False,
+            "file": base64.b64encode(content),
+            "filename": name,
+            "mimetype": mimetype,
+        })
+        item.docx_section = section
+        return item
+
+    def test_upload_pdf_and_image_resolved_in_attachment_order(self):
+        pdf = self._attachment(make_pdf([["p"]]), "grafico.pdf", "application/pdf")
+        png = self._attachment(make_png(), "foto.png", "image/png")
+        anexo = self._anexo(self.rel, "dados", "Dados", 10, attachments=pdf | png)
+        files = anexo._resolve_files()
+        self.assertEqual([f[1] for f in files], ["application/pdf", "image/png"])
+        self.assertEqual([f[2] for f in files], ["grafico.pdf", "foto.png"])
+        self.assertEqual(anexo._check_files(), [])
+
+    def test_upload_without_files_reports_empty(self):
+        anexo = self._anexo(self.rel, "dados", "Dados", 10)
+        self.assertEqual(anexo._resolve_files(), [])
+        self.assertEqual(anexo._check_files(), [PROBLEM_EMPTY])
+
+    def test_user_password_pdf_is_reported_and_skipped(self):
+        ok = self._attachment(make_pdf([["ok"]]), "ok.pdf", "application/pdf")
+        enc = self._attachment(
+            encrypt_pdf(make_pdf([["x"]]), user_pw="segredo"), "cert.pdf",
+            "application/pdf",
+        )
+        anexo = self._anexo(self.rel, "padroes", "Padrões", 10, attachments=ok | enc)
+        self.assertEqual([f[2] for f in anexo._resolve_files()], ["ok.pdf"])
+        problems = anexo._check_files()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("cert.pdf", problems[0])
+        self.assertIn("senha", problems[0])
+
+    def test_owner_only_encrypted_pdf_is_usable(self):
+        enc = self._attachment(
+            encrypt_pdf(make_pdf([["x"]]), user_pw=""), "rbc.pdf", "application/pdf"
+        )
+        anexo = self._anexo(self.rel, "padroes", "Padrões", 10, attachments=enc)
+        self.assertEqual(len(anexo._resolve_files()), 1)
+        self.assertEqual(anexo._check_files(), [])
+
+    def test_garbage_pdf_and_unsupported_type_are_reported(self):
+        broken = self._attachment(b"%PDF-1.4 lixo", "quebrado.pdf", "application/pdf")
+        txt = self._attachment(b"apenas texto", "nota.txt", "text/plain")
+        anexo = self._anexo(self.rel, "dados", "Dados", 10, attachments=broken | txt)
+        self.assertEqual(anexo._resolve_files(), [])
+        problems = anexo._check_files()
+        self.assertEqual(len(problems), 2)
+        self.assertIn("ilegível", problems[0])
+        self.assertIn("não suportado", problems[1])
+
+    def test_collect_section_filters_and_orders_by_cycle_then_sequence(self):
+        Cycle = self.env["afr.qualificacao.cycle"]
+        c1 = Cycle.create({"qualificacao_id": self.qualif.id,
+                           "cycle_type_id": self.cycle_cmax.id, "sequence": 1})
+        c2 = Cycle.create({"qualificacao_id": self.qualif.id,
+                           "cycle_type_id": self.cycle_cmax.id, "sequence": 2})
+        pdf = make_pdf([["p"]])
+        self._item("c2 item", "anexos", pdf, sequence=1, cycle=c2)
+        self._item("c1 seq20", "anexos", pdf, sequence=20, cycle=c1)
+        self._item("sem ciclo", "anexos", pdf, sequence=5)
+        self._item("c1 seq10", "qd_carga", pdf, sequence=10, cycle=c1)
+        self._item("outra secao", "qi_documentos", pdf)
+        pending = self.env["afr.qualificacao.collect.item"].create({
+            "name": "pendente", "qualif_id": self.qualif.id, "kind": "foto",
+        })
+        pending.docx_section = "anexos"
+        qualif2 = self.env["afr.qualificacao"].create({
+            "name": "Qualif outro equipamento", "equipment_id": self.equip2.id,
+            "qualification_type": "installation", "company_id": self.company.id,
+            "os_id": self.rel.os_id.id,
+        })
+        self._item("outro equipamento", "anexos", pdf, qualif=qualif2)
+        anexo = self._anexo(self.rel, "dados", "Dados", 10,
+                            slot_kind="collect_section",
+                            collect_sections="anexos, qd_carga")
+        names = [f[2].split(" — ")[-1] for f in anexo._resolve_files()]
+        self.assertEqual(names, ["sem ciclo", "c1 seq10", "c1 seq20", "c2 item"])
+
+    def test_attachment_override_replaces_collect_items(self):
+        self._item("coleta", "anexos", make_pdf([["p"]]))
+        manual = self._attachment(make_pdf([["m"]]), "manual.pdf", "application/pdf")
+        anexo = self._anexo(self.rel, "dados", "Dados", 10,
+                            slot_kind="collect_section", collect_sections="anexos",
+                            attachments=manual)
+        self.assertEqual([f[2] for f in anexo._resolve_files()], ["manual.pdf"])
+
+    def test_instrument_certs_passes_roles_from_cert_roles(self):
+        seen = []
+
+        def fake(rel_self, roles):
+            seen.append(list(roles))
+            return [(make_pdf([["cert"]]), "application/pdf", "Certificado do validador")]
+
+        with patch.object(type(self.rel), "_afr_certificate_files", fake):
+            a1 = self._anexo(self.rel, "validador", "Validador", 10,
+                             slot_kind="instrument_certs", cert_roles="depois, antes")
+            a2 = self._anexo(self.rel, "padroes", "Padrões", 20,
+                             slot_kind="instrument_certs", cert_roles=False)
+            self.assertEqual(len(a1._resolve_files()), 1)
+            a2._resolve_files()
+        self.assertEqual(seen, [["depois", "antes"], ["antes", "depois", "externo"]])
+
+    def test_malha_certs_uses_p2_helper(self):
+        def fake(rel_self):
+            return [(make_pdf([["malha"]]), "application/pdf", "Malha temperatura")]
+
+        with patch.object(type(self.rel), "_afr_malha_certificate_files", fake):
+            anexo = self._anexo(self.rel, "malhas", "Malhas", 10, slot_kind="malha_certs")
+            self.assertEqual([f[2] for f in anexo._resolve_files()], ["Malha temperatura"])
+
+    def test_bloco_slot_has_no_files_its_content_is_in_the_body(self):
+        block = self._block(self.rel, "protocolo", "Protocolo PrQT", 90,
+                            anexo_code="protocolo")
+        anexo = self._anexo(self.rel, "protocolo", "Protocolo", 10,
+                            slot_kind="bloco", block_id=block.id)
+        fake = FakeCorpo()
+        with fake.patch(self.env):
+            self.assertEqual(anexo._resolve_files(), [])
+            self.assertEqual(anexo._check_files(), [])
+        self.assertEqual(fake.calls, [])  # nada é renderizado para o anexo
+
+    def test_bloco_slot_without_included_block_is_empty(self):
+        anexo = self._anexo(self.rel, "protocolo", "Protocolo", 10, slot_kind="bloco")
+        self.assertEqual(anexo._check_files(), [PROBLEM_EMPTY])
+        block = self._block(self.rel, "laudo_micro", "Laudo", 91,
+                            anexo_code="micro", included=False)
+        anexo2 = self._anexo(self.rel, "micro", "Laudo", 20, slot_kind="bloco",
+                             block_id=block.id)
+        self.assertEqual(anexo2._check_files(), [PROBLEM_EMPTY])

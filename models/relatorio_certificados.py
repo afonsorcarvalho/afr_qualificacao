@@ -223,6 +223,33 @@ class AfrQualificacaoRelatorio(models.Model):
                 return calibration
         return self.env["engc.calibration"]
 
+    def _afr_render_engc_certificate(self, calibration):
+        """`bytes` do certificado de calibração do engc_os, com cache por
+        transação (Ruling P2 final 4.3/5.4: `_afr_malha_certificate_files`
+        é chamado ≥3× por emissão — check/resolve/scan — e o report do
+        engc_os pode falhar, por exemplo sem wkhtmltopdf disponível).
+
+        Qualquer falha (exceção do render, ou formato != 'pdf') devolve
+        bytes vazios em vez de propagar — `_check_files()` reporta
+        "arquivo vazio" (não utilizável) ao invés de a montagem inteira
+        estourar por causa de um certificado de terceiro.
+        """
+        self.ensure_one()
+        cache = getattr(self.env.cr, "_afr_malha_cert_cache", None)
+        if cache is None:
+            cache = {}
+            self.env.cr._afr_malha_cert_cache = cache
+        if calibration.id in cache:
+            return cache[calibration.id]
+        try:
+            content, fmt = self.env["ir.actions.report"].sudo()._render_qweb_pdf(
+                ENGC_CALIBRATION_REPORT, [calibration.id])
+            result = content if fmt == "pdf" else b""
+        except Exception:
+            result = b""
+        cache[calibration.id] = result
+        return result
+
     def _afr_malha_certificate_files(self):
         """Por malha dos qualificacao_ids: PDF do certificado engc_os quando
         há calibração concluída vinculada (uma vez por calibração, via
@@ -230,7 +257,6 @@ class AfrQualificacaoRelatorio(models.Model):
         coleta já coletados (`state == 'collected'`) da malha.
         """
         self.ensure_one()
-        Report = self.env["ir.actions.report"].sudo()
         files = []
         rendered = set()
         for malha in self.qualificacao_ids.mapped("malha_ids"):
@@ -239,8 +265,7 @@ class AfrQualificacaoRelatorio(models.Model):
                 if calibration.id in rendered:
                     continue
                 rendered.add(calibration.id)
-                pdf, _fmt = Report._render_qweb_pdf(
-                    ENGC_CALIBRATION_REPORT, [calibration.id])
+                pdf = self._afr_render_engc_certificate(calibration)
                 caption = "Certificado de calibração %s — %s" % (
                     calibration.name, malha.display_name)
                 files.append((pdf, "application/pdf", caption))

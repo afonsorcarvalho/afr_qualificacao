@@ -22,7 +22,9 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-from odoo import api, models
+from odoo import _, api, models
+from odoo.exceptions import UserError
+from odoo.tools.mimetypes import guess_mimetype
 from odoo.tools.pdf import PdfFileReader, PdfFileWriter
 
 MARKER_RE = re.compile(r"@@RQ:(bloco|anexo):([A-Za-z0-9_\-]+)@@")
@@ -45,6 +47,28 @@ IMAGE_MIMETYPES = frozenset({
     "image/jpeg", "image/png", "image/gif", "image/bmp", "image/tiff", "image/webp",
 })
 
+REPORT_CORPO = "afr_qualificacao.action_report_relatorio_corpo"
+
+
+def file_problem(content, mimetype=None):
+    """`None` se o arquivo é utilizável na montagem; senão o motivo em pt-BR."""
+    if not content:
+        return "arquivo vazio"
+    detected = guess_mimetype(content, default=mimetype or "application/octet-stream")
+    if detected == "application/pdf":
+        try:
+            open_pdf(content)
+        except ValueError as exc:
+            return str(exc)
+        return None
+    if detected in IMAGE_MIMETYPES:
+        try:
+            Image.open(io.BytesIO(content)).verify()
+        except Exception as exc:  # PIL levanta vários tipos
+            return "imagem ilegível (%s)" % exc
+        return None
+    return "tipo de arquivo não suportado (%s)" % detected
+
 
 def pdf_bytes(writer):
     """Serializa um PdfFileWriter."""
@@ -66,6 +90,11 @@ def open_pdf(content):
             try:
                 ok = reader.decrypt("")
             except NotImplementedError:
+                # TODO(4.10): PyPDF2 1.26 não decodifica AES (V4/V5,
+                # comum em certificados gerados por ferramentas recentes);
+                # cai aqui mesmo quando a senha de dono está correta.
+                # Fallback futuro: `pdftocairo` (poppler) para reabrir/
+                # re-renderizar esses PDFs antes de montar o relatório.
                 raise ValueError("PDF com criptografia não suportada")
             if not ok:
                 raise ValueError("PDF protegido por senha")
@@ -262,3 +291,25 @@ class AfrRelatorioPdf(models.AbstractModel):
     @api.model
     def _stamp(self, pdf_content, header, watermark):
         return stamp_pdf(pdf_content, header, watermark)
+
+    @api.model
+    def _render_report(self, relatorio, data):
+        """Renderiza o corpo QWeb (P3) em PDF de verdade.
+
+        `force_report_rendering`: em modo teste o Odoo devolveria HTML; os
+        testes fazem patch de `_render_qweb_pdf`, então isto só importa
+        quando algum teste esquece o patch (falha alta, não PDF inválido).
+        As chaves de `data` viram variáveis do template (`with_markers`,
+        `page_map` — fato fixado P3 #1; nunca por contexto).
+        """
+        relatorio.ensure_one()
+        # `relatorio.env`: o contexto do registro (token da emissão, filtro de
+        # pedaços do fallback) chega ao `doc` do template.
+        content, fmt = relatorio.env["ir.actions.report"].with_context(
+            force_report_rendering=True
+        )._render_qweb_pdf(REPORT_CORPO, res_ids=relatorio.ids, data=dict(data))
+        if fmt != "pdf":
+            raise UserError(_(
+                "A renderização do relatório não gerou PDF (formato '%s')."
+            ) % fmt)
+        return content

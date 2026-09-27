@@ -431,6 +431,44 @@ class TestRelatorioCertificados(AfrQualificacaoTestCommon):
         render.assert_called_once()
         self.assertEqual(len(files), 1)
 
+    def test_malha_render_exception_yields_unreadable_not_raise(self):
+        # Ruling P2 final 4.3/5.4: falha do render (report engc_os quebrado,
+        # wkhtmltopdf indisponível) não pode propagar — vira arquivo vazio,
+        # que `_check_files()` (P4) reporta como problema.
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        with patch.object(
+            type(self.env["ir.actions.report"]), "_render_qweb_pdf",
+            side_effect=Exception("wkhtmltopdf indisponível"),
+        ):
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(len(files), 1)
+        content, mimetype, caption = files[0]
+        self.assertEqual(content, b"")
+        self.assertEqual(mimetype, "application/pdf")
+        self.assertIn(cal.name, caption)
+
+    def test_malha_render_non_pdf_format_yields_unreadable(self):
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        with patch.object(
+            type(self.env["ir.actions.report"]), "_render_qweb_pdf",
+            return_value=(b"<html>oops</html>", "html"),
+        ):
+            files = self.rel._afr_malha_certificate_files()
+        self.assertEqual(files[0][0], b"")
+
+    def test_malha_render_memoized_across_separate_calls(self):
+        # `_afr_malha_certificate_files()` é chamado várias vezes por
+        # emissão (gate/build/scan) — o render do engc_os só deve acontecer
+        # uma vez por calibração na transação, não uma vez por chamada.
+        cal = self._engc_calibration()
+        self._link_malha(self.malha_t, cal)
+        with self._patch_report() as render:
+            self.rel._afr_malha_certificate_files()
+            self.rel._afr_malha_certificate_files()
+        render.assert_called_once()
+
     def test_malha_engc_wins_over_collect_items(self):
         cal = self._engc_calibration()
         self._link_malha(self.malha_t, cal)
