@@ -48,3 +48,5 @@ from . import relatorio_emissao        # Relatório Final P4 — emissão imutá
 from . import relatorio_emissao_flow   # Relatório Final P4 — campos de emissão no relatório
 from . import relatorio_editorial     # Relatório Final P4 — trava/invalidação editorial
 from . import relatorio_build_job     # Relatório Final P4 — fila da montagem do PDF (cron)
+from . import relatorio_achado          # Relatório Final P5 (16.0.8.4.0)
+from . import relatorio_verificacao     # P5 — _inherit afr.qualificacao.relatorio

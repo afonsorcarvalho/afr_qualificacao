@@ -120,3 +120,6 @@ from . import test_relatorio_corpo_report
 from . import test_relatorio_pdf
 from . import test_relatorio_emissao
 from . import test_relatorio_build_job
+
+# Relatório Final P5 — varredura (regras + IA) + gate de emissão
+from . import test_relatorio_gate
