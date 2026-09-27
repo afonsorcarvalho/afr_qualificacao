@@ -109,6 +109,11 @@ class AfrRelatorioAprovacao(models.Model):
             if stray_tokens:
                 stray_tokens.write({"access_token": False})
             recs_su._check_client_partner()
+        # Fix round 2 do P4 Task 9, achado 3: o papel efetivo pode vir de
+        # `default_papel` do contexto (fora do vals) — token pelo registro.
+        missing = records.sudo().filtered(lambda r: r.papel == "cliente" and not r.access_token)
+        if missing:
+            missing._rotate_client_token(clear_approval=False)
         return records
 
     def _check_client_partner(self):
@@ -180,6 +185,13 @@ class AfrRelatorioAprovacao(models.Model):
         sudo que grava a identidade + `approved_at` juntos, como o próprio
         fluxo de aprovação da P4 faz, não deve se autoinvalidar).
         """
+        # Fix round 2 do P4 Task 9, achado 2: linha de aprovação nunca muda
+        # de relatório fora do fluxo interno (levaria token/aprovação junto).
+        if (not self.env.su and "relatorio_id" in vals
+                and any(rec.relatorio_id.id != (vals["relatorio_id"] or False) for rec in self)):
+            raise AccessError(_(
+                "Uma linha de aprovação não pode ser movida para outro relatório."
+            ))
         touched = set(vals) & set(_APPROVAL_CONTROL_FIELDS)
         if touched and not self.env.su:
             raise AccessError(_(

@@ -192,6 +192,43 @@ class TestRelatorioEmissaoModel(RelatorioFixtureMixin, AfrQualificacaoTestCommon
         self.assertEqual(novo.state, "draft")
         self.assertEqual(novo.revision, 0)
 
+    # ─── Task 9 fix round 2, achado 1: âncoras (cliente/empresa/OS/equipamento) ───
+
+    def _foreign_partner(self):
+        return self.env["res.partner"].create({
+            "name": "Terceiro Teste", "email": "terceiro@example.test"})
+
+    def test_anchor_fields_not_writable_outside_su(self):
+        foreign = self._foreign_partner()
+        other_company = self.env["res.company"].create({"name": "Empresa Teste 2"})
+        partner0, os_partner0 = self.rel.partner_id, self.rel.os_id.partner_id
+        other_rel, _q = self._make_relatorio(equipment=self.equip2)
+        for user in (self.usuario, self.manager):
+            for vals in ({"partner_id": foreign.id}, {"company_id": other_company.id},
+                         {"os_id": other_rel.os_id.id}, {"equipment_id": self.equip2.id}):
+                with self.assertRaises(UserError, msg=(user.login, vals)):
+                    self.rel.with_user(user).write(vals)
+        self.assertEqual(self.rel.partner_id, partner0)
+        self.assertEqual(self.rel.os_id.partner_id, os_partner0)
+        # Regravar o mesmo valor não é troca.
+        self.rel.with_user(self.usuario).write({"partner_id": partner0.id})
+
+    def test_create_cannot_set_anchor_partner_or_company(self):
+        self._give_equip2_qualif_on(self.rel.os_id)
+        foreign = self._foreign_partner()
+        Rel = self.env["afr.qualificacao.relatorio"].with_user(self.usuario)
+        with self.assertRaises(UserError):
+            Rel.create({"os_id": self.rel.os_id.id, "equipment_id": self.equip2.id,
+                        "partner_id": foreign.id})
+        rel = Rel.with_context(default_partner_id=foreign.id).create(
+            {"os_id": self.rel.os_id.id, "equipment_id": self.equip2.id})
+        self.assertEqual(rel.partner_id, self.rel.os_id.partner_id)
+        self.assertEqual(self.rel.os_id.partner_id, self.partner)
+
+    def test_anchor_constraint_matches_os(self):
+        with self.assertRaises(ValidationError):
+            self.rel.sudo().write({"partner_id": self._foreign_partner().id})
+
     def test_current_emissao_must_belong_to_relatorio(self):
         other_rel, _q = self._make_relatorio(equipment=self.equip2)
         other_emissao = self._internal_create(relatorio_id=other_rel.id, token="h" * 32)
@@ -1037,3 +1074,24 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
         self.assertFalse(self.line_cli.approved_at)
         self.assertNotEqual(self.line_cli.access_token, old)
         self.assertEqual(self.rel.state, "issued")
+
+    # ─── Fix round 2, achados 2 e 3 ───
+
+    def test_approval_line_cannot_move_between_reports(self):
+        self._approve_and_emit()
+        other_rel, _q = self._make_relatorio(equipment=self.equip2)
+        for line in (self.line_cli, self.line_elab):
+            with self.assertRaises(AccessError):
+                line.with_user(self.office).write({"relatorio_id": other_rel.id})
+            with self.assertRaises(AccessError):
+                line.with_user(self.manager).write({"relatorio_id": other_rel.id})
+        self.assertEqual(self.line_cli.relatorio_id, self.rel)
+        self.line_elab.sudo().write({"relatorio_id": self.rel.id})  # mesmo valor / su
+
+    def test_default_papel_cliente_gets_token(self):
+        Aprov = self.env["afr.relatorio.aprovacao"]
+        for env_aprov in (Aprov.with_user(self.office), Aprov.sudo()):
+            line = env_aprov.with_context(default_papel="cliente").create({
+                "relatorio_id": self.rel.id, "partner_id": self.partner.id})
+            self.assertEqual(line.papel, "cliente")
+            self.assertTrue(line.sudo().access_token)

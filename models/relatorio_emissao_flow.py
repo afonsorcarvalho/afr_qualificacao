@@ -83,7 +83,23 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
         "block_ids", "anexo_ids", "checklist_ids", "indicador_ids", "leitura_ib_ids",
     })
 
+    # Âncoras do relatório (fix round 2 do Task 9): cliente/empresa derivam da
+    # OS; OS e equipamento são fixos depois de criado. `partner_id` é a âncora
+    # do check de contato do aprovador cliente — não pode ser regravado.
+    _RQ_ANCHOR_FIELDS = ("partner_id", "company_id", "os_id", "equipment_id")
+    _RQ_CREATE_DERIVED_FIELDS = ("partner_id", "company_id")
+
     def write(self, vals):
+        if not self.env.su:
+            anchors = [
+                f for f in self._RQ_ANCHOR_FIELDS
+                if f in vals and any(rec[f].id != (vals[f] or False) for rec in self)
+            ]
+            if anchors:
+                raise UserError(_(
+                    "Cliente, empresa, OS e equipamento do relatório final não podem "
+                    "ser alterados (%s): cliente e empresa vêm da OS."
+                ) % ", ".join(anchors))
         if not self.env.su and self._RQ_INTERNAL_FIELDS.intersection(vals):
             raise UserError(_(
                 "Status, revisão e emissão vigente do relatório final só mudam "
@@ -126,6 +142,16 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                         "mudam pelas ações Emitir, Revisar e pela aprovação do "
                         "cliente — nunca na criação do registro."
                     ))
+                derived = [f for f in self._RQ_CREATE_DERIVED_FIELDS if f in vals]
+                if derived:
+                    raise UserError(_(
+                        "Cliente e empresa do relatório final vêm da OS; não podem "
+                        "ser informados na criação (%s).") % ", ".join(derived))
+            # Idem pelo contexto: default_partner_id/default_company_id não valem.
+            self = self.with_context({
+                k: v for k, v in self.env.context.items()
+                if k not in ("default_%s" % f for f in self._RQ_CREATE_DERIVED_FIELDS)
+            })
         records = super().create(vals_list)
         if not self.env.su:
             for record in records:
@@ -140,6 +166,16 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                         "cliente — nunca na criação do registro."
                     ))
         return records
+
+    @api.constrains("partner_id", "company_id", "os_id")
+    def _check_anchor_matches_os(self):
+        """Cliente e empresa do relatório são os da OS (fix round 2 do Task 9)."""
+        for rel in self:
+            if (rel.partner_id != rel.os_id.partner_id
+                    or rel.company_id != rel.os_id.company_id):
+                raise ValidationError(_(
+                    "O cliente e a empresa do relatório %s precisam ser os da OS."
+                ) % rel.display_name)
 
     @api.constrains("current_emissao_id")
     def _check_current_emissao_pertence_ao_relatorio(self):
