@@ -76,6 +76,16 @@ class TestRelatorioRulesBloqueia(_RulesMixin, RelatorioTestCommon):
         })
         self.assertEqual(self._run("IB_SEM_LEITURA"), [])
 
+    def test_ib_sem_leitura_ignora_ciclo_pendente(self):
+        """Item 1 (P5 final fix wave): um ciclo com carga ainda PENDENTE
+        (não executado) não pode travar a emissão por falta de leitura de
+        IB — ele nem rodou ainda, então "bloqueia" tornaria o relatório
+        inemitível enquanto o ciclo não for executado. Quem sinaliza um
+        ciclo pendente é CICLOS_CONTAGEM (alerta, decidível)."""
+        self._cycle(state="pending")
+        self.assertEqual(self._run("IB_SEM_LEITURA"), [])
+        self.assertTrue(self._run("CICLOS_CONTAGEM"))
+
     def test_ib_vencido(self):
         ind = self.env["afr.relatorio.indicador"].create({
             "relatorio_id": self.rel.id, "tipo": "biologico", "lote": "L-TESTE",

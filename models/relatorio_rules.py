@@ -165,10 +165,16 @@ def rule_padrao_vencido(rel):
 
 
 def rule_ib_sem_leitura(rel):
+    """Item 1 (P5 final fix wave): pula ciclos ainda `pending` — um ciclo
+    com carga que nem foi executado não tem como ter leitura de IB, e
+    bloquear a emissão por isso deixaria o relatório inemitível enquanto o
+    ciclo não roda (quem sinaliza o ciclo pendente, decidível, é
+    CICLOS_CONTAGEM)."""
     lidos = set(rel.leitura_ib_ids.filtered(lambda l: l.resultado).mapped("cycle_id").ids)
     out = []
     for cycle in rel.cycle_ids:
-        if cycle.cycle_type_id.load_type == "com_carga" and cycle.id not in lidos:
+        if (cycle.cycle_type_id.load_type == "com_carga"
+                and cycle.state != "pending" and cycle.id not in lidos):
             out.append(finding(
                 "IB_SEM_LEITURA", "bloqueia",
                 "Ciclo com carga %s sem leitura de indicador biológico registrada."
