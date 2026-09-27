@@ -766,7 +766,23 @@ class TestRelatorioEmissaoFlow(RelatorioEmissaoBase):
         self.assertTrue(all(c["context"].get("rq_hide_client_approval") for c in fake.calls))
 
 
-    # ───────── Revisão final P4 — itens 3 e 4 ─────────
+    # ───────── Revisão final P4 — itens 3, 4 e 5 ─────────
+
+    def _emit_until_stamp_then(self, mutate):
+        """Emissão na fila; `mutate()` roda entre as unidades (antes do carimbo)."""
+        with FakeCorpo().patch(self.env):
+            self.rel.with_user(self.manager).action_emitir()
+            run_build_jobs(self.env, until=lambda job: job.phase == "stamp")
+            mutate()
+            run_build_jobs(self.env)
+        return self.rel.build_job_ids[:1]
+
+    def _assert_emission_discarded(self, job, message, previous=False):
+        self.assertEqual(job.state, "failed")
+        self.assertIn(message, job.error)
+        self.assertFalse(job.emissao_id)
+        self.assertEqual(self.rel.current_emissao_id, previous or self.env["afr.relatorio.emissao"])
+        self.assertEqual(self.rel.emissao_ids, previous or self.env["afr.relatorio.emissao"])
 
     def test_proxima_qualificacao_uses_issuer_timezone(self):  # item 3
         # 23:30 em Brasília = 02:30 UTC do dia seguinte. O finalize roda no
@@ -815,6 +831,61 @@ class TestRelatorioEmissaoFlow(RelatorioEmissaoBase):
         self.assertIn("alterado durante a montagem", job.error)
         self.assertFalse(self.rel.minuta_attachment_id)
 
+    def test_revision_change_during_emission_discards_it(self):  # item 5
+        self._approve()
+        job = self._emit_until_stamp_then(
+            lambda: self.rel.sudo().write({"revision": self.rel.revision + 1}))
+        self._assert_emission_discarded(job, "status ou a revisão do relatório mudou")
+        self.assertEqual(self.rel.state, "draft")
+
+    def test_state_change_during_emission_discards_it(self):  # item 5
+        self._approve()
+        job = self._emit_until_stamp_then(
+            lambda: self.rel.sudo().write({"state": "client_approved"}))
+        self._assert_emission_discarded(job, "status ou a revisão do relatório mudou")
+
+    def test_internal_approval_cleared_during_emission_discards_it(self):  # item 5
+        self._approve()
+        seq = self.rel.rq_editorial_seq
+
+        def swap_elaborador():
+            # Caminho de identidade da aprovação: trocar o usuário da linha
+            # zera approved_at (não é edição editorial — o seq não muda).
+            self.line_elab.write({"user_id": self.office.id})
+            self.assertFalse(self.line_elab.approved_at)
+            self.assertEqual(self.rel.rq_editorial_seq, seq)
+
+        job = self._emit_until_stamp_then(swap_elaborador)
+        self._assert_emission_discarded(job, "aprovações internas mudaram durante a montagem")
+        self.assertEqual(self.rel.state, "draft")
+
+    def test_exception_in_finalize_rolls_back_everything(self):  # item 5
+        e0 = self._approve_and_emit()
+        self.line_cli.sudo().write({"approved_at": fields.Datetime.now(), "ip": "203.0.113.9"})
+        token_rev0 = self.line_cli.access_token
+        self.rel.with_user(self.manager).action_revisar()
+        self._approve()
+        Rel = type(self.env["afr.qualificacao.relatorio"])
+        original = Rel._rq_finalize_emissao
+
+        def finalize_then_boom(rel_self, job, attachment, warnings):
+            original(rel_self, job, attachment, warnings)  # grava tudo, depois estoura
+            raise ValueError("boom no finalize")
+
+        with patch.object(Rel, "_rq_finalize_emissao", finalize_then_boom), \
+                mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+            self._emit()
+        job = self.rel.build_job_ids[:1]
+        self.assertEqual(job.state, "failed")
+        self.assertIn("boom no finalize", job.error)
+        self.assertFalse(job.emissao_id)
+        self.assertEqual(self.rel.state, "draft")
+        self.assertEqual(self.rel.revision, 1)
+        self.assertEqual(self.rel.emissao_ids, e0)
+        self.assertEqual(self.rel.current_emissao_id, e0)
+        self.assertFalse(e0.superseded)
+        self.assertTrue(self.line_cli.approved_at)
+        self.assertEqual(self.line_cli.access_token, token_rev0)
 
 @tagged("post_install", "-at_install", "afr_relatorio_final")
 class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
