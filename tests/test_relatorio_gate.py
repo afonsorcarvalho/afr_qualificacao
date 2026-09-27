@@ -136,6 +136,11 @@ class TestVerificar(RelatorioTestCommon):
             "equipment_id": self.equip1.id,
         })
         self._cycle(state="passed", seq=1, sale_order_line_id=line.id)
+        self.os.sale_order_id = so
+        # Confirma a premissa da ruling: sem o sudo() de cycle_counts(), o
+        # Usuário realmente não teria como ler a linha de venda.
+        with self.assertRaises(AccessError):
+            line.with_user(self.user_qualif).read(["qualif_cycle_qty"])
 
         self.rel.with_user(self.user_qualif).action_verificar()
         self.assertTrue(self._achado("CERT_DEPOIS_AUSENTE"))
