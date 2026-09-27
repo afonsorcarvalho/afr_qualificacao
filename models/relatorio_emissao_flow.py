@@ -25,6 +25,12 @@ from .relatorio_pdf import REPORT_CORPO
 # (ordem do MRO do registry); por isso o import fica dentro dos métodos.
 
 INTERNAL_ROLES = ("elaborador", "emissor")
+DEFAULT_PUBLIC_TZ = "America/Sao_Paulo"
+
+
+def company_tz(company):
+    """Fuso da empresa emissora (páginas públicas e datas da emissão)."""
+    return (company and company.partner_id.tz) or DEFAULT_PUBLIC_TZ
 ROLE_LABELS = {"elaborador": "Elaborador", "emissor": "Emissor"}
 
 
@@ -305,12 +311,18 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
 
     @api.depends("current_emissao_id.issued_at")
     def _compute_proxima_qualificacao(self):
-        """Emissão vigente + 12 meses; sem emissão, o resultado de P1."""
+        """Emissão vigente + 12 meses; sem emissão, o resultado de P1.
+
+        A data local é a do fuso do emissor (senão o da empresa, senão
+        America/Sao_Paulo) — nunca a do contexto: o finalize roda no cron,
+        sem tz, e 23:30 em Brasília já é o dia seguinte em UTC."""
         super()._compute_proxima_qualificacao()
         for rel in self:
-            issued = rel.current_emissao_id.issued_at
-            if issued:
-                local = fields.Datetime.context_timestamp(rel, issued).date()
+            emissao = rel.current_emissao_id
+            if emissao.issued_at:
+                tz = emissao.issued_by.tz or company_tz(rel.company_id)
+                local = fields.Datetime.context_timestamp(
+                    rel.with_context(tz=tz), emissao.issued_at).date()
                 rel.proxima_qualificacao = local + relativedelta(months=12)
 
     def _scan_snapshot(self):
@@ -409,8 +421,10 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
             raise UserError(_("Só é possível revisar um relatório emitido."))
         ctx = dict(clean_context(self.env.context), **{SKIP_CTX: True})
         self.sudo().with_context(ctx).write({"revision": self.revision + 1, "state": "draft"})
+        # Revisão nova = conteúdo novo: uma minuta em montagem é descartada.
+        self._rq_bump_editorial_seq()
         self._invalidate_internal_approvals()
-        self.message_post(body=_(
+        self.with_context(clean_context(self.env.context)).message_post(body=_(
             "Revisão %s aberta. A emissão anterior continua vigente até a nova "
             "ser emitida.") % self.revision_label)
         return True

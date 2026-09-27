@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import tagged
+from odoo.tools import mute_logger
 
 from odoo.addons.afr_qualificacao.controllers.relatorio import (
     _portal_aprovacao,
@@ -763,6 +764,56 @@ class TestRelatorioEmissaoFlow(RelatorioEmissaoBase):
         self._emit(fake=fake)
         self.assertTrue(fake.calls)
         self.assertTrue(all(c["context"].get("rq_hide_client_approval") for c in fake.calls))
+
+
+    # ───────── Revisão final P4 — itens 3 e 4 ─────────
+
+    def test_proxima_qualificacao_uses_issuer_timezone(self):  # item 3
+        # 23:30 em Brasília = 02:30 UTC do dia seguinte. O finalize roda no
+        # cron (sem tz no contexto): a data local tem de ser a do emissor,
+        # não a de UTC nem a do usuário que por acaso recomputa.
+        self.env.user.tz = "UTC"
+        utc_env = self.env(context=dict(self.env.context, tz="UTC"))
+        for issuer_tz, company_tz in (("America/Sao_Paulo", False), (False, False)):
+            self.manager.tz = issuer_tz
+            self.rel.company_id.partner_id.tz = company_tz
+            if self.rel.state != "draft":
+                self.rel.with_user(self.manager).action_revisar()
+            self._approve()
+            with FakeCorpo().patch(self.env):
+                self.rel.with_user(self.manager).action_emitir()
+                self.rel.build_job_ids[:1].sudo().write(
+                    {"issued_at": fields.Datetime.to_datetime("2026-03-11 02:30:00")})
+                run_build_jobs(utc_env)
+            self.assertEqual(self.rel.state, "issued")
+            self.assertEqual(self.rel.proxima_qualificacao, date(2027, 3, 10),
+                             (issuer_tz, company_tz))
+
+    def test_proxima_qualificacao_falls_back_to_company_timezone(self):  # item 3
+        self.env.user.tz = "UTC"
+        self.manager.tz = False
+        self.rel.company_id.partner_id.tz = "Asia/Tokyo"  # 20:30 UTC do dia 10 = 05:30 do dia 11
+        self._approve()
+        with FakeCorpo().patch(self.env):
+            self.rel.with_user(self.manager).action_emitir()
+            self.rel.build_job_ids[:1].sudo().write(
+                {"issued_at": fields.Datetime.to_datetime("2026-03-10 20:30:00")})
+            run_build_jobs(self.env(context=dict(self.env.context, tz="UTC")))
+        self.assertEqual(self.rel.proxima_qualificacao, date(2027, 3, 11))
+
+    def test_revisar_discards_active_minuta(self):  # item 4
+        self._approve_and_emit()
+        with FakeCorpo().patch(self.env):
+            self.rel.with_user(self.office).action_gerar_minuta()
+            run_build_jobs(self.env, until=lambda job: job.phase == "stamp")
+            seq = self.rel.rq_editorial_seq
+            self.rel.with_user(self.manager).action_revisar()
+            self.assertEqual(self.rel.rq_editorial_seq, seq + 1)
+            run_build_jobs(self.env)
+        job = self.rel.build_job_ids[:1]
+        self.assertEqual((job.kind, job.state), ("minuta", "failed"))
+        self.assertIn("alterado durante a montagem", job.error)
+        self.assertFalse(self.rel.minuta_attachment_id)
 
 
 @tagged("post_install", "-at_install", "afr_relatorio_final")

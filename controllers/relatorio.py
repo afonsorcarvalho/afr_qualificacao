@@ -17,16 +17,17 @@ from odoo.exceptions import UserError
 from odoo.http import content_disposition, request
 from odoo.tools import consteq
 
+from ..models.relatorio_emissao_flow import DEFAULT_PUBLIC_TZ, company_tz
+
 # Maior id aceito pelo Postgres (int4): acima disso o browse().exists()
 # estouraria em SQL (500) em vez de responder 404.
 _MAX_PG_INT = 2 ** 31 - 1
-DEFAULT_PUBLIC_TZ = "America/Sao_Paulo"
 
 
 def _public_tz(company):
     """Fuso das datas nas páginas públicas: o da empresa emissora, não o do
-    visitante (fix round 1, achado 4)."""
-    return (company and company.partner_id.tz) or DEFAULT_PUBLIC_TZ
+    visitante (fix round 1, achado 4). Mesma regra da próxima qualificação."""
+    return company_tz(company)
 
 
 def _relatorio_verify_values(env, token):
