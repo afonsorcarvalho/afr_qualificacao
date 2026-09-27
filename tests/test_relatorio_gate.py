@@ -60,6 +60,19 @@ class TestAchadoModel(RelatorioTestCommon):
         with self.assertRaises(AccessError):
             a.write({"gravidade": "info"})
 
+    def test_unlink_restrito_a_su(self):
+        """Item 8 (P5 final fix wave): o Gestor tem unlink=1 na ACL de
+        afr.relatorio.achado (convenção de CRUD completo dos demais
+        modelos), mas apagar um achado manualmente contornaria o gate —
+        ex.: um alerta de IA pendente que simplesmente desaparece sem
+        decisão. Só a varredura interna (sudo) remove achados; a ACL
+        continua igual (item mantém a permissão ampla, o model é que
+        restringe)."""
+        a = self._mk_achado()
+        with self.assertRaises(AccessError):
+            a.with_user(self.user_manager).unlink()
+        self.assertTrue(a.exists())
+
     def test_has_blocking_e_resumo(self):
         self.assertFalse(self.rel.has_blocking)
         self._mk_achado(gravidade="bloqueia", mensagem="Falta certificado depois")
@@ -78,6 +91,14 @@ class TestVerificar(RelatorioTestCommon):
         self.rel.state = "issued"
         with self.assertRaises(UserError):
             self.rel.action_verificar()
+
+    def test_verificar_exige_permissao_de_escrita(self):
+        """Item 3 (P5 final fix wave): action_verificar não escreve no
+        relatório diretamente (só cria achados via sudo internamente), então
+        sem um check explícito um Técnico (leitura apenas na ACL do
+        relatório) conseguiria disparar a varredura por RPC."""
+        with self.assertRaises(AccessError):
+            self.rel.with_user(self.user_technician).action_verificar()
 
     def test_verificar_grava_achados_de_regra(self):
         self.rel.action_verificar()
@@ -197,8 +218,12 @@ class TestGateEmissao(RelatorioTestCommon):
         problems = self.rel._check_emission_gate()
         self.assertTrue(any("CERT_DEPOIS_AUSENTE" in p for p in problems))
         self.assertFalse(any("Falha ao executar a regra" in p for p in problems))
-        with self.assertRaises(UserError):
+        # Item 7 (P5 final fix wave): o código bloqueante precisa aparecer
+        # na mensagem que o usuário efetivamente vê (UserError de
+        # action_emitir), não só na lista interna de `problems`.
+        with self.assertRaises(UserError) as cm:
             self._emit()
+        self.assertIn("CERT_DEPOIS_AUSENTE", str(cm.exception))
         self.assertEqual(self.rel.state, "draft")
 
     def test_alerta_de_regra_precisa_de_decisao(self):
@@ -274,3 +299,36 @@ class TestGateEmissao(RelatorioTestCommon):
         self._emit()
         with self.assertRaises(UserError):
             self.rel.action_verificar()
+
+    def test_revisar_reseta_decisao_de_alerta(self):
+        """Item 2 (P5 final fix wave): decisões de achado `alerta` (regra ou
+        IA) não podem sobreviver a Revisar — mesmo princípio da spec §4.6
+        ("aprovar uma revisão não aprova a próxima"). Sem o reset, o
+        achado ficava `descartado` para sempre e a Rev.01 conseguia ser
+        emitida sem ninguém olhar de novo para o alerta na revisão nova."""
+        self._make_clean()
+        self.rel.write({"amb_umidade": False})
+        self.rel.action_verificar()
+        self._achado("AMBIENTE_VAZIO").write(
+            {"decisao": "descartado", "motivo": "Sala sem higrômetro."})
+        self._approve_internal()
+        self._emit()
+        self._refresh()
+        self.assertEqual(self.rel.state, "issued")
+
+        self.rel.action_revisar()
+        self._refresh()
+        a = self._achado("AMBIENTE_VAZIO")
+        self.assertTrue(a)
+        self.assertEqual(a.decisao, "pendente")
+        self.assertFalse(a.motivo)
+        self.assertFalse(a.decidido_por)
+        self.assertFalse(a.decidido_em)
+
+        # Sem decidir de novo, a Rev.01 não pode ser emitida (amb_umidade
+        # continua vazia — o alerta AMBIENTE_VAZIO volta na re-verificação
+        # do gate, agora pendente).
+        self._approve_internal()
+        with self.assertRaises(UserError):
+            self._emit()
+        self.assertEqual(self.rel.state, "draft")

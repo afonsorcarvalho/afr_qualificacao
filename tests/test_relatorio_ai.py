@@ -156,6 +156,28 @@ class TestRelatorioAi(RelatorioTestCommon):
             out = self.AI.review(self.rel)
         self.assertEqual([f["codigo"] for f in out], [CODIGO_INDISPONIVEL])
 
+    def test_json_invalido_da_resposta_nao_aborta_trechos_seguintes(self):
+        """Item 4 (P5 final fix wave): `requests.JSONDecodeError` (o que
+        `resp.json()` levanta de fato, na versão instalada no container) é
+        subclasse de `requests.RequestException` — sem um `except`
+        específico ANTES do `except requests.RequestException`, uma
+        resposta com corpo não-JSON era tratada como falha de REDE (aborta
+        os trechos seguintes, um só IA_INDISPONIVEL "genérico"), quando na
+        verdade é resposta inválida de UM trecho: os demais trechos
+        continuam sendo enviados (mesmo comportamento de `ValueError` /
+        "JSON sem a lista 'achados'", já coberto por test_lixo_vira_indisponivel
+        num cenário de um trecho só)."""
+        self._anexo(code="dados", pdfs=[make_pdf("Ciclo 1 dados")])
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value", "não é json", 0)
+        with patch(POST, return_value=resp) as post:
+            out = self.AI.review(self.rel)
+        # os 2 trechos (corpo + anexo) foram tentados — não interrompeu no 1º
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual([f["codigo"] for f in out], [CODIGO_INDISPONIVEL])
+
     def test_erro_http_nao_vaza_chave(self):
         resp = MagicMock()
         resp.raise_for_status.side_effect = requests.HTTPError(

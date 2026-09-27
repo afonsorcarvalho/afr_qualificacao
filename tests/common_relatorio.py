@@ -69,6 +69,32 @@ class RelatorioTestCommon(AfrQualificacaoTestCommon):
             name="Eng. Responsável",
             groups="base.group_user,afr_qualificacao.group_afr_qualificacao_user",
         )
+        # P5 final fix wave (itens 3 e 8): usuários para os testes de
+        # permissão do action_verificar (Técnico) e do unlink de achado
+        # (Gestor — tem unlink=1 na ACL por convenção CRUD completo, mas o
+        # model restringe a remoção a env.su).
+        cls.user_technician = new_test_user(
+            cls.env,
+            login="p5_rel_tech",
+            name="Técnico Teste",
+            groups="base.group_user,afr_qualificacao.group_afr_qualificacao_technician",
+        )
+        cls.user_manager = new_test_user(
+            cls.env,
+            login="p5_rel_manager",
+            name="Gestor Teste",
+            groups="base.group_user,afr_qualificacao.group_afr_qualificacao_manager",
+        )
+
+    def setUp(self):
+        super().setUp()
+        # Item 6 (P5 final fix wave): garante IA desligada por padrão em
+        # TODA classe desta base — TestRelatorioAi (test_relatorio_ai.py)
+        # liga de novo no próprio setUp quando precisa mockar requests.post.
+        # Sem isto, um teste que ligasse o parâmetro e não desfizesse
+        # poderia deixar outra classe fazendo HTTP real por engano.
+        self.env["ir.config_parameter"].sudo().set_param(
+            "afr_qualificacao.ai_enabled", "False")
 
     # ------------------------------------------------------------ helpers
     def _refresh(self):
