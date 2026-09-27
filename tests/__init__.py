@@ -118,3 +118,4 @@ from . import test_relatorio_corpo_report
 
 # Relatório Final — P4 (montagem do PDF, emissão, verificação, portal)
 from . import test_relatorio_pdf
+from . import test_relatorio_emissao
