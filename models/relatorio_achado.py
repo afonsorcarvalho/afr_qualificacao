@@ -70,6 +70,18 @@ class AfrRelatorioAchado(models.Model):
             ))
         return super().create(vals_list)
 
+    def unlink(self):
+        # Item 8 (P5 final fix wave): a ACL do Gestor tem unlink=1 (mesma
+        # convenção de CRUD completo dos demais modelos do módulo), mas
+        # apagar um achado manualmente contornaria o gate — ex.: um alerta
+        # de IA pendente que simplesmente desaparece sem decisão. Só a
+        # varredura interna (sudo) remove achados; a ACL fica como está.
+        if not self._is_internal():
+            raise AccessError(_(
+                "Achados são removidos apenas pela verificação (botão Verificar)."
+            ))
+        return super().unlink()
+
     def write(self, vals):
         if not self._is_internal():
             extra = set(vals) - USER_WRITABLE_FIELDS
