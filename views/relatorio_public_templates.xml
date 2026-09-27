@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Verificação pública do Relatório Final (destino do QR).
+         Mostra só o que a spec §8 prevê: nº, revisão, data, hash, status,
+         empresa emissora e aprovações do cliente. Nada de cliente/equipamento
+         e nenhum download do PDF (o anexo emitido é public=False). -->
+    <template id="relatorio_verify_template" name="Verificação do Relatório Final">
+        <t t-call="portal.frontend_layout">
+            <div class="container py-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-4">Verificação de Relatório Final</h2>
+
+                        <div t-if="status == 'not_found'" class="alert alert-danger">
+                            <h4 class="alert-heading">Relatório não encontrado</h4>
+                            <p>Token inválido ou inexistente.</p>
+                            <p><small><strong>Token consultado:</strong> <code t-esc="token or '—'"/></small></p>
+                        </div>
+                        <div t-if="status == 'tampered'" class="alert alert-danger">
+                            <h4 class="alert-heading">Arquivo divergente</h4>
+                            <p>O PDF armazenado não corresponde ao hash SHA-256 registrado na emissão.</p>
+                        </div>
+                        <div t-if="status == 'superseded'" class="alert alert-warning">
+                            <h4 class="alert-heading">Revisão substituída</h4>
+                            <p>Esta revisão foi substituída<t t-if="current"> pela
+                                <strong t-esc="current.name"/></t>. Solicite a revisão vigente ao emissor.</p>
+                        </div>
+                        <div t-if="status == 'valid'" class="alert alert-success">
+                            <h4 class="alert-heading">Relatório válido</h4>
+                            <p>Esta é a revisão vigente, emitida pelo laboratório.</p>
+                            <p t-if="under_revision" class="mb-0"><small>Uma nova revisão está em elaboração.</small></p>
+                        </div>
+
+                        <div t-if="status != 'not_found'" class="card">
+                            <div class="card-body">
+                                <h5 class="card-title" t-esc="relatorio.name"/>
+                                <table class="table table-sm">
+                                    <tr><th style="width:30%">Revisão</th><td t-esc="'Rev.%02d' % emissao.revision"/></tr>
+                                    <tr><th>Emitido por</th><td t-esc="relatorio.company_id.name or '—'"/></tr>
+                                    <tr><th>Emitido em</th><td><span t-field="emissao.issued_at"/></td></tr>
+                                    <tr><th>SHA-256 do PDF</th><td><code style="word-break:break-all;" t-esc="emissao.sha256"/></td></tr>
+                                </table>
+                                <t t-if="status == 'valid'">
+                                    <h6>Aprovações do cliente</h6>
+                                    <p t-if="not client_approvals" class="text-muted">Aguardando aprovação do cliente.</p>
+                                    <ul t-if="client_approvals">
+                                        <li t-foreach="client_approvals" t-as="ap">
+                                            <t t-esc="ap.nome_exibicao"/> — <span t-field="ap.approved_at"/>
+                                        </li>
+                                    </ul>
+                                </t>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+
+    <!-- Portal: aprovação do cliente (link com access_token por aprovador). -->
+    <template id="portal_relatorio_aprovacao" name="Aprovação do Relatório Final">
+        <t t-call="portal.frontend_layout">
+            <div class="container py-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <h2 class="mb-1" t-esc="relatorio.name"/>
+                        <p class="text-muted" t-esc="relatorio.revision_label"/>
+
+                        <div t-if="message == 'ok'" class="alert alert-success">Aprovação registrada. Obrigado.</div>
+                        <div t-if="message == 'erro'" class="alert alert-danger">Não foi possível registrar a aprovação: não há revisão emitida aguardando aprovação.</div>
+
+                        <t t-if="emissao">
+                            <p>Emitido em <span t-field="emissao.issued_at"/>.<br/>
+                                SHA-256: <code style="word-break:break-all;" t-esc="emissao.sha256"/></p>
+                            <p><a class="btn btn-secondary"
+                                  t-attf-href="/my/relatorio/#{aprovacao.id}/pdf?access_token=#{access_token}">Baixar PDF</a></p>
+                        </t>
+
+                        <div t-if="aprovacao.approved_at" class="alert alert-info">
+                            Aprovado por <strong t-esc="aprovacao.nome_exibicao"/> em <span t-field="aprovacao.approved_at"/>.
+                        </div>
+                        <t t-elif="emissao and relatorio.state in ('issued', 'client_approved')">
+                            <form method="post" t-attf-action="/my/relatorio/#{aprovacao.id}/aprovar">
+                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="access_token" t-att-value="access_token"/>
+                                <div class="mb-3">
+                                    <label for="rq_nome" class="form-label">Seu nome</label>
+                                    <input id="rq_nome" name="nome" class="form-control" required="required" maxlength="128"
+                                           t-att-value="aprovacao.nome_exibicao or aprovacao.partner_id.name"/>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Aprovar relatório</button>
+                            </form>
+                        </t>
+                        <div t-else="" class="alert alert-warning">Este relatório está em revisão. Aguarde a nova emissão.</div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>

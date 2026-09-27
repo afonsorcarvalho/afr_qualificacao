@@ -10,6 +10,10 @@ from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import tagged
 
+from odoo.addons.afr_qualificacao.controllers.relatorio import (
+    _portal_aprovacao,
+    _relatorio_verify_values,
+)
 from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
 
 from .common import AfrQualificacaoTestCommon
@@ -699,3 +703,167 @@ class TestRelatorioEmissaoFlow(RelatorioEmissaoBase):
         self._emit(fake=fake)
         self.assertTrue(fake.calls)
         self.assertTrue(all(c["context"].get("rq_hide_client_approval") for c in fake.calls))
+
+
+@tagged("post_install", "-at_install", "afr_relatorio_final")
+class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
+
+    def test_verify_not_found(self):
+        self.assertEqual(_relatorio_verify_values(self.env, "curto")["status"], "not_found")
+        self.assertEqual(_relatorio_verify_values(self.env, "f" * 32)["status"], "not_found")
+        self.assertEqual(_relatorio_verify_values(self.env, None)["status"], "not_found")
+
+    def test_verify_valid_then_superseded_only_after_new_emission(self):
+        e0 = self._approve_and_emit()
+        values = _relatorio_verify_values(self.env, e0.token)
+        self.assertEqual(values["status"], "valid")
+        self.assertEqual(values["emissao"], e0)
+        self.assertFalse(values["under_revision"])
+        self.rel.with_user(self.manager).action_revisar()
+        values = _relatorio_verify_values(self.env, e0.token)
+        self.assertEqual(values["status"], "valid")
+        self.assertTrue(values["under_revision"])
+        e1 = self._approve_and_emit()
+        self.assertEqual(_relatorio_verify_values(self.env, e0.token)["status"], "superseded")
+        self.assertEqual(_relatorio_verify_values(self.env, e0.token)["current"], e1)
+        self.assertEqual(_relatorio_verify_values(self.env, e1.token)["status"], "valid")
+
+    def test_verify_detects_tampered_stored_pdf(self):
+        e0 = self._approve_and_emit()
+        e0.pdf_attachment_id.sudo().write({"raw": b"%PDF-1.4 outro conteudo"})
+        self.assertEqual(_relatorio_verify_values(self.env, e0.token)["status"], "tampered")
+
+    def test_verify_works_for_public_user_env(self):
+        e0 = self._approve_and_emit()
+        pub = self.env(user=self.env.ref("base.public_user"))
+        values = _relatorio_verify_values(pub, e0.token)
+        self.assertEqual(values["status"], "valid")
+        self.assertEqual(values["emissao"].id, e0.id)
+
+    def test_portal_token_check(self):
+        self._approve_and_emit()
+        token = self.line_cli.access_token
+        self.assertEqual(_portal_aprovacao(self.env, self.line_cli.id, token), self.line_cli)
+        self.assertIsNone(_portal_aprovacao(self.env, self.line_cli.id, "errado"))
+        self.assertIsNone(_portal_aprovacao(self.env, self.line_cli.id, None))
+        self.assertIsNone(_portal_aprovacao(self.env, self.line_cli.id, [token]))
+        self.assertIsNone(_portal_aprovacao(self.env, self.line_elab.id, token))
+        self.assertIsNone(_portal_aprovacao(self.env, 999999999, token))
+        self.assertIsNone(_portal_aprovacao(self.env, 2 ** 40, token))
+
+    def test_portal_approve_records_data_and_moves_state(self):
+        emissao = self._approve_and_emit()
+        self.assertTrue(self.line_cli._portal_approve("Cliente Teste Aprovador", "203.0.113.5"))
+        self.assertTrue(self.line_cli.approved_at)
+        self.assertEqual(self.line_cli.ip, "203.0.113.5")
+        self.assertEqual(self.line_cli.nome_exibicao, "Cliente Teste Aprovador")
+        self.assertEqual(self.rel.state, "client_approved")
+        self.assertFalse(self.line_cli._portal_approve("De novo", "203.0.113.6"))
+        # Aprovação do cliente não altera o PDF: hash preservado.
+        self.assertEqual(emissao.sha256,
+                         hashlib.sha256(emissao.pdf_attachment_id.raw).hexdigest())
+        values = _relatorio_verify_values(self.env, emissao.token)
+        self.assertEqual(values["client_approvals"], self.line_cli)
+
+    def test_portal_approve_through_public_user_env(self):
+        """Caminho real do controller: env do usuário público + registro sudo."""
+        self._approve_and_emit()
+        pub = self.env(user=self.env.ref("base.public_user"))
+        line = _portal_aprovacao(pub, self.line_cli.id, self.line_cli.access_token)
+        self.assertTrue(line._portal_approve("Cliente Teste", "203.0.113.5"))
+        self.assertTrue(self.line_cli.approved_at)
+        self.assertEqual(self.rel.state, "client_approved")
+        msg = self.rel.message_ids.filtered(lambda m: "pelo portal" in (m.body or ""))
+        self.assertTrue(msg)
+        self.assertEqual(msg[0].author_id, self.partner)
+
+    def test_portal_approve_ignores_context_defaults(self):
+        self._approve_and_emit()
+        line = self.line_cli.with_context(
+            default_state="draft", default_approved_at=False, default_model="res.partner",
+            default_res_id=self.partner.id,
+        )
+        self.assertTrue(line._portal_approve("Cliente Teste", "203.0.113.5"))
+        self.assertEqual(self.rel.state, "client_approved")
+        self.assertFalse(self.env["mail.message"].search([
+            ("model", "=", "res.partner"), ("res_id", "=", self.partner.id),
+            ("body", "ilike", "pelo portal"),
+        ]))
+
+    def test_portal_approve_waits_for_every_client_approver(self):
+        second = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": self.rel.id, "papel": "cliente",
+            "partner_id": self.partner.id, "nome_exibicao": "Cliente Teste 2",
+        })
+        self._approve_and_emit()
+        self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        self.assertEqual(self.rel.state, "issued")
+        second._portal_approve("Cliente Teste 2", "203.0.113.7")
+        self.assertEqual(self.rel.state, "client_approved")
+
+    def test_portal_approve_refused_before_emission(self):
+        with self.assertRaises(UserError):
+            self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        self.assertFalse(self.line_cli.approved_at)
+
+    def test_portal_approve_refused_while_under_revision(self):
+        self._approve_and_emit()
+        self.rel.with_user(self.manager).action_revisar()
+        with self.assertRaises(UserError):
+            self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        self.assertFalse(self.line_cli.approved_at)
+        self.assertEqual(self.rel.state, "draft")
+
+    def test_portal_approve_refused_for_non_client_line(self):
+        self._approve_and_emit()
+        with self.assertRaises(UserError):
+            self.line_elab._portal_approve("Eng. Elaborador", "203.0.113.5")
+
+    def test_portal_url_manager_only(self):
+        self._approve_and_emit()
+        url = self.line_cli.with_user(self.manager).portal_url
+        self.assertIn("/my/relatorio/%d?access_token=%s" % (
+            self.line_cli.id, self.line_cli.access_token), url)
+        self.assertFalse(self.line_elab.with_user(self.manager).portal_url)
+        with self.assertRaises(AccessError):
+            self.line_cli.with_user(self.office).read(["portal_url"])
+
+    def test_send_to_client_creates_mail_with_portal_link(self):
+        self._approve_and_emit()
+        self.rel.with_user(self.office).action_enviar_aprovacao_cliente()
+        mail = self.env["mail.mail"].search([
+            ("model", "=", "afr.relatorio.aprovacao"), ("res_id", "=", self.line_cli.id),
+        ], limit=1)
+        self.assertTrue(mail)
+        self.assertIn("/my/relatorio/%d?access_token=%s" % (
+            self.line_cli.id, self.line_cli.access_token), mail.body_html)
+        self.assertIn("cliente@example.test", mail.email_to or "")
+
+    def test_send_to_client_ignores_context_defaults(self):
+        self._approve_and_emit()
+        self.rel.with_user(self.office).with_context(
+            default_model="res.partner", default_res_id=self.partner.id,
+            default_state="exception",
+        ).action_enviar_aprovacao_cliente()
+        mail = self.env["mail.mail"].search([
+            ("model", "=", "afr.relatorio.aprovacao"), ("res_id", "=", self.line_cli.id),
+        ], limit=1)
+        self.assertTrue(mail)
+        self.assertEqual(mail.state, "outgoing")
+        self.assertFalse(self.env["mail.mail"].search([
+            ("model", "=", "res.partner"), ("res_id", "=", self.partner.id),
+        ]))
+
+    def test_send_to_client_only_when_issued(self):
+        with self.assertRaises(UserError):
+            self.rel.with_user(self.office).action_enviar_aprovacao_cliente()
+
+    def test_send_to_client_forbidden_for_technician(self):
+        self._approve_and_emit()
+        with self.assertRaises(UserError):
+            self.rel.with_user(self.tech).action_enviar_aprovacao_cliente()
+
+    def test_public_templates_exist(self):
+        self.assertTrue(self.env.ref("afr_qualificacao.relatorio_verify_template"))
+        self.assertTrue(self.env.ref("afr_qualificacao.portal_relatorio_aprovacao"))
+        self.assertTrue(self.env.ref("afr_qualificacao.mail_template_relatorio_aprovacao"))

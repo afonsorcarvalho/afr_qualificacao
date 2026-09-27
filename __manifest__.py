@@ -267,6 +267,9 @@
         "reports/relatorio_corpo_report.xml",
         # Relatório Final P4 — fila da montagem do PDF
         "data/relatorio_build_cron.xml",
+        # Relatório Final P4 — verificação pública, portal e e-mail
+        "views/relatorio_public_templates.xml",
+        "data/mail_template_relatorio_aprovacao.xml",
     ],
     "external_dependencies": {
         "python": [

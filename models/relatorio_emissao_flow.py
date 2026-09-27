@@ -390,3 +390,93 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                 rel.message_post(body=_(
                     "Todos os aprovadores do cliente aprovaram a %s."
                 ) % rel.revision_label)
+
+    # ------------------------------------------------------------------
+    # Task 9 — envio do link do portal ao cliente
+    # ------------------------------------------------------------------
+
+    def action_enviar_aprovacao_cliente(self):
+        """E-mail com o link do portal para cada aprovador do cliente pendente."""
+        self.ensure_one()
+        self._rq_check_user_group(_("enviar o relatório para aprovação do cliente"))
+        if self.state != "issued" or not self.current_emissao_id:
+            raise UserError(_("Envie para aprovação do cliente só depois de emitir."))
+        pending = self.aprovacao_ids.filtered(
+            lambda a: a.papel == "cliente" and not a.approved_at and a.partner_id.email
+        )
+        if not pending:
+            raise UserError(_(
+                "Nenhum aprovador do cliente pendente com e-mail cadastrado."
+            ))
+        clean_ctx = clean_context(self.env.context)
+        # sudo: o link leva o access_token (campo só do Gestor, ruling T3-2).
+        template = self.env.ref(
+            "afr_qualificacao.mail_template_relatorio_aprovacao"
+        ).sudo().with_context(clean_ctx)
+        for line in pending:
+            template.send_mail(line.id, force_send=False)
+        self.with_context(clean_ctx).message_post(
+            body=_("Link de aprovação enviado para: %s") % ", ".join(
+                pending.mapped("partner_id.email")))
+        return True
+
+
+class AfrRelatorioAprovacaoPortal(models.Model):
+    _inherit = "afr.relatorio.aprovacao"
+
+    # Leva o access_token: mesmo grupo do token (ruling 1.16/4.5).
+    portal_url = fields.Char(
+        compute="_compute_portal_url", string="Link do portal",
+        groups="afr_qualificacao.group_afr_qualificacao_manager",
+    )
+
+    @api.depends("papel", "access_token")
+    def _compute_portal_url(self):
+        for line in self:
+            line.portal_url = line._portal_url() if line.papel == "cliente" else False
+
+    def _portal_url(self):
+        self.ensure_one()
+        icp = self.env["ir.config_parameter"].sudo()
+        url = "%s/my/relatorio/%d?access_token=%s" % (
+            icp.get_param("web.base.url", default=""), self.id,
+            self.sudo().access_token or "")
+        db_param = icp.get_param(
+            "afr_qualificacao.verify_url_db", default=self.env.cr.dbname)
+        if db_param:
+            url += "&db=%s" % db_param
+        return url
+
+    def _portal_approve(self, nome, ip):
+        """Aprovação pelo portal. False se já estava aprovada.
+
+        Só vale para a emissão vigente de um relatório emitido (não em
+        revisão). Grava via sudo + clean_context: o guard do P3 só aceita
+        approved_at/ip sob env.su e o contexto do chamador não pode injetar
+        `default_*` (ruling 5.1).
+        """
+        self.ensure_one()
+        rel = self.relatorio_id
+        if self.papel != "cliente":
+            raise UserError(_("Só aprovadores do cliente aprovam pelo portal."))
+        if rel.state not in ("issued", "client_approved") or not rel.current_emissao_id:
+            raise UserError(_("Não há revisão emitida aguardando aprovação."))
+        if self.approved_at:
+            return False
+        clean_ctx = clean_context(self.env.context)
+        line = self.sudo().with_context(clean_ctx)
+        nome = (nome or "").strip()[:128]
+        line.write({
+            "approved_at": fields.Datetime.now(),
+            "ip": ip or False,
+            "nome_exibicao": nome or line.nome_exibicao or line.partner_id.name or "",
+        })
+        rel_su = rel.sudo().with_context(clean_ctx)
+        # Corpo str (escapado pelo message_post): contém o nome digitado.
+        rel_su.message_post(
+            body=_("%(nome)s aprovou a %(rev)s pelo portal (IP %(ip)s).") % {
+                "nome": line.nome_exibicao, "rev": rel.revision_label, "ip": ip or "—"},
+            author_id=line.partner_id.id or None,
+        )
+        rel_su._update_client_approval_state()
+        return True
