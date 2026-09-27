@@ -14,12 +14,13 @@ import logging
 import re
 from collections import OrderedDict
 from html import unescape  # Task 3 (ANEXO_REF/TOKEN dinâmico)
+from itertools import zip_longest
 
 from odoo import fields  # Task 3 (DATA_FORA_JANELA)
 
 from .relatorio_anexo_files import PROBLEM_EMPTY
 from .relatorio_certificados import _afr_resolve_mimetype
-from .relatorio_emissao_flow import company_tz
+from .relatorio_emissao_flow import INTERNAL_ROLES, ROLE_LABELS, company_tz
 
 _logger = logging.getLogger(__name__)
 
@@ -352,7 +353,9 @@ def rule_ciclos_contagem(rel):
                 "CICLOS_CONTAGEM", "alerta",
                 "Ciclos '%s': %d contratado(s), %d executado(s)."
                 % (ctype.name, contratados, executados),
-                "Ciclos: %s" % ctype.name,
+                # Fix round 1, minor: [#id] do cycle_type — Decisão 10, o
+                # rótulo (nome do tipo de ciclo) pode repetir.
+                "Ciclos: %s [#%d]" % (ctype.name, ctype.id),
             ))
     return out
 
@@ -487,7 +490,9 @@ def rule_canal_sem_cert(rel):
                     "Canal %s (posição %s) fora da faixa 1–%d dos validadores do "
                     "plano de recursos — sem cobertura de certificado."
                     % (pos.canal, pos.posicao or "—", capacity),
-                    "Ciclo: %s / canal %s" % (cycle_label(cycle), pos.canal),
+                    # Fix round 1, minor: [#id] do sensor.pos — Decisão 10,
+                    # o mesmo texto de canal pode se repetir entre linhas.
+                    "Ciclo: %s / canal %s [#%d]" % (cycle_label(cycle), pos.canal, pos.id),
                 ))
     return out
 
@@ -496,19 +501,45 @@ def rule_aprovacao_interna(rel):
     """Decisão 5: só roda na emissão (`EMISSION_CTX`) — no gate normal
     (`_check_emission_gate`) quem já relata aprovação interna faltante é o
     `super()` de P4 (`_rq_internal_approval_problems`); esta regra existe
-    para os achados (decisão/carry-over) da varredura de emissão."""
+    para os achados (decisão/carry-over) da varredura de emissão.
+
+    Fix round 1: os achados são DERIVADOS de `rel._rq_internal_approval_problems()`
+    — a mesma função que o gate usa — em vez de reimplementar a checagem por
+    papel. A versão anterior só olhava `any(not a.approved_at for a in
+    lines)` por papel (uma checagem agregada, não por linha, e sem checar
+    `user_id`); a review encontrou o caso real que ela deixava passar: uma
+    linha JÁ aprovada cujo `user_id` foi esvaziado depois (usuário
+    removido) — o gate bloqueia (`_rq_internal_approval_problems` testa
+    `not line.user_id` primeiro, independente de `approved_at`), mas a
+    regra antiga ficava em silêncio. Derivar do mesmo método torna as duas
+    checagens impossíveis de discordar por construção.
+
+    `_rq_internal_approval_problems()` devolve só as mensagens (sem papel
+    nem id da linha) — o `onde` é reconstruído aqui espelhando a MESMA
+    ordem/condição do método (`INTERNAL_ROLES`, depois cada linha de
+    `aprovacao_ids`), não o texto da mensagem. `zip_longest` com uma sobra
+    genérica garante que uma divergência de contagem (se o método mudar de
+    um lado sem o outro) nunca faça a regra perder um achado — a contagem
+    exata é travada por teste
+    (`test_aprovacao_interna_espelha_o_gate`, que compara a lista de
+    mensagens da regra com a do gate diretamente)."""
     if not rel.env.context.get(EMISSION_CTX):
         return []
-    out = []
-    for papel, label in (("elaborador", "Elaborador"), ("emissor", "Emissor")):
+    ondes = []
+    for papel in INTERNAL_ROLES:
+        label = ROLE_LABELS[papel]
         lines = rel.aprovacao_ids.filtered(lambda a, p=papel: a.papel == p)
         if not lines:
-            msg = "Papel %s não definido nas aprovações." % label
-        elif any(not a.approved_at for a in lines):
-            msg = "%s sem aprovação interna." % label
-        else:
+            ondes.append("Aprovação: %s" % label)
+        for line in lines:
+            if not line.user_id or not line.approved_at:
+                ondes.append("Aprovação: %s [#%d]" % (label, line.id))
+    problems = rel._rq_internal_approval_problems()
+    out = []
+    for msg, onde in zip_longest(problems, ondes, fillvalue=None):
+        if msg is None:
             continue
-        out.append(finding("APROVACAO_INTERNA", "bloqueia", msg, "Aprovação: %s" % label))
+        out.append(finding("APROVACAO_INTERNA", "bloqueia", msg, onde or "Aprovação"))
     return out
 
 

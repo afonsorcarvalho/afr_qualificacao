@@ -299,6 +299,9 @@ class TestRelatorioRulesAlerta(_RulesMixin, RelatorioTestCommon):
         out = self._run("CICLOS_CONTAGEM")
         self.assertEqual(len(out), 1)
         self.assertIn("2 contratado(s), 1 executado(s)", out[0]["mensagem"])
+        # Fix round 1, minor: onde inclui [#id do cycle_type] (Decisão 10 —
+        # chave de carry-over estável quando o rótulo pode se repetir).
+        self.assertIn("[#%d]" % self.cycle_cmax.id, out[0]["onde"])
         c2.state = "passed"
         self.assertEqual(self._run("CICLOS_CONTAGEM"), [])
 
@@ -409,10 +412,12 @@ class TestRelatorioRulesAlerta(_RulesMixin, RelatorioTestCommon):
         Pos = self.env["afr.relatorio.sensor.pos"]
         Pos.create({"cycle_id": c.id, "canal": "CH012", "posicao": "Centro", "sequence": 1})
         self.assertEqual(self._run("CANAL_SEM_CERT"), [])
-        Pos.create({"cycle_id": c.id, "canal": "CH030", "posicao": "Dreno", "sequence": 2})
+        pos030 = Pos.create({"cycle_id": c.id, "canal": "CH030", "posicao": "Dreno", "sequence": 2})
         out = self._run("CANAL_SEM_CERT")
         self.assertEqual(len(out), 1)
         self.assertIn("CH030", out[0]["mensagem"])
+        # Fix round 1, minor: onde inclui [#id do sensor.pos] (Decisão 10).
+        self.assertIn("[#%d]" % pos030.id, out[0]["onde"])
 
     def test_canal_sem_validador_silencioso(self):
         c = self._cycle()
@@ -427,3 +432,66 @@ class TestRelatorioRulesAlerta(_RulesMixin, RelatorioTestCommon):
         self.assertTrue(all(f["gravidade"] == "bloqueia" for f in out))
         self._approve_internal()
         self.assertEqual(self._run("APROVACAO_INTERNA", {relatorio_rules.EMISSION_CTX: True}), [])
+
+    def test_aprovacao_interna_espelha_o_gate(self):
+        """Fix round 1: a review encontrou uma divergência entre a regra e o
+        gate (`_check_emission_gate` → `_rq_internal_approval_problems()`,
+        P4) — uma linha aprovada cujo usuário foi removido depois
+        (`user_id` esvaziado, `approved_at` intacto) fazia o gate bloquear
+        mas a regra antiga (que só olhava `not approved_at` por papel)
+        ficava em silêncio. A regra agora DERIVA do mesmo método do gate,
+        então as duas nunca podem discordar — testado comparando as
+        mensagens, não só a contagem.
+
+        Cobre num único cenário (papel elaborador com duas linhas):
+        - uma linha pendente COM usuário designado ("ainda não aprovou");
+        - uma linha SEM usuário designado ("sem usuário designado");
+        e (papel emissor):
+        - uma linha JÁ aprovada cujo `user_id` foi esvaziado via SQL direto
+          — bypassando o `write()` do model, que auto-invalida
+          `approved_at` sempre que um campo de identidade muda numa linha
+          já aprovada (`_IDENTITY_FIELDS`/`changed.sudo().write(...)` em
+          `models/relatorio_aprovacao.py`); não há caminho pelo ORM para
+          chegar a "aprovado + sem usuário" — só um FK `ondelete` do
+          usuário (fora do form) ou, aqui, SQL cru reproduzem o estado.
+        """
+        Aprov = self.env["afr.relatorio.aprovacao"]
+        elab_pendente = Aprov.create({
+            "relatorio_id": self.rel.id, "papel": "elaborador", "sequence": 1,
+            "user_id": self.user_qualif.id,
+        })
+        elab_sem_usuario = Aprov.create({
+            "relatorio_id": self.rel.id, "papel": "elaborador", "sequence": 2,
+        })
+        emissor_orfao = Aprov.create({
+            "relatorio_id": self.rel.id, "papel": "emissor", "sequence": 3,
+            "user_id": self.user_qualif.id,
+        })
+        emissor_orfao.sudo().write({
+            "approved_at": datetime.now(), "ip": "127.0.0.1",
+        })
+        # SQL direto: simula o usuário removido depois da aprovação sem
+        # passar pelo write() do model (que zeraria approved_at de volta).
+        self.env.cr.execute(
+            "UPDATE afr_relatorio_aprovacao SET user_id = NULL WHERE id = %s",
+            (emissor_orfao.id,),
+        )
+        emissor_orfao.invalidate_recordset()
+        self._refresh()
+
+        gate_problems = self.rel._rq_internal_approval_problems()
+        # As três situações realmente geraram problema no gate (senão o
+        # teste não prova nada sobre a divergência).
+        self.assertEqual(len(gate_problems), 3)
+        self.assertTrue(any("sem usuário designado" in m for m in gate_problems))
+        self.assertTrue(any("ainda não aprovou" in m for m in gate_problems))
+
+        out = self._run("APROVACAO_INTERNA", {relatorio_rules.EMISSION_CTX: True})
+        self.assertEqual(len(out), len(gate_problems))
+        self.assertEqual([f["mensagem"] for f in out], gate_problems)
+        self.assertTrue(all(f["gravidade"] == "bloqueia" for f in out))
+        # onde estável por papel + [#id da linha] quando o papel repete
+        # (Decisão 10 — elaborador tem duas linhas problemáticas aqui).
+        self.assertIn("[#%d]" % elab_pendente.id, out[0]["onde"])
+        self.assertIn("[#%d]" % elab_sem_usuario.id, out[1]["onde"])
+        self.assertIn("[#%d]" % emissor_orfao.id, out[2]["onde"])
