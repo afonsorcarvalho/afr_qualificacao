@@ -1,10 +1,20 @@
 """P4 — emissão, revisão, aprovações, verificação pública e portal do Relatório Final."""
+import hashlib
+import json
+from datetime import date
+from unittest.mock import patch
+
+from dateutil.relativedelta import relativedelta
+
 from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import tagged
 
+from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
+
 from .common import AfrQualificacaoTestCommon
-from .relatorio_fakes import RelatorioFixtureMixin, make_user
+from .relatorio_fakes import (FakeCorpo, RelatorioFixtureMixin, make_user,
+                              pdf_pages_text, run_build_jobs, squash)
 
 MANAGER = "afr_qualificacao.group_afr_qualificacao_manager"
 USER = "afr_qualificacao.group_afr_qualificacao_user"
@@ -443,3 +453,249 @@ class TestRelatorioAprovacoes(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         self.env["afr.relatorio.aprovacao"].with_user(self.elab).create({
             "relatorio_id": self.rel.id, "papel": "elaborador",
             "user_id": self.elab.id})
+
+
+class RelatorioEmissaoBase(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
+    """Relatório pronto para emitir: layout padrão + elaborador/emissor = gestor."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.manager = make_user(cls.env, "gestor.rq.flow", MANAGER)
+        cls.office = make_user(cls.env, "escritorio.rq.flow", USER)
+        cls.tech = make_user(cls.env, "tecnico.rq.flow", TECH)
+        cls.partner.email = "cliente@example.test"
+
+    def setUp(self):
+        super().setUp()
+        self.rel, self.qualif = self._make_relatorio()
+        self.blocks, self.anexos = self._standard_layout(self.rel)
+        Aprov = self.env["afr.relatorio.aprovacao"]
+        self.line_elab = Aprov.create({"relatorio_id": self.rel.id, "papel": "elaborador",
+                                       "user_id": self.manager.id, "nome_exibicao": "Eng. Elaborador"})
+        self.line_emis = Aprov.create({"relatorio_id": self.rel.id, "papel": "emissor",
+                                       "user_id": self.manager.id, "nome_exibicao": "Eng. Responsável"})
+        self.line_cli = Aprov.create({"relatorio_id": self.rel.id, "papel": "cliente",
+                                      "partner_id": self.partner.id, "nome_exibicao": "Cliente Teste"})
+
+    def _approve(self):
+        self.rel.with_user(self.manager).action_aprovar_interno()
+
+    def _emit(self, user=None, fake=None, rel=None):
+        fake = fake or FakeCorpo()
+        with fake.patch(self.env):
+            result = (rel or self.rel).with_user(user or self.manager).action_emitir()
+            run_build_jobs(self.env)
+        return result
+
+    def _approve_and_emit(self):
+        self._approve()
+        self._emit()
+        return self.rel.current_emissao_id
+
+    def _revise_and_emit(self):
+        self.rel.with_user(self.manager).action_revisar()
+        return self._approve_and_emit()
+
+
+@tagged("post_install", "-at_install", "afr_relatorio_final")
+class TestRelatorioEmissaoFlow(RelatorioEmissaoBase):
+
+    def test_aprovar_interno_approves_all_my_lines_in_one_call(self):
+        self._approve()
+        self.assertTrue(self.line_elab.approved_at and self.line_emis.approved_at)
+
+    def test_emitir_blocked_by_gate_lists_problems(self):
+        with self.assertRaises(UserError) as ctx:
+            self._emit()
+        self.assertIn("Não é possível emitir", str(ctx.exception))
+        self.assertIn("Elaborador", str(ctx.exception))
+        self.assertEqual(self.rel.state, "draft")
+        self.assertFalse(self.rel.emissao_ids)
+
+    def test_emitir_requires_manager(self):
+        self._approve()
+        with self.assertRaises(UserError):
+            self._emit(user=self.office)
+        self.assertEqual(self.rel.state, "draft")
+
+    def test_emitir_creates_emission_with_hash_of_attachment_bytes(self):
+        emissao = self._approve_and_emit()
+        self.assertEqual(self.rel.state, "issued")
+        self.assertEqual(emissao.revision, 0)
+        self.assertEqual(emissao.issued_by, self.manager)
+        self.assertEqual(len(emissao.token), 32)
+        self.assertEqual(emissao.sha256, hashlib.sha256(emissao.pdf_attachment_id.raw).hexdigest())
+        self.assertEqual(emissao.pdf_attachment_id.mimetype, "application/pdf")
+        self.assertEqual(json.loads(emissao.scan_snapshot), [])
+        snapshot = json.loads(emissao.blocks_snapshot)
+        self.assertIn(str(self.blocks["objetivo"].id), snapshot)
+        self.assertIn("__corpo__", snapshot)
+        message = self.rel.message_ids.filtered(lambda m: m.attachment_ids)[:1]
+        self.assertEqual(message.attachment_ids, emissao.pdf_attachment_id)
+
+    def test_emitted_pdf_has_qr_for_new_token_and_no_watermark(self):
+        seen = []
+        Pdf = type(self.env["afr.relatorio.pdf"])
+        original = Pdf._stamp
+
+        def spy(pdf_self, content, header, watermark):
+            seen.append(dict(header, watermark=watermark))
+            return original(pdf_self, content, header, watermark)
+
+        with patch.object(Pdf, "_stamp", spy):
+            emissao = self._approve_and_emit()
+        self.assertIn(emissao.token, seen[0]["verify_url"])
+        self.assertFalse(seen[0]["watermark"])
+        self.assertNotEqual(seen[0]["date"], "MINUTA")
+        text = squash("".join(pdf_pages_text(emissao.pdf_attachment_id.raw)))
+        self.assertNotIn("SEMVALIDADE", text)
+
+    def test_emitir_twice_is_blocked(self):
+        self._approve_and_emit()
+        with self.assertRaises(UserError):
+            self._emit()
+
+    def test_revision_flow_supersedes_only_on_new_emission(self):
+        e0 = self._approve_and_emit()
+        self.rel.with_user(self.manager).action_revisar()
+        self.assertEqual(self.rel.state, "draft")
+        self.assertEqual(self.rel.revision, 1)
+        self.assertEqual(self.rel.revision_label, "Rev.01")
+        self.assertFalse(self.line_elab.approved_at or self.line_emis.approved_at)
+        self.assertFalse(e0.superseded)
+        self.assertEqual(self.rel.current_emissao_id, e0)
+        e1 = self._approve_and_emit()
+        self.assertEqual(e1.revision, 1)
+        self.assertTrue(e0.superseded)
+        self.assertFalse(e1.superseded)
+        self.assertEqual(self.rel.current_emissao_id, e1)
+        self.assertNotEqual(e0.token, e1.token)
+
+    def test_revisar_only_from_issued_and_by_manager(self):
+        with self.assertRaises(UserError):
+            self.rel.with_user(self.manager).action_revisar()  # rascunho
+        self._approve_and_emit()
+        with self.assertRaises(UserError):
+            self.rel.with_user(self.office).action_revisar()
+
+    def test_client_approvals_reset_on_new_emission(self):
+        self._approve_and_emit()
+        token_rev0 = self.line_cli.access_token
+        self.line_cli.sudo().write({"approved_at": fields.Datetime.now(), "ip": "203.0.113.9"})
+        self._revise_and_emit()
+        self.assertFalse(self.line_cli.approved_at)
+        self.assertFalse(self.line_cli.ip)
+        self.assertNotEqual(self.line_cli.access_token, token_rev0)
+
+    def test_proxima_qualificacao_follows_emission_date(self):
+        self.rel.write({"data_fim_ensaios": date(2026, 7, 1)})
+        self.assertEqual(self.rel.proxima_qualificacao, date(2027, 7, 1))
+        emissao = self._approve_and_emit()
+        issued_local = fields.Datetime.context_timestamp(self.rel, emissao.issued_at).date()
+        self.assertEqual(self.rel.proxima_qualificacao, issued_local + relativedelta(months=12))
+
+    def test_minuta_forbidden_for_technician(self):
+        with self.assertRaises(UserError):
+            self.rel.with_user(self.tech).action_gerar_minuta()
+
+    # ───────── Emissão enfileirada (emenda P4, Task 8 revisado) ─────────
+
+    def test_emitir_enqueues_and_writes_nothing_until_finalize(self):
+        self._approve()
+        self.line_cli.sudo().write({"approved_at": fields.Datetime.now()})
+        action = self.rel.with_user(self.manager).action_emitir()
+        self.assertEqual(action["tag"], "display_notification")
+        job = self.env["afr.relatorio.build.job"].sudo().search(
+            [("relatorio_id", "=", self.rel.id)])
+        self.assertEqual((job.kind, job.state), ("emissao", "queued"))
+        self.assertEqual(len(job.token), 32)
+        self.assertEqual(job.scan_snapshot, "[]")
+        self.assertEqual(self.rel.state, "draft")
+        self.assertFalse(self.rel.emissao_ids)
+        self.assertTrue(self.line_cli.approved_at)  # reset só no finalize (D3)
+
+    def test_gate_failure_creates_no_job(self):
+        with self.assertRaises(UserError):
+            self._emit()
+        self.assertFalse(self.env["afr.relatorio.build.job"].sudo().search(
+            [("relatorio_id", "=", self.rel.id)]))
+
+    def test_emission_uses_click_token_and_date(self):
+        self._approve()
+        with FakeCorpo().patch(self.env):
+            self.rel.with_user(self.manager).action_emitir()
+            job = self.env["afr.relatorio.build.job"].sudo().search(
+                [("relatorio_id", "=", self.rel.id)])
+            token, issued_at = job.token, job.issued_at
+            run_build_jobs(self.env)
+        emissao = self.rel.current_emissao_id
+        self.assertEqual((emissao.token, emissao.issued_at), (token, issued_at))
+        self.assertEqual(job.emissao_id, emissao)
+        self.assertFalse(emissao.pdf_attachment_id.public)
+
+    def test_default_context_is_not_injected(self):  # ruling 5.1
+        self._approve()
+        self._emit(rel=self.rel.with_context(default_public=True, default_superseded=True,
+                                            default_state="issued"))
+        e = self.rel.current_emissao_id
+        self.assertFalse(e.superseded)
+        self.assertFalse(e.pdf_attachment_id.public)
+
+    def test_emission_in_one_page_units_equals_sync_build(self):
+        self.env["ir.config_parameter"].sudo().set_param(rp.CHUNK_PAGES_PARAM, "1")
+        self._approve()
+        with FakeCorpo().patch(self.env):
+            self.rel.with_user(self.manager).action_emitir()
+            job = self.env["afr.relatorio.build.job"].sudo().search(
+                [("relatorio_id", "=", self.rel.id)])
+            rel_ctx = self.rel.with_user(self.manager).with_context(
+                tz=self.manager.tz, lang=self.manager.lang, rq_hide_client_approval=True,
+                rq_emission_token=job.token, rq_emission_date=job.issued_at)
+            expected = self.env["afr.relatorio.pdf"].build(rel_ctx, watermark=False)
+            run_build_jobs(self.env)
+        self.assertEqual(pdf_pages_text(self.rel.current_emissao_id.pdf_attachment_id.raw),
+                         pdf_pages_text(expected))
+
+    def test_emission_job_locks_editorial_edits_and_cancel_unlocks(self):
+        self._approve()
+        self.rel.with_user(self.manager).action_emitir()
+        with self.assertRaises(UserError) as ctx:
+            self.blocks["objetivo"].write({"body": "<p>durante</p>"})
+        self.assertIn("emissão em montagem", str(ctx.exception))
+        self.rel.with_user(self.manager).action_cancelar_montagem()
+        self.blocks["objetivo"].write({"body": "<p>depois</p>"})  # liberado
+
+    def test_change_during_emission_aborts_and_keeps_previous_client_approval(self):
+        e0 = self._approve_and_emit()
+        self.line_cli.sudo().write({"approved_at": fields.Datetime.now()})
+        self.rel.with_user(self.manager).action_revisar()
+        self._approve()
+        cycle = self.env["afr.qualificacao.cycle"].create({
+            "qualificacao_id": self.qualif.id, "cycle_type_id": self.cycle_cmax.id})
+        with FakeCorpo().patch(self.env):
+            self.rel.with_user(self.manager).action_emitir()
+            run_build_jobs(self.env, until=lambda job: job.phase == "stamp")
+            cycle.write({"janela_inicio": fields.Datetime.now()})  # não trava; incrementa o seq
+            run_build_jobs(self.env)
+        job = self.rel.build_job_ids[:1]
+        self.assertEqual(job.state, "failed")
+        self.assertEqual(self.rel.state, "draft")
+        self.assertEqual(self.rel.current_emissao_id, e0)
+        self.assertFalse(e0.superseded)
+        self.assertTrue(self.line_cli.approved_at)  # nota 86: reset não persistiu
+
+    def test_emission_pdf_hides_previous_client_approval(self):
+        self._approve_and_emit()
+        self.line_cli.sudo().write({"approved_at": fields.Datetime.now()})
+        rows = self.rel.with_context(rq_hide_client_approval=True)._report_signature_rows()
+        cli = [r for r in rows if r["nome"] == "Cliente Teste"]
+        self.assertEqual(cli[0]["approved_at"], "")
+        self.assertTrue([r for r in self.rel._report_signature_rows()
+                         if r["nome"] == "Cliente Teste"][0]["approved_at"])
+        self.rel.with_user(self.manager).action_revisar()
+        fake = FakeCorpo()
+        self._approve()
+        self._emit(fake=fake)
+        self.assertTrue(fake.calls)
+        self.assertTrue(all(c["context"].get("rq_hide_client_approval") for c in fake.calls))

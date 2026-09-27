@@ -369,10 +369,20 @@ class AfrRelatorioBuildJob(models.Model):
             store.delete(session)
 
     def _rq_stale_reason(self):
-        """Mensagem se o relatório mudou desde o clique; False se segue válido."""
-        if self.relatorio_id.rq_editorial_seq != self.editorial_seq:
+        """Mensagem se o relatório mudou desde o clique; False se segue válido.
+
+        Na emissão, só invariantes baratos (D4): o gate completo rodou no clique."""
+        rel = self.relatorio_id
+        if rel.rq_editorial_seq != self.editorial_seq:
             return _("O relatório foi alterado durante a montagem; o PDF foi "
                      "descartado. Gere de novo.")
+        if self.kind == "emissao":
+            if rel.state != "draft" or rel.revision != self.revision:
+                return _("O status ou a revisão do relatório mudou durante a montagem.")
+            problems = rel._rq_internal_approval_problems()
+            if problems:
+                return _("As aprovações internas mudaram durante a montagem: %s") % (
+                    "; ".join(problems))
         return False
 
     def _rq_do_unit(self, cpu_deadline):

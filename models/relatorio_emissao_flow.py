@@ -3,12 +3,26 @@
 Parte 1 (Task 4): campos de emissão, URL pública e guarda dos campos que só
 as ações mudam. Tasks 7–9 acrescentam métodos a estas classes.
 """
+import hashlib
+import json
+import uuid
+
+from dateutil.relativedelta import relativedelta
+from markupsafe import Markup
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 from odoo.tools.misc import clean_context
 
-from .relatorio_editorial import skip_editorial_hook
+from ._numbering import sort_key
+from .relatorio_editorial import SKIP_CTX, skip_editorial_hook
+from .relatorio_emissao import INTERNAL_CTX
+from .relatorio_pdf import REPORT_CORPO
+
+# Mesmos valores de relatorio_build_job (ACTIVE_STATES / HIDE_CLIENT_CTX).
+# Importar aquele módulo aqui no topo registraria as classes dele ANTES desta
+# (ordem do MRO do registry); por isso o import fica dentro dos métodos.
 
 INTERNAL_ROLES = ("elaborador", "emissor")
 ROLE_LABELS = {"elaborador": "Elaborador", "emissor": "Emissor"}
@@ -151,6 +165,16 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                 "O relatório %(name)s já foi emitido (%(rev)s). Use Revisar para "
                 "abrir uma nova revisão antes de editar."
             ) % {"name": locked[0].name, "rev": locked[0].revision_label})
+        # D5b: só a EMISSÃO trava a edição durante a montagem (a minuta só
+        # compara a versão editorial e é descartada se o relatório mudar).
+        from .relatorio_build_job import ACTIVE_STATES
+        emitting = self.env["afr.relatorio.build.job"].sudo().search_count([
+            ("relatorio_id", "in", self.ids), ("kind", "=", "emissao"),
+            ("state", "in", ACTIVE_STATES)])
+        if emitting:
+            raise UserError(_(
+                "Há uma emissão em montagem para este relatório. Aguarde a "
+                "conclusão ou cancele a emissão antes de editar."))
 
     def _invalidate_internal_approvals(self):
         """Zera elaborador/emissor dos relatórios em rascunho. True se zerou algo.
@@ -210,8 +234,13 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
     def _check_emission_gate(self):
         """Impedimentos para emitir (lista vazia = pode). P5 estende com super().
 
-        Síncrono e puro: só lê, não grava nada.
+        Síncrono e puro: só lê, não grava nada. Roda no clique (D4).
         """
+        self.ensure_one()
+        return self._rq_internal_approval_problems()
+
+    def _rq_internal_approval_problems(self):
+        """Parte P4 do gate (aprovações internas) — rechecada no finalize (D4)."""
         self.ensure_one()
         problems = []
         for papel in INTERNAL_ROLES:
@@ -228,3 +257,136 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                     problems.append(_("%(role)s %(who)s ainda não aprovou.") % {
                         "role": label, "who": who})
         return problems
+
+    # ------------------------------------------------------------------
+    # Task 8 (revisado) — emissão enfileirada, revisão, próxima qualificação
+    # ------------------------------------------------------------------
+
+    @api.depends("current_emissao_id.issued_at")
+    def _compute_proxima_qualificacao(self):
+        """Emissão vigente + 12 meses; sem emissão, o resultado de P1."""
+        super()._compute_proxima_qualificacao()
+        for rel in self:
+            issued = rel.current_emissao_id.issued_at
+            if issued:
+                local = fields.Datetime.context_timestamp(rel, issued).date()
+                rel.proxima_qualificacao = local + relativedelta(months=12)
+
+    def _scan_snapshot(self):
+        """JSON dos achados + decisões. P4 não tem varredura: '[]'. P5 sobrescreve."""
+        self.ensure_one()
+        return "[]"
+
+    def _blocks_snapshot(self):
+        """HTML final de cada bloco + corpo inteiro (tabelas dinâmicas incluídas)."""
+        self.ensure_one()
+        snapshot = {
+            str(block.id): str(self._render_block_body(block))
+            for block in self.block_ids.filtered("included")
+        }
+        html, _fmt = self.env["ir.actions.report"]._render_qweb_html(
+            REPORT_CORPO, self.ids, data={"page_map": {}, "with_markers": False},
+        )
+        snapshot["__corpo__"] = html.decode() if isinstance(html, bytes) else str(html)
+        return json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
+
+    def _report_signature_rows(self):
+        """P3 + ocultar a aprovação do cliente na montagem (D3): a Rev.N+1 não
+        pode sair com a aprovação que o cliente deu à Rev.N."""
+        from .relatorio_build_job import HIDE_CLIENT_CTX
+        rows = super()._report_signature_rows()
+        if self.env.context.get(HIDE_CLIENT_CTX):
+            for row, line in zip(rows, self.aprovacao_ids.sorted(sort_key)):
+                if line.papel == "cliente":
+                    row["approved_at"] = ""
+        return rows
+
+    def action_emitir(self):
+        """Gate no clique; a montagem roda na fila e grava tudo no finalize."""
+        self.ensure_one()
+        self._check_manager_only(_("emitir o relatório final"))
+        if self.state != "draft":
+            raise UserError(_(
+                "Só é possível emitir um relatório em rascunho. Use Revisar para "
+                "abrir uma nova revisão."))
+        Job = self.env["afr.relatorio.build.job"]
+        Job._rq_check_no_active(self)
+        problems = self._check_emission_gate()
+        if problems:
+            raise UserError(_("Não é possível emitir o relatório %s:\n- %s") % (
+                self.name, "\n- ".join(problems)))
+        # Token e data decididos AGORA, no servidor (D6): QR e cabeçalho usam os dois.
+        Job._rq_enqueue(self, "emissao", token=uuid.uuid4().hex,
+                        issued_at=fields.Datetime.now(), scan_snapshot=self._scan_snapshot())
+        self.with_context(clean_context(self.env.context)).message_post(body=_(
+            "Emissão da %s solicitada; o PDF está sendo montado.") % self.revision_label)
+        return self._rq_enqueued_notification(_(
+            "A emissão está sendo montada em segundo plano. O relatório fica travado "
+            "para edição até concluir."))
+
+    def _rq_finalize_emissao(self, job, attachment, warnings):
+        """Chamado pelo job (sudo + contexto interno, SEM render): hash, emissão
+        imutável, anterior substituída, reset do cliente, estado, chatter.
+        Os invariantes (versão editorial, estado, revisão, aprovações internas)
+        já foram rechecados por `job._rq_stale_reason()` antes desta unidade."""
+        self.ensure_one()
+        sha256 = hashlib.sha256(attachment.with_context(bin_size=False).raw).hexdigest()
+        attachment.with_context(self.env.context).write({
+            "res_model": self._name, "res_id": self.id, "public": False,
+            "mimetype": "application/pdf",
+            "name": "%s-%s.pdf" % (self.name, self.revision_label),
+        })
+        previous = self.emissao_ids.filtered(lambda e: not e.superseded)
+        Emissao = self.env["afr.relatorio.emissao"].sudo().with_context(
+            clean_context(self.env.context), **{INTERNAL_CTX: True})
+        emissao = Emissao.create({
+            "relatorio_id": self.id, "revision": job.revision,
+            "pdf_attachment_id": attachment.id, "sha256": sha256,
+            "token": job.token, "issued_at": job.issued_at,
+            "issued_by": job.requested_by.id,
+            "blocks_snapshot": job.blocks_snapshot, "scan_snapshot": job.scan_snapshot,
+            "superseded": False,
+        })
+        # A anterior só vira "substituída" agora que a nova existe (spec §4.6).
+        previous.with_env(Emissao.env).write({"superseded": True})
+        self._reset_client_approvals()
+        self.write({"state": "issued", "current_emissao_id": emissao.id})
+        job.write({"emissao_id": emissao.id})
+        body = _("Relatório emitido (%(rev)s). SHA-256: %(sha)s") % {
+            "rev": self.revision_label, "sha": sha256}
+        if warnings:
+            body = Markup("%s<ul>%s</ul>") % (body, Markup("").join(
+                Markup("<li>%s</li>") % w for w in warnings))
+        self.message_post(body=body, attachment_ids=[attachment.id],
+                          author_id=job.requested_by.partner_id.id)
+
+    def action_revisar(self):
+        """Abre Rev.N+1 em rascunho; a emissão vigente continua valendo até a nova."""
+        self.ensure_one()
+        self._check_manager_only(_("abrir uma revisão do relatório final"))
+        if self.state not in ("issued", "client_approved"):
+            raise UserError(_("Só é possível revisar um relatório emitido."))
+        ctx = dict(clean_context(self.env.context), **{SKIP_CTX: True})
+        self.sudo().with_context(ctx).write({"revision": self.revision + 1, "state": "draft"})
+        self._invalidate_internal_approvals()
+        self.message_post(body=_(
+            "Revisão %s aberta. A emissão anterior continua vigente até a nova "
+            "ser emitida.") % self.revision_label)
+        return True
+
+    def _reset_client_approvals(self):
+        """Nova revisão precisa de nova aprovação do cliente (link novo). Só no finalize."""
+        lines = self.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
+        for line in lines.sudo().with_context(clean_context(self.env.context)):
+            line.write({"approved_at": False, "ip": False, "access_token": uuid.uuid4().hex})
+
+    def _update_client_approval_state(self):
+        """issued → client_approved quando todos os aprovadores do cliente aprovaram."""
+        for rel in self:
+            clientes = rel.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
+            if rel.state == "issued" and clientes and all(clientes.mapped("approved_at")):
+                rel.sudo().with_context(clean_context(rel.env.context)).write(
+                    {"state": "client_approved"})
+                rel.message_post(body=_(
+                    "Todos os aprovadores do cliente aprovaram a %s."
+                ) % rel.revision_label)
