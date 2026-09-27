@@ -1,8 +1,11 @@
 """P5 — achado (model), verificação/carry-over, gate de emissão, snapshot."""
+import json
+
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests import tagged
 
 from .common_relatorio import RelatorioTestCommon
+from .relatorio_fakes import FakeCorpo, run_build_jobs
 
 
 @tagged("post_install", "-at_install", "afr_qualificacao")
@@ -176,3 +179,98 @@ class TestVerificar(RelatorioTestCommon):
         self.assertFalse(a.decidido_por)
         self.assertFalse(a.decidido_em)
         self.assertFalse(a.motivo)
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestGateEmissao(RelatorioTestCommon):
+
+    def _emit(self):
+        # mesmo mock dos testes de P4: _render_qweb_pdf devolve HTML em modo teste;
+        # action_emitir só enfileira — o job roda em linha aqui (emenda P4)
+        with FakeCorpo().patch(self.env):
+            result = self.rel.action_emitir()
+            run_build_jobs(self.env)
+        return result
+
+    def test_gate_bloqueia_com_bloqueio_pendente(self):
+        self._approve_internal()
+        problems = self.rel._check_emission_gate()
+        self.assertTrue(any("CERT_DEPOIS_AUSENTE" in p for p in problems))
+        self.assertFalse(any("Falha ao executar a regra" in p for p in problems))
+        with self.assertRaises(UserError):
+            self._emit()
+        self.assertEqual(self.rel.state, "draft")
+
+    def test_alerta_de_regra_precisa_de_decisao(self):
+        self._make_clean()
+        self.rel.write({"amb_umidade": False})
+        self._approve_internal()
+        problems = self.rel._check_emission_gate()
+        self.assertTrue(any("AMBIENTE_VAZIO" in p for p in problems))
+        self.assertFalse(any("Falha ao executar a regra" in p for p in problems))
+        self._achado("AMBIENTE_VAZIO").write(
+            {"decisao": "descartado", "motivo": "Sala sem higrômetro."})
+        self.assertFalse(any("AMBIENTE_VAZIO" in p for p in self.rel._check_emission_gate()))
+
+    def test_alerta_de_ia_pendente_bloqueia_ate_decidir(self):
+        self._make_clean()
+        self._approve_internal()
+        ia = self._mk_achado(origem="ia", codigo="IA_ACHADO", gravidade="alerta",
+                             onde="Corpo do relatório: capa")
+        problems = self.rel._check_emission_gate()
+        self.assertTrue(ia.exists())  # re-verificação na emissão não apaga IA
+        self.assertTrue(any("IA_ACHADO" in p for p in problems))
+        ia.write({"decisao": "descartado", "motivo": "TAG conferida na plaqueta."})
+        self.assertEqual(self.rel._check_emission_gate(), [])
+        self.assertEqual(ia.decisao, "descartado")
+
+    def test_info_de_ia_nao_bloqueia(self):
+        self._make_clean()
+        self._approve_internal()
+        ia = self._mk_achado(origem="ia", codigo="IA_ACHADO", gravidade="info",
+                             onde="Corpo do relatório: grafia")
+        indisp = self._mk_achado(origem="ia", codigo="IA_INDISPONIVEL", gravidade="info",
+                                 onde="IA")
+        self.assertEqual(self.rel._check_emission_gate(), [])
+        self.assertTrue(ia.exists() and indisp.exists())
+
+    def test_aprovacao_interna_nao_duplica_mensagem_do_super(self):
+        self._make_clean()
+        problems = self.rel._check_emission_gate()
+        self.assertFalse(any("APROVACAO_INTERNA" in p for p in problems))
+        self.assertTrue(problems)  # vêm do super() de P4
+
+    def test_decisao_pelo_form_nao_zera_aprovacoes(self):
+        self._make_clean()
+        self.rel.write({"amb_umidade": False})
+        self.rel.action_verificar()
+        self._approve_internal()
+        a = self._achado("AMBIENTE_VAZIO")
+        self.rel.write({"achado_ids": [(1, a.id, {"decisao": "descartado", "motivo": "Sem higrômetro."})]})
+        self._refresh()
+        internas = self.rel.aprovacao_ids.filtered(lambda x: x.papel in ("elaborador", "emissor"))
+        self.assertTrue(all(x.approved_at for x in internas))
+
+    def test_emissao_grava_scan_snapshot(self):
+        self._make_clean()
+        self.rel.write({"amb_umidade": False})
+        self.rel.action_verificar()
+        self._achado("AMBIENTE_VAZIO").write(
+            {"decisao": "descartado", "motivo": "Sala sem higrômetro; registrado em ata."})
+        self._approve_internal()
+        self._emit()
+        self._refresh()
+        self.assertEqual(self.rel.state, "issued")
+        snap = json.loads(self.rel.current_emissao_id.scan_snapshot)
+        item = [s for s in snap if s["codigo"] == "AMBIENTE_VAZIO"]
+        self.assertEqual(len(item), 1)
+        self.assertEqual(item[0]["decisao"], "descartado")
+        self.assertEqual(item[0]["motivo"], "Sala sem higrômetro; registrado em ata.")
+        self.assertTrue(item[0]["decidido_por"])
+
+    def test_verificar_bloqueado_fora_de_rascunho(self):
+        self._make_clean()
+        self._approve_internal()
+        self._emit()
+        with self.assertRaises(UserError):
+            self.rel.action_verificar()

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Relatório Final — varredura de inconsistência e gate de emissão (P5)."""
+import json
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 from odoo.tools.misc import clean_context
@@ -127,3 +129,44 @@ class AfrQualificacaoRelatorio(models.Model):
                 b=grav.count("bloqueia"), a=grav.count("alerta"), i=grav.count("info"),
             ))
         return True
+
+    # ------------------------------------------------------------ gate (§7.3)
+    def _check_emission_gate(self):
+        """super() (P4: aprovações internas) + achados pendentes (§7.3).
+
+        Re-verifica antes (só regras, determinístico; achados de IA intactos).
+        Todo `alerta` pendente — regra OU IA — impede; `info` é ignorado.
+        IA nunca gera `bloqueia`. APROVACAO_INTERNA já vem do super().
+        """
+        problems = list(super()._check_emission_gate())
+        self.ensure_one()
+        self.with_context(**{
+            relatorio_rules.EMISSION_CTX: True,
+            AI_SKIP_CTX: True,
+        })._run_verificacao()
+        self.invalidate_recordset(["achado_ids"])
+        for a in self.achado_ids.sorted("id"):
+            if a.decisao != "pendente" or a.gravidade == "info":
+                continue
+            if a.codigo == "APROVACAO_INTERNA":
+                continue
+            if a.gravidade == "bloqueia":
+                problems.append(_("Bloqueio [%s]: %s") % (a.codigo, a.mensagem))
+            elif a.gravidade == "alerta":
+                problems.append(_("Alerta sem decisão [%s]: %s") % (a.codigo, a.mensagem))
+        return problems
+
+    def _scan_snapshot(self):
+        self.ensure_one()
+        data = [{
+            "origem": a.origem,
+            "codigo": a.codigo,
+            "gravidade": a.gravidade,
+            "mensagem": a.mensagem,
+            "onde": a.onde or "",
+            "decisao": a.decisao,
+            "motivo": a.motivo or "",
+            "decidido_por": a.decidido_por.name or "",
+            "decidido_em": fields.Datetime.to_string(a.decidido_em) if a.decidido_em else "",
+        } for a in self.achado_ids.sorted("id")]
+        return json.dumps(data, ensure_ascii=False)

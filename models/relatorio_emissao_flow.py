@@ -283,7 +283,10 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
     def _check_emission_gate(self):
         """Impedimentos para emitir (lista vazia = pode). P5 estende com super().
 
-        Síncrono e puro: só lê, não grava nada. Roda no clique (D4).
+        Esta camada (P4) só lê. P5 estende com uma re-verificação síncrona
+        (grava achados) antes de montar a lista final — o gate completo
+        não é puro; roda no clique (D4), e uma falha de emissão aceita o
+        rollback dos achados gravados por essa re-verificação (ruling 1.17).
         """
         self.ensure_one()
         return self._rq_internal_approval_problems()

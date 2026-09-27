@@ -19,6 +19,7 @@ from odoo.addons.afr_qualificacao.controllers.relatorio import (
 )
 from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
 
+from ..models import relatorio_rules
 from .common import AfrQualificacaoTestCommon
 from .relatorio_fakes import (FakeCorpo, RelatorioFixtureMixin, make_user,
                               pdf_pages_text, run_build_jobs, squash)
@@ -270,6 +271,13 @@ class TestRelatorioAprovacoes(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
 
     def setUp(self):
         super().setUp()
+        # Ruling 0.1 (T6): isola estes testes de P4 das regras de P5 — a
+        # fixture aqui (_make_relatorio) não monta certificados/ambiente/etc,
+        # e sem isto o super() de _run_verificacao() (chamado pelo gate)
+        # marcaria achados de regra que estes testes não exercitam.
+        patcher = patch.dict(relatorio_rules.RULES, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.rel, self.qualif = self._make_relatorio()
         self.block = self._block(self.rel, "static", "Objetivo", 10)
         Aprov = self.env["afr.relatorio.aprovacao"]
@@ -533,6 +541,11 @@ class RelatorioEmissaoBase(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
 
     def setUp(self):
         super().setUp()
+        # Ruling 0.1 (T6): isola estes testes de P4 das regras de P5 — ver
+        # o mesmo comentário em TestRelatorioAprovacoes.setUp.
+        patcher = patch.dict(relatorio_rules.RULES, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.rel, self.qualif = self._make_relatorio()
         self.blocks, self.anexos = self._standard_layout(self.rel)
         Aprov = self.env["afr.relatorio.aprovacao"]
