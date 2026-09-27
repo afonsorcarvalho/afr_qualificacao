@@ -40,6 +40,12 @@ class AfrQualificacaoRelatorio(models.Model):
 
     # ------------------------------------------------------------ varredura
     def action_verificar(self):
+        # Item 3 (P5 final fix wave): a varredura em si só grava via sudo
+        # (achados) — sem este check, um Técnico (leitura apenas na ACL do
+        # relatório) conseguiria disparar action_verificar por RPC direto,
+        # mesmo sem write no relatório.
+        self.check_access_rights("write")
+        self.check_access_rule("write")
         for rel in self:
             if rel.state != "draft":
                 raise UserError(_("Só é possível verificar um relatório em rascunho."))
@@ -139,12 +145,10 @@ class AfrQualificacaoRelatorio(models.Model):
         IA nunca gera `bloqueia`. APROVACAO_INTERNA já vem do super().
         """
         problems = list(super()._check_emission_gate())
-        self.ensure_one()
         self.with_context(**{
             relatorio_rules.EMISSION_CTX: True,
             AI_SKIP_CTX: True,
         })._run_verificacao()
-        self.invalidate_recordset(["achado_ids"])
         for a in self.achado_ids.sorted("id"):
             if a.decisao != "pendente" or a.gravidade == "info":
                 continue
