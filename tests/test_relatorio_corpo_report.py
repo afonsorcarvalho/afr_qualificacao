@@ -1,5 +1,7 @@
 """P3 — corpo QWeb do Relatório Final (HTML; PDF é P4)."""
 
+import re
+
 from odoo.addons.afr_qualificacao.hooks import _seed_relatorio_templates
 
 from .common import AfrQualificacaoTestCommon
@@ -197,3 +199,26 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         self.assertEqual(
             [t["cycle"] for t in rel._report_sensor_tables()],
             [c_qo.display_name, c_qd.display_name, c_cal.display_name])
+
+    def test_laudo_valor_d_zero_renders_blank(self):
+        """Carry-in P3 final: valor_d 0.0 (não informado) sai em branco no
+        laudo, não "0"."""
+        self.env["afr.relatorio.indicador"].create({
+            "relatorio_id": self.rel.id, "tipo": "biologico", "valor_d": 0.0,
+            "lote": "LOTE-VD-ZERO", "validade": "2027-01-31", "marca": "Marca VD",
+            "modelo_tipo": "Modelo VD", "populacao": "1,0x10^6",
+        })
+        html = self._render()
+        start = html.index("LOTE-VD-ZERO")
+        row = html[start:html.index("</tr>", start)]
+        self.assertIn("31/01/2027", row)
+        self.assertNotIn("<td>0</td>", row)
+        self.assertIn("<td></td>", row)
+
+    def test_marker_is_out_of_flow(self):
+        """Spike P4-T1: o `.rq-mark` fora do fluxo (position: absolute) não
+        desloca o bloco (sem ele, ~16.6 pt por bloco no wkhtmltopdf)."""
+        html = self._render(with_markers=True)
+        rule = re.search(r"\.rq-mark\s*\{([^}]*)\}", html)
+        self.assertTrue(rule)
+        self.assertIn("position: absolute", rule.group(1))

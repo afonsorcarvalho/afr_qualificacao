@@ -10,7 +10,7 @@
     <template id="rq_styles">
         <style>
             .rq-page { color: #212529; font-size: 12px; font-family: Arial, Helvetica, sans-serif; }
-            .rq-mark { color: #ffffff; font-size: 1pt; line-height: 1pt; }
+            .rq-mark { color: #ffffff; font-size: 1pt; line-height: 1pt; position: absolute; }
             .rq-page-break { page-break-before: always; }
             .rq-title { font-size: 15px; font-weight: bold; margin: 14px 0 6px 0; color: #1f3b63; }
             .rq-title-child { font-size: 13px; margin-left: 12px; }
@@ -181,7 +181,7 @@
                         <td t-esc="ind.modelo_tipo or ''"/>
                         <td t-esc="ind.lote or ''"/>
                         <td t-esc="doc._fmt_date(ind.validade)"/>
-                        <td t-esc="doc._fmt_num(ind.valor_d)"/>
+                        <td t-esc="doc._fmt_num(ind.valor_d) if ind.valor_d else ''"/>
                         <td t-esc="ind.populacao or ''"/>
                     </tr>
                 </t>
