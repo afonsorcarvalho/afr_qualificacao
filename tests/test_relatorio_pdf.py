@@ -1,6 +1,7 @@
 """P4 — montagem do PDF do Relatório Final (núcleo + anexos + build)."""
 import base64
 import io
+from datetime import datetime
 from unittest.mock import patch
 
 from PyPDF2 import PdfFileReader, PdfFileWriter
@@ -390,3 +391,168 @@ class TestRelatorioAnexoFiles(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         anexo2 = self._anexo(self.rel, "micro", "Laudo", 20, slot_kind="bloco",
                              block_id=block.id)
         self.assertEqual(anexo2._check_files(), [PROBLEM_EMPTY])
+
+
+@tagged("post_install", "-at_install", "afr_relatorio_final")
+class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
+
+    def setUp(self):
+        super().setUp()
+        self.rel, _q = self._make_relatorio()
+        self.blocks, self.anexos = self._standard_layout(self.rel)
+        self.Pdf = self.env["afr.relatorio.pdf"]
+
+    def _build(self, rel=None, watermark=False, fake=None):
+        fake = fake or FakeCorpo()
+        with fake.patch(self.env):
+            pdf, warnings = self.Pdf._build(rel or self.rel, watermark=watermark)
+        return pdf, warnings, fake
+
+    def test_compute_layout_pure(self):
+        layout = rp.compute_layout(
+            {"bloco:1": 0, "anexo:a": 1, "bloco:2": 2, "anexo:b": 2},
+            3, {"a": 2, "b": 0, "c": 3}, ["a", "b", "c"],
+        )
+        self.assertEqual(layout["insert_after"], {1: ["a"], 2: ["b"]})
+        self.assertEqual(layout["trailing"], ["c"])
+        self.assertEqual(layout["body_final"], [1, 2, 5])
+        self.assertEqual(layout["page_map"], {
+            "bloco:1": 1, "anexo:a": 2, "bloco:2": 5, "anexo:b": 5, "anexo:c": 6,
+        })
+        self.assertEqual(layout["total"], 8)
+
+    def test_build_places_annex_pages_after_their_separator(self):
+        pdf, warnings, _fake = self._build()
+        pages = pdf_pages_text(pdf)
+        self.assertEqual(len(pages), 9)
+        self.assertIn("BLOCO Conclusao", pages[3])
+        self.assertIn("BLOCO Assinaturas", pages[3])
+        self.assertIn("ANEXO 1: Resultados", pages[4])
+        self.assertIn("ANEXO-DADOS p1", pages[5])
+        self.assertIn("ANEXO-DADOS p2", pages[6])
+        self.assertIn("ANEXO 2: Impressões", pages[7])
+        self.assertIn("impressao.png", pages[8])
+        self.assertEqual(warnings, [])
+
+    def test_build_stamps_pagina_x_de_y_on_every_page(self):
+        pdf, _w, _f = self._build()
+        for number, text in enumerate(pdf_pages_text(pdf), start=1):
+            self.assertIn("Página %d de 9" % number, text)
+            self.assertIn(self.rel.name, text)
+
+    def test_body_render_data_goes_in_report_data(self):
+        # Fato fixado P3 #1: page_map/with_markers no `data`, nunca no contexto.
+        self.assertEqual(
+            self.Pdf._body_render_data(self.rel, {"anexo:dados": 5}),
+            {"with_markers": True, "page_map": {"anexo:dados": 5}},
+        )
+
+    def test_build_second_pass_feeds_index_with_final_numbers(self):
+        # Vale para os dois caminhos (marcadores e fallback do Task 6):
+        # 1ª chamada com page_map vazio, última com o mapa final.
+        pdf, _w, fake = self._build()
+        for call in fake.calls:
+            self.assertEqual(call["report_ref"], "afr_qualificacao.action_report_relatorio_corpo")
+            self.assertEqual(call["res_ids"], self.rel.ids)
+            self.assertIn("page_map", call["data"])
+            self.assertNotIn("page_map", call["context"])
+        self.assertEqual(fake.calls[0]["data"]["page_map"], {})
+        page_map = fake.calls[-1]["data"]["page_map"]
+        self.assertEqual(page_map["anexo:dados"], 5)
+        self.assertEqual(page_map["anexo:fotos"], 8)
+        self.assertEqual(page_map["bloco:%d" % self.blocks["conclusao"].id], 4)
+        self.assertIn("IDX anexo:fotos=8", pdf_pages_text(pdf)[1])
+
+    def test_build_bloco_annex_comes_from_the_body_once(self):
+        proto = self._block(self.rel, "protocolo", "Protocolo PrQT", 90,
+                            anexo_code="protocolo")
+        self._anexo(self.rel, "protocolo", "Protocolo", 30, slot_kind="bloco",
+                    block_id=proto.id)
+        pdf, warnings, _fake = self._build()
+        pages = pdf_pages_text(pdf)
+        # 9 + separador "ANEXO 3: Protocolo" + página do bloco protocolo
+        self.assertEqual(len(pages), 11)
+        self.assertIn("ANEXO 3: Protocolo", pages[9])
+        self.assertIn("BLOCO Protocolo PrQT", pages[10])
+        self.assertEqual(sum("BLOCO Protocolo PrQT" in p for p in pages), 1)
+        self.assertEqual(warnings, [])
+
+    def test_build_annex_whose_marker_is_missing_goes_to_end_with_warning(self):
+        pdf, warnings, _f = self._build(fake=FakeCorpo(skip_markers={"anexo:dados"}))
+        pages = pdf_pages_text(pdf)
+        self.assertEqual(len(pages), 9)
+        self.assertIn("ANEXO-DADOS p1", pages[7])
+        self.assertIn("ANEXO-DADOS p2", pages[8])
+        self.assertTrue(any("dados" in w and "fim do documento" in w for w in warnings),
+                        warnings)
+
+    def test_build_warns_when_index_does_not_converge(self):
+        _pdf, warnings, fake = self._build(fake=FakeCorpo(grow_each_call=True))
+        self.assertGreaterEqual(len(fake.calls), rp.MAX_PASSES)
+        self.assertTrue(any("não estabilizou" in w for w in warnings), warnings)
+
+    def test_build_landscape_and_rotated_annex_pages_become_a4_portrait(self):
+        landscape = self._attachment(make_pdf([["PAISAGEM"]], size=(842, 595)),
+                                     "grafico.pdf", "application/pdf")
+        rotated = self._attachment(make_pdf([["GIRADO"]], rotate=90), "curva.pdf",
+                                   "application/pdf")
+        self.anexos["dados"].attachment_ids = [(6, 0, (landscape | rotated).ids)]
+        pdf, _w, _f = self._build()
+        reader = PdfFileReader(io.BytesIO(pdf))
+        for idx in (5, 6):
+            page = reader.getPage(idx)
+            self.assertAlmostEqual(float(page.mediaBox.getWidth()), rp.A4_W, places=1)
+            self.assertAlmostEqual(float(page.mediaBox.getHeight()), rp.A4_H, places=1)
+            self.assertFalse(int(page.get("/Rotate", 0) or 0))
+
+    def test_build_skips_unreadable_file_with_warning(self):
+        locked = self._attachment(encrypt_pdf(make_pdf([["x"]]), user_pw="segredo"),
+                                  "travado.pdf", "application/pdf")
+        self.anexos["fotos"].attachment_ids = [(4, locked.id)]
+        pdf, warnings, _f = self._build()
+        self.assertEqual(len(pdf_pages_text(pdf)), 9)
+        self.assertTrue(any("travado.pdf" in w and "senha" in w for w in warnings), warnings)
+
+    def test_build_watermark_only_on_minuta(self):
+        minuta, _w, _f = self._build(watermark=True)
+        final, _w2, _f2 = self._build(watermark=False)
+        self.assertEqual(squash("".join(pdf_pages_text(minuta))).count("MINUTA—SEMVALIDADE"), 9)
+        self.assertNotIn("SEMVALIDADE", squash("".join(pdf_pages_text(final))))
+
+    def test_build_qr_goes_on_signature_page_only_when_not_minuta(self):
+        seen = []
+        original = type(self.Pdf)._stamp
+
+        def spy(pdf_self, content, header, watermark):
+            seen.append(dict(header))
+            return original(pdf_self, content, header, watermark)
+
+        rel_ctx = self.rel.with_context(rq_emission_token="b" * 32)
+        with patch.object(type(self.Pdf), "_stamp", spy):
+            self._build(rel=rel_ctx, watermark=False)
+            self._build(rel=rel_ctx, watermark=True)
+        final_header, minuta_header = seen
+        self.assertEqual(final_header["qr_page_index"], 3)  # conclusão+assinaturas
+        self.assertIn("/qualificacao/relatorio/verify/" + "b" * 32, final_header["verify_url"])
+        self.assertFalse(minuta_header["verify_url"])
+        self.assertEqual(minuta_header["date"], "MINUTA")
+
+    def test_header_date_comes_from_relatorio_context(self):
+        # Ruling 1.9: a data da emissão em curso vem do contexto do
+        # RELATÓRIO (quem chama é action_emitir, com o rel no contexto), não
+        # do env do afr.relatorio.pdf — o do Pdf é ignorado.
+        rel_ctx = self.rel.with_context(
+            tz="UTC", rq_emission_date=datetime(2026, 7, 15, 12, 0, 0))
+        self.Pdf = self.Pdf.with_context(rq_emission_date=datetime(2026, 1, 2, 12, 0, 0))
+        pdf, _w, _f = self._build(rel=rel_ctx, watermark=False)
+        pages = pdf_pages_text(pdf)
+        self.assertTrue(all("15/07/2026" in text for text in pages), pages[0])
+        self.assertNotIn("02/01/2026", "".join(pages))
+        minuta, _w2, _f2 = self._build(rel=rel_ctx, watermark=True)
+        self.assertNotIn("15/07/2026", "".join(pdf_pages_text(minuta)))
+
+    def test_public_build_returns_bytes(self):
+        fake = FakeCorpo()
+        with fake.patch(self.env):
+            pdf = self.Pdf.build(self.rel)
+        self.assertTrue(pdf.startswith(b"%PDF"))

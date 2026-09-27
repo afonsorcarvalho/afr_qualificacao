@@ -7,6 +7,7 @@ d'água). Bibliotecas: PyPDF2 1.26 (API antiga), reportlab 3.5, pdfminer.six
 20200726 e Pillow (efetivo no container: 11.3.0 do venv, que sombreia a 8.1.2
 do sistema; `ImageOps.exif_transpose` existe em ambas).
 """
+import base64
 import io
 import re
 
@@ -22,7 +23,7 @@ from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
-from odoo import _, api, models
+from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 from odoo.tools.mimetypes import guess_mimetype
 from odoo.tools.pdf import PdfFileReader, PdfFileWriter
@@ -276,6 +277,49 @@ def stamp_pdf(content, header, watermark):
     return pdf_bytes(writer)
 
 
+MAX_PASSES = 3
+
+
+def compute_layout(markers, body_count, annex_counts, codes):
+    """Onde cada anexo entra e o número final (1-based) de cada marcador.
+
+    :param markers: `{"bloco:<id>"|"anexo:<code>": índice 0-based no corpo}`
+    :param body_count: nº de páginas do corpo renderizado
+    :param annex_counts: `{code: nº de páginas do anexo}`
+    :param codes: codes dos anexos incluídos, na ordem de `sequence`
+    :return: dict com `insert_after` ({índice do corpo: [codes]}),
+        `trailing` ([codes] sem separador no corpo → fim do documento),
+        `body_final` (nº final de cada página do corpo), `page_map`
+        ({marcador: nº final}) e `total`.
+    """
+    insert_after, trailing = {}, []
+    for code in codes:
+        idx = markers.get("anexo:%s" % code)
+        if idx is None or idx >= body_count:
+            trailing.append(code)
+        else:
+            insert_after.setdefault(idx, []).append(code)
+    body_final, offset = [], 0
+    for idx in range(body_count):
+        body_final.append(idx + 1 + offset)
+        offset += sum(annex_counts.get(code, 0) for code in insert_after.get(idx, []))
+    page_map = {
+        key: body_final[idx] for key, idx in markers.items() if idx < body_count
+    }
+    next_page = body_count + offset + 1
+    for code in trailing:
+        if annex_counts.get(code):
+            page_map["anexo:%s" % code] = next_page
+            next_page += annex_counts[code]
+    return {
+        "insert_after": insert_after,
+        "trailing": trailing,
+        "body_final": body_final,
+        "page_map": page_map,
+        "total": next_page - 1,
+    }
+
+
 class AfrRelatorioPdf(models.AbstractModel):
     _name = "afr.relatorio.pdf"
     _description = "Montagem do PDF do Relatório Final"
@@ -313,3 +357,188 @@ class AfrRelatorioPdf(models.AbstractModel):
                 "A renderização do relatório não gerou PDF (formato '%s')."
             ) % fmt)
         return content
+
+    # ------------------------------------------------------------------
+    # Montagem (spec §6)
+    # ------------------------------------------------------------------
+    @api.model
+    def build(self, relatorio, watermark=False):
+        """PDF final em bytes (minuta se `watermark`). Avisos: `_build`."""
+        return self._build(relatorio, watermark=watermark)[0]
+
+    @api.model
+    def _build(self, relatorio, watermark=False):
+        """Corpo + anexos intercalados + índice + carimbo.
+
+        Sem efeitos colaterais no banco (nenhum write): quem emite chama
+        isto ANTES de gravar o estado da emissão — a 1ª renderização sem
+        assets em cache faz `cr.commit()` (`commit_assetsbundle` do core).
+
+        :return: `(pdf_bytes, avisos)` — avisos são textos pt-BR sobre
+            arquivos ignorados, anexos sem separador e índice que não
+            estabilizou (P5 pode transformá-los em achados).
+        """
+        relatorio.ensure_one()
+        warnings = []
+        codes, annex_data, annex_counts = [], {}, {}
+        for anexo in self._file_anexos(relatorio):
+            code = anexo.code or "anexo-%d" % anexo.id
+            data, count = self._annex_pdf(anexo, warnings)
+            codes.append(code)
+            annex_data[code] = data
+            annex_counts[code] = count
+
+        page_map = {}
+        for attempt in range(1, MAX_PASSES + 1):
+            body, markers = self._render_body_and_markers(relatorio, page_map)
+            body_count = PdfFileReader(io.BytesIO(body), strict=False).getNumPages()
+            layout = compute_layout(markers, body_count, annex_counts, codes)
+            if layout["page_map"] == page_map:
+                break
+            if attempt == MAX_PASSES:
+                warnings.append(_(
+                    "A numeração do índice não estabilizou após %d renderizações; "
+                    "confira o índice."
+                ) % MAX_PASSES)
+                break
+            page_map = layout["page_map"]
+
+        for code in layout["trailing"]:
+            if annex_counts.get(code):
+                warnings.append(_(
+                    "Anexo '%s': marcador do separador não encontrado no corpo; "
+                    "páginas incluídas no fim do documento."
+                ) % code)
+        merged = self._assemble(body, body_count, layout, annex_data)
+        header = self._header(
+            relatorio, watermark,
+            qr_page_index=self._qr_page_index(relatorio, markers, layout),
+        )
+        return self._stamp(merged, header, watermark), warnings
+
+    @api.model
+    def _body_render_data(self, relatorio, page_map):
+        """`data` do report (fato fixado P3 #1): marcadores + page_map."""
+        return {"with_markers": True, "page_map": dict(page_map)}
+
+    @api.model
+    def _render_body_and_markers(self, relatorio, page_map):
+        """Corpo em PDF + `{marcador: página 0-based}` (caminho dos marcadores).
+
+        O Task 6 (fallback) sobrescreveria só este método.
+        """
+        body = self._render_report(relatorio, self._body_render_data(relatorio, page_map))
+        return body, self._find_markers(body)
+
+    @api.model
+    def _file_anexos(self, relatorio):
+        """Anexos incluídos que intercalam arquivos (ordem de `anexo_ids`).
+
+        `slot_kind='bloco'` fica de fora: o template de P3 já renderiza o
+        bloco no corpo, logo após o separador.
+        """
+        return relatorio._anexos_included().filtered(lambda a: a.slot_kind != "bloco")
+
+    @api.model
+    def _annex_pdf(self, anexo, warnings):
+        """`(pdf_bytes, nº de páginas)` do anexo, páginas prontas para carimbo."""
+        # Import tardio: relatorio_anexo_files importa este módulo.
+        from .relatorio_anexo_files import PROBLEM_NO_ACCESS
+
+        label = _("Anexo %s (%s)") % (anexo.numero or "?", anexo.title or anexo.code or "")
+        raw = anexo._raw_files()
+        if not raw:
+            warnings.append(_("%s: nenhum arquivo — só o separador foi incluído.") % label)
+            return b"", 0
+        writer = PdfFileWriter()
+        keep_alive = []  # PyPDF2 lê os streams de forma preguiçosa até o write
+        for content, mimetype, caption in raw:
+            # `None` = sem permissão de leitura (T3): nunca entra no PDF.
+            problem = (PROBLEM_NO_ACCESS if content is None
+                       else file_problem(content, mimetype))
+            if problem:
+                warnings.append(_("%s: '%s' ignorado — %s.") % (label, caption, problem))
+                continue
+            if guess_mimetype(content, default=mimetype or "") == "application/pdf":
+                reader = open_pdf(content)
+                keep_alive.append(reader)
+                for idx in range(reader.getNumPages()):
+                    writer.addPage(fit_page_to_usable(reader.getPage(idx)))
+            else:
+                img_reader = PdfFileReader(io.BytesIO(image_to_pdf(content, caption)))
+                keep_alive.append(img_reader)
+                writer.addPage(img_reader.getPage(0))
+        count = writer.getNumPages()
+        return (pdf_bytes(writer) if count else b""), count
+
+    @api.model
+    def _assemble(self, body, body_count, layout, annex_data):
+        """Intercala as páginas dos anexos depois da página do separador."""
+        writer = PdfFileWriter()
+        body_reader = PdfFileReader(io.BytesIO(body), strict=False)
+        keep_alive = [body_reader]
+
+        def add_annex(code):
+            data = annex_data.get(code)
+            if not data:
+                return
+            reader = PdfFileReader(io.BytesIO(data), strict=False)
+            keep_alive.append(reader)
+            for idx in range(reader.getNumPages()):
+                writer.addPage(reader.getPage(idx))
+
+        for idx in range(body_count):
+            writer.addPage(body_reader.getPage(idx))
+            for code in layout["insert_after"].get(idx, []):
+                add_annex(code)
+        for code in layout["trailing"]:
+            add_annex(code)
+        return pdf_bytes(writer)
+
+    @api.model
+    def _qr_page_index(self, relatorio, markers, layout):
+        """Página final (0-based) do 1º bloco `assinaturas` incluído.
+
+        Sem esse bloco (ou marcador não achado): última página do corpo.
+        """
+        body_final = layout["body_final"]
+        if not body_final:
+            return None
+        signature = relatorio._body_blocks().filtered(
+            lambda b: b.block_kind == "assinaturas"
+        )[:1]
+        idx = markers.get("bloco:%d" % signature.id) if signature else None
+        if idx is None or idx >= len(body_final):
+            idx = len(body_final) - 1
+        return body_final[idx] - 1
+
+    @api.model
+    def _header(self, relatorio, watermark, qr_page_index=None):
+        """Dados do carimbo (ver `stamp_pdf`).
+
+        Data: `rq_emission_date` do contexto do RELATÓRIO (ruling 1.9 —
+        emissão em curso, ainda sem registro) ou a da emissão vigente.
+        """
+        company = (relatorio.company_id or self.env.company).with_context(bin_size=False)
+        equipment = relatorio.equipment_id
+        if watermark:
+            date_label = _("MINUTA")
+            verify_url = False
+        else:
+            issued = (relatorio.env.context.get("rq_emission_date")
+                      or relatorio.current_emissao_id.issued_at)
+            date_label = fields.Datetime.context_timestamp(
+                relatorio, fields.Datetime.to_datetime(issued)
+            ).strftime("%d/%m/%Y") if issued else ""
+            verify_url = relatorio.verify_url or False
+        return {
+            "logo": base64.b64decode(company.logo) if company.logo else None,
+            "title": relatorio.name or "",
+            "equipment": _("Equipamento: %s  TAG: %s") % (
+                equipment.display_name or "", equipment.tag or "—"),
+            "revision": relatorio.revision_label or "",
+            "date": date_label,
+            "footer": company.email or "",
+            "verify_url": verify_url,
+            "qr_page_index": qr_page_index,
+        }
