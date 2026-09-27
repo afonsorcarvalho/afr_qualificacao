@@ -15,7 +15,8 @@ LEGACY_TEMPLATE = "afr_qualificacao.mail_template_relatorio_aprovacao"
 def migrate(cr, version):
     cr.execute("""
         SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'afr_relatorio_aprovacao' AND column_name = 'access_token'
+         WHERE table_schema = current_schema()
+           AND table_name = 'afr_relatorio_aprovacao' AND column_name = 'access_token'
     """)
     if cr.fetchone():
         cr.execute("""
