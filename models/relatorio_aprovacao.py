@@ -27,6 +27,11 @@ _IDENTITY_FIELDS = ("user_id", "papel", "nome_exibicao", "registro", "partner_id
 # entra aqui: na criação ele é apenas ignorado/substituído (ver create()),
 # nunca levanta — o valor de verdade sempre nasce no servidor.
 _CREATE_BLOCKED_FIELDS = ("approved_at", "ip")
+# Fix round 1 do P4 Task 7, achado 2: designar o EMISSOR (responsável
+# técnico) é do Gestor — senão um Usuário se designava emissor numa linha
+# pendente e se autoaprovava por `action_aprovar_interno`. Elaborador segue
+# atribuível pelo grupo Usuário (o autor costuma se designar).
+_MANAGER_GROUP = "afr_qualificacao.group_afr_qualificacao_manager"
 
 
 class AfrRelatorioAprovacao(models.Model):
@@ -93,6 +98,12 @@ class AfrRelatorioAprovacao(models.Model):
                     "Apenas o sistema pode definir os campos de controle "
                     "da aprovação (%s) na criação."
                 ) % ", ".join(sorted(touched)))
+            if (any(r.papel == "emissor" and r.user_id for r in recs_su)
+                    and not self.env.user.has_group(_MANAGER_GROUP)):
+                raise AccessError(_(
+                    "Apenas o Gestor pode designar o usuário emissor "
+                    "(responsável técnico) do relatório."
+                ))
             stray_tokens = recs_su.filtered(lambda r: r.papel != "cliente" and r.access_token)
             if stray_tokens:
                 stray_tokens.write({"access_token": False})
@@ -107,6 +118,17 @@ class AfrRelatorioAprovacao(models.Model):
         if field in ("user_id", "partner_id"):
             return self[field].id != (new or False)
         return (self[field] or False) != (new or False)
+
+    def _emissor_designation_changed(self, vals):
+        """True se `vals` troca quem é o emissor desta linha: muda `user_id`
+        de uma linha emissor (inclusive para vazio), ou vira `papel`
+        emissor uma linha que fica com usuário."""
+        new_papel = vals.get("papel", self.papel)
+        user_changed = self._identity_field_changed("user_id", vals)
+        if user_changed and "emissor" in (self.papel, new_papel):
+            return True
+        new_user = vals["user_id"] if "user_id" in vals else self.user_id.id
+        return bool(new_papel == "emissor" and self.papel != "emissor" and new_user)
 
     def write(self, vals):
         """Fix round 1, achado 1 + findings review P3 (final), achado 1.
@@ -136,6 +158,13 @@ class AfrRelatorioAprovacao(models.Model):
                 "Apenas o sistema pode alterar os campos de controle da "
                 "aprovação (%s)."
             ) % ", ".join(sorted(touched)))
+        if (not self.env.su and ({"user_id", "papel"} & set(vals))
+                and not self.env.user.has_group(_MANAGER_GROUP)
+                and any(rec._emissor_designation_changed(vals) for rec in self)):
+            raise AccessError(_(
+                "Apenas o Gestor pode designar ou trocar o usuário emissor "
+                "(responsável técnico) do relatório."
+            ))
         touched_identity = set(vals) & set(_IDENTITY_FIELDS)
         changed = self.browse()
         if touched_identity and "approved_at" not in vals:

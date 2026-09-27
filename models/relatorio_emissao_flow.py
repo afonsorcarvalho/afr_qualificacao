@@ -8,7 +8,7 @@ from odoo.exceptions import UserError, ValidationError
 from odoo.http import request
 from odoo.tools.misc import clean_context
 
-from .relatorio_editorial import SKIP_CTX
+from .relatorio_editorial import skip_editorial_hook
 
 INTERNAL_ROLES = ("elaborador", "emissor")
 ROLE_LABELS = {"elaborador": "Elaborador", "emissor": "Emissor"}
@@ -75,7 +75,7 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
             ))
         editorial = (
             bool(self._RQ_EDITORIAL_FIELDS.intersection(vals))
-            and not self.env.context.get(SKIP_CTX)
+            and not skip_editorial_hook(self.env)
         )
         if editorial:
             self._check_editable()

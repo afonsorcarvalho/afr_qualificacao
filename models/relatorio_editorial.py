@@ -15,6 +15,13 @@ from odoo import api, models
 SKIP_CTX = "rq_skip_editorial_hook"
 
 
+def skip_editorial_hook(env):
+    """SKIP_CTX só vale sob `env.su` (fix round 1, achado 1): contexto é
+    controlado pelo cliente RPC, então sem su a chave é ignorada — senão
+    qualquer chamador furaria a trava do relatório emitido e a invalidação."""
+    return bool(env.su and env.context.get(SKIP_CTX))
+
+
 class AfrRelatorioEditorialMixin(models.AbstractModel):
     _name = "afr.relatorio.editorial.mixin"
     _description = "Mixin: edição editorial do Relatório Final"
@@ -28,7 +35,7 @@ class AfrRelatorioEditorialMixin(models.AbstractModel):
         return self.mapped("relatorio_id")
 
     def _rq_touch(self, vals=None):
-        if self.env.context.get(SKIP_CTX) or not self:
+        if not self or skip_editorial_hook(self.env):
             return
         if (vals is not None and self._rq_watched_fields is not None
                 and not self._rq_watched_fields.intersection(vals)):
@@ -40,10 +47,18 @@ class AfrRelatorioEditorialMixin(models.AbstractModel):
             relatorios._check_editable()
         relatorios._invalidate_internal_approvals()
 
+    def _rq_touch_create(self, vals_list):
+        """Gancho pós-create; o ciclo sobrescreve (só campos vigiados)."""
+        self._rq_touch()
+
+    def _rq_touch_unlink(self):
+        """Gancho pré-unlink; o ciclo sobrescreve (só se tinha dado vigiado)."""
+        self._rq_touch()
+
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
-        records._rq_touch()
+        records._rq_touch_create(vals_list)
         return records
 
     def write(self, vals):
@@ -51,7 +66,7 @@ class AfrRelatorioEditorialMixin(models.AbstractModel):
         return super().write(vals)
 
     def unlink(self):
-        self._rq_touch()
+        self._rq_touch_unlink()
         return super().unlink()
 
 
@@ -118,17 +133,16 @@ class AfrQualificacaoCycleEditorial(models.Model):
     def _rq_relatorios(self):
         return _draft_relatorios_of(self.env, self.mapped("qualificacao_id"))
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        # Criar ciclo (confirmação de SO, geração de OS) não é edição
-        # editorial: pula o gancho do mixin. O retorno volta ao contexto
-        # normal — senão gravações seguintes no mesmo recordset pulariam
-        # o gancho.
-        return super(
-            AfrQualificacaoCycleEditorial, self.with_context(**{SKIP_CTX: True})
-        ).create(vals_list).with_context(**{SKIP_CTX: False})
+    # Fix round 1, achado 1: criar/apagar ciclo (confirmação de SO, geração
+    # de OS) não é edição editorial — decidido aqui, estruturalmente, e não
+    # por uma chave de contexto (que o cliente RPC controla).
 
-    def unlink(self):
-        return super(
-            AfrQualificacaoCycleEditorial, self.with_context(**{SKIP_CTX: True})
-        ).unlink()
+    def _rq_touch_create(self, vals_list):
+        """Só conta se o ciclo já nasce com janela/sensores preenchidos."""
+        if any(vals.get(f) for vals in vals_list for f in self._rq_watched_fields):
+            self._rq_touch()
+
+    def _rq_touch_unlink(self):
+        """Só conta se o ciclo apagado tinha janela/sensores preenchidos."""
+        if any(c.janela_inicio or c.janela_fim or c.sensor_pos_ids for c in self):
+            self._rq_touch()

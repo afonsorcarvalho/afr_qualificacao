@@ -361,3 +361,85 @@ class TestRelatorioAprovacoes(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         with self.assertRaises(AccessError):
             Aprov.create({"relatorio_id": self.rel.id, "papel": "executor",
                           "nome_exibicao": "Téc. Campo", "approved_at": now})
+
+    # ───────── Fix round 1 (review Task 7) ─────────
+
+    def test_skip_ctx_ignored_without_su_on_issued_report(self):
+        """Achado 1: `rq_skip_editorial_hook` só vale sob env.su — um
+        chamador RPC comum não fura a trava do relatório emitido."""
+        self.rel.write({"state": "issued"})  # su
+        skip = {"rq_skip_editorial_hook": True}
+        with self.assertRaises(UserError):
+            self.block.with_user(self.elab).with_context(**skip).write(
+                {"body": "<p>furando a trava</p>"})
+        with self.assertRaises(UserError):
+            self.rel.with_user(self.emis).with_context(**skip).write(
+                {"amb_umidade": "41 %UR"})
+        # sudo + SKIP_CTX (fluxo interno) continua passando.
+        self.block.sudo().with_context(**skip).write({"body": "<p>interno</p>"})
+
+    def test_skip_ctx_ignored_without_su_in_draft_still_invalidates(self):
+        skip = {"rq_skip_editorial_hook": True}
+        self._approve_internal()
+        self.block.with_user(self.elab).with_context(**skip).write(
+            {"body": "<p>editado</p>"})
+        self.assertFalse(self._internal_approved())
+        self._approve_internal()
+        self.rel.with_user(self.elab).with_context(**skip).write(
+            {"amb_temperatura": "20 °C"})
+        self.assertFalse(self._internal_approved())
+
+    def test_cycle_creation_does_not_invalidate_unless_window_given(self):
+        self._approve_internal()
+        Cycle = self.env["afr.qualificacao.cycle"].with_user(self.emis)
+        cycle = Cycle.create({
+            "qualificacao_id": self.qualif.id, "cycle_type_id": self.cycle_cmax.id,
+        })
+        self.assertTrue(self._internal_approved())
+        cycle.write({"notes": "nada editorial"})
+        self.assertTrue(self._internal_approved())
+        Cycle.create({
+            "qualificacao_id": self.qualif.id, "cycle_type_id": self.cycle_cmax.id,
+            "janela_inicio": fields.Datetime.now(),
+        })
+        self.assertFalse(self._internal_approved())
+
+    def test_usuario_cannot_reassign_emissor_and_self_approve(self):
+        """Achado 2: Usuário não se designa emissor para se autoaprovar."""
+        with self.assertRaises(AccessError):
+            self.line_emis.with_user(self.elab).write({"user_id": self.elab.id})
+        self.assertEqual(self.line_emis.user_id, self.emis)
+        with self.assertRaises(AccessError):
+            self.line_emis.with_user(self.elab).write({"user_id": False})
+        # Nem trocando o papel da própria linha de elaborador para emissor.
+        with self.assertRaises(AccessError):
+            self.line_elab.with_user(self.elab).write({"papel": "emissor"})
+        self.rel.with_user(self.elab).action_aprovar_interno()
+        self.assertTrue(self.line_elab.approved_at)
+        self.assertFalse(self.line_emis.approved_at)
+        self.assertTrue(any("Emissor" in p for p in self.rel._check_emission_gate()))
+
+    def test_usuario_cannot_create_emissor_line_with_user(self):
+        Aprov = self.env["afr.relatorio.aprovacao"].with_user(self.elab)
+        with self.assertRaises(AccessError):
+            Aprov.create({"relatorio_id": self.rel.id, "papel": "emissor",
+                          "user_id": self.elab.id})
+        with self.assertRaises(AccessError):
+            Aprov.with_context(default_user_id=self.elab.id).create({
+                "relatorio_id": self.rel.id, "papel": "emissor"})
+        # Sem usuário (o Gestor designa depois) continua permitido.
+        line = Aprov.create({"relatorio_id": self.rel.id, "papel": "emissor"})
+        self.assertFalse(line.user_id)
+
+    def test_manager_designates_emissor_and_elaborador_self_assigns(self):
+        self.line_emis.with_user(self.emis).write({"user_id": self.elab.id})
+        self.assertEqual(self.line_emis.user_id, self.elab)
+        Aprov = self.env["afr.relatorio.aprovacao"].with_user(self.emis)
+        Aprov.create({"relatorio_id": self.rel.id, "papel": "emissor",
+                      "user_id": self.emis.id})
+        self.line_elab.write({"user_id": False})
+        self.line_elab.with_user(self.elab).write({"user_id": self.elab.id})
+        self.assertEqual(self.line_elab.user_id, self.elab)
+        self.env["afr.relatorio.aprovacao"].with_user(self.elab).create({
+            "relatorio_id": self.rel.id, "papel": "elaborador",
+            "user_id": self.elab.id})
