@@ -20,6 +20,13 @@ from odoo.tools import consteq
 # Maior id aceito pelo Postgres (int4): acima disso o browse().exists()
 # estouraria em SQL (500) em vez de responder 404.
 _MAX_PG_INT = 2 ** 31 - 1
+DEFAULT_PUBLIC_TZ = "America/Sao_Paulo"
+
+
+def _public_tz(company):
+    """Fuso das datas nas páginas públicas: o da empresa emissora, não o do
+    visitante (fix round 1, achado 4)."""
+    return (company and company.partner_id.tz) or DEFAULT_PUBLIC_TZ
 
 
 def _relatorio_verify_values(env, token):
@@ -30,7 +37,7 @@ def _relatorio_verify_values(env, token):
     Só leitura (sudo restrito à busca pelo token); o SHA é recalculado a
     cada acesso (ruling 1.17).
     """
-    values = {"status": "not_found", "token": token}
+    values = {"status": "not_found", "token": token, "tz": DEFAULT_PUBLIC_TZ}
     if not isinstance(token, str) or len(token) != 32:
         return values
     emissao = env["afr.relatorio.emissao"].sudo().search([("token", "=", token)], limit=1)
@@ -49,6 +56,7 @@ def _relatorio_verify_values(env, token):
         "emissao": emissao,
         "relatorio": rel,
         "current": rel.current_emissao_id,
+        "tz": _public_tz(rel.company_id),
         "under_revision": status == "valid" and rel.state == "draft",
         "client_approvals": rel.aprovacao_ids.filtered(
             lambda a: a.papel == "cliente" and a.approved_at
@@ -73,6 +81,27 @@ def _portal_aprovacao(env, aprovacao_id, access_token):
     return aprovacao
 
 
+def _portal_page_values(aprovacao, access_token, message):
+    """Valores do template do portal (sem request; o csrf_token entra na rota)."""
+    rel = aprovacao.relatorio_id
+    return {
+        "aprovacao": aprovacao,
+        "relatorio": rel,
+        "emissao": rel.current_emissao_id,
+        "access_token": access_token,
+        "message": message if message in ("ok", "erro") else None,
+        "tz": _public_tz(rel.company_id),
+    }
+
+
+def _portal_pdf_headers(attachment):
+    """Cabeçalhos do PDF do portal: inline — a spec §8 "mostra o PDF"."""
+    return [
+        ("Content-Type", "application/pdf"),
+        ("Content-Disposition", content_disposition(attachment.name, "inline")),
+    ]
+
+
 class RelatorioFinalPublicController(http.Controller):
 
     @http.route(
@@ -93,14 +122,9 @@ class RelatorioFinalPublicController(http.Controller):
         aprovacao = _portal_aprovacao(request.env, aprovacao_id, access_token)
         if not aprovacao:
             raise NotFound()
-        rel = aprovacao.relatorio_id
-        return request.render("afr_qualificacao.portal_relatorio_aprovacao", {
-            "aprovacao": aprovacao,
-            "relatorio": rel,
-            "emissao": rel.current_emissao_id,
-            "access_token": access_token,
-            "message": message if message in ("ok", "erro") else None,
-        })
+        values = _portal_page_values(aprovacao, access_token, message)
+        values["csrf_token"] = request.csrf_token()
+        return request.render("afr_qualificacao.portal_relatorio_aprovacao", values)
 
     @http.route(
         ["/my/relatorio/<int:aprovacao_id>/pdf"],
@@ -112,10 +136,7 @@ class RelatorioFinalPublicController(http.Controller):
         raw = attachment and attachment.with_context(bin_size=False).raw
         if not raw:
             raise NotFound()
-        return request.make_response(raw, headers=[
-            ("Content-Type", "application/pdf"),
-            ("Content-Disposition", content_disposition(attachment.name)),
-        ])
+        return request.make_response(raw, headers=_portal_pdf_headers(attachment))
 
     @http.route(
         ["/my/relatorio/<int:aprovacao_id>/aprovar"],

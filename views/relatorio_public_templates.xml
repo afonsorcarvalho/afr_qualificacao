@@ -6,6 +6,12 @@
          e nenhum download do PDF (o anexo emitido é public=False). -->
     <template id="relatorio_verify_template" name="Verificação do Relatório Final">
         <t t-call="portal.frontend_layout">
+            <t t-call="afr_qualificacao.relatorio_verify_content"/>
+        </t>
+    </template>
+
+    <!-- Conteúdo separado do layout: renderizável sem request (testes). -->
+    <template id="relatorio_verify_content" name="Verificação do Relatório Final (conteúdo)">
             <div class="container py-5">
                 <div class="row justify-content-center">
                     <div class="col-md-8">
@@ -37,7 +43,7 @@
                                 <table class="table table-sm">
                                     <tr><th style="width:30%">Revisão</th><td t-esc="'Rev.%02d' % emissao.revision"/></tr>
                                     <tr><th>Emitido por</th><td t-esc="relatorio.company_id.name or '—'"/></tr>
-                                    <tr><th>Emitido em</th><td><span t-field="emissao.issued_at"/></td></tr>
+                                    <tr><th>Emitido em</th><td><span t-field="emissao.issued_at" t-options="{'tz_name': tz}"/></td></tr>
                                     <tr><th>SHA-256 do PDF</th><td><code style="word-break:break-all;" t-esc="emissao.sha256"/></td></tr>
                                 </table>
                                 <t t-if="status == 'valid'">
@@ -45,7 +51,7 @@
                                     <p t-if="not client_approvals" class="text-muted">Aguardando aprovação do cliente.</p>
                                     <ul t-if="client_approvals">
                                         <li t-foreach="client_approvals" t-as="ap">
-                                            <t t-esc="ap.nome_exibicao"/> — <span t-field="ap.approved_at"/>
+                                            <t t-esc="ap.nome_exibicao"/> — <span t-field="ap.approved_at" t-options="{'tz_name': tz}"/>
                                         </li>
                                     </ul>
                                 </t>
@@ -54,12 +60,16 @@
                     </div>
                 </div>
             </div>
-        </t>
     </template>
 
     <!-- Portal: aprovação do cliente (link com access_token por aprovador). -->
     <template id="portal_relatorio_aprovacao" name="Aprovação do Relatório Final">
         <t t-call="portal.frontend_layout">
+            <t t-call="afr_qualificacao.portal_relatorio_aprovacao_content"/>
+        </t>
+    </template>
+
+    <template id="portal_relatorio_aprovacao_content" name="Aprovação do Relatório Final (conteúdo)">
             <div class="container py-5">
                 <div class="row justify-content-center">
                     <div class="col-md-8">
@@ -70,18 +80,18 @@
                         <div t-if="message == 'erro'" class="alert alert-danger">Não foi possível registrar a aprovação: não há revisão emitida aguardando aprovação.</div>
 
                         <t t-if="emissao">
-                            <p>Emitido em <span t-field="emissao.issued_at"/>.<br/>
+                            <p>Emitido em <span t-field="emissao.issued_at" t-options="{'tz_name': tz}"/>.<br/>
                                 SHA-256: <code style="word-break:break-all;" t-esc="emissao.sha256"/></p>
                             <p><a class="btn btn-secondary"
                                   t-attf-href="/my/relatorio/#{aprovacao.id}/pdf?access_token=#{access_token}">Baixar PDF</a></p>
                         </t>
 
                         <div t-if="aprovacao.approved_at" class="alert alert-info">
-                            Aprovado por <strong t-esc="aprovacao.nome_exibicao"/> em <span t-field="aprovacao.approved_at"/>.
+                            Aprovado por <strong t-esc="aprovacao.nome_exibicao"/> em <span t-field="aprovacao.approved_at" t-options="{'tz_name': tz}"/>.
                         </div>
                         <t t-elif="emissao and relatorio.state in ('issued', 'client_approved')">
                             <form method="post" t-attf-action="/my/relatorio/#{aprovacao.id}/aprovar">
-                                <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                                <input type="hidden" name="csrf_token" t-att-value="csrf_token"/>
                                 <input type="hidden" name="access_token" t-att-value="access_token"/>
                                 <div class="mb-3">
                                     <label for="rq_nome" class="form-label">Seu nome</label>
@@ -95,6 +105,5 @@
                     </div>
                 </div>
             </div>
-        </t>
     </template>
 </odoo>

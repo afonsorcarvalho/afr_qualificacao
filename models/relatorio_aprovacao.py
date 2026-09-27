@@ -6,7 +6,8 @@ Fluxo de aprovação (botões, portal, gate) é de P4.
 import uuid
 
 from odoo import _, api, fields, models
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, ValidationError
+from odoo.tools.misc import clean_context
 
 APROVACAO_PAPEIS = [
     ("elaborador", "Elaborador"),
@@ -107,7 +108,34 @@ class AfrRelatorioAprovacao(models.Model):
             stray_tokens = recs_su.filtered(lambda r: r.papel != "cliente" and r.access_token)
             if stray_tokens:
                 stray_tokens.write({"access_token": False})
+            recs_su._check_client_partner()
         return records
+
+    def _check_client_partner(self):
+        """Fix round 1 do P4 Task 9, achado 1b: fora de `env.su`, o contato de
+        uma linha `cliente` tem de ser o cliente do relatório ou um contato
+        dele (mesmo `commercial_partner_id`). Senão um Usuário apontava a
+        linha para um e-mail seu e recebia o link (token) por
+        `action_enviar_aprovacao_cliente`."""
+        for rec in self.sudo():
+            if rec.papel != "cliente" or not rec.partner_id:
+                continue
+            allowed = rec.relatorio_id.partner_id.commercial_partner_id
+            if not allowed or rec.partner_id.commercial_partner_id != allowed:
+                raise ValidationError(_(
+                    "O aprovador do cliente (%(contato)s) precisa ser o cliente do "
+                    "relatório (%(cliente)s) ou um contato dele."
+                ) % {"contato": rec.partner_id.display_name,
+                     "cliente": rec.relatorio_id.partner_id.display_name or "—"})
+
+    def _rotate_client_token(self, clear_approval=True):
+        """Token novo (servidor, sudo + clean_context) — o link antigo morre."""
+        lines = self.sudo().with_context(clean_context(self.env.context))
+        for line in lines:
+            vals = {"access_token": uuid.uuid4().hex}
+            if clear_approval:
+                vals.update(approved_at=False, ip=False)
+            line.write(vals)
 
     def _identity_field_changed(self, field, vals):
         """True quando `vals[field]` difere do valor atual do registro
@@ -179,7 +207,24 @@ class AfrRelatorioAprovacao(models.Model):
                     "alterada (%s); não há fluxo de reaprovação para este "
                     "papel."
                 ) % ", ".join(sorted(touched_identity)))
+        # Fix round 1 do P4 Task 9, achado 1a: trocar o contato de uma linha
+        # cliente (ou virar cliente) gera token novo — o link já enviado ao
+        # contato anterior deixa de valer.
+        rotate = self.filtered(lambda rec: vals.get("papel", rec.papel) == "cliente" and (
+            rec.papel != "cliente" or rec._identity_field_changed("partner_id", vals)))
+        drop = self.filtered(
+            lambda rec: rec.papel == "cliente" and vals.get("papel", "cliente") != "cliente")
         result = super().write(vals)
         if changed:
             changed.sudo().write({"approved_at": False, "ip": False})
+        if rotate:
+            rotate._rotate_client_token(clear_approval="approved_at" not in vals)
+        if drop:
+            drop.sudo().with_context(clean_context(self.env.context)).write(
+                {"access_token": False})
+        missing = self.sudo().filtered(lambda r: r.papel == "cliente" and not r.access_token)
+        if missing:
+            missing._rotate_client_token(clear_approval=False)
+        if not self.env.su:
+            self._check_client_partner()
         return result

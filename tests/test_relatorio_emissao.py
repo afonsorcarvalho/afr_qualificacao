@@ -12,6 +12,8 @@ from odoo.tests.common import tagged
 
 from odoo.addons.afr_qualificacao.controllers.relatorio import (
     _portal_aprovacao,
+    _portal_page_values,
+    _portal_pdf_headers,
     _relatorio_verify_values,
 )
 from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
@@ -867,3 +869,161 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
         self.assertTrue(self.env.ref("afr_qualificacao.relatorio_verify_template"))
         self.assertTrue(self.env.ref("afr_qualificacao.portal_relatorio_aprovacao"))
         self.assertTrue(self.env.ref("afr_qualificacao.mail_template_relatorio_aprovacao"))
+
+    # ─────────── Fix round 1 (review do Task 9) ───────────
+
+    def _contact(self, name="Contato Cliente Teste", parent=None, email=None):
+        return self.env["res.partner"].create({
+            "name": name, "parent_id": (parent or self.partner).id if parent is not False else False,
+            "email": email or "contato@example.test",
+        })
+
+    def test_partner_change_rotates_client_token(self):  # achado 1a
+        self._approve_and_emit()
+        old = self.line_cli.access_token
+        contato = self._contact()
+        self.line_cli.with_user(self.office).write({"partner_id": contato.id})
+        self.assertTrue(self.line_cli.access_token)
+        self.assertNotEqual(self.line_cli.access_token, old)
+        self.assertIsNone(_portal_aprovacao(self.env, self.line_cli.id, old))
+        self.assertEqual(
+            _portal_aprovacao(self.env, self.line_cli.id, self.line_cli.access_token),
+            self.line_cli)
+
+    def test_partner_change_clears_client_approval(self):  # achado 1a
+        self._approve_and_emit()
+        self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        self.line_cli.sudo().write({"partner_id": self._contact().id})
+        self.assertFalse(self.line_cli.approved_at)
+        self.assertFalse(self.line_cli.ip)
+
+    def test_same_partner_write_keeps_token(self):  # achado 1a
+        old = self.line_cli.access_token
+        self.line_cli.with_user(self.office).write({"partner_id": self.partner.id})
+        self.assertEqual(self.line_cli.access_token, old)
+
+    def test_line_turned_cliente_gets_token(self):  # achado 1a
+        line = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": self.rel.id, "papel": "elaborador", "nome_exibicao": "Outro",
+        })
+        self.assertFalse(line.access_token)
+        line.with_user(self.office).write({"papel": "cliente", "partner_id": self.partner.id})
+        self.assertTrue(line.access_token)
+        line.with_user(self.office).write({"papel": "elaborador"})
+        self.assertFalse(line.access_token)
+
+    def test_client_line_without_token_gets_one_on_write(self):  # achado 1a
+        self.line_cli.sudo().write({"access_token": False})
+        self.line_cli.with_user(self.office).write({"nome_exibicao": "Cliente Teste B"})
+        self.assertTrue(self.line_cli.access_token)
+
+    def test_usuario_cannot_point_client_line_to_foreign_partner(self):  # achado 1b
+        estranho = self._contact("Terceiro Teste", parent=False, email="terceiro@example.test")
+        with self.assertRaises(ValidationError):
+            self.line_cli.with_user(self.office).write({"partner_id": estranho.id})
+        with self.assertRaises(ValidationError):
+            self.env["afr.relatorio.aprovacao"].with_user(self.office).create({
+                "relatorio_id": self.rel.id, "papel": "cliente", "partner_id": estranho.id,
+            })
+        line = self.env["afr.relatorio.aprovacao"].create({
+            "relatorio_id": self.rel.id, "papel": "elaborador", "partner_id": estranho.id,
+        })
+        with self.assertRaises(ValidationError):
+            line.with_user(self.office).write({"papel": "cliente"})
+        # Contato do cliente do relatório e o próprio cliente: permitidos.
+        contato = self._contact()
+        self.env["afr.relatorio.aprovacao"].with_user(self.office).create({
+            "relatorio_id": self.rel.id, "papel": "cliente", "partner_id": contato.id,
+        })
+        # Fluxo interno (su) não é barrado.
+        self.line_cli.sudo().write({"partner_id": estranho.id})
+
+    def test_portal_approve_locks_report_row(self):  # achado 2
+        self._approve_and_emit()
+        Rel = type(self.rel)
+        calls = []
+        orig = Rel._rq_lock_for_update
+
+        def spy(recs):
+            calls.append((recs.ids, bool(self.line_cli.sudo().approved_at)))
+            return orig(recs)
+
+        with patch.object(Rel, "_rq_lock_for_update", spy):
+            self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        self.assertIn((self.rel.ids, False), calls)
+
+    def test_lock_for_update_issues_row_lock(self):  # achado 2
+        queries = []
+        cr = self.env.cr
+        orig = cr.execute
+
+        def spy(query, params=None, log_exceptions=True):
+            queries.append(str(query))
+            return orig(query, params, log_exceptions)
+
+        with patch.object(cr, "execute", spy):
+            self.rel._rq_lock_for_update()
+        # UPDATE (trava + versão nova da linha) — ver _rq_lock_for_update.
+        self.assertTrue(any(q.startswith("UPDATE afr_qualificacao_relatorio") for q in queries))
+
+    def test_portal_pdf_is_inline(self):  # achado 3
+        emissao = self._approve_and_emit()
+        headers = dict(_portal_pdf_headers(emissao.pdf_attachment_id))
+        self.assertEqual(headers["Content-Type"], "application/pdf")
+        self.assertTrue(headers["Content-Disposition"].startswith("inline"))
+
+    def _render(self, xmlid, values, env=None):
+        html = (env or self.env)["ir.qweb"]._render(xmlid, values)
+        return str(html)
+
+    def test_render_verify_valid_uses_company_tz(self):  # achados 4 e 5
+        emissao = self._approve_and_emit()
+        self.rel.company_id.partner_id.tz = False
+        self.line_cli._portal_approve("Cliente Teste", "203.0.113.5")
+        env_tokyo = self.env(context=dict(self.env.context, tz="Asia/Tokyo"))
+        values = _relatorio_verify_values(env_tokyo, emissao.token)
+        self.assertEqual(values["tz"], "America/Sao_Paulo")
+        html = self._render("afr_qualificacao.relatorio_verify_content", values, env_tokyo)
+        self.assertIn("Relatório válido", html)
+        self.assertIn(emissao.sha256, html)
+        self.assertIn(self.rel.company_id.name, html)
+        self.assertIn("Cliente Teste", html)  # aprovação do cliente
+        self.assertNotIn(self.rel.equipment_id.display_name, html)
+        local = fields.Datetime.context_timestamp(
+            self.rel.with_context(tz="America/Sao_Paulo"), emissao.issued_at)
+        self.assertIn(local.strftime("%H:%M"), html)
+
+    def test_render_verify_superseded_and_not_found(self):  # achado 5
+        e0 = self._approve_and_emit()
+        e1 = self._revise_and_emit()
+        html = self._render("afr_qualificacao.relatorio_verify_content",
+                            _relatorio_verify_values(self.env, e0.token))
+        self.assertIn("Revisão substituída", html)
+        self.assertIn(e1.name, html)
+        html = self._render("afr_qualificacao.relatorio_verify_content",
+                            _relatorio_verify_values(self.env, "f" * 32))
+        self.assertIn("Relatório não encontrado", html)
+        e1.pdf_attachment_id.sudo().write({"raw": b"%PDF-1.4 outro"})
+        html = self._render("afr_qualificacao.relatorio_verify_content",
+                            _relatorio_verify_values(self.env, e1.token))
+        self.assertIn("Arquivo divergente", html)
+
+    def test_render_portal_page(self):  # achados 4 e 5
+        emissao = self._approve_and_emit()
+        self.rel.company_id.partner_id.tz = False
+        token = self.line_cli.access_token
+        line = _portal_aprovacao(self.env, self.line_cli.id, token)
+        values = dict(_portal_page_values(line, token, None), csrf_token="csrf-teste")
+        self.assertEqual(values["tz"], "America/Sao_Paulo")
+        html = self._render("afr_qualificacao.portal_relatorio_aprovacao_content", values)
+        self.assertIn("/my/relatorio/%d/aprovar" % line.id, html)
+        self.assertIn("/my/relatorio/%d/pdf?access_token=%s" % (line.id, token), html)
+        self.assertIn(emissao.sha256, html)
+        self.assertIn("csrf-teste", html)
+        line._portal_approve("Cliente Teste", "203.0.113.5")
+        html = self._render("afr_qualificacao.portal_relatorio_aprovacao_content",
+                            dict(_portal_page_values(line, token, "ok"), csrf_token="x"))
+        self.assertIn("Aprovação registrada", html)
+        self.assertIn("Aprovado por", html)
+        self.assertNotIn("/aprovar", html)
+        self.assertEqual(_portal_page_values(line, token, "<script>")["message"], None)

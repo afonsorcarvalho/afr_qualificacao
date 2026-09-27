@@ -380,8 +380,28 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
         for line in lines.sudo().with_context(clean_context(self.env.context)):
             line.write({"approved_at": False, "ip": False, "access_token": uuid.uuid4().hex})
 
+    def _rq_lock_for_update(self):
+        """Serializa aprovações concorrentes do cliente (fix round 1, achado 2).
+
+        UPDATE sem efeito em vez de só `SELECT ... FOR UPDATE`: além de travar
+        a linha, cria versão nova dela. Em REPEATABLE READ, a segunda
+        transação que esperava a trava toma erro de serialização e o Odoo
+        repete a requisição (service.model.retrying) — já vendo a aprovação
+        da primeira. Com FOR UPDATE puro ela seguiria com o snapshot antigo
+        e o relatório podia ficar em `issued` com todos aprovados.
+        """
+        if not self.ids:
+            return
+        self.env.cr.execute(
+            "UPDATE afr_qualificacao_relatorio SET write_date = write_date "
+            "WHERE id IN %s",
+            [tuple(self.ids)])
+        self.invalidate_recordset(["state", "current_emissao_id"])
+        self.env["afr.relatorio.aprovacao"].invalidate_model(["approved_at", "ip"])
+
     def _update_client_approval_state(self):
         """issued → client_approved quando todos os aprovadores do cliente aprovaram."""
+        self._rq_lock_for_update()
         for rel in self:
             clientes = rel.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
             if rel.state == "issued" and clientes and all(clientes.mapped("approved_at")):
@@ -459,6 +479,7 @@ class AfrRelatorioAprovacaoPortal(models.Model):
         rel = self.relatorio_id
         if self.papel != "cliente":
             raise UserError(_("Só aprovadores do cliente aprovam pelo portal."))
+        rel.sudo()._rq_lock_for_update()  # antes de ler approved_at/estado
         if rel.state not in ("issued", "client_approved") or not rel.current_emissao_id:
             raise UserError(_("Não há revisão emitida aguardando aprovação."))
         if self.approved_at:
