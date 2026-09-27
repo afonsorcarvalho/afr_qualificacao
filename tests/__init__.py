@@ -124,3 +124,4 @@ from . import test_relatorio_build_job
 # Relatório Final P5 — varredura (regras + IA) + gate de emissão
 from . import test_relatorio_gate
 from . import test_relatorio_rules
+from . import test_relatorio_ai

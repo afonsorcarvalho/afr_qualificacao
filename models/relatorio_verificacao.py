@@ -45,8 +45,8 @@ class AfrQualificacaoRelatorio(models.Model):
         return True
 
     def _ai_findings(self):
-        """Achados da IA (dicts sem `origem`). Substituído na Task 5."""
-        return []
+        """Achados da IA (dicts sem `origem`); [] quando desligada."""
+        return self.env["afr.relatorio.ai"].review(self)
 
     def _run_verificacao(self):
         """Recria achados pendentes; herda decisões de achados que se repetem.
