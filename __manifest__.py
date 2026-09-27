@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.8.4.0",
+    "version": "16.0.8.4.1",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -164,6 +164,11 @@
               gravidade; banner "Aguardando" no topo resume os
               bloqueios. Gate de emissão passa a exigir também nenhum
               achado pendente (bloqueia ou alerta).
+            P6 (16.0.8.4.1): leitura de IB ganha `quantidade` (Qtd. IB por
+              ciclo) exibida na tabela e no laudo. Botão "Preencher
+              leituras em lote" (rascunho, grupo Usuário) abre wizard que
+              cria uma leitura por ciclo marcado sem leitura — ciclos que
+              já têm leitura são pulados (nunca sobrescritos).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -259,6 +264,7 @@
         "wizards/relatorio_wizard_views.xml",
         "wizards/apply_procedimento_wizard_views.xml",
         "wizards/qualificacao_os_generate_wizard_views.xml",
+        "wizards/leitura_ib_lote_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
         # Relatório Final P3 — config de templates (menus sob Configurações)

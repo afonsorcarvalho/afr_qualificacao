@@ -92,6 +92,12 @@
                                         </tree>
                                     </field>
                                     <separator string="Leituras de IB"/>
+                                    <button name="action_preencher_leituras_lote"
+                                            type="object"
+                                            string="Preencher leituras em lote"
+                                            class="btn-secondary mb-2"
+                                            attrs="{'invisible': [('state', '!=', 'draft')]}"
+                                            groups="afr_qualificacao.group_afr_qualificacao_user"/>
                                     <field name="leitura_ib_ids" nolabel="1">
                                         <tree editable="bottom"
                                               decoration-danger="resultado == 'positivo'">
@@ -106,6 +112,7 @@
                                             <field name="leitor"/>
                                             <field name="resultado"/>
                                             <field name="controle_positivo_ok"/>
+                                            <field name="quantidade"/>
                                         </tree>
                                     </field>
                                 </div>

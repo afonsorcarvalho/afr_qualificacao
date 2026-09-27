@@ -189,12 +189,13 @@
         </table>
         <div class="rq-subtitle">Leituras dos indicadores biológicos</div>
         <table class="rq-table">
-            <thead><tr><th>Ciclo</th><th>Lote</th><th>Incubação</th><th>Leitura</th><th>Leitor</th><th>Resultado</th><th>Controle positivo</th></tr></thead>
+            <thead><tr><th>Ciclo</th><th>Lote</th><th>Qtd. IB</th><th>Incubação</th><th>Leitura</th><th>Leitor</th><th>Resultado</th><th>Controle positivo</th></tr></thead>
             <tbody>
                 <t t-foreach="doc.leitura_ib_ids" t-as="lt">
                     <tr>
                         <td t-esc="lt.cycle_id.display_name or ''"/>
                         <td t-esc="lt.indicador_id.lote or ''"/>
+                        <td t-esc="lt.quantidade"/>
                         <td t-esc="doc._fmt_date(lt.data_incubacao)"/>
                         <td t-esc="doc._fmt_date(lt.data_leitura)"/>
                         <td t-esc="lt.leitor or ''"/>

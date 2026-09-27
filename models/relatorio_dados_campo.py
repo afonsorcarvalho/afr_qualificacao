@@ -116,6 +116,11 @@ class AfrRelatorioLeituraIb(models.Model):
         [("negativo", "Negativo"), ("positivo", "Positivo")],
     )
     controle_positivo_ok = fields.Boolean(string="Controle positivo OK")
+    quantidade = fields.Integer(
+        string="Qtd. IB",
+        default=1,
+        help="Quantos indicadores biológicos foram usados neste ciclo.",
+    )
 
     @api.constrains("relatorio_id", "cycle_id", "indicador_id")
     def _check_same_relatorio(self):
@@ -133,3 +138,28 @@ class AfrRelatorioLeituraIb(models.Model):
                 raise ValidationError(_(
                     "O indicador '%s' é de outro relatório."
                 ) % leitura.indicador_id.display_name)
+
+    @api.constrains("quantidade")
+    def _check_quantidade(self):
+        for leitura in self:
+            if leitura.quantidade <= 0:
+                raise ValidationError(_(
+                    "Qtd. IB precisa ser maior que zero."
+                ))
+
+
+class AfrQualificacaoRelatorioLeituraIbLote(models.Model):
+    """Botão "Preencher leituras em lote" (abre o wizard homônimo)."""
+
+    _inherit = "afr.qualificacao.relatorio"
+
+    def action_preencher_leituras_lote(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Preencher leituras de IB em lote"),
+            "res_model": "afr.relatorio.leitura.ib.lote",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_relatorio_id": self.id},
+        }

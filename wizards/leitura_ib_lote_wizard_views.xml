@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form do wizard "Preencher leituras de IB em lote" -->
+    <record id="view_afr_relatorio_leitura_ib_lote_form" model="ir.ui.view">
+        <field name="name">afr.relatorio.leitura.ib.lote.form</field>
+        <field name="model">afr.relatorio.leitura.ib.lote</field>
+        <field name="arch" type="xml">
+            <form string="Preencher leituras de IB em lote">
+                <sheet>
+                    <field name="relatorio_id" invisible="1"/>
+                    <field name="cycle_all_ids" invisible="1"/>
+                    <group>
+                        <group string="Leitura">
+                            <field name="indicador_id"/>
+                            <field name="data_incubacao"/>
+                            <field name="data_leitura"/>
+                            <field name="leitor"/>
+                        </group>
+                        <group string="Resultado">
+                            <field name="resultado"/>
+                            <field name="controle_positivo_ok"/>
+                            <field name="quantidade"/>
+                        </group>
+                    </group>
+                    <separator string="Ciclos"/>
+                    <p class="text-muted">
+                        Pré-marcados os ciclos que ainda não têm leitura. Ciclos
+                        já marcados aqui e que já têm leitura são pulados (a
+                        linha existente não é sobrescrita).
+                    </p>
+                    <field name="cycle_ids" widget="many2many_tags" nolabel="1"/>
+                </sheet>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Preencher leituras" class="btn-primary"/>
+                    <button special="cancel" string="Cancelar" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

@@ -125,3 +125,6 @@ from . import test_relatorio_build_job
 from . import test_relatorio_gate
 from . import test_relatorio_rules
 from . import test_relatorio_ai
+
+# Relatório Final P6 — preencher leituras de IB em lote
+from . import test_leitura_ib_lote
