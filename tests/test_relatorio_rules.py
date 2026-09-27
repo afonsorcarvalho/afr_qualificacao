@@ -1,5 +1,6 @@
 """P5 — regras determinísticas da varredura: positivo + negativo por regra."""
-from datetime import timedelta
+import base64
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from odoo.tests import tagged
@@ -250,3 +251,179 @@ class TestRelatorioRulesBloqueia(_RulesMixin, RelatorioTestCommon):
         self.assertIn("falha simulada", broken[0]["mensagem"])
         # as demais regras continuaram rodando
         self.assertTrue(any(f["codigo"] == "CERT_DEPOIS_AUSENTE" for f in out))
+
+
+EXPECTED_CODES = {
+    "CERT_DEPOIS_AUSENTE", "CERT_ANTES_AUSENTE", "PADRAO_VENCIDO",
+    "IB_SEM_LEITURA", "IB_VENCIDO", "ANEXO_VAZIO", "ANEXO_ILEGIVEL",
+    "TOKEN_NAO_RESOLVIDO", "ANEXO_REF_EXCLUIDO", "CICLOS_CONTAGEM",
+    "CICLO_SEM_DADOS", "CICLO_SEM_JANELA", "DATA_FORA_JANELA",
+    "AMBIENTE_VAZIO", "CHECKLIST_REPROVADO", "CANAL_SEM_CERT",
+    "APROVACAO_INTERNA",
+}
+
+
+@tagged("post_install", "-at_install", "afr_qualificacao")
+class TestRelatorioRulesAlerta(_RulesMixin, RelatorioTestCommon):
+
+    def test_registro_completo(self):
+        self.assertEqual(set(RULES), EXPECTED_CODES)
+
+    def test_anexo_ref_excluido(self):
+        self._block("<p>Ver Anexo {{ anexo('micro') }}.</p>", title="Conclusão")
+        out = self._run("ANEXO_REF_EXCLUIDO")
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["gravidade"], "alerta")
+        self.assertIn("micro", out[0]["mensagem"])
+        self._anexo(code="micro", title="Laudo microbiológico")
+        self.assertEqual(self._run("ANEXO_REF_EXCLUIDO"), [])
+
+    def test_anexo_ref_excluido_com_aspas_escapadas(self):
+        self._block("<p>Ver Anexo {{ anexo(&#39;f0&#39;) }}.</p>", title="Resultados")
+        out = self._run("ANEXO_REF_EXCLUIDO")
+        self.assertEqual(len(out), 1)
+        self.assertIn("f0", out[0]["mensagem"])
+
+    def test_ciclos_contagem(self):
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        line = self.env["sale.order.line"].create({
+            "order_id": so.id,
+            "product_id": self.product_qd_cmax.id,
+            "cycle_type_id": self.cycle_cmax.id,
+            "qualif_cycle_qty": 2,
+            "equipment_id": self.equip1.id,
+        })
+        self.os.sale_order_id = so
+        self._cycle(state="passed", seq=1, sale_order_line_id=line.id)
+        c2 = self._cycle(state="pending", seq=2, sale_order_line_id=line.id)
+        out = self._run("CICLOS_CONTAGEM")
+        self.assertEqual(len(out), 1)
+        self.assertIn("2 contratado(s), 1 executado(s)", out[0]["mensagem"])
+        c2.state = "passed"
+        self.assertEqual(self._run("CICLOS_CONTAGEM"), [])
+
+    def test_ciclo_sem_dados(self):
+        c = self._cycle()
+        self.assertEqual(len(self._run("CICLO_SEM_DADOS")), 1)
+        self.env["afr.qualificacao.collect.item"].create({
+            "name": "Dados do validador",
+            "qualif_id": self.qd.id,
+            "cycle_id": c.id,
+            "kind": "pdf",
+            "state": "collected",
+            "file": base64.b64encode(make_pdf("dados")),
+            "filename": "dados.pdf",
+            "mimetype": "application/pdf",
+        })
+        self.assertEqual(self._run("CICLO_SEM_DADOS"), [])
+
+    # Ruling 1.9 (P5 T3): a detecção de PDF passa por _afr_resolve_mimetype
+    # (mesmo sniff de P2/P4) — o PWA grava application/octet-stream mesmo
+    # para PDFs reais, e a regra não pode acusar CICLO_SEM_DADOS nesse caso.
+    def test_ciclo_sem_dados_sniffa_mimetype_octet_stream(self):
+        c = self._cycle()
+        self.env["afr.qualificacao.collect.item"].create({
+            "name": "Dados do validador",
+            "qualif_id": self.qd.id,
+            "cycle_id": c.id,
+            "kind": "pdf",
+            "state": "collected",
+            "file": base64.b64encode(make_pdf("dados")),
+            "filename": "dados.dat",
+            "mimetype": "application/octet-stream",
+        })
+        self.assertEqual(self._run("CICLO_SEM_DADOS"), [])
+
+    def test_ciclo_sem_janela(self):
+        c = self._cycle()
+        self.assertEqual(len(self._run("CICLO_SEM_JANELA")), 1)
+        c.write({
+            "janela_inicio": datetime(2026, 7, 1, 10, 0),
+            "janela_fim": datetime(2026, 7, 1, 10, 30),
+        })
+        self.assertEqual(self._run("CICLO_SEM_JANELA"), [])
+
+    def test_ciclo_janela_invertida(self):
+        # Ruling 1.7/0.3 (P1-A3): a constraint de P1 proíbe janela_fim <
+        # janela_inicio na criação; fim == início é o caso extremo que a
+        # constraint permite e a regra ainda deve acusar (`<=`).
+        self._cycle(janela_inicio=datetime(2026, 7, 1, 11, 0),
+                    janela_fim=datetime(2026, 7, 1, 11, 0))
+        out = self._run("CICLO_SEM_JANELA")
+        self.assertEqual(len(out), 1)
+        self.assertIn("anterior", out[0]["mensagem"])
+
+    # Ruling 0.3 (P5 T3): item de coleta collected exige arquivo
+    # (`_check_required_has_file`) — o fixture do brief original não
+    # anexava file/filename/mimetype e falharia na constraint.
+    def _coleta(self, captured_at):
+        return self.env["afr.qualificacao.collect.item"].create({
+            "name": "Foto do painel",
+            "qualif_id": self.qd.id,
+            "kind": "foto",
+            "state": "collected",
+            "captured_at": captured_at,
+            "file": base64.b64encode(make_pdf("foto")),
+            "filename": "foto.pdf",
+            "mimetype": "application/pdf",
+        })
+
+    def test_data_fora_janela(self):
+        self._coleta(datetime(2025, 7, 2, 12, 0))
+        out = self._run("DATA_FORA_JANELA", {"tz": "UTC"})
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["gravidade"], "alerta")
+
+    def test_data_dentro_janela(self):
+        self._coleta(datetime(2026, 7, 2, 12, 0))
+        self.assertEqual(self._run("DATA_FORA_JANELA", {"tz": "UTC"}), [])
+
+    def test_data_fora_janela_respeita_fuso(self):
+        # 01:30 UTC de 04/07 = 22:30 de 03/07 em Brasília (último dia de ensaio)
+        self._coleta(datetime(2026, 7, 4, 1, 30))
+        self.assertEqual(self._run("DATA_FORA_JANELA", {"tz": "America/Sao_Paulo"}), [])
+        self.assertEqual(len(self._run("DATA_FORA_JANELA", {"tz": "UTC"})), 1)
+
+    def test_ambiente_vazio(self):
+        self.assertEqual(self._run("AMBIENTE_VAZIO"), [])
+        self.rel.write({"amb_umidade": " "})
+        out = self._run("AMBIENTE_VAZIO")
+        self.assertEqual(len(out), 1)
+        self.assertIn("Umidade", out[0]["onde"])
+
+    def test_checklist_reprovado(self):
+        Check = self.env["afr.relatorio.checklist"]
+        Check.create({"relatorio_id": self.rel.id, "grupo": "Instalações elétricas",
+                      "descricao": "Aterramento", "status": "aprovado", "sequence": 1})
+        self.assertEqual(self._run("CHECKLIST_REPROVADO"), [])
+        Check.create({"relatorio_id": self.rel.id, "grupo": "Instalações elétricas",
+                      "descricao": "Disjuntor dedicado", "status": "reprovado",
+                      "comentario": "Compartilhado", "sequence": 2})
+        out = self._run("CHECKLIST_REPROVADO")
+        self.assertEqual(len(out), 1)
+        self.assertIn("Disjuntor dedicado", out[0]["mensagem"])
+
+    def test_canal_sem_cert(self):
+        self._validator(channels=28)
+        c = self._cycle()
+        Pos = self.env["afr.relatorio.sensor.pos"]
+        Pos.create({"cycle_id": c.id, "canal": "CH012", "posicao": "Centro", "sequence": 1})
+        self.assertEqual(self._run("CANAL_SEM_CERT"), [])
+        Pos.create({"cycle_id": c.id, "canal": "CH030", "posicao": "Dreno", "sequence": 2})
+        out = self._run("CANAL_SEM_CERT")
+        self.assertEqual(len(out), 1)
+        self.assertIn("CH030", out[0]["mensagem"])
+
+    def test_canal_sem_validador_silencioso(self):
+        c = self._cycle()
+        self.env["afr.relatorio.sensor.pos"].create(
+            {"cycle_id": c.id, "canal": "CH099", "posicao": "Topo", "sequence": 1})
+        self.assertEqual(self._run("CANAL_SEM_CERT"), [])
+
+    def test_aprovacao_interna_so_na_emissao(self):
+        self.assertEqual(self._run("APROVACAO_INTERNA"), [])
+        out = self._run("APROVACAO_INTERNA", {relatorio_rules.EMISSION_CTX: True})
+        self.assertTrue(out)
+        self.assertTrue(all(f["gravidade"] == "bloqueia" for f in out))
+        self._approve_internal()
+        self.assertEqual(self._run("APROVACAO_INTERNA", {relatorio_rules.EMISSION_CTX: True}), [])

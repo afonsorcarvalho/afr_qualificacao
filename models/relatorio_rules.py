@@ -9,14 +9,17 @@ das decisões) e inclui `[#id]` quando o rótulo pode repetir.
 `RULES` é o registro (ordem = execução). `run_rules` isola cada regra num
 savepoint e converte exceção em achado bloqueante com o código da regra.
 """
+import base64
 import logging
 import re
 from collections import OrderedDict
-from html import unescape  # noqa: F401 — Task 3 (ANEXO_REF/TOKEN dinâmico)
+from html import unescape  # Task 3 (ANEXO_REF/TOKEN dinâmico)
 
-from odoo import fields  # noqa: F401 — Task 3 (DATA_FORA_JANELA)
+from odoo import fields  # Task 3 (DATA_FORA_JANELA)
 
 from .relatorio_anexo_files import PROBLEM_EMPTY
+from .relatorio_certificados import _afr_resolve_mimetype
+from .relatorio_emissao_flow import company_tz
 
 _logger = logging.getLogger(__name__)
 
@@ -285,6 +288,230 @@ def rule_token_nao_resolvido(rel):
     return out
 
 
+# ------------------------------------------------------------ alerta
+def rule_anexo_ref_excluido(rel):
+    """Ruling 1.4/1.6 (P5 preflight): percorre `rendered_blocks(rel)` — o
+    mesmo universo de `rule_token_nao_resolvido` — para não acusar
+    referência num bloco que nunca é impresso (capa/índice, ou conteúdo de
+    um anexo excluído). O `body` é lido cru (sem passar por
+    `_render_block_body`): o `anexo('code')` aparece como texto literal no
+    HTML digitado, não como resultado de render."""
+    out = []
+    for block in rendered_blocks(rel):
+        codes = sorted(set(ANEXO_REF_RE.findall(unescape(block.body or ""))))
+        for code in codes:
+            if not rel._anexo_number(code):
+                out.append(finding(
+                    "ANEXO_REF_EXCLUIDO", "alerta",
+                    "O texto referencia anexo('%s'), que está excluído ou não existe."
+                    % code,
+                    "Bloco: %s → anexo('%s')" % (block_label(block), code),
+                ))
+    return out
+
+
+def cycle_counts(rel):
+    """{cycle_type: [contratados, executados]} do equipamento do relatório.
+
+    Contratados = Σ qualif_cycle_qty das linhas SO (da OS e dos ciclos) com
+    cycle_type, do mesmo equipamento, excluindo opcional não aceito; ciclo
+    sem linha SO conta 1 contratado. Executados = ciclos com state != pending.
+
+    Ruling 1.8 (P5 T3): a leitura de `sale.order.line` roda em `sudo()` —
+    o usuário `afr_qualificacao_user` não necessariamente tem acesso ao
+    módulo de vendas, e esta função só soma quantidades (nunca expõe preço,
+    parceiro nem qualquer outro dado da proposta)."""
+    counts = {}
+    lines = rel.cycle_ids.mapped("sale_order_line_id").sudo()
+    so = rel.os_id.sale_order_id
+    if so:
+        lines |= so.sudo().order_line.filtered(
+            lambda l: l.cycle_type_id
+            and l.equipment_id == rel.equipment_id
+            and not (l.is_proposal_optional and not l.optional_accepted)
+        )
+    for line in lines:
+        ctype = line.cycle_type_id or line.cycle_ids[:1].cycle_type_id
+        if ctype:
+            counts.setdefault(ctype, [0, 0])[0] += line.qualif_cycle_qty or 0
+    for cycle in rel.cycle_ids:
+        entry = counts.setdefault(cycle.cycle_type_id, [0, 0])
+        if not cycle.sale_order_line_id:
+            entry[0] += 1
+        if cycle.state != "pending":
+            entry[1] += 1
+    return counts
+
+
+def rule_ciclos_contagem(rel):
+    out = []
+    items = sorted(cycle_counts(rel).items(), key=lambda kv: kv[0].name or "")
+    for ctype, (contratados, executados) in items:
+        if contratados != executados:
+            out.append(finding(
+                "CICLOS_CONTAGEM", "alerta",
+                "Ciclos '%s': %d contratado(s), %d executado(s)."
+                % (ctype.name, contratados, executados),
+                "Ciclos: %s" % ctype.name,
+            ))
+    return out
+
+
+def _is_pdf(item):
+    """Ruling 1.9 (P5 T3): mesmo sniff de `_afr_resolve_mimetype` usado por
+    P2/P4 — o mimetype gravado (às vezes `application/octet-stream`, como
+    o PWA grava) não é confiável sozinho; sem sniff, um PDF real gravado
+    assim disparava CICLO_SEM_DADOS por engano."""
+    if not item.file:
+        return False
+    content = base64.b64decode(item.file)
+    return _afr_resolve_mimetype(item.mimetype, content) == "application/pdf"
+
+
+def rule_ciclo_sem_dados(rel):
+    out = []
+    for cycle in rel.cycle_ids:
+        has_pdf = any(
+            i.state == "collected" and i.file and _is_pdf(i)
+            for i in cycle.collect_item_ids
+        )
+        if not has_pdf:
+            out.append(finding(
+                "CICLO_SEM_DADOS", "alerta",
+                "Ciclo %s sem PDF de dados do validador." % cycle.display_name,
+                "Ciclo: %s" % cycle_label(cycle),
+            ))
+    return out
+
+
+def rule_ciclo_sem_janela(rel):
+    out = []
+    for cycle in rel.cycle_ids:
+        if not cycle.janela_inicio or not cycle.janela_fim:
+            msg = "Ciclo %s sem janela de esterilização (início/fim)." % cycle.display_name
+        elif cycle.janela_fim <= cycle.janela_inicio:
+            msg = ("Ciclo %s com fim da janela anterior ou igual ao início."
+                   % cycle.display_name)
+        else:
+            continue
+        out.append(finding(
+            "CICLO_SEM_JANELA", "alerta", msg, "Ciclo: %s" % cycle_label(cycle),
+        ))
+    return out
+
+
+def rule_data_fora_janela(rel):
+    """Decisão 9: silenciosa quando as datas dos ensaios não estão
+    preenchidas (quem cobre isso é CERT_ANTES_AUSENTE). Ruling 1.11: fuso
+    de conversão na ordem contexto → usuário → empresa emissora →
+    'America/Sao_Paulo' (`company_tz`, mesmo padrão de P4)."""
+    if _dates_missing(rel):
+        return []
+    ini, fim = rel.data_inicio_ensaios, rel.data_fim_ensaios
+    tz = rel.env.context.get("tz") or rel.env.user.tz or company_tz(rel.company_id)
+    items = rel.env["afr.qualificacao.collect.item"].search([
+        ("qualif_id", "in", rel.qualificacao_ids.ids),
+        ("captured_at", "!=", False),
+    ])
+    out = []
+    for item in items:
+        # fuso do usuário/contexto (tz) — evita falso alerta perto da meia-noite
+        local = fields.Datetime.context_timestamp(
+            rel.with_context(tz=tz), item.captured_at).date()
+        if local < ini or local > fim:
+            out.append(finding(
+                "DATA_FORA_JANELA", "alerta",
+                "Item de coleta '%s' capturado em %s, fora do período dos "
+                "ensaios (%s a %s)." % (item.name, _fmt(local), _fmt(ini), _fmt(fim)),
+                "Coleta: %s [#%d]" % (item.name, item.id),
+            ))
+    return out
+
+
+def rule_ambiente_vazio(rel):
+    out = []
+    for field_name, label in (
+        ("amb_temperatura", "Temperatura ambiente"),
+        ("amb_umidade", "Umidade ambiente"),
+    ):
+        if not (rel[field_name] or "").strip():
+            out.append(finding(
+                "AMBIENTE_VAZIO", "alerta",
+                "%s não informada." % label,
+                "Campo: %s" % label,
+            ))
+    return out
+
+
+def rule_checklist_reprovado(rel):
+    out = []
+    for line in rel.checklist_ids.filtered(lambda l: l.status == "reprovado"):
+        comentario = (" — %s" % line.comentario) if line.comentario else ""
+        out.append(finding(
+            "CHECKLIST_REPROVADO", "alerta",
+            "Item de checklist reprovado: %s — %s%s"
+            % (line.grupo or "", line.descricao or "", comentario),
+            "Checklist: %s / %s [#%d]" % (line.grupo or "", line.descricao or "", line.id),
+        ))
+    return out
+
+
+def validator_channel_capacity(rel):
+    """Ruling 1.10 (P5 T3): mesmo filtro de `equipment_ids` da seleção de
+    certificado (`_afr_certificate_selection`) — linha da OS inteira quando
+    `equipment_ids` vazio, senão só quando o equipamento deste relatório
+    está na lista."""
+    equipment = rel.equipment_id
+    lines = rel.os_id.resource_plan_line_ids.filtered(
+        lambda l: l.resource_role == "validador"
+        and l.instrument_id
+        and (not l.equipment_ids or equipment in l.equipment_ids)
+    )
+    return sum(lines.mapped("instrument_id.measurement_capacity_ids.qty"))
+
+
+def rule_canal_sem_cert(rel):
+    """Heurística (ver plano P5, decisão 7): nº do canal > capacidade total."""
+    capacity = validator_channel_capacity(rel)
+    if not capacity:
+        return []
+    out = []
+    for cycle in rel.cycle_ids:
+        for pos in cycle.sensor_pos_ids:
+            match = CANAL_NUM_RE.search(pos.canal or "")
+            if not match:
+                continue
+            if int(match.group(1)) > capacity:
+                out.append(finding(
+                    "CANAL_SEM_CERT", "alerta",
+                    "Canal %s (posição %s) fora da faixa 1–%d dos validadores do "
+                    "plano de recursos — sem cobertura de certificado."
+                    % (pos.canal, pos.posicao or "—", capacity),
+                    "Ciclo: %s / canal %s" % (cycle_label(cycle), pos.canal),
+                ))
+    return out
+
+
+def rule_aprovacao_interna(rel):
+    """Decisão 5: só roda na emissão (`EMISSION_CTX`) — no gate normal
+    (`_check_emission_gate`) quem já relata aprovação interna faltante é o
+    `super()` de P4 (`_rq_internal_approval_problems`); esta regra existe
+    para os achados (decisão/carry-over) da varredura de emissão."""
+    if not rel.env.context.get(EMISSION_CTX):
+        return []
+    out = []
+    for papel, label in (("elaborador", "Elaborador"), ("emissor", "Emissor")):
+        lines = rel.aprovacao_ids.filtered(lambda a, p=papel: a.papel == p)
+        if not lines:
+            msg = "Papel %s não definido nas aprovações." % label
+        elif any(not a.approved_at for a in lines):
+            msg = "%s sem aprovação interna." % label
+        else:
+            continue
+        out.append(finding("APROVACAO_INTERNA", "bloqueia", msg, "Aprovação: %s" % label))
+    return out
+
+
 RULES = OrderedDict([
     ("CERT_DEPOIS_AUSENTE", rule_cert_depois_ausente),
     ("CERT_ANTES_AUSENTE", rule_cert_antes_ausente),
@@ -294,6 +521,15 @@ RULES = OrderedDict([
     ("ANEXO_VAZIO", rule_anexo_vazio),
     ("ANEXO_ILEGIVEL", rule_anexo_ilegivel),
     ("TOKEN_NAO_RESOLVIDO", rule_token_nao_resolvido),
+    ("ANEXO_REF_EXCLUIDO", rule_anexo_ref_excluido),
+    ("CICLOS_CONTAGEM", rule_ciclos_contagem),
+    ("CICLO_SEM_DADOS", rule_ciclo_sem_dados),
+    ("CICLO_SEM_JANELA", rule_ciclo_sem_janela),
+    ("DATA_FORA_JANELA", rule_data_fora_janela),
+    ("AMBIENTE_VAZIO", rule_ambiente_vazio),
+    ("CHECKLIST_REPROVADO", rule_checklist_reprovado),
+    ("CANAL_SEM_CERT", rule_canal_sem_cert),
+    ("APROVACAO_INTERNA", rule_aprovacao_interna),
 ])
 
 
