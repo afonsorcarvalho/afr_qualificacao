@@ -869,7 +869,7 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
 
     def test_send_to_client_creates_mail_with_portal_link(self):
         self._approve_and_emit()
-        self.rel.with_user(self.office).action_enviar_aprovacao_cliente()
+        self.rel.with_user(self.manager).action_enviar_aprovacao_cliente()
         mail = self.env["mail.mail"].search([
             ("model", "=", "afr.relatorio.aprovacao"), ("res_id", "=", self.line_cli.id),
         ], limit=1)
@@ -880,7 +880,7 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
 
     def test_send_to_client_ignores_context_defaults(self):
         self._approve_and_emit()
-        self.rel.with_user(self.office).with_context(
+        self.rel.with_user(self.manager).with_context(
             default_model="res.partner", default_res_id=self.partner.id,
             default_state="exception",
         ).action_enviar_aprovacao_cliente()
@@ -895,7 +895,18 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
 
     def test_send_to_client_only_when_issued(self):
         with self.assertRaises(UserError):
+            self.rel.with_user(self.manager).action_enviar_aprovacao_cliente()
+
+    def test_send_to_client_forbidden_for_usuario(self):  # fix round 3
+        """O e-mail entrega o token do cliente: só o Gestor envia (check no
+        método, não só no botão) — mesmo com o relatório emitido e o contato
+        válido, um Usuário via RPC é barrado e nenhum e-mail sai."""
+        self._approve_and_emit()
+        with self.assertRaises(UserError):
             self.rel.with_user(self.office).action_enviar_aprovacao_cliente()
+        self.assertFalse(self.env["mail.mail"].search([
+            ("model", "=", "afr.relatorio.aprovacao"), ("res_id", "=", self.line_cli.id),
+        ]))
 
     def test_send_to_client_forbidden_for_technician(self):
         self._approve_and_emit()
@@ -1095,3 +1106,41 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
                 "relatorio_id": self.rel.id, "partner_id": self.partner.id})
             self.assertEqual(line.papel, "cliente")
             self.assertTrue(line.sudo().access_token)
+
+    # ─── Fix round 3: nenhum caminho entrega o token a não-Gestor ───
+
+    TPL = "afr_qualificacao.mail_template_relatorio_aprovacao"
+
+    def test_template_rendered_by_non_manager_has_no_token(self):
+        self._approve_and_emit()
+        token = self.line_cli.access_token
+        tpl = self.env.ref(self.TPL)
+        for user in (self.office, self.tech):
+            self.assertFalse(self.line_cli.with_user(user).portal_url)
+            values = tpl.with_user(user).generate_email(self.line_cli.id, ["body_html"])
+            self.assertNotIn(token, str(values.get("body_html")))
+        # send_mail via RPC (só checa leitura do registro) com destinatário forjado.
+        mail_id = tpl.with_user(self.office).send_mail(
+            self.line_cli.id, email_values={"email_to": "atacante@example.test"})
+        self.assertNotIn(token, self.env["mail.mail"].browse(mail_id).body_html or "")
+        # Gestor e fluxo interno (sudo) continuam vendo o link.
+        self.assertIn(token, self.line_cli.with_user(self.manager).portal_url)
+        self.assertIn(token, str(tpl.sudo().generate_email(
+            self.line_cli.id, ["body_html"])["body_html"]))
+
+    def test_non_manager_cannot_search_or_group_by_token(self):
+        token = self.line_cli.access_token
+        Aprov = self.env["afr.relatorio.aprovacao"].with_user(self.office)
+        for domain in ([("access_token", "=", token)],
+                       [("access_token", "=like", token[:1] + "%")],
+                       ["|", ("id", "=", 0), ("access_token", "!=", False)]):
+            with self.assertRaises(AccessError, msg=domain):
+                Aprov.search_count(domain)
+        with self.assertRaises(AccessError):
+            self.env["afr.qualificacao.relatorio"].with_user(self.office).search_count(
+                [("aprovacao_ids.access_token", "=", token)])
+        with self.assertRaises(AccessError):
+            Aprov.read_group([], ["papel"], ["access_token"])
+        # Gestor pode.
+        self.assertEqual(self.env["afr.relatorio.aprovacao"].with_user(self.manager)
+                         .search_count([("access_token", "=", token)]), 1)

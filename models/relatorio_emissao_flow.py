@@ -464,9 +464,14 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
     # ------------------------------------------------------------------
 
     def action_enviar_aprovacao_cliente(self):
-        """E-mail com o link do portal para cada aprovador do cliente pendente."""
+        """E-mail com o link do portal para cada aprovador do cliente pendente.
+
+        Só o Gestor (fix round 3 do Task 9): o e-mail entrega o access_token
+        do cliente — o único outro caminho é `portal_url`, também só Gestor.
+        Check no método (RPC direto), não só no botão.
+        """
         self.ensure_one()
-        self._rq_check_user_group(_("enviar o relatório para aprovação do cliente"))
+        self._check_manager_only(_("enviar o relatório para aprovação do cliente"))
         if self.state != "issued" or not self.current_emissao_id:
             raise UserError(_("Envie para aprovação do cliente só depois de emitir."))
         pending = self.aprovacao_ids.filtered(
@@ -499,9 +504,16 @@ class AfrRelatorioAprovacaoPortal(models.Model):
     )
 
     @api.depends("papel", "access_token")
+    @api.depends_context("uid")
     def _compute_portal_url(self):
+        """Fix round 3: `groups=` não vale em acesso por atributo (render de
+        mail.template via generate_email/send_mail por RPC, preview): o
+        próprio compute só entrega o link sob su ou ao Gestor."""
+        allowed = self.env.su or self.env.user.has_group(
+            "afr_qualificacao.group_afr_qualificacao_manager")
         for line in self:
-            line.portal_url = line._portal_url() if line.papel == "cliente" else False
+            line.portal_url = (
+                line._portal_url() if allowed and line.papel == "cliente" else False)
 
     def _portal_url(self):
         self.ensure_one()

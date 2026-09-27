@@ -142,6 +142,37 @@ class AfrRelatorioAprovacao(models.Model):
                 vals.update(approved_at=False, ip=False)
             line.write(vals)
 
+    # Fix round 3 do P4 Task 9: `groups=` no access_token barra read/write,
+    # mas NÃO busca nem agrupamento no Odoo 16 — um Usuário extraía o token
+    # por `search_count([('access_token', '=like', 'a%')])`, caractere a
+    # caractere. _where_calc é o ponto comum de search/read_group (e das
+    # subconsultas por caminho, ex. 'aprovacao_ids.access_token').
+    def _rq_token_access_allowed(self):
+        return self.env.su or self.env.user.has_group(_MANAGER_GROUP)
+
+    def _rq_check_token_not_used(self, names):
+        if any(name and str(name).split(".")[0].split(":")[0] == "access_token"
+               for name in names) and not self._rq_token_access_allowed():
+            raise AccessError(_(
+                "Apenas o Gestor pode consultar o token de acesso do cliente."))
+
+    @api.model
+    def _where_calc(self, domain, active_test=True):
+        self._rq_check_token_not_used(
+            leaf[0] for leaf in (domain or [])
+            if isinstance(leaf, (list, tuple)) and len(leaf) == 3
+            and isinstance(leaf[0], str))
+        return super()._where_calc(domain, active_test)
+
+    @api.model
+    def read_group(self, domain, fields, groupby, offset=0, limit=None,
+                   orderby=False, lazy=True):
+        groupby_list = [groupby] if isinstance(groupby, str) else list(groupby or [])
+        self._rq_check_token_not_used(list(fields or []) + groupby_list + [
+            part.strip().split(" ")[0] for part in (orderby or "").split(",")])
+        return super().read_group(domain, fields, groupby, offset=offset, limit=limit,
+                                  orderby=orderby, lazy=lazy)
+
     def _identity_field_changed(self, field, vals):
         """True quando `vals[field]` difere do valor atual do registro
         (`self`, um único registro). Ausente de `vals` nunca é "mudança"."""
