@@ -279,6 +279,8 @@ class AfrRelatorioBuildJob(models.Model):
         job.write({"state": "running", "attempts": job.attempts + 1,
                    "last_run_at": fields.Datetime.now()})
         job._rq_commit()
+        if not job._rq_inline() and job.phase in RENDER_PHASES:
+            job._rq_warm_asset_bundles()
         try:
             with job._rq_unit_guard():
                 job._rq_do_unit(cpu_deadline)
@@ -299,6 +301,32 @@ class AfrRelatorioBuildJob(models.Model):
             job._rq_fail(_("Erro na etapa \"%(phase)s\": %(err)s") % {
                 "phase": job.phase, "err": exc})
         return True
+
+    def _rq_warm_asset_bundles(self):
+        """Gera (e comita) o ir.attachment dos bundles de assets do relatório
+        ANTES da unidade de render, fora de qualquer savepoint.
+
+        Fora do inline, `_rq_unit_guard` não usa savepoint (só reivindica e
+        confia no commit já feito). Se o primeiro render dentro da unidade
+        for quem gera o bundle, o core comita o attachment do bundle
+        (`commit_assetsbundle`, ir_actions_report.py) misturado com o
+        trabalho da própria unidade — um erro depois disso rola tudo de
+        volta, incluindo o bundle que já estava pronto. Chamando aqui antes,
+        o bundle sai commitado isolado; falha aqui não aborta a unidade (o
+        render de dentro tenta gerar de novo)."""
+        env = self.env
+        try:
+            qweb = env["ir.qweb"].with_context(
+                lang=self.requested_by.lang, commit_assetsbundle=True)
+            qweb._get_asset_nodes("web.report_assets_pdf", css=True, js=True)
+            qweb._get_asset_nodes("web.report_assets_common", css=True, js=False)
+        except Exception:
+            env.cr.rollback()
+            env.invalidate_all()
+            _logger.warning(
+                "Montagem %s: falha ao aquecer os assets do relatório antes "
+                "da etapa %s; o render tenta gerar o bundle de novo.",
+                self.id, self.phase)
 
     def _rq_relatorio_env(self):
         """O relatório como o solicitante o vê (acesso, idioma, fuso)."""

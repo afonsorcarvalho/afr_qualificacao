@@ -31,6 +31,8 @@ DEFAULT_PUBLIC_TZ = "America/Sao_Paulo"
 def company_tz(company):
     """Fuso da empresa emissora (páginas públicas e datas da emissão)."""
     return (company and company.partner_id.tz) or DEFAULT_PUBLIC_TZ
+
+
 ROLE_LABELS = {"elaborador": "Elaborador", "emissor": "Emissor"}
 
 

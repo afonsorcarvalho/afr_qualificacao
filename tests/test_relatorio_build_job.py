@@ -383,3 +383,67 @@ class TestRelatorioBuildJob(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
                 mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
             job._rq_fail("x")
         self.assertEqual(job.state, "failed")
+
+    # --- P4 residual: aquecer os asset bundles do relatório fora do savepoint ---
+    def test_asset_bundle_not_warmed_when_inline(self):
+        """Inline (default nos testes): não aquece — o savepoint cobre tudo."""
+        Qweb = type(self.env["ir.qweb"])
+        with FakeCorpo().patch(self.env), \
+                patch.object(Qweb, "_get_asset_nodes") as spy:
+            self._enqueue_minuta()
+            run_build_jobs(self.env)
+        spy.assert_not_called()
+
+    def test_asset_bundle_warmed_before_guard_when_not_inline(self):
+        """Fora do inline, o aquecimento roda antes do guard, fora do savepoint."""
+        Qweb = type(self.env["ir.qweb"])
+        Job = type(self.Job)
+        calls = []
+
+        def spy_nodes(self_qweb, bundle, **kw):
+            calls.append(("warmup", bundle, self_qweb.env.context.get("lang")))
+
+        def stub_do_unit(job_self, cpu_deadline):
+            calls.append(("do_unit", job_self.phase))
+
+        with patch.object(jobmod.odoo_module, "current_test", False), \
+                patch.object(Job, "_rq_commit", lambda self: None), \
+                patch.object(Qweb, "_get_asset_nodes", spy_nodes), \
+                patch.object(Job, "_rq_do_unit", stub_do_unit):
+            self._enqueue_minuta()
+            job = self._job()
+            job._rq_run_unit()
+        self.assertEqual(
+            [c[0] for c in calls], ["warmup", "warmup", "do_unit"])
+        self.assertEqual(
+            {c[1] for c in calls if c[0] == "warmup"},
+            {"web.report_assets_pdf", "web.report_assets_common"})
+        self.assertTrue(all(c[2] == self.office.lang for c in calls if c[0] == "warmup"))
+
+    def test_asset_bundle_warmup_failure_does_not_break_unit(self):
+        """Bundle indisponível: warning + rollback, mas a unidade segue."""
+        Qweb = type(self.env["ir.qweb"])
+        Job = type(self.Job)
+        do_unit_calls = []
+
+        def boom(self_qweb, bundle, **kw):
+            raise RuntimeError("bundle indisponível")
+
+        def stub_do_unit(job_self, cpu_deadline):
+            do_unit_calls.append(job_self.phase)
+
+        with patch.object(jobmod.odoo_module, "current_test", False), \
+                patch.object(Job, "_rq_commit", lambda self: None), \
+                patch.object(Qweb, "_get_asset_nodes", boom), \
+                patch.object(Job, "_rq_do_unit", stub_do_unit), \
+                patch.object(self.env.cr, "rollback") as mock_rollback, \
+                patch.object(self.env, "invalidate_all") as mock_invalidate, \
+                mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+            self._enqueue_minuta()
+            job = self._job()
+            result = job._rq_run_unit()
+        self.assertTrue(result)
+        self.assertEqual(do_unit_calls, ["sources"])
+        mock_rollback.assert_called_once()
+        mock_invalidate.assert_called_once()
+        self.assertEqual(job.state, "running")
