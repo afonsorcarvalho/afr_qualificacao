@@ -4,6 +4,14 @@
 - <nada>
 
 ## Pendente — outros
+- **Relatório Final — Fase 2 (fora de escopo da Fase 1, spec [2026-09-26](docs/superpowers/specs/2026-09-26-relatorio-final-qualificacao-design.md) §11):**
+  - Captura estruturada no PWA (ambiente, checklist, posições de sensores, janelas de esterilização, leituras de IB) — hoje o escritório digita no backend.
+  - Extração do arquivo bruto do validador por IA → preencher `afr.qualificacao.cycle.extracted_json` (min/máx/média/F0 por canal) reaproveitando `afr.relatorio.ai`.
+  - Certificado de malha com L.E.Adm / Inc.Total / status no `engc_os` (depende de descongelar o `engc_os`).
+  - Assinatura digital ICP-Brasil / gov.br no PDF emitido.
+  - Montagem do PDF já é **enfileirada/assíncrona** (staged em unidades ≤~15 s CPU via `ir.cron` + `_trigger`; botões "Gerar minuta"/"Emitir" mostram banner de progresso e "Baixar minuta"/"Cancelar") — avaliar migrar para `queue_job` (OCA) se o volume de relatórios simultâneos justificar.
+  - Tabelas de resultado por canal geradas pelo Odoo (hoje vêm no PDF do validador).
+  - `CANAL_SEM_CERT`: a heurística atual compara o nº do canal com a capacidade total dos validadores; decodificar a notação módulo+canal do Yokogawa (ex.: `CH0106` = módulo 01, canal 06) para eliminar falso alerta.
 - **F2 Procedimento (spec separado)**: Biblioteca de passos reutilizáveis `afr.qualificacao.step.catalog` + Seed pré-pronto por categoria comum (autoclave/termodesinfectora). Lever mais direto p/ config mínima.
 - F4.1 (16.0.3.4.x): **Dashboard/lista de Padrões Vencidos** — view dedicada (tree+kanban) sobre `engc.calibration.instruments` com filtros: `Vencidos`, `Vence em 30 dias`, `Sem certificado`. Menu em Qualificações → Configurações. Decoração vermelha/amarela na tree. Computed `days_to_expiration` + `expiration_status` (selection: valid/warning/expired/none).
 - F4.2 (16.0.3.4.x): **Cron diário aviso de vencimento** — `ir.cron` em `afr_qualificacao` roda 1×/dia (ex: 07:00), procura instrumentos com `validate_calibration` ∈ {hoje, hoje+7, hoje+30 dias}, envia `mail.activity` ao(s) gestor(es) do grupo `group_afr_qualificacao_manager` + opcionalmente email template. Config param: dias antecedência (default 30/7/0), ligar/desligar cron, lista emails extras.
