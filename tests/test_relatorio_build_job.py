@@ -1,3 +1,6 @@
+import os
+import re
+import time
 from unittest.mock import patch
 
 import psycopg2
@@ -224,28 +227,106 @@ class TestRelatorioBuildJob(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         self.assertFalse(job.exists())
 
     # --- CSS do layout sem request (cron): sessão efêmera p/ o wkhtmltopdf ---
-    def test_wkhtmltopdf_cookie_only_with_job_session_and_no_request(self):
+    def test_wkhtmltopdf_cookie_jar_only_with_job_session_and_no_request(self):
         Report = self.env["ir.actions.report"]
         paperformat = self.env.ref("afr_qualificacao.paperformat_relatorio_final")
         plain = Report._build_wkhtmltopdf_args(paperformat, False)
-        self.assertNotIn("--cookie", plain)
-        args = Report.with_context(**{jobmod.REPORT_SESSION_CTX: "abc"})._build_wkhtmltopdf_args(
-            paperformat, False)
-        self.assertEqual(args[-3:], ["--cookie", "session_id", "abc"])
+        self.assertNotIn("--cookie-jar", plain)
+        ctx = {jobmod.REPORT_COOKIE_JAR_CTX: "/tmp/jar.txt"}
+        args = Report.with_context(**ctx)._build_wkhtmltopdf_args(paperformat, False)
+        self.assertEqual(args[-2:], ["--cookie-jar", "/tmp/jar.txt"])
         with patch.object(jobmod, "request", object()):  # RPC: contexto do cliente ignorado
-            args = Report.with_context(**{jobmod.REPORT_SESSION_CTX: "abc"})._build_wkhtmltopdf_args(
-                paperformat, False)
-        self.assertNotIn("--cookie", args)
+            args = Report.with_context(**ctx)._build_wkhtmltopdf_args(paperformat, False)
+        self.assertNotIn("--cookie-jar", args)
 
-    def test_report_session_is_ephemeral_and_only_for_render_phases(self):
+    def test_report_session_is_ephemeral_and_sid_never_in_argv(self):
         self._enqueue_minuta()
         job = self._job()
         store = http.root.session_store
+        paperformat = self.env.ref("afr_qualificacao.paperformat_relatorio_final")
         with patch.object(jobmod.odoo_module, "current_test", False):
             with job._rq_report_session("stamp") as ctx:
                 self.assertEqual(ctx, {})
             with job._rq_report_session("body") as ctx:
-                sid = ctx[jobmod.REPORT_SESSION_CTX]
+                jar = ctx[jobmod.REPORT_COOKIE_JAR_CTX]
+                self.assertEqual(os.stat(jar).st_mode & 0o777, 0o600)
+                with open(jar) as fh:
+                    cookie = fh.read()
+                sid = re.search(r"session_id=([^;]+);", cookie).group(1)
                 self.assertEqual(store.get(sid).db, self.env.cr.dbname)
                 self.assertFalse(store.get(sid).uid)
+                args = self.env["ir.actions.report"].with_context(**ctx)._build_wkhtmltopdf_args(
+                    paperformat, False)
+                self.assertFalse([a for a in args if sid in a])
+        self.assertFalse(os.path.exists(jar))
         self.assertIsNone(store.get(sid).db)  # removida do store
+
+    # --- estouro de CPU/memória: tentativa contada, fatia menor, sem falha ---
+    def _stage_spy(self, raise_times, exc_factory):
+        Pdf = type(self.env["afr.relatorio.pdf"])
+        original = Pdf._stage_run
+        seen = []
+
+        def spy(pdf_self, relatorio, st, store, budget):
+            seen.append((st["phase"], budget.max_pages))
+            if len(seen) <= raise_times:
+                raise exc_factory()
+            return original(pdf_self, relatorio, st, store, budget)
+        return patch.object(Pdf, "_stage_run", spy), seen
+
+    def test_cpu_limit_overrun_retries_with_halved_slice(self):
+        self.env["ir.config_parameter"].sudo().set_param(rp.CHUNK_PAGES_PARAM, "8")
+        with FakeCorpo().patch(self.env):
+            self._enqueue_minuta()
+            run_build_jobs(self.env, until=lambda job: job.phase == "fit")
+            job = self._job().with_context(rq_build_inline=True)
+            spy, seen = self._stage_spy(1, lambda: Exception("CPU time limit exceeded."))
+            with spy, mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+                job._rq_run_unit()
+                self.assertEqual((job.state, job.attempts, job.phase), ("running", 1, "fit"))
+                self.assertFalse(job.error)
+                job._rq_run_unit()
+            self.assertEqual(seen, [("fit", 8), ("fit", 4)])
+            self.assertEqual(job.attempts, 0)
+            run_build_jobs(self.env)
+        self.assertEqual(job.state, "done")
+        self.assertTrue(self.rel.minuta_attachment_id)
+
+    def test_memory_error_counts_attempt_without_failing(self):
+        with FakeCorpo().patch(self.env):
+            self._enqueue_minuta()
+            job = self._job().with_context(rq_build_inline=True)
+            spy, seen = self._stage_spy(1, MemoryError)
+            with spy, mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+                job._rq_run_unit()
+        self.assertEqual((job.state, job.attempts), ("running", 1))
+
+    def test_repeated_cpu_overruns_fail_job(self):
+        spy, seen = self._stage_spy(99, lambda: Exception("CPU time limit exceeded."))
+        with FakeCorpo().patch(self.env), spy, \
+                mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+            self._enqueue_minuta()
+            run_build_jobs(self.env)
+        job = self._job()
+        self.assertEqual(len(seen), jobmod.MAX_ATTEMPTS)
+        self.assertEqual(job.state, "failed")
+        self.assertIn("vezes seguidas", job.error)
+
+    def test_cpu_deadline_capped_below_soft_rlimit(self):
+        soft = time.process_time() + 10.0
+        with patch.object(jobmod.resource, "getrlimit", return_value=(soft, -1)):
+            deadline = self.Job._rq_cpu_deadline(time.process_time(), 20.0)
+        self.assertLessEqual(deadline, soft - jobmod.RLIMIT_CPU_MARGIN + 1e-6)
+        with patch.object(jobmod.resource, "getrlimit",
+                          return_value=(jobmod.resource.RLIM_INFINITY, -1)):
+            cpu0 = time.process_time()
+            self.assertEqual(self.Job._rq_cpu_deadline(cpu0, 20.0), cpu0 + 20.0)
+
+    def test_fail_survives_chatter_error(self):
+        self._enqueue_minuta()
+        job = self._job()
+        Rel = type(self.env["afr.qualificacao.relatorio"])
+        with patch.object(Rel, "message_post", side_effect=ValueError("chatter")), \
+                mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+            job._rq_fail("x")
+        self.assertEqual(job.state, "failed")

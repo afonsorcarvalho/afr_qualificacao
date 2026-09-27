@@ -10,9 +10,13 @@ finalize, depois de todo render.
 """
 import json
 import logging
+import os
+import resource
+import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import timedelta
+from urllib.parse import urlparse
 
 import psycopg2
 from markupsafe import Markup
@@ -33,9 +37,10 @@ _logger = logging.getLogger(__name__)
 
 INLINE_CTX = "rq_build_inline"
 HIDE_CLIENT_CTX = "rq_hide_client_approval"
-# Sid da sessão efêmera que o wkhtmltopdf apresenta ao baixar /web/assets
-# quando não há request (cron). Só honrado sem request (ver ir.actions.report).
-REPORT_SESSION_CTX = "rq_report_session_sid"
+# Cookie-jar (arquivo 0600) com a sessão efêmera que o wkhtmltopdf apresenta
+# ao baixar /web/assets quando não há request (cron). Só honrado sem request
+# (ver ir.actions.report). Arquivo, não argv: o sid não aparece no `ps`.
+REPORT_COOKIE_JAR_CTX = "rq_report_cookie_jar"
 CRON_XMLID = "afr_qualificacao.ir_cron_relatorio_build_job"
 ACTIVE_STATES = ("queued", "running")
 # Defaults (D9); os dois primeiros podem ser trocados por ir.config_parameter.
@@ -46,6 +51,11 @@ JOB_RETENTION_DAYS = 30
 RETENTION_PARAM = "afr_qualificacao.relatorio_build_retention_days"
 CHAIN_CPU_FRACTION = 0.25
 CHAIN_WALL_SECONDS = 30.0
+# Folga (s de CPU) antes do RLIMIT_CPU soft do worker: a unidade para aí, antes
+# do SIGXCPU (que o Odoo 16 converte em Exception, server.py
+# signal_time_expired_handler, e repete a cada ~1 s).
+RLIMIT_CPU_MARGIN = 5.0
+CPU_LIMIT_MESSAGE = "CPU time limit exceeded."
 USER_GROUP = "afr_qualificacao.group_afr_qualificacao_user"
 # Fases que renderizam (engc da malha em `sources`, corpo em `body`).
 RENDER_PHASES = ("sources", "body")
@@ -179,12 +189,13 @@ class AfrRelatorioBuildJob(models.Model):
         o RLIMIT_CPU do WorkerCron só é renovado entre invocações."""
         step_cpu = self._rq_param(STEP_CPU_PARAM, DEFAULT_STEP_CPU, float, 1.0)
         cpu0, wall0 = time.process_time(), time.monotonic()
+        cpu_deadline = self._rq_cpu_deadline(cpu0, step_cpu)
         Job = self.sudo()
         while True:
             job = Job.search([("state", "in", ACTIVE_STATES)], order="last_run_at, id", limit=1)
             if not job:
                 return
-            progressed = job._rq_run_unit(cpu_deadline=cpu0 + step_cpu)
+            progressed = job._rq_run_unit(cpu_deadline=cpu_deadline)
             if (not progressed
                     or time.process_time() - cpu0 >= step_cpu * CHAIN_CPU_FRACTION
                     or time.monotonic() - wall0 >= CHAIN_WALL_SECONDS):
@@ -194,6 +205,31 @@ class AfrRelatorioBuildJob(models.Model):
             # "agora" gera o NOTIFY que acorda o WorkerCron; "+1 s" sobrevive ao
             # DELETE de triggers vencidos que o core faz ao fim do job.
             self.env.ref(CRON_XMLID).sudo()._trigger_list([now, now + timedelta(seconds=1)])
+
+    @api.model
+    def _rq_cpu_deadline(self, cpu0, step_cpu):
+        """Prazo de CPU da invocação: o orçamento, mas nunca além do RLIMIT_CPU
+        soft do worker (menos a folga). `process_time()` e o RLIMIT medem a
+        mesma coisa: CPU user+sys do processo."""
+        deadline = cpu0 + step_cpu
+        soft, _hard = resource.getrlimit(resource.RLIMIT_CPU)
+        if soft != resource.RLIM_INFINITY and soft > 0:
+            deadline = min(deadline, soft - RLIMIT_CPU_MARGIN)
+        return deadline
+
+    @staticmethod
+    def _rq_resource_exhausted(exc):
+        """Estouro de CPU/memória do worker (não é erro do relatório): a
+        tentativa já está contada; a próxima volta com fatia menor."""
+        if isinstance(exc, MemoryError):
+            return True
+        if type(exc) is Exception and str(exc) == CPU_LIMIT_MESSAGE:
+            return True
+        soft, _hard = resource.getrlimit(resource.RLIMIT_CPU)
+        if soft == resource.RLIM_INFINITY or soft <= 0:
+            return False
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        return usage.ru_utime + usage.ru_stime >= soft
 
     # --------------------------------------------------------------- execução
     def _rq_inline(self):
@@ -231,8 +267,12 @@ class AfrRelatorioBuildJob(models.Model):
                 "(provável limite de CPU ou memória do servidor)."
             ) % {"phase": job.phase, "n": job.attempts})
             return True
-        # Reivindica e CONTA a tentativa antes do trabalho pesado: se o worker
-        # morrer (SIGXCPU, memória), nenhum except deste código roda.
+        # Reivindica e CONTA a tentativa antes do trabalho pesado. Estouro do
+        # limite de CPU (o Odoo 16 transforma SIGXCPU em Exception) ou
+        # MemoryError chegam ao except abaixo e NÃO falham o job; já o
+        # watchdog de tempo real (SIGKILL) e o OOM killer matam o worker sem
+        # except nenhum. Nos dois casos a tentativa commitada aqui conta, e
+        # a próxima unidade roda com a fatia dividida (Budget retry).
         job.write({"state": "running", "attempts": job.attempts + 1,
                    "last_run_at": fields.Datetime.now()})
         job._rq_commit()
@@ -243,6 +283,14 @@ class AfrRelatorioBuildJob(models.Model):
             _logger.info("Montagem %s: conflito de concorrência; nova tentativa.", job.id)
             return False
         except Exception as exc:
+            if job._rq_resource_exhausted(exc):
+                # Rollback já feito pelo guard; sem _rq_fail (o próximo
+                # SIGXCPU pode chegar em ~1 s). False: o cron para já.
+                _logger.warning(
+                    "Montagem %s: limite de CPU/memória do worker na etapa %s "
+                    "(tentativa %s); nova tentativa com fatia menor.",
+                    job.id, job.phase, job.attempts)
+                return False
             _logger.exception("Montagem %s do relatório %s falhou.", job.id,
                               job.relatorio_id.display_name)
             job._rq_fail(_("Erro na etapa \"%(phase)s\": %(err)s") % {
@@ -281,13 +329,22 @@ class AfrRelatorioBuildJob(models.Model):
         session.update(http.get_default_session())
         session.db = self.env.cr.dbname
         store.save(session)
+        jar_path = None
         try:
-            yield {REPORT_SESSION_CTX: session.sid}
+            # Mesmo formato do core (ir_actions_report._run_wkhtmltopdf).
+            domain = urlparse(self.env["ir.actions.report"]._get_report_url()).hostname
+            fd, jar_path = tempfile.mkstemp(suffix=".txt", prefix="report.rq_cookie_jar.tmp.")
+            with closing(os.fdopen(fd, "wb")) as jar:  # mkstemp: modo 0600
+                jar.write(("session_id=%s; HttpOnly; domain=%s; path=/;"
+                           % (session.sid, domain)).encode())
+            yield {REPORT_COOKIE_JAR_CTX: jar_path}
         finally:
-            try:
-                store.delete(session)
-            except OSError:
-                _logger.warning("Montagem %s: sessão efêmera não removida.", self.id)
+            if jar_path:
+                try:
+                    os.unlink(jar_path)
+                except FileNotFoundError:
+                    pass
+            store.delete(session)
 
     def _rq_stale_reason(self):
         """Mensagem se o relatório mudou desde o clique; False se segue válido."""
@@ -334,14 +391,21 @@ class AfrRelatorioBuildJob(models.Model):
         self._rq_commit()
 
     def _rq_fail(self, message):
+        """Estado `failed` sempre gravado; limpeza e chatter são best-effort
+        (uma falha ali não pode deixar o job ativo e em loop)."""
         self.ensure_one()
         self.write({"state": "failed", "error": message})
-        self._rq_cleanup()
-        kind = dict(self._fields["kind"].selection)[self.kind]
-        self.relatorio_id.sudo().with_context(_internal_ctx(self.env)).message_post(
-            body=_("Falha na montagem (%(kind)s): %(msg)s") % {"kind": kind, "msg": message},
-            author_id=self.requested_by.partner_id.id,
-        )
+        try:
+            with self.env.cr.savepoint():
+                self._rq_cleanup()
+                kind = dict(self._fields["kind"].selection)[self.kind]
+                self.relatorio_id.sudo().with_context(_internal_ctx(self.env)).message_post(
+                    body=_("Falha na montagem (%(kind)s): %(msg)s") % {
+                        "kind": kind, "msg": message},
+                    author_id=self.requested_by.partner_id.id,
+                )
+        except Exception:
+            _logger.exception("Montagem %s: falha ao limpar/avisar no chatter.", self.id)
         self._rq_commit()
 
     def _rq_cancel(self):
@@ -381,9 +445,9 @@ class IrActionsReportBuildSession(models.Model):
             paperformat_id, landscape,
             specific_paperformat_args=specific_paperformat_args,
             set_viewport_size=set_viewport_size)
-        sid = self.env.context.get(REPORT_SESSION_CTX)
-        if sid and not request:
-            args.extend(["--cookie", "session_id", sid])
+        jar = self.env.context.get(REPORT_COOKIE_JAR_CTX)
+        if jar and not request:
+            args.extend(["--cookie-jar", jar])
         return args
 
 
