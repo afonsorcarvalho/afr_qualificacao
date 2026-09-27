@@ -4,7 +4,7 @@ Parte 1 (Task 4): campos de emissão, URL pública e guarda dos campos que só
 as ações mudam. Tasks 7–9 acrescentam métodos a estas classes.
 """
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 
 class AfrQualificacaoRelatorioEmissao(models.Model):
@@ -58,3 +58,56 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                 "pelas ações Emitir, Revisar e pela aprovação do cliente."
             ))
         return super().write(vals)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Fix round 1 (review do Task 4): o `write()` acima já bloqueava
+        `_RQ_INTERNAL_FIELDS` fora de `env.su`, mas o `create()` não tinha
+        override nenhum — o grupo Usuário (`create=1` na ACL de
+        `afr.qualificacao.relatorio`) conseguia nascer o registro já
+        `create({'state': 'issued', 'revision': 5, 'current_emissao_id': ...})`,
+        sem passar pelas ações Emitir/Revisar/aprovação do cliente.
+
+        Mesmo padrão de `qualificacao.py::create()` (Task 13/14): pré-check
+        no `vals` recebido (erro cedo/claro no caso comum) + pós-check no
+        registro EFETIVO já criado. O pós-check é o que realmente fecha o
+        buraco — o ORM aplica `context['default_<campo>']`/`ir.default` a
+        campos AUSENTES de `vals` dentro do próprio `super().create()`,
+        depois deste pré-check, então um `with_context(default_state='issued')`
+        sem `state` no vals sobreviveria só com o pré-check.
+        """
+        if not self.env.su:
+            for vals in vals_list:
+                if self._RQ_INTERNAL_FIELDS.intersection(vals):
+                    raise UserError(_(
+                        "Status, revisão e emissão vigente do relatório final só "
+                        "mudam pelas ações Emitir, Revisar e pela aprovação do "
+                        "cliente — nunca na criação do registro."
+                    ))
+        records = super().create(vals_list)
+        if not self.env.su:
+            for record in records:
+                if (
+                    record.state != "draft"
+                    or record.revision != 0
+                    or record.current_emissao_id
+                ):
+                    raise UserError(_(
+                        "Status, revisão e emissão vigente do relatório final só "
+                        "mudam pelas ações Emitir, Revisar e pela aprovação do "
+                        "cliente — nunca na criação do registro."
+                    ))
+        return records
+
+    @api.constrains("current_emissao_id")
+    def _check_current_emissao_pertence_ao_relatorio(self):
+        """A emissão vigente de um relatório só pode ser uma emissão DELE
+        mesmo — sem isto, `current_emissao_id` podia ser apontado (por
+        escrita interna ou bug futuro) para a emissão de outro relatório,
+        e `verify_url`/o QR passariam a "confirmar" o relatório errado."""
+        for rec in self:
+            if rec.current_emissao_id and rec.current_emissao_id.relatorio_id != rec:
+                raise ValidationError(_(
+                    "A emissão vigente de um relatório precisa pertencer a ele "
+                    "mesmo, nunca à emissão de outro relatório."
+                ))

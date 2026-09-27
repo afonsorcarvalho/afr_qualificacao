@@ -1,5 +1,5 @@
 """P4 — emissão, revisão, aprovações, verificação pública e portal do Relatório Final."""
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tests.common import tagged
 
 from .common import AfrQualificacaoTestCommon
@@ -17,6 +17,7 @@ class TestRelatorioEmissaoModel(RelatorioFixtureMixin, AfrQualificacaoTestCommon
     def setUpClass(cls):
         super().setUpClass()
         cls.manager = make_user(cls.env, "gestor.rq.emissao", MANAGER)
+        cls.usuario = make_user(cls.env, "usuario.rq.emissao", USER)
 
     def setUp(self):
         super().setUp()
@@ -103,3 +104,79 @@ class TestRelatorioEmissaoModel(RelatorioFixtureMixin, AfrQualificacaoTestCommon
                 rel_mgr.write(vals)
         self.rel.write({"revision": 2})  # su pode (migrações, código interno)
         self.assertEqual(self.rel.revision, 2)
+
+    # ─────────────────────────────────────────────────────────────
+    # Fix round 1 — create() de afr.qualificacao.relatorio estava aberto:
+    # só o write() guardava _RQ_INTERNAL_FIELDS (state, revision,
+    # current_emissao_id). Usuário (create=1 na ACL) conseguia nascer o
+    # registro já emitido/revisado, sem passar pela ação Emitir/Revisar.
+    # ─────────────────────────────────────────────────────────────
+    def _give_equip2_qualif_on(self, os_rec):
+        """`afr.qualificacao.relatorio` exige que o equipamento já tenha
+        qualificação na OS (guard pré-existente, não relacionado a este fix)
+        — sem isto, o `create()` falharia por esse motivo, não pelo guard
+        de `_RQ_INTERNAL_FIELDS` que este teste quer exercitar."""
+        self.env["afr.qualificacao"].create({
+            "name": "Qualif equip2 p/ teste do guard de create",
+            "equipment_id": self.equip2.id,
+            "qualification_type": "installation",
+            "company_id": self.company.id,
+            "os_id": os_rec.id,
+        })
+
+    def test_create_with_internal_fields_is_blocked_for_usuario(self):
+        other_rel, _q = self._make_relatorio(equipment=self.equip2)
+        emissao = self._internal_create(relatorio_id=other_rel.id, token="f" * 32)
+        self._give_equip2_qualif_on(self.rel.os_id)
+        with self.assertRaises(UserError):
+            self.env["afr.qualificacao.relatorio"].with_user(self.usuario).create({
+                "os_id": self.rel.os_id.id,
+                "equipment_id": self.equip2.id,
+                "state": "issued",
+                "revision": 5,
+                "current_emissao_id": emissao.id,
+            })
+
+    def test_create_with_context_default_state_is_blocked_for_usuario(self):
+        """Pós-check: o pré-check só vê o `vals` recebido — `context
+        ['default_state']` é aplicado pelo ORM DENTRO do `super().create()`,
+        depois do pré-check (mesmo raciocínio de `qualificacao.py`
+        Task 13/14). Sem `state` no vals, só o pós-check no registro
+        efetivo pega isso."""
+        self._give_equip2_qualif_on(self.rel.os_id)
+        with self.assertRaises(UserError):
+            self.env["afr.qualificacao.relatorio"].with_user(
+                self.usuario
+            ).with_context(default_state="issued").create({
+                "os_id": self.rel.os_id.id,
+                "equipment_id": self.equip2.id,
+            })
+
+    def test_manager_with_internal_context_but_no_sudo_still_blocked(self):
+        """O contexto `rq_emissao_internal` por si só não basta — precisa de
+        `env.su`. Gestor sem `sudo()` não passa, mesmo com a flag no
+        contexto (a única diferença deste teste em relação a
+        `test_create_without_internal_flag_is_blocked` é a presença
+        explícita da flag)."""
+        with self.assertRaises(UserError):
+            self.env["afr.relatorio.emissao"].with_user(
+                self.manager
+            ).with_context(rq_emissao_internal=True).create({
+                "relatorio_id": self.rel.id, "token": "g" * 32,
+            })
+
+    def test_action_generate_relatorios_still_works_for_usuario(self):
+        """Regressão: o guard novo do create() não pode quebrar o caminho
+        legítimo (vals sem nenhum campo de `_RQ_INTERNAL_FIELDS`)."""
+        self._give_equip2_qualif_on(self.rel.os_id)
+        rels = self.rel.os_id.with_user(self.usuario).action_generate_relatorios()
+        novo = rels.filtered(lambda r: r.equipment_id == self.equip2)
+        self.assertTrue(novo)
+        self.assertEqual(novo.state, "draft")
+        self.assertEqual(novo.revision, 0)
+
+    def test_current_emissao_must_belong_to_relatorio(self):
+        other_rel, _q = self._make_relatorio(equipment=self.equip2)
+        other_emissao = self._internal_create(relatorio_id=other_rel.id, token="h" * 32)
+        with self.assertRaises(ValidationError):
+            self.rel.write({"current_emissao_id": other_emissao.id})
