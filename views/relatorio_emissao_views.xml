@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Emissões: somente leitura (imutáveis — ver models/relatorio_emissao.py) -->
+    <record id="view_afr_relatorio_emissao_tree" model="ir.ui.view">
+        <field name="name">afr.relatorio.emissao.tree</field>
+        <field name="model">afr.relatorio.emissao</field>
+        <field name="arch" type="xml">
+            <tree create="0" edit="0" delete="0" decoration-muted="superseded">
+                <field name="revision" string="Rev."/>
+                <field name="issued_at"/>
+                <field name="issued_by"/>
+                <field name="sha256"/>
+                <field name="superseded"/>
+                <field name="pdf_attachment_id"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_afr_relatorio_emissao_form" model="ir.ui.view">
+        <field name="name">afr.relatorio.emissao.form</field>
+        <field name="model">afr.relatorio.emissao</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <sheet>
+                    <div class="oe_title"><h1><field name="name"/></h1></div>
+                    <group>
+                        <group>
+                            <field name="relatorio_id"/>
+                            <field name="revision"/>
+                            <field name="issued_at"/>
+                            <field name="issued_by"/>
+                            <field name="superseded"/>
+                        </group>
+                        <group>
+                            <field name="pdf_attachment_id"/>
+                            <field name="token"/>
+                            <field name="sha256"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Form do relatório (P1): ações de P4 no header + banner de montagem + aba Revisões -->
+    <record id="view_afr_qualificacao_relatorio_form_p4" model="ir.ui.view">
+        <field name="name">afr.qualificacao.relatorio.form.p4.emissao</field>
+        <field name="model">afr.qualificacao.relatorio</field>
+        <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_relatorio_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="before">
+                <field name="rq_build_state" invisible="1"/>
+                <div class="alert alert-info mb-0" role="status"
+                     attrs="{'invisible': [('rq_build_state', 'not in', ('queued', 'running'))]}">
+                    <strong>Montagem do PDF em andamento</strong>
+                    (<field name="rq_build_kind" readonly="1" nolabel="1" class="d-inline"/>):
+                    <field name="rq_build_progress" widget="progressbar" readonly="1" nolabel="1"
+                           class="d-inline-block w-25 align-middle"/>
+                    <span class="text-muted">Atualize a página para acompanhar. O resultado aparece no histórico.</span>
+                    <button name="action_cancelar_montagem" type="object" string="Cancelar"
+                            class="btn-link" groups="afr_qualificacao.group_afr_qualificacao_user"/>
+                </div>
+                <div class="alert alert-danger mb-0" role="alert"
+                     attrs="{'invisible': [('rq_build_state', '!=', 'failed')]}">
+                    <strong>A última montagem falhou:</strong>
+                    <field name="rq_build_error" readonly="1" nolabel="1"/>
+                    Clique de novo em "Gerar minuta" ou "Emitir" para tentar outra vez.
+                </div>
+            </xpath>
+            <xpath expr="//header/field[@name='state']" position="before">
+                <button name="action_gerar_minuta" type="object" string="Gerar minuta"
+                        groups="afr_qualificacao.group_afr_qualificacao_user"
+                        attrs="{'invisible': [('rq_build_state', 'in', ('queued', 'running'))]}"/>
+                <button name="action_baixar_minuta" type="object" string="Baixar minuta"
+                        groups="afr_qualificacao.group_afr_qualificacao_user"
+                        attrs="{'invisible': [('minuta_attachment_id', '=', False)]}"/>
+                <button name="action_aprovar_interno" type="object" string="Aprovar (meu papel)"
+                        attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+                <button name="action_emitir" type="object" string="Emitir" class="btn-primary"
+                        groups="afr_qualificacao.group_afr_qualificacao_manager"
+                        attrs="{'invisible': ['|', ('state', '!=', 'draft'),
+                                               ('rq_build_state', 'in', ('queued', 'running'))]}"
+                        confirm="Emitir congela esta revisão (PDF, hash e QR). A montagem roda em segundo plano e trava a edição até concluir. Continuar?"/>
+                <button name="action_enviar_aprovacao_cliente" type="object"
+                        string="Enviar para aprovação do cliente"
+                        groups="afr_qualificacao.group_afr_qualificacao_manager"
+                        attrs="{'invisible': [('state', '!=', 'issued')]}"/>
+                <button name="action_revisar" type="object" string="Revisar"
+                        groups="afr_qualificacao.group_afr_qualificacao_manager"
+                        attrs="{'invisible': [('state', '=', 'draft')]}"
+                        confirm="Abrir uma nova revisão? A emissão atual continua vigente até a nova ser emitida."/>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="Revisões" name="page_revisoes">
+                    <group>
+                        <group>
+                            <field name="revision_label" string="Revisão atual"/>
+                            <field name="current_emissao_id"/>
+                            <field name="verify_url" widget="url"/>
+                        </group>
+                        <group>
+                            <field name="minuta_attachment_id"/>
+                            <field name="proxima_qualificacao"/>
+                        </group>
+                    </group>
+                    <field name="emissao_ids" readonly="1"
+                           context="{'tree_view_ref': 'afr_qualificacao.view_afr_relatorio_emissao_tree'}"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

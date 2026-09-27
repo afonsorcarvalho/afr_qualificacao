@@ -1259,3 +1259,37 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
                    [self.line_cli.id])
         self.assertFalse(cr.fetchone()[0])
         self.assertFalse(self.env.ref(self.TPL, raise_if_not_found=False))
+
+
+@tagged("post_install", "-at_install", "afr_relatorio_final")
+class TestRelatorioViews(AfrQualificacaoTestCommon):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Como Gestor: botões com groups= somem do arch para quem não tem o grupo
+        # (o usuário padrão do teste, OdooBot, não está nos grupos do módulo).
+        cls.manager = make_user(cls.env, "gestor.rq.views", MANAGER)
+
+    def test_form_has_p4_buttons_and_revisoes_page(self):
+        arch = self.env["afr.qualificacao.relatorio"].with_user(self.manager).get_views(
+            [(False, "form")])["views"]["form"]["arch"]
+        for name in ("action_gerar_minuta", "action_aprovar_interno", "action_emitir",
+                     "action_revisar", "action_enviar_aprovacao_cliente",
+                     "action_baixar_minuta", "action_cancelar_montagem"):
+            self.assertIn('name="%s"' % name, arch)
+        self.assertIn('name="page_revisoes"', arch)
+        self.assertIn('name="emissao_ids"', arch)
+        self.assertIn('name="rq_build_progress"', arch)
+
+    def test_emission_views_are_read_only(self):
+        arch = self.env["afr.relatorio.emissao"].with_user(self.manager).get_views(
+            [(False, "form")])["views"]["form"]["arch"]
+        self.assertIn('create="0"', arch)
+        self.assertIn('edit="0"', arch)
+
+    def test_manifest_version_at_least_p4(self):
+        # Piso, não igualdade: P5 sobe para 16.0.8.4.0 e este teste continua verde.
+        module = self.env["ir.module.module"].search([("name", "=", "afr_qualificacao")])
+        version = tuple(int(part) for part in module.latest_version.split("."))
+        self.assertGreaterEqual(version, (16, 0, 8, 3, 0))

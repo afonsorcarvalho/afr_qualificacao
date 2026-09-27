@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.8.2.0",
+    "version": "16.0.8.3.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -137,6 +137,20 @@
               RQT-HOSP (Hospitalar, sugerido para autoclave a vapor) e
               RQT-IND (Industrial), com checklist QI, seções de texto e
               posições de anexo padrão.
+            P4 (16.0.8.3.0): montagem e emissão do Relatório Final —
+              afr.relatorio.pdf monta o corpo (blocos+anexos intercalados,
+              índice recalculado até estabilizar) e carimba cabeçalho/
+              rodapé, marca d'água e QR de verificação. Montagem pesada
+              enfileirada em etapas (afr.relatorio.build.job + ir.cron,
+              sem depender de queue_job) para não exceder o limite de CPU
+              do worker. afr.relatorio.emissao é o registro imutável de
+              cada revisão (PDF + SHA-256 + token); aprovações internas
+              (elaborador/emissor) e do cliente (portal com token
+              próprio, sem ACL) travam a emissão. Verificação pública em
+              /qualificacao/relatorio/verify/<token>. Botões no header
+              (Gerar minuta, Baixar minuta, Aprovar, Emitir, Enviar para
+              aprovação do cliente, Revisar) e aba "Revisões" (histórico
+              de emissões, só leitura).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -269,6 +283,8 @@
         "data/relatorio_build_cron.xml",
         # Relatório Final P4 — verificação pública, portal e e-mail
         "views/relatorio_public_templates.xml",
+        # Relatório Final P4 — botões de emissão + aba Revisões
+        "views/relatorio_emissao_views.xml",
     ],
     "external_dependencies": {
         "python": [
