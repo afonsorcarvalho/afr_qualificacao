@@ -6,7 +6,7 @@
         <field name="model">afr.qualificacao.relatorio</field>
         <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_relatorio_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//header" position="inside">
+            <xpath expr="//header/field[@name='state']" position="before">
                 <button name="action_verificar" type="object" string="Verificar"
                         icon="fa-search" class="btn-secondary"
                         groups="afr_qualificacao.group_afr_qualificacao_user"
@@ -49,10 +49,10 @@
                             <field name="mensagem" readonly="1"/>
                             <field name="onde" readonly="1" optional="show"/>
                             <field name="decisao"
-                                   attrs="{'readonly': [('gravidade', '=', 'bloqueia')]}"/>
+                                   attrs="{'readonly': [('gravidade', '!=', 'alerta')]}"/>
                             <field name="motivo"
                                    attrs="{'required': [('decisao', '=', 'descartado')],
-                                           'readonly': [('gravidade', '=', 'bloqueia')]}"/>
+                                           'readonly': [('gravidade', '!=', 'alerta')]}"/>
                             <field name="decidido_por" readonly="1" optional="show"/>
                             <field name="decidido_em" readonly="1" optional="hide"/>
                         </tree>
