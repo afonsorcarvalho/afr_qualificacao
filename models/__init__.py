@@ -47,3 +47,4 @@ from . import relatorio_anexo_files    # Relatório Final P4 — arquivos dos an
 from . import relatorio_emissao        # Relatório Final P4 — emissão imutável
 from . import relatorio_emissao_flow   # Relatório Final P4 — campos de emissão no relatório
 from . import relatorio_editorial     # Relatório Final P4 — trava/invalidação editorial
+from . import relatorio_build_job     # Relatório Final P4 — fila da montagem do PDF (cron)

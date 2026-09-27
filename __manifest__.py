@@ -265,6 +265,8 @@
         # Relatório Final P3 — corpo QWeb (sub-templates antes do report)
         "reports/relatorio_corpo_templates.xml",
         "reports/relatorio_corpo_report.xml",
+        # Relatório Final P4 — fila da montagem do PDF
+        "data/relatorio_build_cron.xml",
     ],
     "external_dependencies": {
         "python": [

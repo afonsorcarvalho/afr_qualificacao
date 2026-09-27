@@ -21,7 +21,9 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
     # Só as ações (Emitir / Revisar / aprovação do cliente) mudam estes
     # campos — via sudo(). Mesmo motivo do _CERTIFICATE_FIELDS de
     # afr.qualificacao: a ir.rule escopa registros, não valores.
-    _RQ_INTERNAL_FIELDS = frozenset({"state", "revision", "current_emissao_id"})
+    _RQ_INTERNAL_FIELDS = frozenset({
+        "state", "revision", "current_emissao_id", "rq_editorial_seq",
+    })
 
     emissao_ids = fields.One2many(
         "afr.relatorio.emissao", "relatorio_id", string="Emissões", readonly=True,
@@ -81,6 +83,7 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
             self._check_editable()
         result = super().write(vals)
         if editorial:
+            self._rq_bump_editorial_seq()  # jobs de montagem comparam (Task 8B)
             self._invalidate_internal_approvals()
         return result
 

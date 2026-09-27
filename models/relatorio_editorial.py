@@ -45,6 +45,7 @@ class AfrRelatorioEditorialMixin(models.AbstractModel):
             return
         if self._rq_lock_when_issued:
             relatorios._check_editable()
+        relatorios._rq_bump_editorial_seq()  # jobs de montagem comparam (Task 8B)
         relatorios._invalidate_internal_approvals()
 
     def _rq_touch_create(self, vals_list):
