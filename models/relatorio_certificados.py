@@ -251,10 +251,14 @@ class AfrQualificacaoRelatorio(models.Model):
             self.env.cr._afr_malha_cert_cache = cache
         if calibration.id in cache:
             return cache[calibration.id]
+        # commit_assetsbundle=False: fora de teste o core passaria True no
+        # primeiro render depois de invalidar os assets, e o cr.commit() do
+        # bundle derrubaria o savepoint (e commitaria a montagem pela metade).
         try:
             with self.env.cr.savepoint():
-                content, fmt = self.env["ir.actions.report"].sudo()._render_qweb_pdf(
-                    ENGC_CALIBRATION_REPORT, [calibration.id])
+                content, fmt = self.env["ir.actions.report"].sudo().with_context(
+                    commit_assetsbundle=False,
+                )._render_qweb_pdf(ENGC_CALIBRATION_REPORT, [calibration.id])
             result = content if fmt == "pdf" else b""
         except Exception:
             _logger.exception(
