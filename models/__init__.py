@@ -42,3 +42,4 @@ from . import relatorio_block           # Relatório Final P3
 from . import relatorio_anexo           # Relatório Final P3
 from . import relatorio_aprovacao       # Relatório Final P3
 from . import relatorio_texto           # Relatório Final P3 (_inherit relatorio + os)
+from . import relatorio_pdf            # Relatório Final P4

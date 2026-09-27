@@ -115,3 +115,6 @@ from . import test_relatorio_certificados
 # Relatório Final — P3: template, blocos, anexos, aprovações
 from . import test_relatorio_template
 from . import test_relatorio_corpo_report
+
+# Relatório Final — P4 (montagem do PDF, emissão, verificação, portal)
+from . import test_relatorio_pdf
