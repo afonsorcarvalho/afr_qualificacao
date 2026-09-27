@@ -5,6 +5,13 @@ as ações mudam. Tasks 7–9 acrescentam métodos a estas classes.
 """
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
+from odoo.http import request
+from odoo.tools.misc import clean_context
+
+from .relatorio_editorial import SKIP_CTX
+
+INTERNAL_ROLES = ("elaborador", "emissor")
+ROLE_LABELS = {"elaborador": "Elaborador", "emissor": "Emissor"}
 
 
 class AfrQualificacaoRelatorioEmissao(models.Model):
@@ -51,13 +58,31 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                 url += "?db=%s" % db_param
             rec.verify_url = url
 
+    # Campos do próprio relatório cuja edição muda o conteúdo do PDF (Task 7).
+    _RQ_EDITORIAL_FIELDS = frozenset({
+        "equipment_id", "template_id",
+        "data_inicio_ensaios", "data_fim_ensaios",
+        "amb_temperatura", "amb_umidade",
+        "tolerancia_acima", "criterio_f0_fator",
+        "block_ids", "anexo_ids", "checklist_ids", "indicador_ids", "leitura_ib_ids",
+    })
+
     def write(self, vals):
         if not self.env.su and self._RQ_INTERNAL_FIELDS.intersection(vals):
             raise UserError(_(
                 "Status, revisão e emissão vigente do relatório final só mudam "
                 "pelas ações Emitir, Revisar e pela aprovação do cliente."
             ))
-        return super().write(vals)
+        editorial = (
+            bool(self._RQ_EDITORIAL_FIELDS.intersection(vals))
+            and not self.env.context.get(SKIP_CTX)
+        )
+        if editorial:
+            self._check_editable()
+        result = super().write(vals)
+        if editorial:
+            self._invalidate_internal_approvals()
+        return result
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -111,3 +136,92 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                     "A emissão vigente de um relatório precisa pertencer a ele "
                     "mesmo, nunca à emissão de outro relatório."
                 ))
+
+    # ------------------------------------------------------------------
+    # Task 7 — aprovações internas, gate de emissão, invalidação e trava
+    # ------------------------------------------------------------------
+
+    def _check_editable(self):
+        locked = self.filtered(lambda r: r.state != "draft")
+        if locked:
+            raise UserError(_(
+                "O relatório %(name)s já foi emitido (%(rev)s). Use Revisar para "
+                "abrir uma nova revisão antes de editar."
+            ) % {"name": locked[0].name, "rev": locked[0].revision_label})
+
+    def _invalidate_internal_approvals(self):
+        """Zera elaborador/emissor dos relatórios em rascunho. True se zerou algo.
+
+        Tudo via sudo + clean_context: o gatilho pode vir de um Técnico
+        editando a janela do ciclo (sem write no relatório/aprovação) e o
+        guard de write do P3 só aceita `approved_at`/`ip` sob `env.su`;
+        clean_context tira `default_*` do contexto do chamador (ruling 5.1).
+        """
+        rels = self.sudo().with_context(clean_context(self.env.context))
+        lines = rels.filtered(lambda r: r.state == "draft").mapped(
+            "aprovacao_ids"
+        ).filtered(lambda a: a.papel in INTERNAL_ROLES and a.approved_at)
+        if not lines:
+            return False
+        lines.write({"approved_at": False, "ip": False})
+        for rel in lines.mapped("relatorio_id"):
+            rel.message_post(body=_(
+                "Aprovações internas zeradas: o relatório foi editado depois "
+                "da aprovação."
+            ))
+        return True
+
+    def action_aprovar_interno(self):
+        """Aprova TODAS as linhas elaborador/emissor pendentes do usuário atual."""
+        self.ensure_one()
+        if self.state != "draft":
+            raise UserError(_("Só é possível aprovar internamente um relatório em rascunho."))
+        lines = self.aprovacao_ids.filtered(
+            lambda a: a.papel in INTERNAL_ROLES
+            and a.user_id == self.env.user
+            and not a.approved_at
+        )
+        if not lines:
+            raise UserError(_(
+                "Você não está designado como elaborador ou emissor com aprovação "
+                "pendente neste relatório."
+            ))
+        now = fields.Datetime.now()
+        ip = request.httprequest.remote_addr if request else False
+        clean_ctx = clean_context(self.env.context)
+        # sudo: o guard do P3 só aceita approved_at/ip sob env.su.
+        for line in lines.sudo().with_context(clean_ctx):
+            line.write({
+                "approved_at": now,
+                "ip": ip or False,
+                "nome_exibicao": line.nome_exibicao or self.env.user.name,
+            })
+        self.with_context(clean_ctx).message_post(
+            body=_("Aprovado internamente por %(user)s (%(roles)s).") % {
+                "user": self.env.user.name,
+                "roles": ", ".join(ROLE_LABELS[p] for p in lines.mapped("papel")),
+            },
+        )
+        return True
+
+    def _check_emission_gate(self):
+        """Impedimentos para emitir (lista vazia = pode). P5 estende com super().
+
+        Síncrono e puro: só lê, não grava nada.
+        """
+        self.ensure_one()
+        problems = []
+        for papel in INTERNAL_ROLES:
+            label = ROLE_LABELS[papel]
+            lines = self.aprovacao_ids.filtered(lambda a, p=papel: a.papel == p)
+            if not lines:
+                problems.append(_("Nenhum %s designado.") % label.lower())
+            for line in lines:
+                who = line.nome_exibicao or line.user_id.name or "—"
+                if not line.user_id:
+                    problems.append(_("%(role)s %(who)s sem usuário designado.") % {
+                        "role": label, "who": who})
+                elif not line.approved_at:
+                    problems.append(_("%(role)s %(who)s ainda não aprovou.") % {
+                        "role": label, "who": who})
+        return problems
