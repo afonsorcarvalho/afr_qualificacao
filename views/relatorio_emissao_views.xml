@@ -33,7 +33,7 @@
                         </group>
                         <group>
                             <field name="pdf_attachment_id"/>
-                            <field name="token"/>
+                            <field name="token" groups="afr_qualificacao.group_afr_qualificacao_manager"/>
                             <field name="sha256"/>
                         </group>
                     </group>
@@ -57,8 +57,18 @@
                     <field name="rq_build_progress" widget="progressbar" readonly="1" nolabel="1"
                            class="d-inline-block w-25 align-middle"/>
                     <span class="text-muted">Atualize a página para acompanhar. O resultado aparece no histórico.</span>
+                    <!-- Fix round 1: o método (action_cancelar_montagem) exige Gestor quando o
+                         job ativo é de emissão e só Usuário para minuta — um botão por kind,
+                         com o groups= correspondente (senão fica visível para quem o método
+                         rejeita). -->
                     <button name="action_cancelar_montagem" type="object" string="Cancelar"
-                            class="btn-link" groups="afr_qualificacao.group_afr_qualificacao_user"/>
+                            class="btn-link" groups="afr_qualificacao.group_afr_qualificacao_user"
+                            attrs="{'invisible': ['|', ('rq_build_kind', '!=', 'minuta'),
+                                                   ('rq_build_state', 'not in', ('queued', 'running'))]}"/>
+                    <button name="action_cancelar_montagem" type="object" string="Cancelar"
+                            class="btn-link" groups="afr_qualificacao.group_afr_qualificacao_manager"
+                            attrs="{'invisible': ['|', ('rq_build_kind', '!=', 'emissao'),
+                                                   ('rq_build_state', 'not in', ('queued', 'running'))]}"/>
                 </div>
                 <div class="alert alert-danger mb-0" role="alert"
                      attrs="{'invisible': [('rq_build_state', '!=', 'failed')]}">

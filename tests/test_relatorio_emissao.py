@@ -1270,6 +1270,7 @@ class TestRelatorioViews(AfrQualificacaoTestCommon):
         # Como Gestor: botões com groups= somem do arch para quem não tem o grupo
         # (o usuário padrão do teste, OdooBot, não está nos grupos do módulo).
         cls.manager = make_user(cls.env, "gestor.rq.views", MANAGER)
+        cls.office = make_user(cls.env, "escritorio.rq.views", USER)
 
     def test_form_has_p4_buttons_and_revisoes_page(self):
         arch = self.env["afr.qualificacao.relatorio"].with_user(self.manager).get_views(
@@ -1282,11 +1283,35 @@ class TestRelatorioViews(AfrQualificacaoTestCommon):
         self.assertIn('name="emissao_ids"', arch)
         self.assertIn('name="rq_build_progress"', arch)
 
+    def test_cancelar_montagem_split_by_build_kind_and_group(self):
+        # Fix round 1: o método (action_cancelar_montagem) exige o grupo
+        # Gestor quando o job ativo é de emissão, e só o grupo Usuário para
+        # minuta — o botão do banner precisa ser dois, um por kind, com o
+        # `groups=` correspondente (senão o botão fica visível para quem o
+        # método vai rejeitar).
+        arch_manager = self.env["afr.qualificacao.relatorio"].with_user(self.manager).get_views(
+            [(False, "form")])["views"]["form"]["arch"]
+        self.assertEqual(arch_manager.count('name="action_cancelar_montagem"'), 2)
+        arch_office = self.env["afr.qualificacao.relatorio"].with_user(self.office).get_views(
+            [(False, "form")])["views"]["form"]["arch"]
+        # O grupo Usuário não vê o botão gated por Gestor (emissão).
+        self.assertEqual(arch_office.count('name="action_cancelar_montagem"'), 1)
+
     def test_emission_views_are_read_only(self):
         arch = self.env["afr.relatorio.emissao"].with_user(self.manager).get_views(
             [(False, "form")])["views"]["form"]["arch"]
         self.assertIn('create="0"', arch)
         self.assertIn('edit="0"', arch)
+
+    def test_emission_form_token_field_is_manager_only(self):
+        # Fix round 1: o token vale como verify_url (público) mas o campo
+        # bruto segue restrito ao Gestor, como o token do job (consistência).
+        arch_manager = self.env["afr.relatorio.emissao"].with_user(self.manager).get_views(
+            [(False, "form")])["views"]["form"]["arch"]
+        self.assertIn('name="token"', arch_manager)
+        arch_office = self.env["afr.relatorio.emissao"].with_user(self.office).get_views(
+            [(False, "form")])["views"]["form"]["arch"]
+        self.assertNotIn('name="token"', arch_office)
 
     def test_manifest_version_at_least_p4(self):
         # Piso, não igualdade: P5 sobe para 16.0.8.4.0 e este teste continua verde.
