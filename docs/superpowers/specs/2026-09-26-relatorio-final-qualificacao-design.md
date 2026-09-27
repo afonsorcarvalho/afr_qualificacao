@@ -228,9 +228,12 @@ fica registrada na página pública de verificação.
    "MINUTA — SEM VALIDADE" diagonal.
 6. Retorna bytes. Minuta → `minuta_attachment_id`. Emissão → `emissao.pdf_attachment_id`.
 
-Execução síncrona na Fase 1 (botão com aviso). Libs confirmadas no container
-`odoo_engenapp-web-qualificacao-1` (`/usr/bin/python3`): PyPDF2 1.26.0, reportlab 3.5.59,
-pdfminer.six. **Conferir no servidor remoto antes do deploy.**
+Execução enfileirada (decisão de P4, "Fila + etapas"): `afr.relatorio.build.job` +
+`ir.cron` (`afr_qualificacao.ir_cron_relatorio_build_job`), processado em unidades de
+trabalho e acordado a cada enfileiramento por `_trigger()` (§11 detalha). Libs
+confirmadas no container `odoo_engenapp-web-qualificacao-1` (`/usr/bin/python3`):
+PyPDF2 1.26.0, reportlab 3.5.59, pdfminer.six. **Conferir no servidor remoto antes do
+deploy.**
 
 ## 7. Varredura de inconsistência
 
@@ -326,8 +329,11 @@ decisões vai para `emissao.scan_snapshot`.
 - Extração do arquivo bruto do validador por IA (usa `extracted_json` + `afr.relatorio.ai`).
 - Certificado de malha com L.E.Adm / Inc.Total / status no `engc_os` (após descongelar).
 - Assinatura ICP-Brasil / gov.br.
-- Execução assíncrona (queue_job) da montagem.
 - Tabelas de resultado por canal geradas pelo Odoo.
+
+Nota (P4): "Execução assíncrona da montagem" deixou de ser fora de escopo — decisão
+do usuário "Fila + etapas" (`afr.relatorio.build.job` + `ir.cron`, não o módulo OCA
+`queue_job`), ver §6.
 
 ## 12. Ajustes fixados no planejamento
 
