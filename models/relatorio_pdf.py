@@ -463,7 +463,17 @@ class AfrRelatorioPdf(models.AbstractModel):
                 reader = open_pdf(content)
                 keep_alive.append(reader)
                 for idx in range(reader.getNumPages()):
-                    writer.addPage(fit_page_to_usable(reader.getPage(idx)))
+                    # open_pdf só valida a página 0: uma página seguinte
+                    # corrompida (stream/objeto ilegível) é pulada com aviso,
+                    # nunca derruba a montagem inteira.
+                    try:
+                        page = fit_page_to_usable(reader.getPage(idx))
+                    except Exception as exc:  # zlib.error, PdfReadError, KeyError...
+                        warnings.append(_(
+                            "%s: '%s', página %d ignorada — página ilegível (%s)."
+                        ) % (label, caption, idx + 1, exc))
+                        continue
+                    writer.addPage(page)
             else:
                 img_reader = PdfFileReader(io.BytesIO(image_to_pdf(content, caption)))
                 keep_alive.append(img_reader)

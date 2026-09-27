@@ -5,6 +5,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from PyPDF2 import PdfFileReader, PdfFileWriter
+from PyPDF2.generic import NameObject
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextContainer
 from PIL import Image
@@ -488,7 +489,7 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
 
     def test_build_warns_when_index_does_not_converge(self):
         _pdf, warnings, fake = self._build(fake=FakeCorpo(grow_each_call=True))
-        self.assertGreaterEqual(len(fake.calls), rp.MAX_PASSES)
+        self.assertEqual(len(fake.calls), rp.MAX_PASSES)
         self.assertTrue(any("não estabilizou" in w for w in warnings), warnings)
 
     def test_build_landscape_and_rotated_annex_pages_become_a4_portrait(self):
@@ -512,6 +513,33 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         pdf, warnings, _f = self._build()
         self.assertEqual(len(pdf_pages_text(pdf)), 9)
         self.assertTrue(any("travado.pdf" in w and "senha" in w for w in warnings), warnings)
+
+    def test_build_skips_corrupt_page_beyond_first_with_warning(self):
+        # open_pdf/_check_files só validam a página 0: uma página ≥ 1 com
+        # content stream corrompido não pode derrubar o _build() inteiro.
+        reader = PdfFileReader(io.BytesIO(make_pdf([["BOA p1"], ["RUIM p2"], ["BOA p3"]])))
+        writer = PdfFileWriter()
+        for idx in range(reader.getNumPages()):
+            page = reader.getPage(idx)
+            if idx == 1:
+                stream = page["/Contents"].getObject()
+                stream._data = b"\x00lixo que nao e zlib"
+                stream[NameObject("/Filter")] = NameObject("/FlateDecode")
+            writer.addPage(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        bad = self._attachment(buf.getvalue(), "meio_corrompido.pdf", "application/pdf")
+        self.assertIsNone(rp.file_problem(buf.getvalue(), "application/pdf"))
+        self.anexos["dados"].attachment_ids = [(6, 0, bad.ids)]
+        pdf, warnings, _f = self._build()
+        pages = pdf_pages_text(pdf)
+        # corpo 6 + dados (2 páginas boas; a corrompida sai) + foto = 9
+        self.assertEqual(len(pages), 9)
+        self.assertIn("BOA p1", pages[5])
+        self.assertIn("BOA p3", pages[6])
+        self.assertNotIn("RUIM", "".join(pages))
+        self.assertTrue(any("meio_corrompido.pdf" in w and "ignorad" in w for w in warnings),
+                        warnings)
 
     def test_build_watermark_only_on_minuta(self):
         minuta, _w, _f = self._build(watermark=True)
