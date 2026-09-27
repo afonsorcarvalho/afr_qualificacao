@@ -229,6 +229,27 @@ class TestRelatorioEmissaoModel(RelatorioFixtureMixin, AfrQualificacaoTestCommon
         with self.assertRaises(ValidationError):
             self.rel.sudo().write({"partner_id": self._foreign_partner().id})
 
+    # ─── Revisão final P4, item 1: minuta_attachment_id só muda pelo job ───
+
+    def test_minuta_attachment_not_writable_by_users(self):
+        foreign = self._attachment(b"alheio", "alheio.txt", "text/plain")
+        for user in (self.usuario, self.manager):
+            with self.assertRaises(UserError, msg=user.login):
+                self.rel.with_user(user).write({"minuta_attachment_id": foreign.id})
+        self.assertFalse(self.rel.minuta_attachment_id)
+        self.assertTrue(foreign.exists())
+
+    def test_create_with_minuta_attachment_is_blocked_for_usuario(self):
+        foreign = self._attachment(b"alheio", "alheio.txt", "text/plain")
+        self._give_equip2_qualif_on(self.rel.os_id)
+        Rel = self.env["afr.qualificacao.relatorio"].with_user(self.usuario)
+        vals = {"os_id": self.rel.os_id.id, "equipment_id": self.equip2.id}
+        with self.assertRaises(UserError):
+            Rel.create(dict(vals, minuta_attachment_id=foreign.id))
+        with self.assertRaises(UserError):
+            Rel.with_context(default_minuta_attachment_id=foreign.id).create(vals)
+        self.assertTrue(foreign.exists())
+
     def test_current_emissao_must_belong_to_relatorio(self):
         other_rel, _q = self._make_relatorio(equipment=self.equip2)
         other_emissao = self._internal_create(relatorio_id=other_rel.id, token="h" * 32)

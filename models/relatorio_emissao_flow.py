@@ -35,8 +35,11 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
     # Só as ações (Emitir / Revisar / aprovação do cliente) mudam estes
     # campos — via sudo(). Mesmo motivo do _CERTIFICATE_FIELDS de
     # afr.qualificacao: a ir.rule escopa registros, não valores.
+    # `minuta_attachment_id` (revisão final P4, item 1): o finalize da minuta
+    # apaga o anexo anterior sob sudo — um id gravado por RPC seria apagado.
     _RQ_INTERNAL_FIELDS = frozenset({
         "state", "revision", "current_emissao_id", "rq_editorial_seq",
+        "minuta_attachment_id",
     })
 
     emissao_ids = fields.One2many(
@@ -102,8 +105,9 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                 ) % ", ".join(anchors))
         if not self.env.su and self._RQ_INTERNAL_FIELDS.intersection(vals):
             raise UserError(_(
-                "Status, revisão e emissão vigente do relatório final só mudam "
-                "pelas ações Emitir, Revisar e pela aprovação do cliente."
+                "Status, revisão, emissão vigente e minuta do relatório final só "
+                "mudam pelas ações Emitir, Revisar, Gerar minuta e pela aprovação "
+                "do cliente."
             ))
         editorial = (
             bool(self._RQ_EDITORIAL_FIELDS.intersection(vals))
@@ -138,9 +142,9 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
             for vals in vals_list:
                 if self._RQ_INTERNAL_FIELDS.intersection(vals):
                     raise UserError(_(
-                        "Status, revisão e emissão vigente do relatório final só "
-                        "mudam pelas ações Emitir, Revisar e pela aprovação do "
-                        "cliente — nunca na criação do registro."
+                        "Status, revisão, emissão vigente e minuta do relatório "
+                        "final só mudam pelas ações Emitir, Revisar, Gerar minuta "
+                        "e pela aprovação do cliente — nunca na criação do registro."
                     ))
                 derived = [f for f in self._RQ_CREATE_DERIVED_FIELDS if f in vals]
                 if derived:
@@ -159,11 +163,12 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                     record.state != "draft"
                     or record.revision != 0
                     or record.current_emissao_id
+                    or record.minuta_attachment_id
                 ):
                     raise UserError(_(
-                        "Status, revisão e emissão vigente do relatório final só "
-                        "mudam pelas ações Emitir, Revisar e pela aprovação do "
-                        "cliente — nunca na criação do registro."
+                        "Status, revisão, emissão vigente e minuta do relatório "
+                        "final só mudam pelas ações Emitir, Revisar, Gerar minuta "
+                        "e pela aprovação do cliente — nunca na criação do registro."
                     ))
         return records
 

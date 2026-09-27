@@ -123,6 +123,23 @@ class TestRelatorioBuildJob(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         self.assertIn("/web/content/%d" % second.id,
                       self.rel.with_user(self.office).action_baixar_minuta()["url"])
 
+    def test_finalize_never_unlinks_foreign_attachment(self):  # revisão final, item 1
+        partner = self.env["res.partner"].create({"name": "Cliente Teste Anexo"})
+        foreign = self.env["ir.attachment"].create({
+            "name": "alheio.txt", "raw": b"alheio", "mimetype": "text/plain",
+            "res_model": "res.partner", "res_id": partner.id})
+        loose = self.env["ir.attachment"].create({
+            "name": "solto.txt", "raw": b"solto", "mimetype": "text/plain"})
+        with FakeCorpo().patch(self.env):
+            for label, victim in (("vinculado", foreign), ("solto", loose)):
+                # sudo: independe do guard de write (item 1a) — só o finalize.
+                self.rel.sudo().write({"minuta_attachment_id": victim.id})
+                self._enqueue_minuta()
+                run_build_jobs(self.env)
+                self.assertEqual(self._job().state, "done")
+                self.assertTrue(victim.exists(), label)
+                self.assertNotEqual(self.rel.minuta_attachment_id, victim)
+
     def test_editorial_change_during_build_aborts_minuta(self):
         with FakeCorpo().patch(self.env):
             self._enqueue_minuta()

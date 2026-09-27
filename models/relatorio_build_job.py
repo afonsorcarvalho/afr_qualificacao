@@ -564,7 +564,11 @@ class AfrQualificacaoRelatorioBuild(models.Model):
             "name": "%s-%s-MINUTA.pdf" % (self.name, self.revision_label),
         })
         self.write({"minuta_attachment_id": attachment.id})
-        if previous:
+        # Só apaga a minuta anterior se ela é DESTE relatório (defesa em
+        # profundidade do item 1 da revisão final): um id alheio que tenha
+        # chegado ao campo fica onde está.
+        if (previous and previous != attachment
+                and previous.res_model == self._name and previous.res_id == self.id):
             previous.unlink()
         body = Markup("%s <a href=\"/web/content/%d?download=true\">%s</a>") % (
             _("Minuta gerada."), attachment.id, _("Baixar"))
