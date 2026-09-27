@@ -1,5 +1,7 @@
 import os
 import re
+import shutil
+import tempfile
 import time
 from unittest.mock import patch
 
@@ -239,12 +241,20 @@ class TestRelatorioBuildJob(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
             args = Report.with_context(**ctx)._build_wkhtmltopdf_args(paperformat, False)
         self.assertNotIn("--cookie-jar", args)
 
+    def _tmp_session_store(self):
+        """Store isolado: o real (/var/lib/odoo/sessions) é compartilhado com o
+        servidor e pode ter shards sem permissão de escrita (ver fix round 2)."""
+        path = tempfile.mkdtemp(prefix="rq-sessions-")
+        self.addCleanup(shutil.rmtree, path, True)
+        return http.FilesystemSessionStore(path, session_class=http.Session, renew_missing=True)
+
     def test_report_session_is_ephemeral_and_sid_never_in_argv(self):
         self._enqueue_minuta()
         job = self._job()
-        store = http.root.session_store
+        store = self._tmp_session_store()
         paperformat = self.env.ref("afr_qualificacao.paperformat_relatorio_final")
-        with patch.object(jobmod.odoo_module, "current_test", False):
+        with patch.object(jobmod.odoo_module, "current_test", False), \
+                patch.object(type(self.Job), "_rq_session_store", lambda s: store):
             with job._rq_report_session("stamp") as ctx:
                 self.assertEqual(ctx, {})
             with job._rq_report_session("body") as ctx:
@@ -253,13 +263,39 @@ class TestRelatorioBuildJob(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
                 with open(jar) as fh:
                     cookie = fh.read()
                 sid = re.search(r"session_id=([^;]+);", cookie).group(1)
+                self.assertTrue(os.path.isfile(store.get_session_filename(sid)))
                 self.assertEqual(store.get(sid).db, self.env.cr.dbname)
                 self.assertFalse(store.get(sid).uid)
                 args = self.env["ir.actions.report"].with_context(**ctx)._build_wkhtmltopdf_args(
                     paperformat, False)
                 self.assertFalse([a for a in args if sid in a])
         self.assertFalse(os.path.exists(jar))
-        self.assertIsNone(store.get(sid).db)  # removida do store
+        self.assertFalse(os.path.exists(store.get_session_filename(sid)))
+
+    def test_report_session_retries_when_store_silently_drops_save(self):
+        """O FilesystemSessionStore engole OSError no save (shard sem
+        permissão): o sid só vale se o arquivo existir de fato."""
+        self._enqueue_minuta()
+        job = self._job()
+        store = self._tmp_session_store()
+        real_save, calls = store.save, []
+
+        def flaky_save(session):
+            calls.append(session.sid)
+            if len(calls) > 1:
+                real_save(session)
+
+        with patch.object(jobmod.odoo_module, "current_test", False), \
+                patch.object(type(self.Job), "_rq_session_store", lambda s: store), \
+                patch.object(store, "save", flaky_save):
+            with job._rq_report_session("body") as ctx:
+                with open(ctx[jobmod.REPORT_COOKIE_JAR_CTX]) as fh:
+                    self.assertIn("session_id=%s;" % calls[1], fh.read())
+            with patch.object(store, "save", lambda session: None), \
+                    mute_logger("odoo.addons.afr_qualificacao.models.relatorio_build_job"):
+                with job._rq_report_session("body") as ctx:
+                    self.assertEqual(ctx, {})  # sem sessão válida: render sem cookie
+        self.assertEqual([f for _d, _s, fs in os.walk(store.path) for f in fs], [])
 
     # --- estouro de CPU/memória: tentativa contada, fatia menor, sem falha ---
     def _stage_spy(self, raise_times, exc_factory):

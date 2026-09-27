@@ -55,6 +55,7 @@ CHAIN_WALL_SECONDS = 30.0
 # do SIGXCPU (que o Odoo 16 converte em Exception, server.py
 # signal_time_expired_handler, e repete a cada ~1 s).
 RLIMIT_CPU_MARGIN = 5.0
+SESSION_SAVE_TRIES = 5
 CPU_LIMIT_MESSAGE = "CPU time limit exceeded."
 USER_GROUP = "afr_qualificacao.group_afr_qualificacao_user"
 # Fases que renderizam (engc da malha em `sources`, corpo em `body`).
@@ -310,6 +311,27 @@ class AfrRelatorioBuildJob(models.Model):
             ctx["commit_assetsbundle"] = False  # savepoint não sobrevive a commit
         return rel.with_user(user).with_context(**ctx)
 
+    def _rq_session_store(self):
+        return http.root.session_store
+
+    def _rq_save_report_session(self, store, tries=SESSION_SAVE_TRIES):
+        """Grava a sessão efêmera e CONFERE o arquivo: o save do
+        FilesystemSessionStore engole OSError (rename para o shard `sid[:2]`
+        sem permissão de escrita) e o sid ficaria apontando para nada. Um
+        sid novo cai noutro shard. None se nenhum save pegou."""
+        for _attempt in range(tries):
+            session = store.new()
+            session.update(http.get_default_session())
+            session.db = self.env.cr.dbname
+            store.save(session)
+            if os.path.isfile(store.get_session_filename(session.sid)):
+                return session
+        _logger.warning(
+            "Montagem %s: sessão efêmera não gravada em %s (permissão dos "
+            "subdiretórios?); render sem cookie, o CSS do layout pode faltar.",
+            self.id, store.path)
+        return None
+
     @contextmanager
     def _rq_report_session(self, phase):
         """Sessão efêmera (só `db`) para o wkhtmltopdf baixar o CSS do layout.
@@ -324,11 +346,11 @@ class AfrRelatorioBuildJob(models.Model):
         if phase not in RENDER_PHASES or request or odoo_module.current_test:
             yield {}
             return
-        store = http.root.session_store
-        session = store.new()
-        session.update(http.get_default_session())
-        session.db = self.env.cr.dbname
-        store.save(session)
+        store = self._rq_session_store()
+        session = self._rq_save_report_session(store)
+        if session is None:
+            yield {}  # render sem cookie (CSS pode faltar em multi-db), mas segue
+            return
         jar_path = None
         try:
             # Mesmo formato do core (ir_actions_report._run_wkhtmltopdf).
