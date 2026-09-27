@@ -291,8 +291,12 @@ MAX_PASSES = 3
 # Pipeline em etapas (emenda P4): cada fatia cabe no limite de CPU do worker.
 CHUNK_PAGES_PARAM = "afr_qualificacao.relatorio_build_chunk_pages"
 STEP_CPU_PARAM = "afr_qualificacao.relatorio_build_step_cpu"
-DEFAULT_CHUNK_PAGES = 12  # vetorial pesado: 12 × ~1.4 s < 20 s de CPU
-DEFAULT_STEP_CPU = 20.0
+# Páginas por fatia; o prazo de CPU (Budget) corta a fatia antes, se preciso.
+DEFAULT_CHUNK_PAGES = 12
+# Orçamento de CPU por invocação do cron (revisão final P4: 15 s). É checado
+# por página, então uma invocação pode passar do orçamento pelo custo de uma
+# página (medido: alguns segundos no vetorial pesado).
+DEFAULT_STEP_CPU = 15.0
 BODY_PAGE_COST = 0.05  # s de CPU estimados p/ carimbar uma página do corpo
 
 
@@ -422,8 +426,8 @@ class AfrRelatorioPdf(models.AbstractModel):
         `page_map` — fato fixado P3 #1; nunca por contexto).
         """
         relatorio.ensure_one()
-        # `relatorio.env`: o contexto do registro (token da emissão, filtro de
-        # pedaços do fallback) chega ao `doc` do template.
+        # `relatorio.env`: o contexto do registro (token e data da emissão)
+        # chega ao `doc` do template.
         content, fmt = relatorio.env["ir.actions.report"].with_context(
             force_report_rendering=True
         )._render_qweb_pdf(REPORT_CORPO, res_ids=relatorio.ids, data=dict(data))
@@ -448,10 +452,7 @@ class AfrRelatorioPdf(models.AbstractModel):
 
     @api.model
     def _render_body_and_markers(self, relatorio, page_map):
-        """Corpo em PDF + `{marcador: página 0-based}` (caminho dos marcadores).
-
-        O Task 6 (fallback) sobrescreveria só este método.
-        """
+        """Corpo em PDF + `{marcador: página 0-based}` (caminho dos marcadores)."""
         body = self._render_report(relatorio, self._body_render_data(relatorio, page_map))
         return body, self._find_markers(body)
 
