@@ -265,7 +265,13 @@ class AfrRelatorioAi(models.AbstractModel):
 
     def _build_chunks(self, rel):
         chunks = [{
-            "label": _("Corpo do relatório"),
+            # Item 5 (P5 final fix wave): literal fixo, NÃO _() — este label
+            # entra na chave de carry-over (`onde`) das decisões de achado
+            # de IA; `_()` traduz pelo idioma do usuário que roda a
+            # verificação, e o mesmo relatório verificado por usuários com
+            # idiomas diferentes geraria chaves diferentes para o MESMO
+            # trecho, perdendo a decisão já tomada.
+            "label": "Corpo do relatório",
             "text": truncate("TEXTO DO RELATÓRIO:\n%s\n\nDADOS ESTRUTURADOS (JSON):\n%s" % (
                 self._body_text(rel),
                 json.dumps(self._structured_data(rel), ensure_ascii=False, indent=1),
@@ -356,6 +362,18 @@ class AfrRelatorioAi(models.AbstractModel):
             call_timeout = min(timeout, int(math.ceil(remaining)))
             try:
                 itens = parse_ai_json(self._call(self._messages(card, chunk), timeout=call_timeout))
+            except (requests.JSONDecodeError, ValueError) as exc:
+                # Item 4 (P5 final fix wave): `requests.JSONDecodeError` é
+                # subclasse de `RequestException` (herda de `InvalidJSONError`)
+                # — sem este `except` ANTES do de rede, uma resposta com
+                # corpo não-JSON de `resp.json()` era tratada como falha de
+                # REDE (abortava os trechos seguintes). É resposta inválida
+                # de UM trecho, como qualquer outro `ValueError` (JSON sem a
+                # lista 'achados', chave de API ausente etc.): os demais
+                # trechos continuam sendo enviados.
+                _logger.warning("IA: resposta inválida no relatório %s: %s", relatorio.id, exc)
+                falhas.append("%s (%s)" % (chunk["label"], exc))
+                continue
             except requests.RequestException as exc:
                 _logger.warning("IA: falha de rede no relatório %s: %s", relatorio.id, exc)
                 falhas.append("%s (%s)" % (chunk["label"], exc))
