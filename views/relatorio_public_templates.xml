@@ -106,4 +106,15 @@
                 </div>
             </div>
     </template>
+    <!-- Fix round 4 (ruling R3): corpo do e-mail de aprovação do cliente.
+         View QWeb (só o administrador edita), renderizada no servidor por
+         action_enviar_aprovacao_cliente — não é um mail.template editável. -->
+    <template id="mail_body_relatorio_aprovacao" name="Relatório Final: e-mail de aprovação do cliente">
+        <div>
+            <p>Prezado(a) <t t-out="line.nome_exibicao or line.partner_id.name or ''"/>,</p>
+            <p>O relatório <strong t-out="relatorio.name"/> (<t t-out="relatorio.revision_label"/>) foi emitido e aguarda a sua aprovação.</p>
+            <p><a t-att-href="portal_url">Ver o relatório e aprovar</a></p>
+            <p>Se preferir, copie o endereço: <t t-out="portal_url"/></p>
+        </div>
+    </template>
 </odoo>

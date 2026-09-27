@@ -75,8 +75,11 @@ def _portal_aprovacao(env, aprovacao_id, access_token):
     if not isinstance(access_token, str) or not access_token or not 0 < aprovacao_id <= _MAX_PG_INT:
         return None
     aprovacao = env["afr.relatorio.aprovacao"].sudo().browse(aprovacao_id).exists()
-    if (not aprovacao or aprovacao.papel != "cliente" or not aprovacao.access_token
-            or not consteq(aprovacao.access_token, access_token)):
+    if not aprovacao or aprovacao.papel != "cliente":
+        return None
+    # Token lido do segredo (sudo, fix round 4 / ruling R1).
+    expected = aprovacao._rq_client_tokens().get(aprovacao.id)
+    if not expected or not consteq(expected, access_token):
         return None
     return aprovacao
 

@@ -876,7 +876,8 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
         self.assertTrue(mail)
         self.assertIn("/my/relatorio/%d?access_token=%s" % (
             self.line_cli.id, self.line_cli.access_token), mail.body_html)
-        self.assertIn("cliente@example.test", mail.email_to or "")
+        # Fix round 4 (R3): destinatário é o contato da linha (recipient_ids).
+        self.assertEqual(mail.recipient_ids, self.partner)
 
     def test_send_to_client_ignores_context_defaults(self):
         self._approve_and_emit()
@@ -916,7 +917,7 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
     def test_public_templates_exist(self):
         self.assertTrue(self.env.ref("afr_qualificacao.relatorio_verify_template"))
         self.assertTrue(self.env.ref("afr_qualificacao.portal_relatorio_aprovacao"))
-        self.assertTrue(self.env.ref("afr_qualificacao.mail_template_relatorio_aprovacao"))
+        self.assertTrue(self.env.ref("afr_qualificacao.mail_body_relatorio_aprovacao"))
 
     # ─────────── Fix round 1 (review do Task 9) ───────────
 
@@ -1109,24 +1110,7 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
 
     # ─── Fix round 3: nenhum caminho entrega o token a não-Gestor ───
 
-    TPL = "afr_qualificacao.mail_template_relatorio_aprovacao"
-
-    def test_template_rendered_by_non_manager_has_no_token(self):
-        self._approve_and_emit()
-        token = self.line_cli.access_token
-        tpl = self.env.ref(self.TPL)
-        for user in (self.office, self.tech):
-            self.assertFalse(self.line_cli.with_user(user).portal_url)
-            values = tpl.with_user(user).generate_email(self.line_cli.id, ["body_html"])
-            self.assertNotIn(token, str(values.get("body_html")))
-        # send_mail via RPC (só checa leitura do registro) com destinatário forjado.
-        mail_id = tpl.with_user(self.office).send_mail(
-            self.line_cli.id, email_values={"email_to": "atacante@example.test"})
-        self.assertNotIn(token, self.env["mail.mail"].browse(mail_id).body_html or "")
-        # Gestor e fluxo interno (sudo) continuam vendo o link.
-        self.assertIn(token, self.line_cli.with_user(self.manager).portal_url)
-        self.assertIn(token, str(tpl.sudo().generate_email(
-            self.line_cli.id, ["body_html"])["body_html"]))
+    TPL = "afr_qualificacao.mail_template_relatorio_aprovacao"  # legado (removido)
 
     def test_non_manager_cannot_search_or_group_by_token(self):
         token = self.line_cli.access_token
@@ -1139,8 +1123,139 @@ class TestRelatorioPublicoPortal(RelatorioEmissaoBase):
         with self.assertRaises(AccessError):
             self.env["afr.qualificacao.relatorio"].with_user(self.office).search_count(
                 [("aprovacao_ids.access_token", "=", token)])
-        with self.assertRaises(AccessError):
+        # Fix round 4 (R2): campo não armazenado — agrupar é recusado pelo ORM.
+        with self.assertRaises(UserError):  # AccessError é subclasse
             Aprov.read_group([], ["papel"], ["access_token"])
-        # Gestor pode.
-        self.assertEqual(self.env["afr.relatorio.aprovacao"].with_user(self.manager)
-                         .search_count([("access_token", "=", token)]), 1)
+        # Não pesquisável para ninguém fora do servidor (nem o Gestor).
+        with self.assertRaises(AccessError):
+            self.env["afr.relatorio.aprovacao"].with_user(self.manager).search_count(
+                [("access_token", "=", token)])
+
+    # ─── Fix round 4: segredo fora do modelo legível (rulings R1–R5) ───
+
+    def _no_token(self, token, fn, msg=None):
+        """Chamada que ou é recusada ou não devolve o token."""
+        try:
+            result = fn()
+        except (AccessError, UserError, ValueError):
+            return
+        self.assertNotIn(token, repr(result), msg)
+
+    def test_r4_token_lives_in_secret_model_without_acl(self):  # R1
+        token = self.line_cli.access_token
+        Secret = self.env["afr.relatorio.aprovacao.secret"]
+        secret = Secret.search([("aprovacao_id", "=", self.line_cli.id)])
+        self.assertEqual(len(secret), 1)
+        self.assertEqual(secret.token, token)
+        self.assertFalse(Secret.search([("aprovacao_id", "=", self.line_elab.id)]))
+        for user in (self.office, self.tech, self.manager):
+            with self.assertRaises(AccessError):
+                Secret.with_user(user).search([])
+            with self.assertRaises(AccessError):
+                secret.with_user(user).read(["token"])
+
+    def test_r4_read_group_aggregate_alias_gives_no_token(self):  # R5
+        token = self.line_cli.access_token
+        Aprov = self.env["afr.relatorio.aprovacao"]
+        for user in (self.office, self.tech):
+            for spec in (["t:array_agg(access_token)"], ["t:max(access_token)"],
+                         ["access_token:max"], ["access_token:array_agg"]):
+                self._no_token(token, lambda: Aprov.with_user(user).read_group(
+                    [], spec, ["papel"]), msg=(user.login, spec))
+
+    def test_r4_usuario_authored_template_gets_no_token(self):  # R5
+        self._approve_and_emit()
+        token = self.line_cli.access_token
+        model = self.env["ir.model"]._get("afr.relatorio.aprovacao")
+        try:
+            tpl = self.env["mail.template"].with_user(self.office).create({
+                "name": "Modelo do Usuário",
+                "model_id": model.id,
+                "subject": "{{ object.access_token }}",
+                "body_html": '<p><t t-out="object.access_token"/> <t t-out="object.portal_url"/></p>',
+            })
+        except AccessError:
+            return  # base restringe a edição de modelos dinâmicos: sem vetor
+        self._no_token(token, lambda: tpl.generate_email(
+            self.line_cli.id, ["subject", "body_html"]))
+        self._no_token(token, lambda: self.env["mail.mail"].browse(tpl.send_mail(
+            self.line_cli.id, email_values={"email_to": "atacante@example.test"})
+        ).sudo().read(["subject", "body_html", "body"]))
+
+    def test_r4_onchange_subfield_gives_no_token(self):  # R5
+        token = self.line_cli.access_token
+        spec = {"aprovacao_ids": "1", "aprovacao_ids.access_token": "",
+                "aprovacao_ids.papel": "", "aprovacao_ids.portal_url": ""}
+        rel = self.rel.with_user(self.office)
+        # Linha alterada ⇒ o onchange devolve TODOS os subcampos dela (Command.update).
+        values = {"aprovacao_ids": [[1, line.id, {"nome_exibicao": "Nome alterado"}]
+                                    for line in self.rel.aprovacao_ids]}
+        for field_name in (False, "aprovacao_ids"):
+            self._no_token(token, lambda: rel.onchange(values, field_name, spec),
+                           msg=field_name)
+
+    def test_r4_client_email_has_no_editable_template_and_one_recipient(self):  # R3
+        legacy = self.env.ref(self.TPL, raise_if_not_found=False)
+        if legacy:  # base antiga: modelo noupdate órfão até a migração 16.0.8.3.0
+            legacy.with_user(self.office).write({
+                "email_cc": "atacante@example.test",
+                "body_html": "<p>modelo adulterado</p>"})
+        self._approve_and_emit()
+        self.rel.with_user(self.manager).action_enviar_aprovacao_cliente()
+        mail = self.env["mail.mail"].search([
+            ("model", "=", "afr.relatorio.aprovacao"), ("res_id", "=", self.line_cli.id),
+        ])
+        self.assertEqual(len(mail), 1)
+        self.assertEqual(mail.recipient_ids, self.partner)
+        self.assertFalse(mail.email_cc)
+        self.assertIn(mail.email_to or self.partner.email, self.partner.email)
+        token = self.line_cli.access_token
+        self.assertIn("/my/relatorio/%d?access_token=%s" % (self.line_cli.id, token),
+                      mail.body_html)
+        self.assertNotIn("adulterado", mail.body_html)
+        with self.assertRaises(AccessError):
+            self.env["mail.mail"].with_user(self.office).search_read(
+                [("res_id", "=", self.line_cli.id)], ["body_html"])
+        # A mensagem-base (legível por quem lê a linha) não carrega o token.
+        msgs = self.env["mail.message"].with_user(self.office).search([
+            ("model", "=", "afr.relatorio.aprovacao"), ("res_id", "=", self.line_cli.id)])
+        self.assertNotIn(token, repr(msgs.read(["body", "subject"])))
+        # Nota no chatter do relatório sem o token.
+        self.assertNotIn(token, repr(self.rel.message_ids.mapped("body")))
+
+    def test_r4_rotation_updates_secret(self):  # R1
+        self._approve_and_emit()
+        Secret = self.env["afr.relatorio.aprovacao.secret"]
+        old = self.line_cli.access_token
+        self.line_cli.with_user(self.office).write({"partner_id": self._contact().id})
+        new = Secret.search([("aprovacao_id", "=", self.line_cli.id)]).token
+        self.assertNotEqual(new, old)
+        self.assertEqual(self.line_cli.access_token, new)
+        self.rel.with_user(self.manager).action_revisar()
+        self._approve_and_emit()
+        newer = Secret.search([("aprovacao_id", "=", self.line_cli.id)]).token
+        self.assertNotEqual(newer, new)
+        self.assertEqual(_portal_aprovacao(self.env, self.line_cli.id, newer), self.line_cli)
+        self.assertIsNone(_portal_aprovacao(self.env, self.line_cli.id, new))
+
+    def test_r4_migration_copies_legacy_column(self):  # R4
+        from odoo.modules.module import get_module_path
+        from odoo.modules.migration import load_script
+        mig = load_script(get_module_path("afr_qualificacao")
+                          + "/migrations/16.0.8.3.0/post-migrate.py", "afr_qualificacao_r4_mig")
+        cr = self.env.cr
+        cr.execute("ALTER TABLE afr_relatorio_aprovacao ADD COLUMN IF NOT EXISTS access_token varchar")
+        Secret = self.env["afr.relatorio.aprovacao.secret"]
+        Secret.search([("aprovacao_id", "=", self.line_cli.id)]).unlink()
+        cr.execute("UPDATE afr_relatorio_aprovacao SET access_token = %s WHERE id = %s",
+                   ["a" * 32, self.line_cli.id])
+        mig.migrate(cr, "16.0.8.2.0")
+        mig.migrate(cr, "16.0.8.2.0")  # idempotente
+        self.env.invalidate_all()
+        secret = Secret.search([("aprovacao_id", "=", self.line_cli.id)])
+        self.assertEqual(secret.token, "a" * 32)
+        self.assertEqual(_portal_aprovacao(self.env, self.line_cli.id, "a" * 32), self.line_cli)
+        cr.execute("SELECT access_token FROM afr_relatorio_aprovacao WHERE id = %s",
+                   [self.line_cli.id])
+        self.assertFalse(cr.fetchone()[0])
+        self.assertFalse(self.env.ref(self.TPL, raise_if_not_found=False))

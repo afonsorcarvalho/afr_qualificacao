@@ -50,12 +50,58 @@ class AfrRelatorioAprovacao(models.Model):
     registro = fields.Char(string="Registro (CREA etc.)")
     approved_at = fields.Datetime(string="Aprovado em", readonly=True, copy=False)
     ip = fields.Char(readonly=True, copy=False)
-    # Fix round 1, achado 2: token de acesso do cliente só visível ao Gestor
-    # (Técnico/Usuário têm leitura=1 no registro, mas não neste campo).
+    # Fix round 4 do P4 Task 9 (ruling R2): o token NÃO é mais armazenado
+    # aqui — vive em `afr.relatorio.aprovacao.secret` (sem ACL para nenhum
+    # grupo). Este campo só o expõe, sob `su` ou ao Gestor; para qualquer
+    # outro (render de mail.template, onchange, atributo) vale False.
+    # Não armazenado ⇒ read_group/agregação recusados pelo ORM; a busca é
+    # recusada explicitamente (sem `search=` o ORM trocaria o termo por
+    # "tudo" e logaria ERROR).
     access_token = fields.Char(
-        readonly=True, copy=False,
+        compute="_compute_access_token", search="_search_access_token",
+        string="Token de acesso", copy=False,
         groups="afr_qualificacao.group_afr_qualificacao_manager",
     )
+
+    @api.depends_context("uid")
+    def _compute_access_token(self):
+        allowed = self.env.su or self.env.user.has_group(_MANAGER_GROUP)
+        tokens = self._rq_client_tokens() if allowed else {}
+        for rec in self:
+            rec.access_token = tokens.get(rec._origin.id, False)
+
+    def _search_access_token(self, operator, value):
+        raise AccessError(_("O token de acesso do cliente não pode ser pesquisado."))
+
+    # ── acesso ao segredo: sempre sudo + clean_context (ruling R1) ──
+
+    def _rq_secret_model(self):
+        return self.env["afr.relatorio.aprovacao.secret"].sudo().with_context(
+            clean_context(self.env.context))
+
+    def _rq_client_tokens(self):
+        """{id da linha: token} lido do segredo (uso interno do servidor)."""
+        ids = [i for i in self._origin.ids if i]
+        if not ids:
+            return {}
+        secrets = self._rq_secret_model().search([("aprovacao_id", "in", ids)])
+        return {s.aprovacao_id.id: s.token for s in secrets}
+
+    def _rq_set_client_token(self, token):
+        """Grava (ou, com token falso, apaga) o segredo de cada linha."""
+        Secret = self._rq_secret_model()
+        existing = {s.aprovacao_id.id: s for s in Secret.search(
+            [("aprovacao_id", "in", self.ids)])}
+        for rec in self:
+            secret = existing.get(rec.id)
+            if not token:
+                if secret:
+                    secret.unlink()
+            elif secret:
+                secret.write({"token": token})
+            else:
+                Secret.create({"aprovacao_id": rec.id, "token": token})
+        self.env["afr.relatorio.aprovacao"].invalidate_model(["access_token", "portal_url"])
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -75,6 +121,7 @@ class AfrRelatorioAprovacao(models.Model):
         não-sudo sobrevivia ao pré-check. O pós-check olha o valor EFETIVO
         do registro já criado, agnóstico ao vetor usado.
         """
+        supplied = []
         for vals in vals_list:
             if not self.env.su:
                 touched = set(vals) & set(_CREATE_BLOCKED_FIELDS)
@@ -83,10 +130,13 @@ class AfrRelatorioAprovacao(models.Model):
                         "Apenas o sistema pode definir os campos de controle "
                         "da aprovação (%s) na criação."
                     ) % ", ".join(sorted(touched)))
-                vals.pop("access_token", None)
-            if vals.get("papel") == "cliente" and not vals.get("access_token"):
-                vals["access_token"] = uuid.uuid4().hex
+            # Fix round 4: o token vai para o segredo, nunca para a linha.
+            token = vals.pop("access_token", None)
+            supplied.append(token if self.env.su else None)
         records = super().create(vals_list)
+        for rec, token in zip(records, supplied):
+            if token and rec.papel == "cliente":
+                rec._rq_set_client_token(token)
         if not self.env.su:
             recs_su = records.sudo()
             touched = set()
@@ -105,13 +155,11 @@ class AfrRelatorioAprovacao(models.Model):
                     "Apenas o Gestor pode designar o usuário emissor "
                     "(responsável técnico) do relatório."
                 ))
-            stray_tokens = recs_su.filtered(lambda r: r.papel != "cliente" and r.access_token)
-            if stray_tokens:
-                stray_tokens.write({"access_token": False})
             recs_su._check_client_partner()
         # Fix round 2 do P4 Task 9, achado 3: o papel efetivo pode vir de
         # `default_papel` do contexto (fora do vals) — token pelo registro.
-        missing = records.sudo().filtered(lambda r: r.papel == "cliente" and not r.access_token)
+        tokens = records._rq_client_tokens()
+        missing = records.sudo().filtered(lambda r: r.papel == "cliente" and not tokens.get(r.id))
         if missing:
             missing._rotate_client_token(clear_approval=False)
         return records
@@ -137,41 +185,9 @@ class AfrRelatorioAprovacao(models.Model):
         """Token novo (servidor, sudo + clean_context) — o link antigo morre."""
         lines = self.sudo().with_context(clean_context(self.env.context))
         for line in lines:
-            vals = {"access_token": uuid.uuid4().hex}
-            if clear_approval:
-                vals.update(approved_at=False, ip=False)
-            line.write(vals)
-
-    # Fix round 3 do P4 Task 9: `groups=` no access_token barra read/write,
-    # mas NÃO busca nem agrupamento no Odoo 16 — um Usuário extraía o token
-    # por `search_count([('access_token', '=like', 'a%')])`, caractere a
-    # caractere. _where_calc é o ponto comum de search/read_group (e das
-    # subconsultas por caminho, ex. 'aprovacao_ids.access_token').
-    def _rq_token_access_allowed(self):
-        return self.env.su or self.env.user.has_group(_MANAGER_GROUP)
-
-    def _rq_check_token_not_used(self, names):
-        if any(name and str(name).split(".")[0].split(":")[0] == "access_token"
-               for name in names) and not self._rq_token_access_allowed():
-            raise AccessError(_(
-                "Apenas o Gestor pode consultar o token de acesso do cliente."))
-
-    @api.model
-    def _where_calc(self, domain, active_test=True):
-        self._rq_check_token_not_used(
-            leaf[0] for leaf in (domain or [])
-            if isinstance(leaf, (list, tuple)) and len(leaf) == 3
-            and isinstance(leaf[0], str))
-        return super()._where_calc(domain, active_test)
-
-    @api.model
-    def read_group(self, domain, fields, groupby, offset=0, limit=None,
-                   orderby=False, lazy=True):
-        groupby_list = [groupby] if isinstance(groupby, str) else list(groupby or [])
-        self._rq_check_token_not_used(list(fields or []) + groupby_list + [
-            part.strip().split(" ")[0] for part in (orderby or "").split(",")])
-        return super().read_group(domain, fields, groupby, offset=offset, limit=limit,
-                                  orderby=orderby, lazy=lazy)
+            line._rq_set_client_token(uuid.uuid4().hex)
+        if clear_approval and lines:
+            lines.write({"approved_at": False, "ip": False})
 
     def _identity_field_changed(self, field, vals):
         """True quando `vals[field]` difere do valor atual do registro
@@ -229,6 +245,10 @@ class AfrRelatorioAprovacao(models.Model):
                 "Apenas o sistema pode alterar os campos de controle da "
                 "aprovação (%s)."
             ) % ", ".join(sorted(touched)))
+        # Fix round 4: sob su, `access_token` grava/apaga o segredo (o campo
+        # da linha não é armazenado).
+        token_given = "access_token" in vals
+        token_value = vals.pop("access_token", None)
         if (not self.env.su and ({"user_id", "papel"} & set(vals))
                 and not self.env.user.has_group(_MANAGER_GROUP)
                 and any(rec._emissor_designation_changed(vals) for rec in self)):
@@ -262,10 +282,12 @@ class AfrRelatorioAprovacao(models.Model):
             changed.sudo().write({"approved_at": False, "ip": False})
         if rotate:
             rotate._rotate_client_token(clear_approval="approved_at" not in vals)
+        if token_given:
+            self._rq_set_client_token(token_value)
         if drop:
-            drop.sudo().with_context(clean_context(self.env.context)).write(
-                {"access_token": False})
-        missing = self.sudo().filtered(lambda r: r.papel == "cliente" and not r.access_token)
+            drop._rq_set_client_token(False)
+        tokens = self._rq_client_tokens()
+        missing = self.sudo().filtered(lambda r: r.papel == "cliente" and not tokens.get(r.id))
         if missing:
             missing._rotate_client_token(clear_approval=False)
         if not self.env.su:
@@ -279,3 +301,25 @@ class AfrRelatorioAprovacao(models.Model):
             if rels:
                 rels.with_context(clean_context(self.env.context))._update_client_approval_state()
         return result
+
+
+class AfrRelatorioAprovacaoSecret(models.Model):
+    """Fix round 4 do P4 Task 9 (ruling R1): segredo do link do cliente.
+
+    Fora de `afr.relatorio.aprovacao` para que nenhum caminho genérico do
+    ORM (read_group com agregação, busca, onchange, render de mail.template
+    por um Usuário) alcance o token. Sem ACL para grupo algum: só o código
+    do servidor, via sudo, lê/grava.
+    """
+    _name = "afr.relatorio.aprovacao.secret"
+    _description = "Token de acesso do aprovador do cliente"
+    _rec_name = "aprovacao_id"
+
+    aprovacao_id = fields.Many2one(
+        "afr.relatorio.aprovacao", required=True, ondelete="cascade", index=True)
+    token = fields.Char(required=True, index=True, copy=False)
+
+    _sql_constraints = [
+        ("aprovacao_unique", "unique(aprovacao_id)",
+         "Cada aprovação tem um único token de acesso."),
+    ]

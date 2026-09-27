@@ -511,10 +511,14 @@ class TestRelatorioAprovacaoGuard(AfrQualificacaoTestCommon):
         aprov = self.env["afr.relatorio.aprovacao"].create({
             "relatorio_id": rel.id, "papel": "cliente", "partner_id": self.partner.id,
         })
-        with self.assertRaises(AccessError):
-            aprov.with_user(self.user_usuario).access_token
-        with self.assertRaises(AccessError):
-            aprov.with_user(self.user_tecnico).access_token
+        # Fix round 4 do P4 Task 9 (ruling R2): o campo não é mais armazenado;
+        # read() segue barrado pelo `groups=`, e o acesso por atributo (que no
+        # Odoo 16 não checa `groups=` em campo computado) devolve False.
+        for user in (self.user_usuario, self.user_tecnico):
+            with self.assertRaises(AccessError):
+                aprov.with_user(user).read(["access_token"])
+            self.assertFalse(aprov.with_user(user).access_token)
+        self.assertTrue(aprov.sudo().access_token)
 
     def test_access_token_readable_by_manager_and_sudo(self):
         rel = _make_relatorio(self.env, self.equip1)

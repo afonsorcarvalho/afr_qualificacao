@@ -413,8 +413,8 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
     def _reset_client_approvals(self):
         """Nova revisão precisa de nova aprovação do cliente (link novo). Só no finalize."""
         lines = self.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
-        for line in lines.sudo().with_context(clean_context(self.env.context)):
-            line.write({"approved_at": False, "ip": False, "access_token": uuid.uuid4().hex})
+        # Token novo no segredo (sudo + clean_context) e aprovação zerada.
+        lines.with_context(clean_context(self.env.context))._rotate_client_token()
 
     def _rq_lock_for_update(self):
         """Serializa aprovações concorrentes do cliente (fix round 1, achado 2).
@@ -482,12 +482,31 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
                 "Nenhum aprovador do cliente pendente com e-mail cadastrado."
             ))
         clean_ctx = clean_context(self.env.context)
-        # sudo: o link leva o access_token (campo só do Gestor, ruling T3-2).
-        template = self.env.ref(
-            "afr_qualificacao.mail_template_relatorio_aprovacao"
-        ).sudo().with_context(clean_ctx)
-        for line in pending:
-            template.send_mail(line.id, force_send=False)
+        # Fix round 4 (ruling R3): sem mail.template (editável por qualquer
+        # usuário interno — cc/beacon no modelo oficial ou modelo próprio com
+        # o token). Corpo de uma view QWeb (só o administrador edita),
+        # renderizado aqui; destinatário = só o contato da linha; mail.mail
+        # via sudo + clean_context. Só `body_html` (a mensagem-base, legível
+        # por quem lê a linha, fica sem corpo — o token não vai para ela).
+        rel_su = self.sudo().with_context(clean_ctx)
+        Mail = self.env["mail.mail"].sudo().with_context(clean_ctx)
+        QWeb = self.env["ir.qweb"].sudo().with_context(clean_ctx)
+        email_from = rel_su.company_id.email_formatted or self.env.user.email_formatted
+        subject = _("Aprovação do relatório %(name)s %(rev)s") % {
+            "name": rel_su.name, "rev": rel_su.revision_label}
+        for line in pending.sudo().with_context(clean_ctx):
+            body = QWeb._render("afr_qualificacao.mail_body_relatorio_aprovacao", {
+                "line": line, "relatorio": rel_su, "portal_url": line._portal_url(),
+            })
+            Mail.create({
+                "subject": subject,
+                "body_html": body,
+                "email_from": email_from,
+                "recipient_ids": [(6, 0, line.partner_id.ids)],
+                "model": "afr.relatorio.aprovacao",
+                "res_id": line.id,
+                "auto_delete": True,
+            })
         self.with_context(clean_ctx).message_post(
             body=_("Link de aprovação enviado para: %s") % ", ".join(
                 pending.mapped("partner_id.email")))
@@ -520,7 +539,7 @@ class AfrRelatorioAprovacaoPortal(models.Model):
         icp = self.env["ir.config_parameter"].sudo()
         url = "%s/my/relatorio/%d?access_token=%s" % (
             icp.get_param("web.base.url", default=""), self.id,
-            self.sudo().access_token or "")
+            self._rq_client_tokens().get(self.id) or "")
         db_param = icp.get_param(
             "afr_qualificacao.verify_url_db", default=self.env.cr.dbname)
         if db_param:
