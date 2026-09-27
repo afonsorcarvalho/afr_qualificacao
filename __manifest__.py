@@ -151,6 +151,19 @@
               (Gerar minuta, Baixar minuta, Aprovar, Emitir, Enviar para
               aprovação do cliente, Revisar) e aba "Revisões" (histórico
               de emissões, só leitura).
+            P5 (16.0.8.4.0): verificação de inconsistências antes de
+              emitir (spec §7) — regras determinísticas (afr.relatorio
+              .achado) + revisão assistiva opcional por IA (OpenRouter,
+              §7.2, desligada por padrão). Botão "Verificar" roda as
+              regras (e a IA, se ligada em Configurações), grava achados
+              bloqueia/alerta/info com carry-over de decisão entre
+              verificações. Bloqueio não aceita decisão (corrigir o dado
+              e verificar de novo); alerta exige decisão (procede ou
+              descartado com motivo) antes de emitir; info não impede.
+              Aba "Verificação" no relatório lista os achados por
+              gravidade; banner "Aguardando" no topo resume os
+              bloqueios. Gate de emissão passa a exigir também nenhum
+              achado pendente (bloqueia ou alerta).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -285,6 +298,8 @@
         "views/relatorio_public_templates.xml",
         # Relatório Final P4 — botões de emissão + aba Revisões
         "views/relatorio_emissao_views.xml",
+        # Relatório Final P5 — página Verificação + botão Verificar + banner
+        "views/relatorio_verificacao_views.xml",
     ],
     "external_dependencies": {
         "python": [
