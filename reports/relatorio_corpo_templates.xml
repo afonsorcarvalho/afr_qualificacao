@@ -9,21 +9,21 @@
     -->
     <template id="rq_styles">
         <style>
-            .rq-page { color: #212529; font-size: 11px; line-height: 1.45; font-family: Arial, Helvetica, sans-serif; }
+            .rq-page { color: #212529; font-size: 13px; line-height: 1.45; font-family: Arial, Helvetica, sans-serif; }
             .rq-mark { color: #ffffff; font-size: 1pt; line-height: 1pt; position: absolute; }
             .rq-page-break { page-break-before: always; }
             .rq-title { margin: 18px 0 8px 0; color: #0A3D62; page-break-after: avoid; }
-            .rq-title-l1 { font-size: 17px; font-weight: bold; text-transform: uppercase; padding-bottom: 5px; border-bottom: 1px solid #C9D3DC; }
-            .rq-title-l1 .rq-title-num { color: #F86A30; font-size: 24px; margin-right: 12px; }
-            .rq-title-child { font-size: 12.5px; font-weight: bold; margin: 12px 0 5px 0; }
+            .rq-title-l1 { font-size: 19px; font-weight: bold; text-transform: uppercase; padding-bottom: 5px; border-bottom: 1px solid #C9D3DC; }
+            .rq-title-l1 .rq-title-num { color: #F86A30; font-size: 27px; margin-right: 12px; }
+            .rq-title-child { font-size: 14.5px; font-weight: bold; margin: 12px 0 5px 0; }
             .rq-title-child .rq-title-num { margin-right: 8px; }
             .rq-body { text-align: justify; }
             .rq-body blockquote, .rq-box-info { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #F86A30; background: #EEF2F5; }
             .rq-box-info { border-left-color: #0A3D62; }
             .rq-box-warn { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #C0392B; background: #FBECEC; font-weight: bold; }
             .rq-box-label { display: block; color: #C0392B; font-size: 9.5px; font-weight: bold; text-transform: uppercase; }
-            .rq-subtitle { color: #0A3D62; font-weight: bold; font-size: 12px; margin: 14px 0 5px 0; page-break-after: avoid; }
-            .rq-table { width: 100%; border-collapse: collapse; margin: 4px 0 12px 0; }
+            .rq-subtitle { color: #0A3D62; font-weight: bold; font-size: 14px; margin: 14px 0 5px 0; page-break-after: avoid; }
+            .rq-table { width: 100%; border-collapse: collapse; margin: 4px 0 12px 0; font-size: 11px; }
             .rq-table th, .rq-table td { border: none; border-bottom: 1px solid #DCE3E9; padding: 3px 6px; vertical-align: top; text-align: left; }
             .rq-table thead th { color: #0A3D62; font-weight: bold; border-bottom: 1px solid #0A3D62; }
             .rq-table tbody tr th, .rq-table > tr > th { color: #5A7184; font-size: 9px; font-weight: normal; text-transform: uppercase; }
@@ -35,7 +35,7 @@
             .rq-cover-subtitle { font-size: 13px; color: #5A7184; margin: 10px 0 70px 0; }
             .rq-cover-meta { width: 75%; border-top: 1px solid #0A3D62; }
             .rq-cover-meta td { font-weight: bold; color: #212529; }
-            .rq-toc { width: 100%; border-collapse: collapse; }
+            .rq-toc { width: 100%; border-collapse: collapse; font-size: 12px; }
             .rq-toc-row td { height: 18px; padding: 0 4px; border-bottom: 1px dotted #C9D3DC; }
             .rq-toc-l1 td { font-weight: bold; color: #0A3D62; }
             .rq-toc-num { width: 50px; color: #F86A30; }
@@ -48,8 +48,8 @@
             .rq-anexo-title { color: #0A3D62; font-size: 20px; font-weight: bold; text-transform: uppercase; margin-top: 8px; }
             .rq-anexo-rule { width: 60px; border-top: 3px solid #F86A30; margin: 12px 0; }
             .rq-doc-header { margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #F86A30; }
-            .rq-doc-title { font-size: 17px; font-weight: bold; color: #0A3D62; text-transform: uppercase; }
-            .rq-doc-number { font-size: 11px; color: #5A7184; }
+            .rq-doc-title { font-size: 19px; font-weight: bold; color: #0A3D62; text-transform: uppercase; }
+            .rq-doc-number { font-size: 12px; color: #5A7184; }
         </style>
     </template>
 

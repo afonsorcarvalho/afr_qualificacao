@@ -271,31 +271,15 @@ def _split_section(c, section):
     return num, _truncate(c, name[:SECTION_MAX], "Helvetica-Bold", 8, 60 * mm)
 
 
-def _section_reserve(c, section):
-    """Largura reservada à direita do cabeçalho para o rótulo da seção."""
-    if not section:
-        return 20 * mm
-    num, name = _split_section(c, section)
-    width = c.stringWidth(name, "Helvetica-Bold", 8)
-    if num:
-        width += c.stringWidth(num, "Helvetica-Bold", 8) + 2 * mm
-    return max(width + 6 * mm, 20 * mm)
-
-
-def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=False,
-                   section_reserve=None):
+def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=False):
     """Página A4 transparente: capa limpa OU cabeçalho/rodapé internos.
 
     `section`: rótulo da seção atual ("NN TÍTULO", "ANEXO N" ou um título
-    sem número, ex. "SUMÁRIO") — vai à direita do cabeçalho interno.
+    sem número, ex. "SUMÁRIO") — vai à direita do cabeçalho interno, na
+    linha 1 (baseline do título).
     `cover`: True só para a página da capa (spec §2) — faixa navy/laranja
     no topo e linha de propriedade no pé; sem logo, título, seção, "Página
     X de Y" nem QR.
-    `section_reserve`: largura (pt) já calculada por `stamp_pdf` a reservar
-    à direita do subtítulo para o rótulo de seção mais largo do documento
-    (evita recalcular `_section_reserve` sobre `section_labels` a cada
-    página). `None`: calculado aqui a partir de `header["section_labels"]`
-    (ou `section`), como antes — mantém chamadores diretos funcionando.
     """
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
@@ -331,26 +315,34 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
         c.drawString(x, top - 6 * mm, "RELATÓRIO DE QUALIFICAÇÃO TÉRMICA")
         c.setFillColorRGB(*SLATE)
         c.setFont("Helvetica", 7)
-        # Área disponível pro subtítulo: reserva à direita a largura real da
-        # seção (≤ 60 mm, spec) + folga — o "TAG: <tag>" nunca pode sumir
-        # (nota de resolução), então só o NOME do equipamento é truncado.
-        # Reserva = rótulo MAIS LARGO do documento: subtítulo idêntico em
-        # todas as páginas (cabeçalho corrido, como no manual).
-        if section_reserve is None:
-            fallback_labels = [l for l in (header.get("section_labels") or []) if l] or [section]
-            section_reserve = max(_section_reserve(c, l) for l in fallback_labels)
-        avail = right - x - section_reserve
-        prefix = header.get("subtitle_prefix")
-        if prefix:
-            joiner = " · "
-            name_width = max(avail - c.stringWidth(prefix + joiner, "Helvetica", 7), 0)
+        # Linhas 2 e 3 usam a largura inteira até a margem direita — a
+        # seção fica só na linha 1 (baseline do título), então não há mais
+        # nada a reservar aqui.
+        avail = right - x
+        title = header.get("title") or ""
+        revision = header.get("revision") or ""
+        date = header.get("date") or ""
+        parts = [p for p in (title, revision) if p]
+        if date == "MINUTA":
+            parts.append("MINUTA")
+        elif date:
+            parts.append("Emissão: %s" % date)
+        c.drawString(x, top - 10 * mm,
+                     _truncate(c, " · ".join(parts), "Helvetica", 7, avail))
+        if "equipment_tag" in header:
+            # `header` novo: TAG nunca pode sumir (nota de resolução) — só
+            # o NOME do equipamento é truncado, reservando espaço p/ o
+            # prefixo "Equipamento: " e o sufixo " · TAG: <tag>".
+            tag = header.get("equipment_tag") or "—"
+            prefix, suffix = "Equipamento: ", " · TAG: %s" % tag
+            name_width = max(
+                avail - c.stringWidth(prefix, "Helvetica", 7)
+                - c.stringWidth(suffix, "Helvetica", 7), 0)
             name = _truncate(c, header.get("equipment_name") or "", "Helvetica", 7, name_width)
-            c.drawString(x, top - 10 * mm, prefix + joiner + name)
+            c.drawString(x, top - 13.5 * mm, prefix + name + suffix)
         else:
-            # Compatibilidade com `header` antigo (sem subtitle_prefix):
-            # título na linha do subtítulo, equipamento truncado embaixo.
-            c.drawString(x, top - 10 * mm, header.get("title") or "")
-            c.setFont("Helvetica", 7)
+            # Compatibilidade com `header` antigo (sem equipment_tag):
+            # a string combinada "Equipamento: ... TAG: ..." já pronta.
             c.drawString(x, top - 13.5 * mm,
                          _truncate(c, header.get("equipment") or "", "Helvetica", 7, avail))
         if section:
@@ -427,12 +419,6 @@ def stamp_pdf(content, header, watermark):
     qr_index = header.get("qr_page_index")
     labels = header.get("section_labels") or []
     cover_idx = header.get("cover_page_index")
-    # Reserva do rótulo de seção: calculada UMA vez para todo o documento
-    # (mesmo conjunto de `section_labels` em toda página carimbada aqui),
-    # não a cada `_overlay_page`.
-    measure = canvas.Canvas(io.BytesIO())
-    reserve_labels = [l for l in labels if l] or [""]
-    section_reserve = max(_section_reserve(measure, l) for l in reserve_labels)
     writer = PdfFileWriter()
     for idx in range(count):
         number = offset + idx
@@ -443,7 +429,6 @@ def stamp_pdf(content, header, watermark):
             with_qr=bool(header.get("verify_url")) and qr_index == number and not is_cover,
             section=labels[number] if number < len(labels) else "",
             cover=is_cover,
-            section_reserve=section_reserve,
         ))
         writer.addPage(page)
     return pdf_bytes(writer)
@@ -949,6 +934,6 @@ class AfrRelatorioPdf(models.AbstractModel):
             "verify_url": verify_url,
             "qr_page_index": qr_page_index,
             "company_name": company.name or "",
-            "subtitle_prefix": "%s · TAG: %s" % (relatorio.name or "", equipment.tag or "—"),
             "equipment_name": equipment.name or "",
+            "equipment_tag": equipment.tag or "—",
         }

@@ -271,12 +271,49 @@ class TestRelatorioPdfCore(TransactionCase):
         self.assertEqual(rp.property_line_fit(c, header, 6, False)[1], 6)
 
     def test_stamp_subtitle_identical_across_sections(self):
-        header = dict(HEADER, subtitle_prefix="ReQT-OS-T-1 · TAG: AC-01",
+        header = dict(HEADER, equipment_tag="AC-01",
                       equipment_name="Autoclave a Gás (ETO) ETO-40 ETO-2023-002 Sercon " * 2,
                       section_labels=["04 PROCEDIMENTO DE QUALIFICAÇÃO", "ANEXO 1"])
         pages = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"], ["y"]]), header, False))
         subs = [next(l for l in p.splitlines() if "TAG: AC-01" in l) for p in pages]
         self.assertEqual(subs[0], subs[1])
+
+    def test_stamp_header_line2_shows_revision_and_emission_date(self):
+        # Reclamação do cliente: cabeçalho antigo tinha "Rev.: 00  Data de
+        # emissão: 17/06/2025"; a linha 2 do carimbo interno reproduz isso.
+        # A capa não usa o cabeçalho do carimbo — não pode ganhar "Emissão:".
+        header = dict(HEADER, date="17/06/2025", revision="Rev.02", cover_page_index=0,
+                      company_name="Empresa Teste")
+        pages = pdf_pages_text(self.Pdf._stamp(make_pdf([["capa"], ["x"]]), header, False))
+        self.assertIn("ReQT-OS-T-1 · Rev.02 · Emissão: 17/06/2025", pages[1])
+        self.assertNotIn("Emissão", pages[0])
+
+    def test_stamp_header_line2_shows_minuta_without_emission_label(self):
+        header = dict(HEADER, date="MINUTA", revision="Rev.01")
+        text = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"]]), header, False))[0]
+        self.assertIn("ReQT-OS-T-1 · Rev.01 · MINUTA", text)
+        self.assertNotIn("Emissão", text)
+
+    def test_stamp_header_line3_shows_full_equipment_name_and_tag(self):
+        # Reclamação do cliente: "ReQT-123/25-1 · TAG: STATIM-01 · Autoclave a
+        # Va…" cortava o nome do equipamento mesmo cabendo — a reserva de
+        # espaço pro rótulo de seção comia a largura da linha do subtítulo.
+        header = dict(HEADER, equipment_tag="STATIM-01",
+                      equipment_name="Autoclave a Vapor Statim 5000 510922J00253 Scican",
+                      section_labels=["04 PROCEDIMENTO DE QUALIFICAÇÃO"])
+        text = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"]]), header, False))[0]
+        self.assertIn(
+            "Equipamento: Autoclave a Vapor Statim 5000 510922J00253 Scican · TAG: STATIM-01",
+            text,
+        )
+
+    def test_stamp_header_line3_truncates_long_name_but_never_the_tag(self):
+        long_name = "EQUIPAMENTO " + "X" * 200
+        header = dict(HEADER, equipment_tag="STATIM-01", equipment_name=long_name)
+        text = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"]]), header, False))[0]
+        self.assertIn("…", text)
+        self.assertIn("TAG: STATIM-01", text)
+        self.assertNotIn(long_name, text)
 
     def test_open_pdf_accepts_owner_only_encryption(self):
         reader = rp.open_pdf(encrypt_pdf(make_pdf([["cert"]]), user_pw=""))
