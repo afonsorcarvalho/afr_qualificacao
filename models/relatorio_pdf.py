@@ -282,7 +282,8 @@ def _section_reserve(c, section):
     return max(width + 6 * mm, 20 * mm)
 
 
-def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=False):
+def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=False,
+                   section_reserve=None):
     """Página A4 transparente: capa limpa OU cabeçalho/rodapé internos.
 
     `section`: rótulo da seção atual ("NN TÍTULO", "ANEXO N" ou um título
@@ -290,6 +291,11 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
     `cover`: True só para a página da capa (spec §2) — faixa navy/laranja
     no topo e linha de propriedade no pé; sem logo, título, seção, "Página
     X de Y" nem QR.
+    `section_reserve`: largura (pt) já calculada por `stamp_pdf` a reservar
+    à direita do subtítulo para o rótulo de seção mais largo do documento
+    (evita recalcular `_section_reserve` sobre `section_labels` a cada
+    página). `None`: calculado aqui a partir de `header["section_labels"]`
+    (ou `section`), como antes — mantém chamadores diretos funcionando.
     """
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
@@ -330,8 +336,10 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
         # (nota de resolução), então só o NOME do equipamento é truncado.
         # Reserva = rótulo MAIS LARGO do documento: subtítulo idêntico em
         # todas as páginas (cabeçalho corrido, como no manual).
-        labels = [l for l in (header.get("section_labels") or []) if l] or [section]
-        avail = right - x - max(_section_reserve(c, l) for l in labels)
+        if section_reserve is None:
+            fallback_labels = [l for l in (header.get("section_labels") or []) if l] or [section]
+            section_reserve = max(_section_reserve(c, l) for l in fallback_labels)
+        avail = right - x - section_reserve
         prefix = header.get("subtitle_prefix")
         if prefix:
             joiner = " · "
@@ -419,6 +427,12 @@ def stamp_pdf(content, header, watermark):
     qr_index = header.get("qr_page_index")
     labels = header.get("section_labels") or []
     cover_idx = header.get("cover_page_index")
+    # Reserva do rótulo de seção: calculada UMA vez para todo o documento
+    # (mesmo conjunto de `section_labels` em toda página carimbada aqui),
+    # não a cada `_overlay_page`.
+    measure = canvas.Canvas(io.BytesIO())
+    reserve_labels = [l for l in labels if l] or [""]
+    section_reserve = max(_section_reserve(measure, l) for l in reserve_labels)
     writer = PdfFileWriter()
     for idx in range(count):
         number = offset + idx
@@ -429,6 +443,7 @@ def stamp_pdf(content, header, watermark):
             with_qr=bool(header.get("verify_url")) and qr_index == number and not is_cover,
             section=labels[number] if number < len(labels) else "",
             cover=is_cover,
+            section_reserve=section_reserve,
         ))
         writer.addPage(page)
     return pdf_bytes(writer)
