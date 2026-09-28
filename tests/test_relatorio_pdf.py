@@ -535,8 +535,25 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         )
 
     def test_body_render_data_cover_date_is_minuta_when_watermarked(self):
+        # Regressão-alvo: uma minuta Rev.01 gerada DEPOIS de uma emissão
+        # vigente (Rev.00) tem de mostrar "MINUTA", nunca a data da emissão
+        # anterior — por isso a emissão vigente é criada de propósito antes
+        # de checar watermark=True.
+        att = self._attachment(b"%PDF-1.4 teste", "r.pdf", "application/pdf")
+        emissao = self.env["afr.relatorio.emissao"].sudo().with_context(
+            rq_emissao_internal=True
+        ).create({
+            "relatorio_id": self.rel.id, "revision": 0,
+            "pdf_attachment_id": att.id, "sha256": "0" * 64, "token": "a" * 32,
+            "issued_at": "2026-01-02 12:00:00",
+        })
+        self.rel.write({"current_emissao_id": emissao.id})
+        rel_ctx = self.rel.with_context(tz="UTC")
+        # Prova que o fixture está "vivo": sem watermark, a data vem da
+        # emissão vigente.
+        self.assertEqual(self.Pdf._date_label(rel_ctx, False), "02/01/2026")
         self.assertEqual(
-            self.Pdf._body_render_data(self.rel, {}, watermark=True)["cover_date"],
+            self.Pdf._body_render_data(rel_ctx, {}, watermark=True)["cover_date"],
             "MINUTA",
         )
 
