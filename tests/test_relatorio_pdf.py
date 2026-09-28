@@ -231,6 +231,33 @@ class TestRelatorioPdfCore(TransactionCase):
         qr_left = rp.A4_W - rp.STAMP_SIDE - rp.QR_SIZE
         self.assertLess(lines[0].bbox[2], qr_left)
         self.assertIn("…", lines[0].get_text())
+        # A frase legal nunca pode ser cortada — só o "quem" (empresa/e-mail).
+        self.assertTrue(lines[0].get_text().strip().endswith("sem alterações."),
+                        lines[0].get_text())
+
+    def test_stamp_property_line_keeps_clause_intact_with_very_long_company_name(self):
+        # Nome de empresa absurdo (120 chars): em qualquer página — capa,
+        # interna sem QR e página com QR — a frase legal sai inteira; só o
+        # "quem" é cortado, e nada invade a área do QR quando `with_qr`.
+        url = "https://exemplo.test/qualificacao/relatorio/verify/" + "a" * 32
+        long_name = "EMPRESA " + "X" * 112
+        self.assertEqual(len(long_name), 120)
+        header = dict(HEADER, verify_url=url, qr_page_index=2, cover_page_index=0,
+                      company_name=long_name,
+                      footer="atendimento.qualificacao.termica@labquali.com.br")
+        out = self.Pdf._stamp(
+            make_pdf([["capa"], ["interna"], ["assinaturas"]]), header, False)
+        qr_left = rp.A4_W - rp.STAMP_SIDE - rp.QR_SIZE
+        right_edge = rp.A4_W - rp.STAMP_SIDE
+        for page_no, layout in enumerate(extract_pages(io.BytesIO(out))):
+            lines = [line for el in layout if isinstance(el, LTTextContainer)
+                     for line in el if "Documento emitido" in line.get_text()]
+            self.assertEqual(len(lines), 1, (page_no, lines))
+            text = lines[0].get_text().strip()
+            self.assertTrue(text.endswith("sem alterações."), (page_no, text))
+            self.assertIn("…", text)
+            limit = qr_left if page_no == 2 else right_edge
+            self.assertLessEqual(lines[0].bbox[2], limit + 1.0, (page_no, lines[0].bbox))
 
     def test_stamp_property_line_shrinks_before_cutting_on_qr_page(self):
         # Linha real (~149 mm a 6 pt) não cabe ao lado do QR (144 mm): o corpo

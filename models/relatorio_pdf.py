@@ -216,23 +216,42 @@ def image_to_pdf(content, caption):
     return buf.getvalue()
 
 
-def _property_line(header):
-    """Linha de propriedade (spec §2): rodapé de toda página + pé da capa."""
+def _property_who(header):
+    """"<empresa> · <e-mail>" (só as partes presentes); "" se nenhuma."""
     company = header.get("company_name") or ""
     email = header.get("footer") or ""
-    who = " · ".join(p for p in (company, email) if p)
+    return " · ".join(p for p in (company, email) if p)
+
+
+def _property_line(header, who=None):
+    """Linha de propriedade (spec §2): rodapé de toda página + pé da capa."""
+    if who is None:
+        who = _property_who(header)
     return ("Documento emitido por %s. %s" % (who, PROPERTY_TEXT)) if who else PROPERTY_TEXT
 
 
 def property_line_fit(c, header, size, with_qr):
     """(texto, corpo) da linha de propriedade sem invadir o QR (canto inferior
-    direito, y 3–19 mm) quando `with_qr`: primeiro reduz o corpo em 0,5 pt,
-    depois corta com "…"; sem QR, cabe na largura do rodapé."""
+    direito, y 3–19 mm) quando `with_qr`, nem estourar a largura do rodapé
+    caso contrário.
+
+    `PROPERTY_TEXT` (a frase legal) NUNCA é cortado: primeiro reduz o corpo
+    em 0,5 pt (piso 5,5 pt); se ainda assim não couber, só o `who` ("<empresa>
+    · <e-mail>") é truncado com "…" — a frase legal sai sempre inteira.
+    """
     width = A4_W - 2 * STAMP_SIDE - ((QR_SIZE + QR_GAP) if with_qr else 0)
-    text = _property_line(header)
-    if with_qr and c.stringWidth(text, "Helvetica", size) > width:
-        size = max(size - 0.5, 5.5)  # preserva a frase legal antes de cortar
-    return _truncate(c, text, "Helvetica", size, width), size
+    who = _property_who(header)
+    text = _property_line(header, who)
+    if c.stringWidth(text, "Helvetica", size) <= width:
+        return text, size
+    size = max(size - 0.5, 5.5)  # preserva a frase legal antes de cortar
+    if not who or c.stringWidth(text, "Helvetica", size) <= width:
+        return text, size
+    prefix, suffix = "Documento emitido por ", ". " + PROPERTY_TEXT
+    reserved = c.stringWidth(prefix, "Helvetica", size) + c.stringWidth(suffix, "Helvetica", size)
+    who_width = max(width - reserved, 0)
+    who = _truncate(c, who, "Helvetica", size, who_width)
+    return prefix + who + suffix, size
 
 
 def _truncate(c, text, font, size, width):
