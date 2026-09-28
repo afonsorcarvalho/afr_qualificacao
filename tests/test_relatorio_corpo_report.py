@@ -90,7 +90,8 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         self.assertIn(self.rel._doc_number("PrQT"), html)
         self.assertIn(self.rel._doc_number("ReQM"), html)
         self.assertIn("22 a 25 °C", html)
-        self.assertIn("Anexo 1: Protocolo de Qualificação Térmica", html)
+        self.assertIn('class="rq-anexo-num">1<', html)
+        self.assertIn('class="rq-anexo-title">Protocolo de Qualificação Térmica<', html)
 
     def test_no_unresolved_tokens(self):
         self.assertNotIn("{{", self._render())
@@ -100,7 +101,8 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         html = self._render(with_markers=True)
         self.assertNotIn("@@RQ:anexo:micro@@", html)
         self.assertNotIn(self.rel._doc_number("ReQM"), html)
-        self.assertIn("Anexo 4: Curvas de Letalidade (F0)", html)
+        self.assertIn('class="rq-anexo-num">4<', html)
+        self.assertIn('class="rq-anexo-title">Curvas de Letalidade (F0)<', html)
 
     def test_signatures_list_client(self):
         html = self._render()
@@ -222,3 +224,18 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         rule = re.search(r"\.rq-mark\s*\{([^}]*)\}", html)
         self.assertTrue(rule)
         self.assertIn("position: absolute", rule.group(1))
+
+    def test_level1_title_zero_padded_and_toc_uses_same_number(self):
+        html = self._render()
+        self.assertRegex(html, r'class="rq-title-num">0\d<')
+        self.assertIn('class="rq-toc-num">0', html)
+
+    def test_styles_define_manual_palette_and_boxes(self):
+        html = self._render()
+        for token in ("#0A3D62", "#F86A30", ".rq-box-warn", ".rq-box-info", "blockquote"):
+            self.assertIn(token, html)
+
+    def test_cover_has_identification_table(self):
+        html = self._render()
+        for label in ("Código", "Revisão", "Emitente", "Cliente"):
+            self.assertIn(label, html)

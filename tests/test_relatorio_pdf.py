@@ -526,10 +526,26 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
             self.assertIn(self.rel.name, text)
 
     def test_body_render_data_goes_in_report_data(self):
-        # Fato fixado P3 #1: page_map/with_markers no `data`, nunca no contexto.
+        # Fato fixado P3 #1: page_map/with_markers/cover_date no `data`, nunca
+        # no contexto. Sem emissão vigente nem `rq_emission_date`: cover_date
+        # em branco (não é minuta).
         self.assertEqual(
             self.Pdf._body_render_data(self.rel, {"anexo:dados": 5}),
-            {"with_markers": True, "page_map": {"anexo:dados": 5}},
+            {"with_markers": True, "page_map": {"anexo:dados": 5}, "cover_date": ""},
+        )
+
+    def test_body_render_data_cover_date_is_minuta_when_watermarked(self):
+        self.assertEqual(
+            self.Pdf._body_render_data(self.rel, {}, watermark=True)["cover_date"],
+            "MINUTA",
+        )
+
+    def test_body_render_data_cover_date_follows_emission_context(self):
+        rel_ctx = self.rel.with_context(
+            tz="UTC", rq_emission_date=datetime(2026, 7, 15, 12, 0, 0))
+        self.assertEqual(
+            self.Pdf._body_render_data(rel_ctx, {}, watermark=False)["cover_date"],
+            "15/07/2026",
         )
 
     def test_build_second_pass_feeds_index_with_final_numbers(self):

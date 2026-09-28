@@ -9,45 +9,66 @@
     -->
     <template id="rq_styles">
         <style>
-            .rq-page { color: #212529; font-size: 12px; font-family: Arial, Helvetica, sans-serif; }
+            .rq-page { color: #212529; font-size: 11px; line-height: 1.45; font-family: Arial, Helvetica, sans-serif; }
             .rq-mark { color: #ffffff; font-size: 1pt; line-height: 1pt; position: absolute; }
             .rq-page-break { page-break-before: always; }
-            .rq-title { font-size: 15px; font-weight: bold; margin: 14px 0 6px 0; color: #1f3b63; }
-            .rq-title-child { font-size: 13px; margin-left: 12px; }
+            .rq-title { margin: 18px 0 8px 0; color: #0A3D62; page-break-after: avoid; }
+            .rq-title-l1 { font-size: 17px; font-weight: bold; text-transform: uppercase; padding-bottom: 5px; border-bottom: 1px solid #C9D3DC; }
+            .rq-title-l1 .rq-title-num { color: #F86A30; font-size: 24px; margin-right: 12px; }
+            .rq-title-child { font-size: 12.5px; font-weight: bold; margin: 12px 0 5px 0; }
+            .rq-title-child .rq-title-num { margin-right: 8px; }
             .rq-body { text-align: justify; }
-            .rq-subtitle { font-weight: bold; margin: 10px 0 4px 0; }
-            .rq-table { width: 100%; border-collapse: collapse; margin: 4px 0 10px 0; }
-            .rq-table th, .rq-table td { border: 1px solid #999999; padding: 3px 5px; vertical-align: top; }
-            .rq-table th { background: #eef1f5; text-align: left; }
+            .rq-body blockquote, .rq-box-info { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #F86A30; background: #EEF2F5; }
+            .rq-box-info { border-left-color: #0A3D62; }
+            .rq-box-warn { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #C0392B; background: #FBECEC; font-weight: bold; }
+            .rq-box-label { display: block; color: #C0392B; font-size: 9.5px; font-weight: bold; text-transform: uppercase; }
+            .rq-subtitle { color: #0A3D62; font-weight: bold; font-size: 12px; margin: 14px 0 5px 0; page-break-after: avoid; }
+            .rq-table { width: 100%; border-collapse: collapse; margin: 4px 0 12px 0; }
+            .rq-table th, .rq-table td { border: none; border-bottom: 0.5px solid #C9D3DC; padding: 3px 6px; vertical-align: top; text-align: left; }
+            .rq-table thead th { color: #0A3D62; font-weight: bold; border-bottom: 1px solid #0A3D62; }
+            .rq-table tbody tr th, .rq-table > tr > th { color: #5A7184; font-size: 9px; font-weight: normal; text-transform: uppercase; }
             .rq-table tr { page-break-inside: avoid; }
-            .rq-cover { text-align: center; padding-top: 120px; }
-            .rq-cover-company { font-size: 16px; color: #555555; }
-            .rq-cover-title { font-size: 26px; font-weight: bold; margin: 30px 0 10px 0; color: #1f3b63; }
-            .rq-cover-number { font-size: 16px; margin-bottom: 40px; }
-            .rq-cover-meta { width: 80%; margin: 0 auto; text-align: left; }
+            .rq-cover { padding-top: 40px; }
+            .rq-cover-logo img { max-width: 60mm; max-height: 30mm; }
+            .rq-cover-title { font-size: 28px; font-weight: bold; color: #0A3D62; margin: 110px 0 0 0; padding-bottom: 8px; border-bottom: 2px solid #F86A30; text-transform: uppercase; }
+            .rq-cover-subtitle { font-size: 13px; color: #5A7184; margin: 10px 0 70px 0; }
+            .rq-cover-meta { width: 75%; border-top: 1px solid #0A3D62; }
+            .rq-cover-meta td { font-weight: bold; color: #212529; }
             .rq-toc { width: 100%; border-collapse: collapse; }
-            .rq-toc-row td { height: 18px; padding: 0 4px; border-bottom: 1px dotted #bbbbbb; }
-            .rq-toc-num { width: 50px; }
+            .rq-toc-row td { height: 18px; padding: 0 4px; border-bottom: 1px dotted #C9D3DC; }
+            .rq-toc-l1 td { font-weight: bold; color: #0A3D62; }
+            .rq-toc-num { width: 50px; color: #F86A30; }
             .rq-toc-child .rq-toc-title { padding-left: 16px; }
+            .rq-toc-child .rq-toc-num { color: #5A7184; }
             .rq-toc-page-cell { width: 50px; text-align: right; }
-            .rq-anexo-sep { page-break-before: always; page-break-after: always; text-align: center; padding-top: 260px; }
-            .rq-anexo-title { font-size: 22px; font-weight: bold; }
-            .rq-doc-header { text-align: center; margin-bottom: 10px; }
-            .rq-doc-title { font-size: 17px; font-weight: bold; }
-            .rq-doc-number { font-size: 13px; color: #555555; }
+            .rq-anexo-sep { page-break-before: always; page-break-after: always; padding-top: 230px; }
+            .rq-anexo-eyebrow { color: #5A7184; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; }
+            .rq-anexo-num { color: #F86A30; font-size: 64px; font-weight: bold; line-height: 1; }
+            .rq-anexo-title { color: #0A3D62; font-size: 20px; font-weight: bold; text-transform: uppercase; margin-top: 8px; }
+            .rq-anexo-rule { width: 60px; border-top: 3px solid #F86A30; margin: 12px 0; }
+            .rq-doc-header { margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #F86A30; }
+            .rq-doc-title { font-size: 17px; font-weight: bold; color: #0A3D62; text-transform: uppercase; }
+            .rq-doc-number { font-size: 11px; color: #5A7184; }
         </style>
     </template>
 
     <template id="rq_block_capa">
         <div class="rq-cover">
-            <div class="rq-cover-company" t-esc="doc.company_id.name or ''"/>
-            <div class="rq-cover-title">RELATÓRIO DE QUALIFICAÇÃO TÉRMICA</div>
-            <div class="rq-cover-number"><span t-esc="doc.name"/> — <span t-esc="doc.revision_label"/></div>
+            <div class="rq-cover-logo" t-if="doc.company_id.logo">
+                <img t-att-src="image_data_uri(doc.company_id.logo)" alt="logo"/>
+            </div>
+            <div class="rq-cover-title">Relatório de Qualificação Térmica</div>
+            <div class="rq-cover-subtitle">
+                <t t-esc="doc.equipment_id.name or ''"/><t t-if="doc.partner_id"> — <t t-esc="doc.partner_id.name"/></t>
+            </div>
             <table class="rq-table rq-cover-meta">
-                <tr><th style="width:35%;">Cliente</th><td t-esc="doc.partner_id.name or ''"/></tr>
+                <tr><th style="width:38%;">Código</th><td t-esc="doc.name"/></tr>
+                <tr><th>Revisão</th><td t-esc="doc.revision_label"/></tr>
+                <tr><th>Data de emissão</th><td t-esc="cover_date or ''"/></tr>
                 <tr><th>Equipamento</th><td t-esc="doc.equipment_id.name or ''"/></tr>
-                <tr><th>Número de série</th><td t-esc="doc.equipment_id.serial_number or ''"/></tr>
-                <tr><th>TAG</th><td t-esc="doc.equipment_id.tag or ''"/></tr>
+                <tr><th>Nº de série / TAG</th><td><t t-esc="doc.equipment_id.serial_number or '—'"/> / <t t-esc="doc.equipment_id.tag or '—'"/></td></tr>
+                <tr><th>Cliente</th><td t-esc="doc.partner_id.name or ''"/></tr>
+                <tr><th>Emitente</th><td t-esc="doc.company_id.name or ''"/></tr>
                 <tr><th>Período dos ensaios</th>
                     <td><t t-esc="doc._fmt_date(doc.data_inicio_ensaios)"/> a <t t-esc="doc._fmt_date(doc.data_fim_ensaios)"/></td></tr>
             </table>
@@ -57,8 +78,8 @@
     <template id="rq_block_indice">
         <table class="rq-toc">
             <t t-foreach="doc._report_index_entries()" t-as="entry">
-                <tr t-attf-class="rq-toc-row#{' rq-toc-child' if entry['child'] else ''}">
-                    <td class="rq-toc-num" t-esc="entry['number']"/>
+                <tr t-attf-class="rq-toc-row #{'rq-toc-child' if entry['child'] else 'rq-toc-l1'}">
+                    <td class="rq-toc-num" t-esc="doc._rq_fmt_number(entry['number'])"/>
                     <td class="rq-toc-title" t-esc="entry['title']"/>
                     <td class="rq-toc-page-cell"><span class="rq-toc-page" t-esc="pmap.get(entry['key'], '')"/></td>
                 </tr>
@@ -229,8 +250,8 @@
         <div t-att-class="'rq-block rq-page-break' if block.page_break else 'rq-block'"
              t-att-data-rq-block="block.id"><span t-if="markers" class="rq-mark" t-esc="'@@RQ:bloco:%s@@' % block.id"/>
             <div t-if="block.show_title and block.block_kind != 'capa' and (block.title or blk_num)"
-                 t-attf-class="rq-title#{' rq-title-child' if block.parent_id else ''}">
-                <t t-if="blk_num"><span t-esc="blk_num"/> </t><span t-esc="block.title or ''"/>
+                 t-attf-class="rq-title #{'rq-title-child' if block.parent_id else 'rq-title-l1'}">
+                <t t-if="blk_num"><span class="rq-title-num" t-esc="doc._rq_fmt_number(blk_num)"/></t><span t-esc="block.title or ''"/>
             </div>
             <t t-if="block.block_kind == 'capa'"><t t-call="afr_qualificacao.rq_block_capa"/></t>
             <t t-if="block.block_kind == 'indice'"><t t-call="afr_qualificacao.rq_block_indice"/></t>
@@ -246,7 +267,10 @@
     <template id="rq_anexo">
         <t t-set="sep" t-value="doc._anexo_separator_block(anexo.code)"/>
         <div class="rq-anexo-sep" t-att-data-rq-anexo="anexo.code"><span t-if="markers" class="rq-mark" t-esc="'@@RQ:anexo:%s@@' % anexo.code"/><span t-if="markers and sep" class="rq-mark" t-esc="'@@RQ:bloco:%s@@' % sep.id"/>
-            <div class="rq-anexo-title" t-esc="'Anexo %s: %s' % (anexo.numero, anexo.title or '')"/>
+            <div class="rq-anexo-eyebrow">Anexo</div>
+            <div class="rq-anexo-num" t-esc="anexo.numero"/>
+            <div class="rq-anexo-title" t-esc="anexo.title or ''"/>
+            <div class="rq-anexo-rule"/>
             <div t-if="sep and sep.body" class="rq-body" t-out="doc._render_block_body(sep)"/>
         </div>
         <t t-if="anexo.slot_kind == 'bloco' and anexo.block_id and anexo.block_id.included">

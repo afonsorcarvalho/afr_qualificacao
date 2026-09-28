@@ -569,14 +569,19 @@ class AfrRelatorioPdf(models.AbstractModel):
         return self._build(relatorio, watermark=watermark)[0]
 
     @api.model
-    def _body_render_data(self, relatorio, page_map):
-        """`data` do report (fato fixado P3 #1): marcadores + page_map."""
-        return {"with_markers": True, "page_map": dict(page_map)}
+    def _body_render_data(self, relatorio, page_map, watermark=False):
+        """`data` do report (fato fixado P3 #1): marcadores + page_map + data
+        da capa (mesma regra do carimbo — ver `_date_label`)."""
+        return {
+            "with_markers": True, "page_map": dict(page_map),
+            "cover_date": self._date_label(relatorio, watermark),
+        }
 
     @api.model
-    def _render_body_and_markers(self, relatorio, page_map):
+    def _render_body_and_markers(self, relatorio, page_map, watermark=False):
         """Corpo em PDF + `{marcador: página 0-based}` (caminho dos marcadores)."""
-        body = self._render_report(relatorio, self._body_render_data(relatorio, page_map))
+        body = self._render_report(
+            relatorio, self._body_render_data(relatorio, page_map, watermark))
         return body, self._find_markers(body)
 
     @api.model
@@ -717,7 +722,8 @@ class AfrRelatorioPdf(models.AbstractModel):
         counts = {a["code"]: a["count"] for a in st["annexes"]}
         page_map = {}
         for attempt in range(1, MAX_PASSES + 1):
-            body, markers = self._render_body_and_markers(relatorio, page_map)
+            body, markers = self._render_body_and_markers(
+                relatorio, page_map, watermark=st["watermark"])
             body_count = PdfFileReader(io.BytesIO(body), strict=False).getNumPages()
             layout = compute_layout(markers, body_count, counts, codes)
             if layout["page_map"] == page_map:
@@ -839,24 +845,26 @@ class AfrRelatorioPdf(models.AbstractModel):
         return body_final[idx] - 1
 
     @api.model
-    def _header(self, relatorio, watermark, qr_page_index=None):
-        """Dados do carimbo (ver `stamp_pdf`).
-
-        Data: `rq_emission_date` do contexto do RELATÓRIO (ruling 1.9 —
-        emissão em curso, ainda sem registro) ou a da emissão vigente.
+    def _date_label(self, relatorio, watermark):
+        """Rótulo de data do carimbo/capa: `_("MINUTA")` em minuta; senão a
+        data da emissão em curso (`rq_emission_date` do contexto do
+        RELATÓRIO — ruling 1.9) ou da emissão vigente (`current_emissao_id`).
         """
+        if watermark:
+            return _("MINUTA")
+        issued = (relatorio.env.context.get("rq_emission_date")
+                  or relatorio.current_emissao_id.issued_at)
+        return fields.Datetime.context_timestamp(
+            relatorio, fields.Datetime.to_datetime(issued)
+        ).strftime("%d/%m/%Y") if issued else ""
+
+    @api.model
+    def _header(self, relatorio, watermark, qr_page_index=None):
+        """Dados do carimbo (ver `stamp_pdf`)."""
         company = (relatorio.company_id or self.env.company).with_context(bin_size=False)
         equipment = relatorio.equipment_id
-        if watermark:
-            date_label = _("MINUTA")
-            verify_url = False
-        else:
-            issued = (relatorio.env.context.get("rq_emission_date")
-                      or relatorio.current_emissao_id.issued_at)
-            date_label = fields.Datetime.context_timestamp(
-                relatorio, fields.Datetime.to_datetime(issued)
-            ).strftime("%d/%m/%Y") if issued else ""
-            verify_url = relatorio.verify_url or False
+        date_label = self._date_label(relatorio, watermark)
+        verify_url = False if watermark else (relatorio.verify_url or False)
         return {
             "logo": base64.b64decode(company.logo) if company.logo else None,
             "title": relatorio.name or "",
