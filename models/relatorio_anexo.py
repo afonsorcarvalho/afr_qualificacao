@@ -56,14 +56,15 @@ class AfrRelatorioAnexo(models.Model):
         "relatorio_id.anexo_ids.included", "relatorio_id.anexo_ids.sequence",
     )
     def _compute_numero(self):
-        """1..N sobre os incluídos, na ordem (sequence, id); excluído = 0."""
-        for anexo in self:
-            anexo.numero = 0
+        """1..N sobre os incluídos, na ordem (sequence, id); excluído = 0.
+
+        Atribui SÓ a `self`: atribuir a um irmão fora do recorte em cálculo
+        vira write() no ORM, que passa pelo gancho editorial (+1 em
+        `rq_editorial_seq` e, emitido, `_check_editable`). Com cache frio
+        (cron da montagem) toda minuta saía obsoleta."""
+        numbers = {}
         for rel in self.mapped("relatorio_id"):
-            n = 0
-            for anexo in rel.anexo_ids.sorted(sort_key):
-                if anexo.included:
-                    n += 1
-                    anexo.numero = n
-                else:
-                    anexo.numero = 0
+            included = rel.anexo_ids.filtered("included").sorted(sort_key)
+            numbers.update({anexo: n for n, anexo in enumerate(included, 1)})
+        for anexo in self:
+            anexo.numero = numbers.get(anexo, 0)

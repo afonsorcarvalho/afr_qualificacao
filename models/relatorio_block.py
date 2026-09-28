@@ -50,12 +50,11 @@ class AfrRelatorioBlock(models.Model):
         "relatorio_id.block_ids.anexo_code",
     )
     def _compute_display_number(self):
+        # Atribui SÓ a `self` (ver `afr.relatorio.anexo._compute_numero`):
+        # irmão fora do recorte viraria write() e bump editorial.
+        numbers = {rel: rel._block_numbering() for rel in self.mapped("relatorio_id")}
         for block in self:
-            block.display_number = ""
-        for rel in self.mapped("relatorio_id"):
-            numbers = rel._block_numbering()
-            for block in rel.block_ids:
-                block.display_number = numbers.get(block.id, "")
+            block.display_number = numbers.get(block.relatorio_id, {}).get(block.id, "")
 
     @api.constrains("parent_id")
     def _check_no_cycle(self):

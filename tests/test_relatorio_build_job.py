@@ -104,6 +104,42 @@ class TestRelatorioBuildJob(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         self.assertTrue(seen)
         self.assertTrue(all(s == (self.office.id, False, True) for s in seen), seen)
 
+    def _cold_seq(self):
+        self.env.flush_all()
+        self.env.invalidate_all()
+        return self.rel.rq_editorial_seq
+
+    def test_numbering_read_on_subset_is_not_an_editorial_edit(self):
+        """Bug do cron: com cache frio, ler `numero`/`display_number` de um
+        recorte (ex.: só os anexos incluídos) calculava a numeração do
+        relatório inteiro e atribuía aos irmãos FORA do recorte — atribuição
+        que o ORM transforma em write(), passando pelo gancho editorial:
+        +1 em `rq_editorial_seq` por irmão, e toda montagem saía obsoleta."""
+        self._anexo(self.rel, "extra", "Excluído", 30, included=False)
+        self._block(self.rel, "static", "Excluído", 40, included=False)
+        rel = self.rel.with_user(self.office)
+        seq = self._cold_seq()
+        self.assertEqual(rel._anexos_included()[:1].numero, 1)
+        self.assertEqual(self.rel.rq_editorial_seq, seq)
+        seq = self._cold_seq()
+        block = rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        self.assertTrue(block.display_number)
+        self.assertEqual(self.rel.rq_editorial_seq, seq)
+        # a numeração em si continua a mesma
+        self.env.invalidate_all()
+        self.assertEqual(rel.anexo_ids.sorted("sequence").mapped("numero"), [1, 2, 0])
+
+    def test_minuta_with_cold_cache_per_unit_completes(self):
+        """Caminho real (cron): cada unidade começa com cache vazio."""
+        self._anexo(self.rel, "extra", "Excluído", 30, included=False)
+        self._block(self.rel, "static", "Excluído", 40, included=False)
+        with FakeCorpo().patch(self.env):
+            self._enqueue_minuta()
+            run_build_jobs(self.env, cold=True)
+        job = self._job()
+        self.assertEqual(job.state, "done", job.error)
+        self.assertTrue(self.rel.minuta_attachment_id)
+
     def test_one_active_job_per_relatorio(self):
         self._enqueue_minuta()
         with self.assertRaises(UserError):

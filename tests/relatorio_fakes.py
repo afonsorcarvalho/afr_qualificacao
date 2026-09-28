@@ -277,11 +277,14 @@ class RelatorioFixtureMixin:
         return blocks, anexos
 
 
-def run_build_jobs(env, until=None, max_units=500):
+def run_build_jobs(env, until=None, max_units=500, cold=False):
     """Roda EM LINHA (sem cron, sem commit) as unidades dos jobs de montagem.
 
     O cron não roda em testes. Chamar dentro de `FakeCorpo().patch(env)`.
     `until(job)` → True para parar antes de uma unidade (ex.: fase 'stamp').
+    `cold`: cache vazio antes de cada unidade, como no cron de verdade (cada
+    unidade roda num worker/transação nova) — computados não armazenados
+    são recalculados no recorte que a unidade lê, não no relatório inteiro.
     """
     Job = env["afr.relatorio.build.job"].sudo().with_context(rq_build_inline=True)
     units = 0
@@ -290,6 +293,9 @@ def run_build_jobs(env, until=None, max_units=500):
                          order="last_run_at, id", limit=1)
         if not job or (until and until(job)):
             return units
+        if cold:
+            env.flush_all()
+            env.invalidate_all()
         job._rq_run_unit()
         units += 1
     raise AssertionError("Montagem não terminou em %d unidades." % max_units)
