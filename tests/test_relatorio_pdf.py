@@ -219,8 +219,8 @@ class TestRelatorioPdfCore(TransactionCase):
         # propriedade (y 10 mm) é cortada antes do QR (x ≥ direita − 16 mm).
         url = "https://exemplo.test/qualificacao/relatorio/verify/" + "a" * 32
         header = dict(HEADER, verify_url=url, qr_page_index=0,
-                      company_name="LABQUALI QUALIFICAÇÕES E CALIBRAÇÕES TÉRMICAS LTDA",
-                      footer="atendimento.qualificacao@labquali.com.br")
+                      company_name="LABQUALI QUALIFICAÇÕES, CALIBRAÇÕES E ENSAIOS TÉRMICOS DO BRASIL LTDA",
+                      footer="atendimento.qualificacao.termica@labquali.com.br")
         out = self.Pdf._stamp(make_pdf([["x"]]), header, False)
         lines = []
         for layout in extract_pages(io.BytesIO(out)):
@@ -231,6 +231,25 @@ class TestRelatorioPdfCore(TransactionCase):
         qr_left = rp.A4_W - rp.STAMP_SIDE - rp.QR_SIZE
         self.assertLess(lines[0].bbox[2], qr_left)
         self.assertIn("…", lines[0].get_text())
+
+    def test_stamp_property_line_shrinks_before_cutting_on_qr_page(self):
+        # Linha real (~149 mm a 6 pt) não cabe ao lado do QR (144 mm): o corpo
+        # cai para 5,5 pt e a frase legal fica inteira, sem "…".
+        header = dict(HEADER, company_name="LABQUALI QUALIFICACOES LTDA",
+                      footer="labquali@labquali.com.br")
+        c = rp.canvas.Canvas(io.BytesIO())
+        text, size = rp.property_line_fit(c, header, 6, True)
+        self.assertEqual(size, 5.5)
+        self.assertTrue(text.endswith("sem alterações."), text)
+        self.assertEqual(rp.property_line_fit(c, header, 6, False)[1], 6)
+
+    def test_stamp_subtitle_identical_across_sections(self):
+        header = dict(HEADER, subtitle_prefix="ReQT-OS-T-1 · TAG: AC-01",
+                      equipment_name="Autoclave a Gás (ETO) ETO-40 ETO-2023-002 Sercon " * 2,
+                      section_labels=["04 PROCEDIMENTO DE QUALIFICAÇÃO", "ANEXO 1"])
+        pages = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"], ["y"]]), header, False))
+        subs = [next(l for l in p.splitlines() if "TAG: AC-01" in l) for p in pages]
+        self.assertEqual(subs[0], subs[1])
 
     def test_open_pdf_accepts_owner_only_encryption(self):
         reader = rp.open_pdf(encrypt_pdf(make_pdf([["cert"]]), user_pw=""))

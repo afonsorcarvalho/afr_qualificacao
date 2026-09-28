@@ -225,10 +225,14 @@ def _property_line(header):
 
 
 def property_line_fit(c, header, size, with_qr):
-    """Linha de propriedade cortada para não invadir o QR (canto inferior
-    direito, y 3–19 mm) quando `with_qr`; sem QR, cabe na largura do rodapé."""
+    """(texto, corpo) da linha de propriedade sem invadir o QR (canto inferior
+    direito, y 3–19 mm) quando `with_qr`: primeiro reduz o corpo em 0,5 pt,
+    depois corta com "…"; sem QR, cabe na largura do rodapé."""
     width = A4_W - 2 * STAMP_SIDE - ((QR_SIZE + QR_GAP) if with_qr else 0)
-    return _truncate(c, _property_line(header), "Helvetica", size, width)
+    text = _property_line(header)
+    if with_qr and c.stringWidth(text, "Helvetica", size) > width:
+        size = max(size - 0.5, 5.5)  # preserva a frase legal antes de cortar
+    return _truncate(c, text, "Helvetica", size, width), size
 
 
 def _truncate(c, text, font, size, width):
@@ -281,7 +285,9 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
         c.line(STAMP_SIDE, 14 * mm, right, 14 * mm)
         c.setFillColorRGB(*SLATE)
         c.setFont("Helvetica", 6.5)
-        c.drawString(STAMP_SIDE, 10 * mm, property_line_fit(c, header, 6.5, False))
+        text, size = property_line_fit(c, header, 6.5, False)
+        c.setFont("Helvetica", size)
+        c.drawString(STAMP_SIDE, 10 * mm, text)
     else:
         top = A4_H - 10 * mm
         logo_w = 0
@@ -303,7 +309,10 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
         # Área disponível pro subtítulo: reserva à direita a largura real da
         # seção (≤ 60 mm, spec) + folga — o "TAG: <tag>" nunca pode sumir
         # (nota de resolução), então só o NOME do equipamento é truncado.
-        avail = right - x - _section_reserve(c, section)
+        # Reserva = rótulo MAIS LARGO do documento: subtítulo idêntico em
+        # todas as páginas (cabeçalho corrido, como no manual).
+        labels = [l for l in (header.get("section_labels") or []) if l] or [section]
+        avail = right - x - max(_section_reserve(c, l) for l in labels)
         prefix = header.get("subtitle_prefix")
         if prefix:
             joiner = " · "
@@ -344,8 +353,9 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
         c.setFont("Helvetica-Bold", 8)
         c.drawRightString(page_label_right, 15 * mm, "Página %d de %d" % (page_no, total))
         c.setFillColorRGB(*SLATE)
-        c.setFont("Helvetica", 6)
-        c.drawString(STAMP_SIDE, 10 * mm, property_line_fit(c, header, 6, with_qr))
+        text, size = property_line_fit(c, header, 6, with_qr)
+        c.setFont("Helvetica", size)
+        c.drawString(STAMP_SIDE, 10 * mm, text)
         if with_qr and header.get("verify_url"):
             widget = QrCodeWidget(header["verify_url"])
             x0, y0, x1, y1 = widget.getBounds()
