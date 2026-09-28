@@ -44,6 +44,13 @@ HEADER = {
 }
 
 
+def squash_keep_space(text):
+    """Como `squash`, mas preserva espaços (título de seção quebrado em
+    glyphs separados pelo pdfminer perde os espaços internos; isto só
+    normaliza os espaços em branco, não remove)."""
+    return " ".join(text.split())
+
+
 def _text_boxes(pdf_content):
     boxes = []
     for layout in extract_pages(io.BytesIO(pdf_content)):
@@ -180,6 +187,32 @@ class TestRelatorioPdfCore(TransactionCase):
         size_1 = len(reader.getPage(1).getContents().getData())
         # QR = centenas de retângulos no content stream da página 2.
         self.assertGreater(size_1, size_0 + 3000)
+
+    def test_stamp_cover_page_has_no_header_or_page_number(self):
+        header = dict(HEADER, cover_page_index=0, company_name="Empresa Teste",
+                      section_labels=["", "01 OBJETIVO", "ANEXO 1"])
+        pages = pdf_pages_text(self.Pdf._stamp(
+            make_pdf([["capa"], ["um"], ["dois"]]), header, False))
+        self.assertNotIn("Página", pages[0])
+        self.assertIn("Empresa Teste", pages[0])  # linha de propriedade
+        self.assertIn("Página 2 de 3", pages[1])
+        self.assertIn("01 OBJETIVO", squash_keep_space(pages[1]))
+        self.assertIn("ANEXO 1", pages[2])
+
+    def test_stamp_section_uses_final_index_with_offset(self):
+        header = dict(HEADER, page_offset=2, page_total=4, cover_page_index=0,
+                      section_labels=["", "", "02 SEÇÃO B", "03 SEÇÃO C"])
+        pages = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"], ["y"]]), header, False))
+        self.assertIn("SEÇÃO B", pages[0])
+        self.assertIn("SEÇÃO C", pages[1])
+        self.assertIn("Página 3 de 4", pages[0])
+
+    def test_stamp_truncates_long_section_label(self):
+        label = "01 " + "TÍTULO MUITO LONGO " * 8
+        header = dict(HEADER, section_labels=[label])
+        text = pdf_pages_text(self.Pdf._stamp(make_pdf([["x"]]), header, False))[0]
+        self.assertNotIn(label.strip(), text)
+        self.assertIn("…", text)
 
     def test_open_pdf_accepts_owner_only_encryption(self):
         reader = rp.open_pdf(encrypt_pdf(make_pdf([["cert"]]), user_pw=""))
@@ -483,7 +516,12 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
 
     def test_build_stamps_pagina_x_de_y_on_every_page(self):
         pdf, _w, _f = self._build()
-        for number, text in enumerate(pdf_pages_text(pdf), start=1):
+        pages = pdf_pages_text(pdf)
+        # Página 1 é a capa (1º bloco do fixture): sem "Página"/carimbo de
+        # cabeçalho, só a linha de propriedade com o nome da empresa.
+        self.assertNotIn("Página", pages[0])
+        self.assertIn(self.rel.company_id.name, pages[0])
+        for number, text in enumerate(pages[1:], start=2):
             self.assertIn("Página %d de 9" % number, text)
             self.assertIn(self.rel.name, text)
 
@@ -610,10 +648,21 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         self.Pdf = self.Pdf.with_context(rq_emission_date=datetime(2026, 1, 2, 12, 0, 0))
         pdf, _w, _f = self._build(rel=rel_ctx, watermark=False)
         pages = pdf_pages_text(pdf)
-        self.assertTrue(all("15/07/2026" in text for text in pages), pages[0])
+        # pages[0] é a capa: sem rodapé/data do carimbo.
+        self.assertTrue(all("15/07/2026" in text for text in pages[1:]), pages[1])
         self.assertNotIn("02/01/2026", "".join(pages))
         minuta, _w2, _f2 = self._build(rel=rel_ctx, watermark=True)
         self.assertNotIn("15/07/2026", "".join(pdf_pages_text(minuta)))
+
+    def test_header_truncates_long_equipment_name_but_keeps_tag(self):
+        # Nota de resolução: o subtítulo trunca só o nome do equipamento —
+        # "TAG: <tag>" nunca pode sumir por causa de um nome de 150 chars.
+        self.rel.equipment_id.name = "EQUIPAMENTO " + "X" * 150
+        header = self.Pdf._header(self.rel, True)
+        pdf = self.Pdf._stamp(make_pdf([["x"]]), header, True)
+        text = pdf_pages_text(pdf)[0]
+        self.assertIn("TAG: " + (self.rel.equipment_id.tag or "—"), text)
+        self.assertIn("…", text)
 
     def test_public_build_returns_bytes(self):
         fake = FakeCorpo()

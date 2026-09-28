@@ -45,6 +45,13 @@ USABLE = (
     A4_H - MARGIN_TOP - MARGIN_BOTTOM,
 )
 WATERMARK_TEXT = "MINUTA — SEM VALIDADE"
+# Paleta do carimbo (spec §Paleta): navy (faixas/títulos/seção), orange
+# (número de seção nível 1, filete da capa), slate (subtítulos/rodapé).
+NAVY = (0x0A / 255.0, 0x3D / 255.0, 0x62 / 255.0)
+ORANGE = (0xF8 / 255.0, 0x6A / 255.0, 0x30 / 255.0)
+SLATE = (0x5A / 255.0, 0x71 / 255.0, 0x84 / 255.0)
+SECTION_MAX = 45  # cap de caracteres do nome da seção, antes do corte por largura
+PROPERTY_TEXT = "Este relatório só pode ser reproduzido integralmente, sem alterações."
 IMAGE_MIMETYPES = frozenset({
     "image/jpeg", "image/png", "image/gif", "image/bmp", "image/tiff", "image/webp",
 })
@@ -202,47 +209,123 @@ def image_to_pdf(content, caption):
     return buf.getvalue()
 
 
-def _overlay_page(header, page_no, total, watermark, with_qr):
-    """Página A4 transparente com cabeçalho/rodapé (e QR / marca d'água)."""
+def _property_line(header):
+    """Linha de propriedade (spec §2): rodapé de toda página + pé da capa."""
+    company = header.get("company_name") or ""
+    email = header.get("footer") or ""
+    who = " · ".join(p for p in (company, email) if p)
+    return ("Documento emitido por %s. %s" % (who, PROPERTY_TEXT)) if who else PROPERTY_TEXT
+
+
+def _truncate(c, text, font, size, width):
+    """`text` cortado (com "…") para caber em `width` pt em `font`/`size`."""
+    if c.stringWidth(text, font, size) <= width:
+        return text
+    while text and c.stringWidth(text + "…", font, size) > width:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
+def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=False):
+    """Página A4 transparente: capa limpa OU cabeçalho/rodapé internos.
+
+    `section`: rótulo da seção atual ("NN TÍTULO", "ANEXO N" ou um título
+    sem número, ex. "SUMÁRIO") — vai à direita do cabeçalho interno.
+    `cover`: True só para a página da capa (spec §2) — faixa navy/laranja
+    no topo e linha de propriedade no pé; sem logo, título, seção, "Página
+    X de Y" nem QR.
+    """
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
-    top = A4_H - 10 * mm
-    logo = header.get("logo")
-    if logo:
-        try:
-            c.drawImage(
-                ImageReader(io.BytesIO(logo)), MARGIN_SIDE, top - 16 * mm,
-                width=40 * mm, height=16 * mm, preserveAspectRatio=True,
-                anchor="w", mask="auto",
-            )
-        except Exception:  # logo SVG/corrompido: cabeçalho segue sem logo
-            pass
     right = A4_W - MARGIN_SIDE
-    c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(right, top - 4 * mm, header.get("title") or "")
-    c.setFont("Helvetica", 8)
-    c.drawRightString(right, top - 9 * mm, header.get("equipment") or "")
-    c.drawRightString(
-        right, top - 13 * mm,
-        "%s   %s" % (header.get("revision") or "", header.get("date") or ""),
-    )
-    c.setLineWidth(0.5)
-    c.line(MARGIN_SIDE, top - 18 * mm, right, top - 18 * mm)
-    c.line(MARGIN_SIDE, 20 * mm, right, 20 * mm)
-    c.drawString(MARGIN_SIDE, 12 * mm, header.get("footer") or "")
-    qr_size = 16 * mm
-    page_label_right = right - (qr_size + 3 * mm if with_qr else 0)
-    c.drawRightString(page_label_right, 12 * mm, "Página %d de %d" % (page_no, total))
-    if with_qr and header.get("verify_url"):
-        widget = QrCodeWidget(header["verify_url"])
-        x0, y0, x1, y1 = widget.getBounds()
-        drawing = Drawing(
-            qr_size, qr_size,
-            transform=[qr_size / (x1 - x0), 0, 0, qr_size / (y1 - y0), 0, 0],
-        )
-        drawing.add(widget)
-        renderPDF.draw(drawing, c, right - qr_size, 3 * mm)
+    if cover:
+        c.setFillColorRGB(*NAVY)
+        c.rect(0, A4_H - 12 * mm, A4_W, 12 * mm, stroke=0, fill=1)
+        c.setFillColorRGB(*ORANGE)
+        c.rect(0, A4_H - 13 * mm, A4_W, 1 * mm, stroke=0, fill=1)
+        c.setStrokeColorRGB(*SLATE)
+        c.setLineWidth(0.3)
+        c.line(MARGIN_SIDE, 14 * mm, right, 14 * mm)
+        c.setFillColorRGB(*SLATE)
+        c.setFont("Helvetica", 6.5)
+        c.drawString(MARGIN_SIDE, 10 * mm, _property_line(header))
+    else:
+        top = A4_H - 10 * mm
+        logo_w = 0
+        logo = header.get("logo")
+        if logo:
+            try:
+                c.drawImage(ImageReader(io.BytesIO(logo)), MARGIN_SIDE, top - 14 * mm,
+                            width=30 * mm, height=12 * mm, preserveAspectRatio=True,
+                            anchor="w", mask="auto")
+                logo_w = 33 * mm
+            except Exception:  # logo SVG/corrompido: cabeçalho segue sem logo
+                pass
+        x = MARGIN_SIDE + logo_w
+        c.setFillColorRGB(*NAVY)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(x, top - 6 * mm, "RELATÓRIO DE QUALIFICAÇÃO TÉRMICA")
+        c.setFillColorRGB(*SLATE)
+        c.setFont("Helvetica", 7)
+        # Área disponível pro subtítulo: reserva ~65 mm à direita pra seção
+        # (spec: seção ocupa ≤ 60 mm) — o "TAG: <tag>" nunca pode sumir
+        # (nota de resolução), então só o NOME do equipamento é truncado.
+        avail = right - x - 65 * mm
+        prefix = header.get("subtitle_prefix")
+        if prefix:
+            joiner = " · "
+            name_width = max(avail - c.stringWidth(prefix + joiner, "Helvetica", 7), 0)
+            name = _truncate(c, header.get("equipment_name") or "", "Helvetica", 7, name_width)
+            c.drawString(x, top - 10 * mm, prefix + joiner + name)
+        else:
+            # Compatibilidade com `header` antigo (sem subtitle_prefix):
+            # título na linha do subtítulo, equipamento truncado embaixo.
+            c.drawString(x, top - 10 * mm, header.get("title") or "")
+            c.setFont("Helvetica", 7)
+            c.drawString(x, top - 13.5 * mm,
+                         _truncate(c, header.get("equipment") or "", "Helvetica", 7, avail))
+        if section:
+            num, _sp, name = section.partition(" ")
+            if not num[:1].isdigit():
+                num, name = "", section
+            name = name[:SECTION_MAX]
+            name = _truncate(c, name, "Helvetica-Bold", 8, 60 * mm)
+            c.setFont("Helvetica-Bold", 8)
+            c.setFillColorRGB(*NAVY)
+            c.drawRightString(right, top - 6 * mm, name)
+            if num:
+                c.setFillColorRGB(*ORANGE)
+                c.drawRightString(right - c.stringWidth(name, "Helvetica-Bold", 8) - 2 * mm,
+                                  top - 6 * mm, num)
+        c.setStrokeColorRGB(*NAVY)
+        c.setLineWidth(0.8)
+        c.line(MARGIN_SIDE, top - 16 * mm, right, top - 16 * mm)
+        # Rodapé
+        c.setStrokeColorRGB(*SLATE)
+        c.setLineWidth(0.3)
+        c.line(MARGIN_SIDE, 20 * mm, right, 20 * mm)
+        c.setFillColorRGB(*SLATE)
+        c.setFont("Helvetica", 7.5)
+        c.drawString(MARGIN_SIDE, 15 * mm, header.get("title") or "")
+        c.drawCentredString(A4_W / 2.0, 15 * mm, "%s · %s" % (
+            header.get("revision") or "", header.get("date") or ""))
+        qr_size = 16 * mm
+        page_label_right = right - (qr_size + 3 * mm if with_qr else 0)
+        c.setFillColorRGB(*NAVY)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawRightString(page_label_right, 15 * mm, "Página %d de %d" % (page_no, total))
+        c.setFillColorRGB(*SLATE)
+        c.setFont("Helvetica", 6)
+        c.drawString(MARGIN_SIDE, 10 * mm, _property_line(header))
+        if with_qr and header.get("verify_url"):
+            widget = QrCodeWidget(header["verify_url"])
+            x0, y0, x1, y1 = widget.getBounds()
+            drawing = Drawing(
+                qr_size, qr_size,
+                transform=[qr_size / (x1 - x0), 0, 0, qr_size / (y1 - y0), 0, 0],
+            )
+            drawing.add(widget)
+            renderPDF.draw(drawing, c, right - qr_size, 3 * mm)
     if watermark:
         c.saveState()
         c.setFillColorRGB(0.8, 0.1, 0.1)
@@ -263,10 +346,12 @@ def stamp_pdf(content, header, watermark):
     `header`: dict com `logo` (bytes|None), `title`, `equipment`, `revision`,
     `date`, `footer`, `verify_url` (str|False), `qr_page_index` (int|None,
     0-based no documento final: página que recebe o QR) e, opcionais,
-    `page_offset` (int, 0-based: índice final da 1ª página de `content`) e
-    `page_total` (int: nº de páginas do documento final) — o pipeline em
-    etapas carimba o documento por faixas. Sem eles, `content` é o
-    documento inteiro.
+    `page_offset` (int, 0-based: índice final da 1ª página de `content`),
+    `page_total` (int: nº de páginas do documento final), `section_labels`
+    (list[str], índice = página final 0-based) e `cover_page_index`
+    (int|None: página final 0-based da capa, sem cabeçalho/rodapé/QR) — o
+    pipeline em etapas carimba o documento por faixas. Sem eles, `content`
+    é o documento inteiro.
     """
     reader = PdfFileReader(io.BytesIO(content), strict=False)
     count = reader.getNumPages()
@@ -274,13 +359,18 @@ def stamp_pdf(content, header, watermark):
     offset = int(header.get("page_offset") or 0)
     total = int(header.get("page_total") or (offset + count))
     qr_index = header.get("qr_page_index")
+    labels = header.get("section_labels") or []
+    cover_idx = header.get("cover_page_index")
     writer = PdfFileWriter()
     for idx in range(count):
         number = offset + idx
         page = reader.getPage(idx)
+        is_cover = cover_idx is not None and number == cover_idx
         page.mergePage(_overlay_page(
             header, number + 1, total, watermark,
-            with_qr=bool(header.get("verify_url")) and qr_index == number,
+            with_qr=bool(header.get("verify_url")) and qr_index == number and not is_cover,
+            section=labels[number] if number < len(labels) else "",
+            cover=is_cover,
         ))
         writer.addPage(page)
     return pdf_bytes(writer)
@@ -777,4 +867,7 @@ class AfrRelatorioPdf(models.AbstractModel):
             "footer": company.email or "",
             "verify_url": verify_url,
             "qr_page_index": qr_page_index,
+            "company_name": company.name or "",
+            "subtitle_prefix": "%s · TAG: %s" % (relatorio.name or "", equipment.tag or "—"),
+            "equipment_name": equipment.name or "",
         }
