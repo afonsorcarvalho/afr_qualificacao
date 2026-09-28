@@ -368,6 +368,29 @@ class AfrQualificacaoRelatorio(models.Model):
             })
         return entries
 
+    def _rq_fmt_number(self, number):
+        """Número de bloco para exibição: nível 1 com 2 dígitos ('4' → '04')."""
+        number = number or ""
+        return number.zfill(2) if number.isdigit() else number
+
+    def _report_section_entries(self):
+        """[(marcador, rótulo)] das seções do cabeçalho: blocos de nível 1
+        titulados (exceto capa) e anexos incluídos, na ordem do documento."""
+        self.ensure_one()
+        numbers = self._block_numbering()
+        entries = []
+        for blk in self._body_blocks():
+            if blk.parent_id or blk.block_kind == "capa" or not blk.show_title:
+                continue
+            title = (blk.title or blk.display_label or "").upper()
+            if not title:
+                continue
+            number = self._rq_fmt_number(numbers.get(blk.id, ""))
+            entries.append(("bloco:%d" % blk.id, ("%s %s" % (number, title)).strip()))
+        for anexo in self._anexos_included():
+            entries.append(("anexo:%s" % anexo.code, "ANEXO %s" % anexo.numero))
+        return entries
+
     def _report_cycles_sorted(self):
         """Ciclos na ordem do relatório (QI<QO<QD, tipo de ciclo, sequence)."""
         self.ensure_one()

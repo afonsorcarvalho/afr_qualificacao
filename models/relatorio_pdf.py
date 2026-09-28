@@ -399,6 +399,39 @@ def compute_layout(markers, body_count, annex_counts, codes):
     }
 
 
+def section_labels(page_map, sections, total):
+    """Rótulo de seção de cada página final (0-based).
+
+    Página onde começam seções: a 1ª delas. Página sem início: a última
+    seção iniciada antes. Antes da 1ª seção: "".
+
+    :param page_map: `layout["page_map"]` ({marcador: nº final 1-based})
+    :param sections: [(marcador, rótulo)] na ordem do documento
+    :param total: nº de páginas do documento final
+    """
+    starts = sorted(
+        (page_map[key], order, label)
+        for order, (key, label) in enumerate(sections) if key in page_map
+    )
+    labels, current, pos = [], "", 0
+    for page in range(1, total + 1):
+        first = None
+        while pos < len(starts) and starts[pos][0] <= page:
+            if starts[pos][0] == page and first is None:
+                first = starts[pos][2]
+            current = starts[pos][2]
+            pos += 1
+        labels.append(current if first is None else first)
+    return labels
+
+
+def cover_page_index(page_map, first_block_key):
+    """Índice final (0-based) da capa, se o 1º bloco do corpo for a capa."""
+    if not first_block_key or first_block_key not in page_map:
+        return None
+    return page_map[first_block_key] - 1
+
+
 class AfrRelatorioPdf(models.AbstractModel):
     _name = "afr.relatorio.pdf"
     _description = "Montagem do PDF do Relatório Final"
@@ -624,9 +657,15 @@ class AfrRelatorioPdf(models.AbstractModel):
                 final.extend(annex_refs[code])
         for code in layout["trailing"]:
             final.extend(annex_refs[code])
+        first = relatorio._body_blocks()[:1]
         st.update(
             final_pages=final, total=len(final), stamp=0, stamped=[], phase="stamp",
             qr_page_index=self._qr_page_index(relatorio, markers, layout),
+            section_labels=section_labels(
+                layout["page_map"], relatorio._report_section_entries(), len(final)),
+            cover_page_index=cover_page_index(
+                layout["page_map"],
+                "bloco:%d" % first.id if first and first.block_kind == "capa" else None),
         )
 
     @api.model
@@ -666,7 +705,11 @@ class AfrRelatorioPdf(models.AbstractModel):
         end = start + self._stage_stamp_count(st, budget)
         content = self._assemble_range(st["final_pages"][start:end], store)
         header = self._header(relatorio, st["watermark"], qr_page_index=st["qr_page_index"])
-        header.update(page_offset=start, page_total=st["total"])
+        header.update(
+            page_offset=start, page_total=st["total"],
+            section_labels=st.get("section_labels") or [],
+            cover_page_index=st.get("cover_page_index"),
+        )
         st["stamped"].append(store.put("stamp", self._stamp(content, header, st["watermark"])))
         st["stamp"] = end
         if end >= st["total"]:

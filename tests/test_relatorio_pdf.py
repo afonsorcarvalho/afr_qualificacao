@@ -193,6 +193,33 @@ class TestRelatorioPdfCore(TransactionCase):
         with self.assertRaisesRegex(ValueError, "ilegível"):
             rp.open_pdf(b"nao e pdf")
 
+    def test_section_labels_pure(self):
+        page_map = {"bloco:1": 1, "bloco:2": 2, "anexo:a": 4, "bloco:3": 6, "anexo:c": 8}
+        sections = [("bloco:2", "SUMÁRIO"), ("anexo:a", "ANEXO 1"),
+                    ("bloco:3", "02 CONCLUSÃO"), ("anexo:c", "ANEXO 2"),
+                    ("bloco:9", "99 SEM PÁGINA")]
+        self.assertEqual(rp.section_labels(page_map, sections, 9), [
+            "", "SUMÁRIO", "SUMÁRIO", "ANEXO 1", "ANEXO 1",
+            "02 CONCLUSÃO", "02 CONCLUSÃO", "ANEXO 2", "ANEXO 2",
+        ])
+
+    def test_section_labels_first_section_starting_on_page_wins(self):
+        # Várias seções começam na mesma página: o cabeçalho mostra a 1ª que
+        # abre a página; páginas seguintes sem início herdam a última iniciada.
+        page_map = {"bloco:1": 2, "bloco:2": 2, "bloco:3": 2, "bloco:4": 4}
+        sections = [("bloco:1", "01 A"), ("bloco:2", "02 B"),
+                    ("bloco:3", "03 C"), ("bloco:4", "04 D")]
+        self.assertEqual(rp.section_labels(page_map, sections, 5),
+                         ["", "01 A", "03 C", "04 D", "04 D"])
+
+    def test_section_labels_empty(self):
+        self.assertEqual(rp.section_labels({}, [], 3), ["", "", ""])
+
+    def test_cover_page_index(self):
+        self.assertEqual(rp.cover_page_index({"bloco:10": 1}, "bloco:10"), 0)
+        self.assertIsNone(rp.cover_page_index({"bloco:10": 1}, None))
+        self.assertIsNone(rp.cover_page_index({}, "bloco:10"))
+
 
 @tagged("post_install", "-at_install", "afr_relatorio_final")
 class TestRelatorioAnexoFiles(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
@@ -593,6 +620,45 @@ class TestRelatorioBuild(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
         with fake.patch(self.env):
             pdf = self.Pdf.build(self.rel)
         self.assertTrue(pdf.startswith(b"%PDF"))
+
+    def test_rq_fmt_number(self):
+        rel = self.rel
+        self.assertEqual(rel._rq_fmt_number("4"), "04")
+        self.assertEqual(rel._rq_fmt_number("12"), "12")
+        self.assertEqual(rel._rq_fmt_number("4.1"), "4.1")
+        self.assertEqual(rel._rq_fmt_number(""), "")
+
+    def test_staged_body_sets_section_labels_and_cover(self):
+        with FakeCorpo().patch(self.env):
+            st, store = self.Pdf._stage_init(True), rp.MemoryStore()
+            while st["phase"] not in ("stamp", "done"):
+                self.Pdf._stage_run(self.rel, st, store, rp.UNLIMITED)
+        self.assertEqual(len(st["section_labels"]), st["total"])
+        self.assertEqual(st["cover_page_index"], 0)
+        self.assertEqual(st["section_labels"][0], "")
+        self.assertTrue(st["section_labels"][4].startswith("ANEXO 1"), st["section_labels"])
+        self.assertTrue(st["section_labels"][-1].startswith("ANEXO 2"), st["section_labels"])
+        json.dumps(st)  # continua serializável (stage_json)
+
+    def test_staged_body_without_leading_cover_has_no_cover_page(self):
+        # Capa fora da 1ª posição (ou excluída): nenhuma página é "capa".
+        self.rel.block_ids.filtered(lambda b: b.block_kind == "capa").included = False
+        with FakeCorpo().patch(self.env):
+            st, store = self.Pdf._stage_init(True), rp.MemoryStore()
+            while st["phase"] not in ("stamp", "done"):
+                self.Pdf._stage_run(self.rel, st, store, rp.UNLIMITED)
+        self.assertIsNone(st["cover_page_index"])
+
+    def test_stage_stamp_tolerates_legacy_state_without_sections(self):
+        # Job enfileirado antes do deploy: `st` sem as chaves novas.
+        with FakeCorpo().patch(self.env):
+            st, store = self.Pdf._stage_init(True), rp.MemoryStore()
+            while st["phase"] not in ("stamp", "done"):
+                self.Pdf._stage_run(self.rel, st, store, rp.UNLIMITED)
+            st.pop("section_labels"), st.pop("cover_page_index")
+            while st["phase"] != "done":
+                self.Pdf._stage_run(self.rel, st, store, rp.UNLIMITED)
+        self.assertEqual(st["phase"], "done")
 
 
 @tagged("post_install", "-at_install", "afr_relatorio_final")
