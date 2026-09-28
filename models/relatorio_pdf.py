@@ -33,10 +33,17 @@ MARKER_RE = re.compile(r"@@RQ:(bloco|anexo):([A-Za-z0-9_\-]+)@@")
 A4_W, A4_H = A4
 # Topo/rodapé iguais ao paperformat_relatorio_final (P3: 35/25 mm) — o carimbo
 # vive nelas. Lateral MENOR de propósito (paperformat usa 20 mm): páginas de
-# anexo (gráficos) ganham largura; o carimbo também usa esta margem lateral.
+# anexo (gráficos) ganham largura; o carimbo desenha em STAMP_SIDE (abaixo).
 MARGIN_TOP = 35 * mm
 MARGIN_BOTTOM = 25 * mm
 MARGIN_SIDE = 12 * mm
+# Cabeçalho/rodapé do carimbo alinhados à coluna de texto do corpo QWeb
+# (paperformat 20 mm + padding do container ≈ 23,5 mm, medido na minuta),
+# como no manual de referência. Só o desenho do carimbo usa; USABLE segue
+# com MARGIN_SIDE.
+STAMP_SIDE = 23.5 * mm
+QR_SIZE = 16 * mm
+QR_GAP = 3 * mm
 # (x, y, largura, altura) da área útil onde páginas de anexo são encaixadas.
 USABLE = (
     MARGIN_SIDE,
@@ -217,6 +224,13 @@ def _property_line(header):
     return ("Documento emitido por %s. %s" % (who, PROPERTY_TEXT)) if who else PROPERTY_TEXT
 
 
+def property_line_fit(c, header, size, with_qr):
+    """Linha de propriedade cortada para não invadir o QR (canto inferior
+    direito, y 3–19 mm) quando `with_qr`; sem QR, cabe na largura do rodapé."""
+    width = A4_W - 2 * STAMP_SIDE - ((QR_SIZE + QR_GAP) if with_qr else 0)
+    return _truncate(c, _property_line(header), "Helvetica", size, width)
+
+
 def _truncate(c, text, font, size, width):
     """`text` cortado (com "…") para caber em `width` pt em `font`/`size`."""
     if c.stringWidth(text, font, size) <= width:
@@ -224,6 +238,25 @@ def _truncate(c, text, font, size, width):
     while text and c.stringWidth(text + "…", font, size) > width:
         text = text[:-1]
     return text.rstrip() + "…"
+
+
+def _split_section(c, section):
+    """("NN", "TÍTULO truncado") do rótulo da seção; num "" se não numerado."""
+    num, _sp, name = section.partition(" ")
+    if not num[:1].isdigit():
+        num, name = "", section
+    return num, _truncate(c, name[:SECTION_MAX], "Helvetica-Bold", 8, 60 * mm)
+
+
+def _section_reserve(c, section):
+    """Largura reservada à direita do cabeçalho para o rótulo da seção."""
+    if not section:
+        return 20 * mm
+    num, name = _split_section(c, section)
+    width = c.stringWidth(name, "Helvetica-Bold", 8)
+    if num:
+        width += c.stringWidth(num, "Helvetica-Bold", 8) + 2 * mm
+    return max(width + 6 * mm, 20 * mm)
 
 
 def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=False):
@@ -237,7 +270,7 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
     """
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
-    right = A4_W - MARGIN_SIDE
+    right = A4_W - STAMP_SIDE
     if cover:
         c.setFillColorRGB(*NAVY)
         c.rect(0, A4_H - 12 * mm, A4_W, 12 * mm, stroke=0, fill=1)
@@ -245,32 +278,32 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
         c.rect(0, A4_H - 13 * mm, A4_W, 1 * mm, stroke=0, fill=1)
         c.setStrokeColorRGB(*SLATE)
         c.setLineWidth(0.3)
-        c.line(MARGIN_SIDE, 14 * mm, right, 14 * mm)
+        c.line(STAMP_SIDE, 14 * mm, right, 14 * mm)
         c.setFillColorRGB(*SLATE)
         c.setFont("Helvetica", 6.5)
-        c.drawString(MARGIN_SIDE, 10 * mm, _property_line(header))
+        c.drawString(STAMP_SIDE, 10 * mm, property_line_fit(c, header, 6.5, False))
     else:
         top = A4_H - 10 * mm
         logo_w = 0
         logo = header.get("logo")
         if logo:
             try:
-                c.drawImage(ImageReader(io.BytesIO(logo)), MARGIN_SIDE, top - 14 * mm,
+                c.drawImage(ImageReader(io.BytesIO(logo)), STAMP_SIDE, top - 14 * mm,
                             width=30 * mm, height=12 * mm, preserveAspectRatio=True,
                             anchor="w", mask="auto")
                 logo_w = 33 * mm
             except Exception:  # logo SVG/corrompido: cabeçalho segue sem logo
                 pass
-        x = MARGIN_SIDE + logo_w
+        x = STAMP_SIDE + logo_w
         c.setFillColorRGB(*NAVY)
         c.setFont("Helvetica-Bold", 8)
         c.drawString(x, top - 6 * mm, "RELATÓRIO DE QUALIFICAÇÃO TÉRMICA")
         c.setFillColorRGB(*SLATE)
         c.setFont("Helvetica", 7)
-        # Área disponível pro subtítulo: reserva ~65 mm à direita pra seção
-        # (spec: seção ocupa ≤ 60 mm) — o "TAG: <tag>" nunca pode sumir
+        # Área disponível pro subtítulo: reserva à direita a largura real da
+        # seção (≤ 60 mm, spec) + folga — o "TAG: <tag>" nunca pode sumir
         # (nota de resolução), então só o NOME do equipamento é truncado.
-        avail = right - x - 65 * mm
+        avail = right - x - _section_reserve(c, section)
         prefix = header.get("subtitle_prefix")
         if prefix:
             joiner = " · "
@@ -285,11 +318,7 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
             c.drawString(x, top - 13.5 * mm,
                          _truncate(c, header.get("equipment") or "", "Helvetica", 7, avail))
         if section:
-            num, _sp, name = section.partition(" ")
-            if not num[:1].isdigit():
-                num, name = "", section
-            name = name[:SECTION_MAX]
-            name = _truncate(c, name, "Helvetica-Bold", 8, 60 * mm)
+            num, name = _split_section(c, section)
             c.setFont("Helvetica-Bold", 8)
             c.setFillColorRGB(*NAVY)
             c.drawRightString(right, top - 6 * mm, name)
@@ -299,24 +328,24 @@ def _overlay_page(header, page_no, total, watermark, with_qr, section="", cover=
                                   top - 6 * mm, num)
         c.setStrokeColorRGB(*NAVY)
         c.setLineWidth(0.8)
-        c.line(MARGIN_SIDE, top - 16 * mm, right, top - 16 * mm)
+        c.line(STAMP_SIDE, top - 16 * mm, right, top - 16 * mm)
         # Rodapé
         c.setStrokeColorRGB(*SLATE)
         c.setLineWidth(0.3)
-        c.line(MARGIN_SIDE, 20 * mm, right, 20 * mm)
+        c.line(STAMP_SIDE, 20 * mm, right, 20 * mm)
         c.setFillColorRGB(*SLATE)
         c.setFont("Helvetica", 7.5)
-        c.drawString(MARGIN_SIDE, 15 * mm, header.get("title") or "")
+        c.drawString(STAMP_SIDE, 15 * mm, header.get("title") or "")
         c.drawCentredString(A4_W / 2.0, 15 * mm, "%s · %s" % (
             header.get("revision") or "", header.get("date") or ""))
-        qr_size = 16 * mm
-        page_label_right = right - (qr_size + 3 * mm if with_qr else 0)
+        qr_size = QR_SIZE
+        page_label_right = right - (qr_size + QR_GAP if with_qr else 0)
         c.setFillColorRGB(*NAVY)
         c.setFont("Helvetica-Bold", 8)
         c.drawRightString(page_label_right, 15 * mm, "Página %d de %d" % (page_no, total))
         c.setFillColorRGB(*SLATE)
         c.setFont("Helvetica", 6)
-        c.drawString(MARGIN_SIDE, 10 * mm, _property_line(header))
+        c.drawString(STAMP_SIDE, 10 * mm, property_line_fit(c, header, 6, with_qr))
         if with_qr and header.get("verify_url"):
             widget = QrCodeWidget(header["verify_url"])
             x0, y0, x1, y1 = widget.getBounds()

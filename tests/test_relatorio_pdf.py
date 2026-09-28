@@ -214,6 +214,24 @@ class TestRelatorioPdfCore(TransactionCase):
         self.assertNotIn(label.strip(), text)
         self.assertIn("…", text)
 
+    def test_stamp_property_line_stops_before_qr(self):
+        # Nome de empresa real longo + QR na página de assinaturas: a linha de
+        # propriedade (y 10 mm) é cortada antes do QR (x ≥ direita − 16 mm).
+        url = "https://exemplo.test/qualificacao/relatorio/verify/" + "a" * 32
+        header = dict(HEADER, verify_url=url, qr_page_index=0,
+                      company_name="LABQUALI QUALIFICAÇÕES E CALIBRAÇÕES TÉRMICAS LTDA",
+                      footer="atendimento.qualificacao@labquali.com.br")
+        out = self.Pdf._stamp(make_pdf([["x"]]), header, False)
+        lines = []
+        for layout in extract_pages(io.BytesIO(out)):
+            for el in layout:
+                if isinstance(el, LTTextContainer):
+                    lines.extend(line for line in el if "Documento emitido" in line.get_text())
+        self.assertEqual(len(lines), 1, lines)
+        qr_left = rp.A4_W - rp.STAMP_SIDE - rp.QR_SIZE
+        self.assertLess(lines[0].bbox[2], qr_left)
+        self.assertIn("…", lines[0].get_text())
+
     def test_open_pdf_accepts_owner_only_encryption(self):
         reader = rp.open_pdf(encrypt_pdf(make_pdf([["cert"]]), user_pw=""))
         self.assertEqual(reader.getNumPages(), 1)
