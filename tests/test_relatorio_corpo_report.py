@@ -239,3 +239,11 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
         html = self._render()
         for label in ("Código", "Revisão", "Emitente", "Cliente"):
             self.assertIn(label, html)
+
+    def test_cover_shows_cover_date_in_emissao_row(self):
+        html = self._render(cover_date="02/01/2026")
+        self.assertIn("<th>Data de emissão</th><td>02/01/2026</td>", html)
+
+    def test_cover_shows_minuta_as_cover_date(self):
+        html = self._render(cover_date="MINUTA")
+        self.assertIn("<th>Data de emissão</th><td>MINUTA</td>", html)
