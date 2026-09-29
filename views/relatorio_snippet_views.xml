@@ -41,7 +41,7 @@
                     </group>
                     <separator string="Conteúdo"/>
                     <field name="body" widget="rq_block_html" nolabel="1"
-                           options="{'catalog': 'static', 'codeview': True}"/>
+                           options="{'catalog': 'static'}"/>
                 </sheet>
             </form>
         </field>
