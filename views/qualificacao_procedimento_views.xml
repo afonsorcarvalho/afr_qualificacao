@@ -24,6 +24,7 @@
                                    options="{'no_create': True}"/>
                             <field name="code"/>
                             <field name="sequence"/>
+                            <field name="is_default"/>
                         </group>
                         <group string="Status">
                             <field name="active"/>
@@ -73,6 +74,7 @@
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="equipment_category_id" optional="show"/>
+                <field name="is_default" optional="show"/>
                 <field name="item_count" string="Itens"/>
                 <field name="code" optional="hide"/>
                 <field name="active"/>

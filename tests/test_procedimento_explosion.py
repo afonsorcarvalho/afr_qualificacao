@@ -19,6 +19,9 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         cls.proc_category = Proc.create({
             "name": "Procedimento Autoclave",
             "equipment_category_id": cls.category.id,
+            # is_default: resolve_for/_resolve_for_equipment (16.0.8.9.0) só
+            # devolvem o procedimento marcado como padrão da categoria.
+            "is_default": True,
             "item_ids": [
                 # QI
                 (0, 0, {"name": "Foto plaqueta", "kind": "foto",
@@ -46,6 +49,8 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         # Procedimento fallback (sem categoria) — itens QD
         cls.proc_fallback = Proc.create({
             "name": "Procedimento Genérico (fallback)",
+            # is_default: papel de "padrão genérico" da empresa (16.0.8.9.0).
+            "is_default": True,
             "item_ids": [
                 (0, 0, {"name": "Doc procedimento", "kind": "pdf",
                         "phase": "performance", "target_level": "qualificacao",

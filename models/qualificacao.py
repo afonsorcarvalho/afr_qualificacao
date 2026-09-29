@@ -158,6 +158,28 @@ class AfrQualificacao(models.Model):
         help="Selecione o template DOCX a ser utilizado para gerar o relatório.",
         domain=[("active", "=", True)],
     )
+    procedimento_id = fields.Many2one(
+        comodel_name="afr.qualificacao.procedimento",
+        string="Procedimento aplicado",
+        tracking=True,
+        help=(
+            "Procedimento de qualificação efetivamente aplicado (gravado na "
+            "geração da OS — wizard 'Gerar OS' ou resolução automática via "
+            "afr.qualificacao.procedimento._resolve_for_equipment). Vazio em "
+            "qualificações antigas (a migração 16.0.8.9.0 não deduz este "
+            "campo retroativamente)."
+        ),
+    )
+    relatorio_template_id = fields.Many2one(
+        comodel_name="afr.relatorio.template",
+        string="Template de Relatório",
+        tracking=True,
+        help=(
+            "Template do Relatório Final escolhido para o equipamento desta "
+            "qualificação (na OS ou na geração dos Relatórios Finais). Usado "
+            "por afr.qualificacao.os.relatorio._resolve_template."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # Multi-company + integração comercial (quote-first SO → qualif)

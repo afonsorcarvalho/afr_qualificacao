@@ -131,3 +131,6 @@ from . import test_leitura_ib_lote
 
 # Editor de blocos — Task 1: biblioteca de blocos prontos (afr.relatorio.snippet)
 from . import test_relatorio_editor
+
+# Template/procedimento por cliente/equipamento — Task 1 (16.0.8.9.0)
+from . import test_template_procedimento_cliente

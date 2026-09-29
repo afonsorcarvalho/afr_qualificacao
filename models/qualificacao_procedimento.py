@@ -10,6 +10,7 @@ collect.items acontece em sale_order._explode_collect_items() na confirmação
 do SO (F3 16.0.3.2.0).
 """
 from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
 
 KIND_SELECTION = [
@@ -96,27 +97,58 @@ class AfrQualificacaoProcedimento(models.Model):
         string="Itens (esperados)",
     )
     item_count = fields.Integer(compute="_compute_item_count")
-
-    _sql_constraints = [
-        (
-            "uniq_category_company",
-            "unique(equipment_category_id, company_id)",
-            "Já existe procedimento para essa categoria + empresa.",
+    is_default = fields.Boolean(
+        string="Padrão da categoria",
+        default=False,
+        tracking=True,
+        help=(
+            "Procedimento padrão para a categoria (ou, sem categoria, padrão "
+            "genérico). No máximo 1 ativo por (categoria, empresa). "
+            "`resolve_for`/`_resolve_for_equipment` usam este campo — "
+            "procedimentos não-padrão só são aplicados por escolha explícita "
+            "(equipamento/cliente/wizard)."
         ),
-    ]
+    )
 
     @api.depends("item_ids")
     def _compute_item_count(self):
         for r in self:
             r.item_count = len(r.item_ids)
 
+    @api.constrains("is_default", "equipment_category_id", "company_id", "active")
+    def _check_is_default_unique(self):
+        for rec in self:
+            if not rec.is_default or not rec.active:
+                continue
+            domain = [
+                ("id", "!=", rec.id),
+                ("is_default", "=", True),
+                ("active", "=", True),
+                ("company_id", "=", rec.company_id.id),
+                (
+                    "equipment_category_id",
+                    "=",
+                    rec.equipment_category_id.id if rec.equipment_category_id else False,
+                ),
+            ]
+            if self.search_count(domain):
+                cat_name = rec.equipment_category_id.name if rec.equipment_category_id else _("(genérico)")
+                raise ValidationError(
+                    _(
+                        "Já existe um procedimento padrão para a categoria "
+                        "'%(cat)s' nesta empresa."
+                    ) % {"cat": cat_name}
+                )
+
     @api.model
     def resolve_for(self, equipment_category):
-        """Retorna o procedimento da categoria (ou fallback de categoria vazia).
+        """Retorna o procedimento padrão da categoria (ou fallback genérico).
 
-        Preferência: 1) match por categoria → 2) fallback (equipment_category_id
-        vazio). Retorna recordset vazio se nenhum. Sempre restrito à empresa
-        corrente (self.env.company).
+        Preferência: 1) padrão (`is_default`) da categoria → 2) padrão
+        genérico (sem categoria) → 3) genérico mais antigo (menor id).
+        Retorna recordset vazio se nenhum. Sempre restrito à empresa corrente
+        (self.env.company). Mantém a assinatura usada por sale_order.py e
+        pelo wizard "Aplicar Procedimento".
         """
         domain = [
             ("active", "=", True),
@@ -125,13 +157,73 @@ class AfrQualificacaoProcedimento(models.Model):
         cat_id = equipment_category.id if equipment_category else False
         if cat_id:
             rec = self.search(
-                domain + [("equipment_category_id", "=", cat_id)], limit=1
+                domain + [("equipment_category_id", "=", cat_id), ("is_default", "=", True)],
+                limit=1,
             )
             if rec:
                 return rec
-        return self.search(
-            domain + [("equipment_category_id", "=", False)], limit=1
+        rec = self.search(
+            domain + [("equipment_category_id", "=", False), ("is_default", "=", True)],
+            limit=1,
         )
+        if rec:
+            return rec
+        return self.search(
+            domain + [("equipment_category_id", "=", False)], order="id", limit=1
+        )
+
+    @api.model
+    def _resolve_for_equipment(self, equipment, partner):
+        """Resolve o procedimento aplicável a `equipment` (e `partner`).
+
+        Ordem: 1) procedimento explícito no equipamento → 'equipamento';
+        2) procedimento do cliente (commercial_partner_id) da mesma categoria
+        → 'cliente'; 3) padrão da categoria → 'categoria'; 4) padrão genérico
+        → 'generico'; 5) genérico mais antigo (menor id) → 'generico'; senão
+        recordset vazio + False. Sempre restrito à empresa corrente
+        (self.env.company).
+        """
+        company = self.env.company
+        domain = [("active", "=", True), ("company_id", "=", company.id)]
+
+        if equipment.afr_procedimento_id:
+            return equipment.afr_procedimento_id, "equipamento"
+
+        category = equipment.category_id
+        commercial = partner.commercial_partner_id if partner else self.env["res.partner"]
+        if category and commercial:
+            proc = commercial.afr_procedimento_ids.filtered(
+                lambda p: (
+                    p.equipment_category_id == category
+                    and p.active
+                    and p.company_id == company
+                )
+            )
+            if proc:
+                return proc[:1], "cliente"
+
+        if category:
+            rec = self.search(
+                domain + [("equipment_category_id", "=", category.id), ("is_default", "=", True)],
+                limit=1,
+            )
+            if rec:
+                return rec, "categoria"
+
+        rec = self.search(
+            domain + [("equipment_category_id", "=", False), ("is_default", "=", True)],
+            limit=1,
+        )
+        if rec:
+            return rec, "generico"
+
+        rec = self.search(
+            domain + [("equipment_category_id", "=", False)], order="id", limit=1
+        )
+        if rec:
+            return rec, "generico"
+
+        return self.browse(), False
 
     def _explode_into(self, qualif, phase=None):
         """Cria N collect.items em `qualif` conforme target_level de cada item.

@@ -51,6 +51,10 @@
                             <field name="means_of_aquisition_id"
                                    options="{'no_create_edit': True}"/>
                         </group>
+                        <group string="Qualificação">
+                            <field name="afr_procedimento_id"
+                                   options="{'no_create_edit': True}"/>
+                        </group>
                     </group>
                     <notebook>
                         <page string="Ordens de Serviço de Qualificação"
@@ -199,6 +203,34 @@
                     <field name="afr_equipment_count" widget="statinfo"
                            string="Equipamentos"/>
                 </button>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Task 1 (16.0.8.9.0) — template/procedimento padrão do cliente.
+         Só no contato comercial (sem parent_id) — a resolução usa
+         commercial_partner_id, contato filho não tem papel aqui.
+         groups=: modelos afr.qualificacao.procedimento/afr.relatorio.template
+         só têm ir.model.access para os grupos de Qualificação — sem o
+         `groups` aqui, um usuário de Vendas sem esses grupos leva
+         AccessError ao abrir o formulário do cliente. -->
+    <record id="view_partner_form_afr_procedimento_template" model="ir.ui.view">
+        <field name="name">res.partner.form.afr.procedimento.template</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Qualificação" name="afr_qualificacao"
+                      groups="afr_qualificacao.group_afr_qualificacao_user"
+                      attrs="{'invisible': [('parent_id', '!=', False)]}">
+                    <group>
+                        <field name="afr_relatorio_template_id"
+                               options="{'no_create_edit': True}"/>
+                    </group>
+                    <separator string="Procedimentos padrão (por categoria)"/>
+                    <field name="afr_procedimento_ids"
+                           options="{'no_create_edit': True}"/>
+                </page>
             </xpath>
         </field>
     </record>
