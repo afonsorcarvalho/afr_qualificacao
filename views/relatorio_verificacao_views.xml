@@ -20,7 +20,7 @@
                     <field name="blocking_summary" nolabel="1" readonly="1"/>
                 </div>
             </xpath>
-            <xpath expr="//page[@name='page_anexos']" position="after">
+            <xpath expr="//page[@name='page_texto']" position="after">
                 <page name="page_verificacao" string="Verificação">
                     <field name="achado_pendente_count" invisible="1"/>
                     <div class="text-muted mb-2">

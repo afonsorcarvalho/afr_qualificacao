@@ -946,6 +946,26 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
             order="sequence, id", limit=1)
         self.assertEqual(self.rel._suggest_template(), lowest)
 
+    def test_edit_block_content_opens_linked_block(self):
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        action = anexo.action_edit_block_content()
+        self.assertEqual(action["res_model"], "afr.relatorio.block")
+        self.assertEqual(action["res_id"], anexo.block_id.id)
+        self.assertEqual(action["target"], "new")
+
+    def test_edit_block_content_without_block_raises(self):
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        anexo.block_id = False
+        with self.assertRaises(UserError):
+            anexo.action_edit_block_content()
+
+    def test_texto_page_has_body_then_anexos_and_no_anexos_page(self):
+        arch = self.env["afr.qualificacao.relatorio"].get_view(view_type="form")["arch"]
+        self.assertNotIn('name="page_anexos"', arch)
+        self.assertIn('name="body_block_ids"', arch)
+        self.assertLess(arch.index('name="body_block_ids"'), arch.index('name="anexo_ids"'))
+        self.assertIn("action_edit_block_content", arch)
+
 
 class TestRelatorioTokens(RelatorioTemplateFixture):
     """Reusa a fixture da Task 5 (relatório com RQT-HOSP aplicado)."""

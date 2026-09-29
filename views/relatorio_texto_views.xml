@@ -57,7 +57,9 @@
                             </div>
                         </group>
                     </group>
-                    <field name="block_ids" attrs="{'readonly': [('state', '!=', 'draft')]}">
+                    <separator string="Corpo do relatório"/>
+                    <field name="body_block_ids" nolabel="1"
+                           attrs="{'readonly': [('state', '!=', 'draft')]}">
                         <tree editable="bottom">
                             <field name="relatorio_id" invisible="1"/>
                             <field name="sequence" widget="handle"/>
@@ -67,9 +69,8 @@
                             <field name="show_title" widget="boolean_toggle" optional="show"/>
                             <field name="title"/>
                             <field name="block_kind"/>
-                            <field name="anexo_code" optional="hide"/>
                             <field name="parent_id"
-                                   domain="[('relatorio_id','=',parent.id),('id','!=',id)]"
+                                   domain="[('relatorio_id','=',parent.id),('id','!=',id),('is_anexo_content','=',False)]"
                                    options="{'no_create': True, 'no_create_edit': True}"
                                    optional="show"/>
                             <field name="page_break" widget="boolean_toggle"/>
@@ -77,13 +78,13 @@
                                     string="Editar" icon="fa-pencil" class="btn-link"/>
                         </tree>
                     </field>
-                </page>
-                <page string="Anexos" name="page_anexos">
+                    <separator string="Anexos"/>
                     <p class="text-muted small">
-                        A ordem desta lista é a ordem dos anexos no PDF e define a numeração
+                        Impressos depois do corpo, nesta ordem. A ordem define a numeração
                         usada pelo token <code>{{ anexo('code') }}</code>.
                     </p>
-                    <field name="anexo_ids" attrs="{'readonly': [('state', '!=', 'draft')]}">
+                    <field name="anexo_ids" nolabel="1"
+                           attrs="{'readonly': [('state', '!=', 'draft')]}">
                         <tree>
                             <field name="sequence" widget="handle"/>
                             <field name="numero" string="Nº"/>
@@ -109,6 +110,10 @@
                                            attrs="{'invisible': [('slot_kind', '!=', 'instrument_certs')]}"/>
                                     <field name="block_id"
                                            attrs="{'invisible': [('slot_kind', '!=', 'bloco')]}"/>
+                                    <button name="action_edit_block_content" type="object"
+                                            string="Editar conteúdo" icon="fa-pencil"
+                                            class="btn-link"
+                                            attrs="{'invisible': ['|', ('slot_kind', '!=', 'bloco'), ('block_id', '=', False)]}"/>
                                 </group>
                             </group>
                             <separator string="Arquivos (upload ou substituição manual)"/>

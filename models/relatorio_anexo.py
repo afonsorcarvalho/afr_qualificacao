@@ -4,7 +4,7 @@ Resolução de arquivos (`_resolve_files`, `_check_files`) é de P4.
 """
 
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 
 from ._numbering import check_anexo_code_format, sort_key
 from .relatorio_template import ANEXO_SLOT_KINDS
@@ -68,3 +68,14 @@ class AfrRelatorioAnexo(models.Model):
             numbers.update({anexo: n for n, anexo in enumerate(included, 1)})
         for anexo in self:
             anexo.numero = numbers.get(anexo, 0)
+
+    def action_edit_block_content(self):
+        """Abre o bloco de conteúdo (origem 'Bloco do relatório') no mesmo
+        modal do "Editar" da lista do corpo."""
+        self.ensure_one()
+        if not self.block_id:
+            raise UserError(_(
+                "O anexo '%s' não tem bloco de conteúdo vinculado. "
+                "Use 'Recarregar template' ou escolha o bloco no campo Bloco."
+            ) % (self.title or self.code))
+        return self.block_id.action_edit_block()
