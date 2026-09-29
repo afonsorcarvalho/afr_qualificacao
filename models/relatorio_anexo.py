@@ -39,6 +39,12 @@ class AfrRelatorioAnexo(models.Model):
     attachment_ids = fields.Many2many(
         "ir.attachment", relation="afr_relatorio_anexo_attachment_rel",
         column1="anexo_id", column2="attachment_id", string="Arquivos")
+    # Coluna "Arquivos" da lista de anexos. A lista NÃO pode carregar
+    # `attachment_ids` (many2many_tags só busca display_name): o OWL do Odoo
+    # 16 reaproveita esses registros no diálogo e o many2many_binary do form
+    # quebra em `file.name.replace` ao reabrir um anexo com arquivo.
+    attachment_names = fields.Char(
+        string="Arquivos", compute="_compute_attachment_names")
     numero = fields.Integer(string="Nº", compute="_compute_numero")
 
     @api.constrains("code")
@@ -51,6 +57,12 @@ class AfrRelatorioAnexo(models.Model):
                     "Código do anexo só pode conter letras, números, "
                     "'_' e '-' (sem espaços ou acentos)."
                 ))
+
+    @api.depends("attachment_ids.name")
+    def _compute_attachment_names(self):
+        for anexo in self:
+            anexo.attachment_names = ", ".join(
+                anexo.attachment_ids.sorted("id").mapped("name")) or False
 
     @api.depends(
         "included", "sequence",

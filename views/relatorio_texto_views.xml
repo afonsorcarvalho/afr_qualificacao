@@ -92,7 +92,7 @@
                             <field name="code"/>
                             <field name="title"/>
                             <field name="slot_kind"/>
-                            <field name="attachment_ids" widget="many2many_tags" optional="show"/>
+                            <field name="attachment_names" optional="show"/>
                         </tree>
                         <form string="Anexo">
                             <group>

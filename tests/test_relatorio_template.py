@@ -1046,6 +1046,28 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.assertLess(arch.index('name="body_block_ids"'), arch.index('name="anexo_ids"'))
         self.assertIn("action_edit_block_content", arch)
 
+    def test_anexo_list_does_not_load_attachments_relation(self):
+        """A lista de anexos não pode carregar `attachment_ids`: o OWL do
+        Odoo 16 reaproveita no diálogo os registros vindos da lista (só com
+        `display_name`, do many2many_tags) e o many2many_binary do form
+        quebra em `file.name.replace` ao reabrir um anexo com arquivo."""
+        from lxml import etree
+        arch = etree.fromstring(
+            self.env["afr.qualificacao.relatorio"].get_view(view_type="form")["arch"])
+        tree = arch.xpath("//field[@name='anexo_ids']/tree")[0]
+        self.assertFalse(tree.xpath(".//field[@name='attachment_ids']"))
+        self.assertTrue(tree.xpath(".//field[@name='attachment_names']"))
+
+    def test_attachment_names_lists_file_names(self):
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "graficos")
+        self.assertFalse(anexo.attachment_names)
+        atts = self.env["ir.attachment"].create([
+            {"name": "ciclo1.pdf", "raw": b"%PDF-1.4"},
+            {"name": "ciclo2.png", "raw": b"x"},
+        ])
+        anexo.attachment_ids = [(6, 0, atts.ids)]
+        self.assertEqual(anexo.attachment_names, "ciclo1.pdf, ciclo2.png")
+
 
 class TestRelatorioTokens(RelatorioTemplateFixture):
     """Reusa a fixture da Task 5 (relatório com RQT-HOSP aplicado)."""
