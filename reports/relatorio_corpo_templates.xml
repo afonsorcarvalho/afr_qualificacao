@@ -55,6 +55,7 @@
             .rq-doc-header { margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid #F86A30; }
             .rq-doc-title { font-size: 19px; font-weight: bold; color: #0A3D62; text-transform: uppercase; }
             .rq-doc-number { font-size: 12px; color: #5A7184; }
+            .rq-var { background: none; border: 0; padding: 0; color: inherit; font: inherit; }
         </style>
     </template>
 

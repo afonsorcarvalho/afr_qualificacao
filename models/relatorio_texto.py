@@ -5,6 +5,7 @@ misturar dados de campo com montagem de texto.
 """
 
 import logging
+import re
 
 from markupsafe import Markup
 
@@ -18,6 +19,28 @@ from .calibration_instruments import AFR_CERT_ROLES
 from .relatorio_template import REPORT_BLOCK_KINDS
 
 _logger = logging.getLogger(__name__)
+
+_RQ_EXPR_RE = re.compile(r"\{\{\s*(.+?)\s*\}\}")
+
+# (expr, label, group) — fonte única dos labels do editor (catálogo de
+# variáveis). Valores vêm do render, não daqui.
+RQ_STATIC_VARS = [
+    ("relatorio.name", "Nº do relatório", "Relatório"),
+    ("relatorio.revision_label", "Revisão", "Relatório"),
+    ("relatorio._fmt_date(relatorio.data_inicio_ensaios)", "Início dos ensaios", "Relatório"),
+    ("relatorio._fmt_date(relatorio.data_fim_ensaios)", "Fim dos ensaios", "Relatório"),
+    ("relatorio.amb_temperatura", "Temperatura ambiente", "Relatório"),
+    ("relatorio.amb_umidade", "Umidade ambiente", "Relatório"),
+    ("relatorio._fmt_date(relatorio.proxima_qualificacao)", "Próxima qualificação", "Relatório"),
+    ("criterio['tolerancia']", "Tolerância acima (°C)", "Critérios"),
+    ("criterio['f0_fator']", "Fator do F0", "Critérios"),
+    ("criterio['valor_d']", "Valor D do indicador (min)", "Critérios"),
+    ("criterio['f0_minimo']", "F0 mínimo (min)", "Critérios"),
+    ("os.name", "Nº da OS", "Cliente e equipamento"),
+    ("partner.name", "Cliente", "Cliente e equipamento"),
+    ("equipment.name", "Equipamento", "Cliente e equipamento"),
+    ("company.name", "Empresa executora", "Cliente e equipamento"),
+]
 
 
 def _fmt_num(value):
@@ -287,13 +310,13 @@ class AfrQualificacaoRelatorio(models.Model):
             "anexo": lambda code: rel._anexo_number(code),
         }
 
-    def _render_block_body(self, block):
-        """Resolve {{ }} do corpo do bloco. Erro de expressão ⇒ corpo cru
-        (P5 acusa TOKEN_NAO_RESOLVIDO), nunca exceção no PDF."""
+    def _render_body_html(self, body):
+        """Núcleo do render de corpo: `(Markup, ok)`. `ok=False` ⇒ expressão
+        inválida, corpo devolvido cru (P5 acusa TOKEN_NAO_RESOLVIDO), nunca
+        exceção no PDF."""
         self.ensure_one()
-        body = block.body
         if not body or is_html_empty(body):
-            return Markup("")
+            return Markup(""), True
         try:
             # TODO(1.11): mecanismo real do risco — `sudo()` faz
             # `env.is_admin()` retornar True dentro do `inline_template`,
@@ -316,10 +339,65 @@ class AfrQualificacaoRelatorio(models.Model):
             )
         except UserError:
             _logger.warning(
-                "Relatório %s: token inválido no bloco %s; corpo mantido sem render.",
-                self.display_name, block.id, exc_info=True)
-            return Markup(str(body))
-        return Markup(rendered.get(self.id) or "")
+                "Relatório %s: token inválido; corpo mantido sem render.",
+                self.display_name, exc_info=True)
+            return Markup(str(body)), False
+        return Markup(rendered.get(self.id) or ""), True
+
+    def _render_block_body(self, block):
+        """Resolve {{ }} do corpo do bloco. Erro de expressão ⇒ corpo cru
+        (P5 acusa TOKEN_NAO_RESOLVIDO), nunca exceção no PDF."""
+        self.ensure_one()
+        return self._render_body_html(block.body)[0]
+
+    def _rq_render_expr(self, expr):
+        """Texto renderizado de uma expressão avulsa ({{ expr }}), ou `None`
+        quando o render falhou (expressão inválida)."""
+        self.ensure_one()
+        html, ok = self._render_body_html("{{ %s }}" % expr)
+        return str(html).strip() if ok else None
+
+    def rq_variable_catalog(self):
+        """Catálogo de variáveis do editor com o VALOR ATUAL deste relatório
+        (painel "Inserir variável" + preview)."""
+        self.ensure_one()
+        items = [
+            {"expr": expr, "label": label, "group": group,
+             "value": self._rq_render_expr(expr) or ""}
+            for expr, label, group in RQ_STATIC_VARS
+        ]
+        for anx in self.anexo_ids.sorted(sort_key):
+            expr = "anexo('%s')" % anx.code
+            items.append({
+                "expr": expr,
+                "label": _("Nº do anexo — %s") % anx.title,
+                "group": _("Anexos"),
+                "value": self._anexo_number(anx.code),
+            })
+        return items
+
+    @api.model
+    def rq_variable_catalog_static(self):
+        """Mesma forma de `rq_variable_catalog()` sem depender de um
+        relatório (sem valores nem anexos) — usado antes de abrir um
+        relatório específico."""
+        return [
+            {"expr": expr, "label": label, "group": group, "value": ""}
+            for expr, label, group in RQ_STATIC_VARS
+        ]
+
+    def rq_preview_block(self, body):
+        """Render de corpo NÃO salvo para o modo Visualizar do editor.
+        Exige direito de escrita no relatório (quem pode editar o bloco)."""
+        self.ensure_one()
+        self.check_access_rights("write")
+        self.check_access_rule("write")
+        html, _ok = self._render_body_html(body or "")
+        missing = []
+        for expr in dict.fromkeys(_RQ_EXPR_RE.findall(str(body or ""))):
+            if not self._rq_render_expr(expr):
+                missing.append(expr)
+        return {"html": str(html), "missing": missing}
 
 
     # ── helpers do corpo QWeb ────────────────────────────────────────────
