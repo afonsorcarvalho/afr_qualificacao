@@ -140,8 +140,7 @@ class AfrQualificacaoRelatorio(models.Model):
             block = self.env["afr.relatorio.block"]
             if line.slot_kind == "bloco":
                 block = self.block_ids.filtered(
-                    lambda b, c=line.code: b.anexo_code == c
-                    and b.block_kind != "anexo_separador")[:1]
+                    lambda b, c=line.code: b.anexo_code == c)[:1]
             vals.append({
                 "relatorio_id": self.id,
                 "sequence": line.sequence,
@@ -259,12 +258,6 @@ class AfrQualificacaoRelatorio(models.Model):
         if not anexo or not anexo.included or not anexo.numero:
             return ""
         return str(anexo.numero)
-
-    def _anexo_separator_block(self, code):
-        self.ensure_one()
-        return self.block_ids.filtered(
-            lambda b: b.block_kind == "anexo_separador" and b.anexo_code == code
-            and b.included)[:1]
 
     # ── tokens / render ──────────────────────────────────────────────────
     def _criterio_values(self):

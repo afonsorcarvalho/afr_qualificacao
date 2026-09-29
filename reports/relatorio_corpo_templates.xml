@@ -271,20 +271,18 @@
             <t t-if="block.block_kind == 'protocolo'"><t t-call="afr_qualificacao.rq_block_protocolo"/></t>
             <t t-if="block.block_kind == 'laudo_micro'"><t t-call="afr_qualificacao.rq_block_laudo_micro"/></t>
             <t t-if="block.block_kind == 'assinaturas'"><t t-call="afr_qualificacao.rq_block_assinaturas"/></t>
-            <div t-if="block.block_kind not in ('capa', 'indice', 'anexo_separador') and block.body"
+            <div t-if="block.block_kind not in ('capa', 'indice') and block.body"
                  class="rq-body" t-out="doc._render_block_body(block)"/>
         </div>
     </template>
 
-    <!-- Uma posição de anexo incluída: separador (+ conteúdo se slot 'bloco'). Espera: doc, anexo, markers -->
+    <!-- Uma posição de anexo incluída: página separadora (+ conteúdo se slot 'bloco'). Espera: doc, anexo, markers -->
     <template id="rq_anexo">
-        <t t-set="sep" t-value="doc._anexo_separator_block(anexo.code)"/>
-        <div class="rq-anexo-sep" t-att-data-rq-anexo="anexo.code"><span t-if="markers" class="rq-mark" t-esc="'@@RQ:anexo:%s@@' % anexo.code"/><span t-if="markers and sep" class="rq-mark" t-esc="'@@RQ:bloco:%s@@' % sep.id"/>
+        <div class="rq-anexo-sep" t-att-data-rq-anexo="anexo.code"><span t-if="markers" class="rq-mark" t-esc="'@@RQ:anexo:%s@@' % anexo.code"/>
             <div class="rq-anexo-eyebrow">Anexo</div>
             <div class="rq-anexo-num" t-esc="anexo.numero"/>
             <div class="rq-anexo-title" t-esc="anexo.title or ''"/>
             <div class="rq-anexo-rule"/>
-            <div t-if="sep and sep.body" class="rq-body" t-out="doc._render_block_body(sep)"/>
         </div>
         <t t-if="anexo.slot_kind == 'bloco' and anexo.block_id and anexo.block_id.included">
             <t t-set="block" t-value="anexo.block_id"/>

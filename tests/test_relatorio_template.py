@@ -179,20 +179,13 @@ class TestRelatorioTemplateModels(AfrQualificacaoTestCommon):
         from odoo.addons.afr_qualificacao.models.relatorio_template import REPORT_BLOCK_KINDS
         self.assertEqual(
             [k for k, _l in REPORT_BLOCK_KINDS],
-            ["static", "capa", "indice", "protocolo", "laudo_micro",
-             "assinaturas", "anexo_separador"],
+            ["static", "capa", "indice", "protocolo", "laudo_micro", "assinaturas"],
         )
 
     def test_static_line_requires_section(self):
         with self.assertRaises(ValidationError):
             self.env["afr.relatorio.template.line"].create({
                 "template_id": self.tpl.id, "block_kind": "static",
-            })
-
-    def test_separator_line_requires_anexo_code(self):
-        with self.assertRaises(ValidationError):
-            self.env["afr.relatorio.template.line"].create({
-                "template_id": self.tpl.id, "block_kind": "anexo_separador",
             })
 
     def test_template_line_display_number(self):
@@ -207,18 +200,18 @@ class TestRelatorioTemplateModels(AfrQualificacaoTestCommon):
         self.assertEqual((capa.display_number, root.display_number, child.display_number),
                          ("", "1", "1.1"))
 
-    def test_separator_line_excluded_from_numbering(self):
-        """Achado 3 (fix round 1): anexo_separador não conta na numeração do
-        texto — como `_body_blocks()` já exclui blocos com `anexo_code`."""
+    def test_anexo_code_line_excluded_from_template_numbering(self):
+        """Linha de template com `anexo_code` (conteúdo de anexo) não conta
+        na numeração — espelha o `is_anexo_content` do relatório."""
         Line = self.env["afr.relatorio.template.line"]
         root = Line.create({"template_id": self.tpl.id, "sequence": 10,
                             "block_kind": "static", "section_id": self.section.id})
-        separator = Line.create({"template_id": self.tpl.id, "sequence": 15,
-                                 "block_kind": "anexo_separador", "anexo_code": "dados"})
+        content = Line.create({"template_id": self.tpl.id, "sequence": 15,
+                               "block_kind": "protocolo", "anexo_code": "protocolo"})
         second = Line.create({"template_id": self.tpl.id, "sequence": 20,
                               "block_kind": "static", "section_id": self.section.id})
         self.assertEqual(
-            (root.display_number, separator.display_number, second.display_number),
+            (root.display_number, content.display_number, second.display_number),
             ("1", "", "2"),
         )
 
@@ -243,7 +236,7 @@ class TestRelatorioTemplateModels(AfrQualificacaoTestCommon):
             })
         with self.assertRaises(ValidationError):
             self.env["afr.relatorio.template.line"].create({
-                "template_id": self.tpl.id, "block_kind": "anexo_separador",
+                "template_id": self.tpl.id, "block_kind": "protocolo",
                 "anexo_code": "tem espaço",
             })
         rel = _make_relatorio(self.env, self.equip1)
@@ -609,7 +602,8 @@ class TestRelatorioSeeds(TransactionCase):
     def test_hosp_lines_have_kinds_and_bloco_links(self):
         kinds = set(self.hosp.line_ids.mapped("block_kind"))
         self.assertTrue({"capa", "indice", "static", "protocolo", "laudo_micro",
-                         "assinaturas", "anexo_separador"} <= kinds)
+                         "assinaturas"} <= kinds)
+        self.assertNotIn("anexo_separador", kinds)
         proto = self.hosp.line_ids.filtered(lambda l: l.block_kind == "protocolo")
         self.assertEqual(proto.anexo_code, "protocolo")
         self.assertFalse(self.ind.line_ids.filtered(lambda l: l.block_kind == "laudo_micro"))
@@ -697,6 +691,25 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.assertEqual(micro.block_id.block_kind, "laudo_micro")
         dados = self.rel.anexo_ids.filtered(lambda a: a.code == "dados")
         self.assertFalse(dados.block_id)
+
+    def test_applied_report_has_no_separator_blocks(self):
+        self.assertNotIn("anexo_separador", self.rel.block_ids.mapped("block_kind"))
+        proto = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        self.assertEqual(proto.block_id.block_kind, "protocolo")
+
+    def test_corpo_html_lists_anexos_in_anexo_order(self):
+        self.rel.anexo_ids.filtered(lambda a: a.code == "graficos").sequence = 1
+        self.rel.anexo_ids.filtered(lambda a: a.code == "dados").included = False
+        html, _f = self.env["ir.actions.report"]._render_qweb_html(
+            "afr_qualificacao.report_relatorio_corpo", self.rel.ids,
+            data={"page_map": {}, "with_markers": True},
+        )
+        html = html.decode()
+        codes = [a.code for a in self.rel._anexos_included()]
+        self.assertEqual(codes[0], "graficos")
+        positions = [html.index("@@RQ:anexo:%s@@" % c) for c in codes]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("@@RQ:anexo:dados@@", html)
 
     def test_default_approvals(self):
         ap = self.rel.aprovacao_ids
@@ -995,3 +1008,33 @@ class TestRelatorioTokens(RelatorioTemplateFixture):
         blk.body = "<p>T={{ criterio['tolerancia'] }};A={{ anexo('dados') }}</p>"
         html = str(self.rel.with_user(user)._render_block_body(blk.with_user(user)))
         self.assertIn("T=3;A=2", html)
+
+
+class TestPreMigrateSeparators(RelatorioTemplateFixture):
+
+    def test_pre_migrate_deletes_legacy_separators(self):
+        import importlib.util
+        import os
+        path = os.path.join(os.path.dirname(__file__), "..", "migrations",
+                            "16.0.8.6.0", "pre-migrate.py")
+        spec = importlib.util.spec_from_file_location("rq_pre_migrate_8_6", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        cr = self.env.cr
+        cr.execute("""
+            INSERT INTO afr_relatorio_block
+                   (relatorio_id, sequence, block_kind, anexo_code, included,
+                    page_break, show_number, show_title)
+            VALUES (%s, 500, 'anexo_separador', 'dados', true, false, false, false)
+        """, [self.rel.id])
+        cr.execute("""
+            INSERT INTO afr_relatorio_template_line
+                   (template_id, sequence, block_kind, anexo_code, page_break,
+                    show_number, show_title)
+            VALUES (%s, 500, 'anexo_separador', 'dados', false, false, false)
+        """, [self.hosp.id])
+        mod.migrate(cr, "16.0.8.5.1")
+        cr.execute("SELECT count(*) FROM afr_relatorio_block WHERE block_kind = 'anexo_separador'")
+        self.assertEqual(cr.fetchone()[0], 0)
+        cr.execute("SELECT count(*) FROM afr_relatorio_template_line WHERE block_kind = 'anexo_separador'")
+        self.assertEqual(cr.fetchone()[0], 0)

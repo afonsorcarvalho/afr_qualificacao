@@ -18,7 +18,6 @@ REPORT_BLOCK_KINDS = [
     ("protocolo", "Protocolo (PrQT)"),
     ("laudo_micro", "Laudo Microbiológico (ReQM)"),
     ("assinaturas", "Quadro de Assinaturas"),
-    ("anexo_separador", "Separador de Anexo"),
 ]
 
 ANEXO_SLOT_KINDS = [
@@ -99,10 +98,9 @@ class AfrRelatorioTemplateLine(models.Model):
         "template_id.line_ids.show_number", "template_id.line_ids.anexo_code",
     )
     def _compute_display_number(self):
-        """Achado 3 (fix round 1): linhas com `anexo_code` (separador de
-        anexo) não contam na numeração — como `_body_blocks()` já as exclui
-        do corpo renderizado; manter os dois alinhados evita numeração que
-        diverge do PDF."""
+        """Linhas com `anexo_code` (conteúdo de anexo, p.ex. protocolo) não
+        contam na numeração — espelha `is_anexo_content`/`_body_blocks()` do
+        relatório, para a numeração do template bater com o PDF."""
         for line in self:
             line.display_number = ""
         for template in self.mapped("template_id"):
@@ -116,12 +114,6 @@ class AfrRelatorioTemplateLine(models.Model):
         for rec in self:
             if rec.block_kind == "static" and not rec.section_id:
                 raise ValidationError(_("Bloco de texto exige uma Seção de Texto selecionada."))
-
-    @api.constrains("block_kind", "anexo_code")
-    def _check_separator_has_code(self):
-        for rec in self:
-            if rec.block_kind == "anexo_separador" and not rec.anexo_code:
-                raise ValidationError(_("Separador de anexo exige o código do anexo."))
 
     @api.constrains("anexo_code")
     def _check_anexo_code_format(self):

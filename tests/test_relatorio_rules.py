@@ -153,7 +153,7 @@ class TestRelatorioRulesBloqueia(_RulesMixin, RelatorioTestCommon):
     def test_token_nao_resolvido_ignora_capa_e_indice(self):
         """Fix round 1, achado 1: `reports/relatorio_corpo_templates.xml`
         (`rq_block`) só chama `doc._render_block_body(block)` para
-        `block_kind not in ('capa', 'indice', 'anexo_separador')` — capa e
+        `block_kind not in ('capa', 'indice')` — capa e
         índice têm sub-template próprio (`rq_block_capa`/`rq_block_indice`)
         e nunca passam pelo render de `{{ }}`. Um '{{' cru no body de uma
         capa/índice nunca aparece no PDF; `rendered_blocks()` precisa

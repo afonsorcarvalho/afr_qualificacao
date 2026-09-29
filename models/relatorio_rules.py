@@ -57,34 +57,22 @@ def _anexo_label(anexo):
 
 # Kinds cujo `body` nunca passa por `_render_block_body` no template
 # (`reports/relatorio_corpo_templates.xml::rq_block`, div `rq-body`: só
-# renderiza para `block_kind not in ('capa', 'indice', 'anexo_separador')`
-# — capa/índice têm sub-template próprio, `rq_block_capa`/`rq_block_indice`).
-# `anexo_separador` fica fora desta lista porque, apesar do `rq_block`
-# excluir esse kind também, o `rq_anexo` renderiza o separador via
-# `doc._render_block_body(sep)` direto — por isso ele CONTINUA em
-# `rendered_blocks()` (Fix round 1, achado 1).
+# renderiza para `block_kind not in ('capa', 'indice')` — capa/índice têm
+# sub-template próprio, `rq_block_capa`/`rq_block_indice`).
 _TOKEN_SKIP_KINDS = ("capa", "indice")
 
 
 def rendered_blocks(rel):
-    """Blocos que efetivamente aparecem no documento renderizado (Ruling
-    1.4/1.6 — P5 preflight, + Fix round 1 achado 1): o corpo principal
-    (`_body_blocks()`, sem capa/índice — `_TOKEN_SKIP_KINDS`) mais, para
-    cada anexo incluído, o separador (`_anexo_separator_block(code)`,
-    sempre renderizado por `rq_anexo`) e — só quando `slot_kind == 'bloco'`,
-    o bloco vinculado está incluído e não é capa/índice — o próprio
-    `anexo.block_id`. As duas condições (kind do `t-if` de `rq_anexo` e a
-    exclusão de capa/índice do `rq_block`) são copiadas literalmente de
-    `reports/relatorio_corpo_templates.xml`, reforçadas por
-    `tests/relatorio_fakes.py::FakeCorpo.render`, para as regras de token
-    não acusarem falso positivo num bloco que nunca é impresso (bloco
-    excluído do corpo, vinculado a um anexo excluído/trocado, ou capa/índice
-    cujo body nunca é resolvido)."""
+    """Blocos que efetivamente aparecem no documento renderizado: o corpo
+    (`_body_blocks()`, sem capa/índice — `_TOKEN_SKIP_KINDS`) mais, para cada
+    anexo incluído de origem 'bloco', o `anexo.block_id` quando incluído e não
+    capa/índice. Espelha `reports/relatorio_corpo_templates.xml` (`rq_block`/
+    `rq_anexo`) e `tests/relatorio_fakes.py::FakeCorpo.render`, para as regras
+    de token não acusarem bloco que nunca é impresso."""
     rel.ensure_one()
     blocks = rel._body_blocks().filtered(
         lambda b: b.block_kind not in _TOKEN_SKIP_KINDS)
     for anexo in rel._anexos_included():
-        blocks |= rel._anexo_separator_block(anexo.code)
         if (anexo.slot_kind == "bloco" and anexo.block_id and anexo.block_id.included
                 and anexo.block_id.block_kind not in _TOKEN_SKIP_KINDS):
             blocks |= anexo.block_id

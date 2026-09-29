@@ -373,14 +373,6 @@ _RQT_TAIL = [
 ]
 
 
-def _rqt_separators(codes, start_seq):
-    return [
-        ("s_%s" % code, start_seq + i * 10, "anexo_separador", None, False, None,
-         False, False, code, None)
-        for i, code in enumerate(codes)
-    ]
-
-
 # Anexos: (code, seq, title, slot_kind, collect_sections, cert_roles, included_default)
 _RQT_DADOS_SECTIONS = (
     "qo_mapeamento_ciclo1,qo_mapeamento_ciclo2,qo_mapeamento_ciclo3,"
@@ -423,7 +415,6 @@ RELATORIO_TEMPLATES = [
                 ("l100", 100, "static", "rqt_sec_micro", False, "l060", True, True, None, None),
             ]
             + _RQT_TAIL
-            + _rqt_separators([a[0] for a in RELATORIO_ANEXOS_HOSP], 500)
             + [
                 ("c_protocolo", 900, "protocolo", "rqt_sec_protocolo_textos", False, None,
                  False, False, "protocolo", "Protocolo de Qualificação Térmica"),
@@ -447,7 +438,6 @@ RELATORIO_TEMPLATES = [
                 ("l100", 100, "static", "rqt_sec_qdm", False, "l060", True, True, None, None),
             ]
             + _RQT_TAIL
-            + _rqt_separators([a[0] for a in RELATORIO_ANEXOS_IND], 500)
             + [
                 ("c_protocolo", 900, "protocolo", "rqt_sec_protocolo_textos", False, None,
                  False, False, "protocolo", "Protocolo de Qualificação Térmica"),

@@ -105,9 +105,9 @@ class FakeCorpo:
     Espelha o template de P3 (fato fixado #3) chamando os MESMOS métodos:
     - `rel._body_blocks()` em ordem; `page_break` abre página nova;
     - para cada `rel._anexos_included()`: separador numa página só dele
-      (quebra antes e depois) com `@@RQ:anexo:<code>@@` (+ `@@RQ:bloco:<id>@@`
-      do `_anexo_separator_block(code)`) e, se `slot_kind == 'bloco'`, o bloco
-      `anexo.block_id` logo depois, no próprio corpo;
+      (quebra antes e depois) com `@@RQ:anexo:<code>@@` e, se
+      `slot_kind == 'bloco'`, o bloco `anexo.block_id` logo depois, no
+      próprio corpo;
     - `with_markers` (de `data`) liga os marcadores; `skip_markers` omite
       chaves (simula o pdfminer não achar um marcador);
     - bloco `indice` imprime `IDX <chave>=<página>` de `data["page_map"]`;
@@ -172,10 +172,7 @@ class FakeCorpo:
         for block in rel._body_blocks():
             add_block(block)
         for anexo in rel._anexos_included():
-            sep = rel._anexo_separator_block(anexo.code)
             lines = mark("anexo:%s" % anexo.code)
-            if sep:
-                lines += mark("bloco:%d" % sep.id)
             lines.append("ANEXO %s: %s" % (anexo.numero, anexo.title or ""))
             emit(lines, True)
             state["force_new"] = True  # page-break-after do separador
