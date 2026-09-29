@@ -881,7 +881,7 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
 
     def test_block_numbering_ignores_anexo_blocks(self):
         numbers = self.rel._block_numbering()
-        anexo_blocks = self.rel.block_ids.filtered("anexo_code")
+        anexo_blocks = self.rel.block_ids.filtered("is_anexo_content")
         self.assertTrue(anexo_blocks)
         for blk in anexo_blocks:
             self.assertNotIn(blk.id, numbers)
@@ -889,6 +889,37 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.assertEqual(numbers[objetivo.id], "1")
         qi = self.rel.block_ids.filtered(lambda b: b.title == "Qualificação de Instalação (QI)")
         self.assertEqual(numbers[qi.id], "4.1")
+
+    def test_anexo_content_blocks_leave_body_list(self):
+        proto = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo").block_id
+        self.assertTrue(proto.is_anexo_content)
+        self.assertNotIn(proto, self.rel.body_block_ids)
+        self.assertNotIn(proto, self.rel._body_blocks())
+        objetivo = self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        self.assertFalse(objetivo.is_anexo_content)
+        self.assertIn(objetivo, self.rel.body_block_ids)
+
+    def test_relinking_anexo_block_recomputes_both(self):
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        old = anexo.block_id
+        new = self.env["afr.relatorio.block"].create({
+            "relatorio_id": self.rel.id, "sequence": 999, "block_kind": "protocolo",
+            "title": "Outro protocolo",
+        })
+        anexo.block_id = new
+        self.assertTrue(new.is_anexo_content)
+        self.assertFalse(old.is_anexo_content)
+        self.assertIn(old, self.rel.body_block_ids)
+
+    def test_orphan_anexo_code_block_is_body_and_numbered(self):
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        block = anexo.block_id
+        block.show_number = True
+        anexo.unlink()
+        self.assertFalse(block.is_anexo_content)
+        self.assertIn(block, self.rel._body_blocks())
+        self.assertIn(block.id, self.rel._block_numbering())
+        self.assertTrue(block.display_number)
 
     def test_suggest_template_by_category_then_sequence(self):
         tpl = self.env["afr.relatorio.template"].create({

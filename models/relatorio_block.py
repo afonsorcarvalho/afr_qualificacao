@@ -33,6 +33,12 @@ class AfrRelatorioBlock(models.Model):
     show_number = fields.Boolean(string="Numerado", default=True)
     show_title = fields.Boolean(string="Titulado", default=True)
     anexo_code = fields.Char(string="Código do anexo")
+    anexo_ids = fields.One2many(
+        "afr.relatorio.anexo", "block_id", string="Anexos que usam este bloco")
+    is_anexo_content = fields.Boolean(
+        compute="_compute_is_anexo_content", store=True, index=True,
+        help="Bloco apontado por um anexo (origem 'Bloco do relatório'): "
+             "impresso na posição do anexo, fora do corpo e da numeração.")
     display_label = fields.Char(compute="_compute_display_label", string="Conteúdo")
     display_number = fields.Char(compute="_compute_display_number", string="Nº")
 
@@ -43,11 +49,16 @@ class AfrRelatorioBlock(models.Model):
             block.display_label = (
                 block.title or block.section_id.name or labels.get(block.block_kind, ""))
 
+    @api.depends("anexo_ids")
+    def _compute_is_anexo_content(self):
+        for block in self:
+            block.is_anexo_content = bool(block.anexo_ids)
+
     @api.depends(
-        "relatorio_id", "sequence", "parent_id", "show_number", "included", "anexo_code",
+        "relatorio_id", "sequence", "parent_id", "show_number", "included", "is_anexo_content",
         "relatorio_id.block_ids.sequence", "relatorio_id.block_ids.parent_id",
         "relatorio_id.block_ids.show_number", "relatorio_id.block_ids.included",
-        "relatorio_id.block_ids.anexo_code",
+        "relatorio_id.block_ids.is_anexo_content",
     )
     def _compute_display_number(self):
         # Atribui SÓ a `self` (ver `afr.relatorio.anexo._compute_numero`):

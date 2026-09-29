@@ -35,6 +35,10 @@ class AfrQualificacaoRelatorio(models.Model):
         tracking=True, help="Sugerido pela categoria do equipamento.")
     block_ids = fields.One2many(
         "afr.relatorio.block", "relatorio_id", string="Blocos do texto", copy=False)
+    body_block_ids = fields.One2many(
+        "afr.relatorio.block", "relatorio_id", string="Corpo do relatório",
+        domain=[("is_anexo_content", "=", False)], copy=False,
+        help="Blocos do corpo; conteúdo de anexo é editado pelo anexo.")
     anexo_ids = fields.One2many(
         "afr.relatorio.anexo", "relatorio_id", string="Anexos", copy=False)
     aprovacao_ids = fields.One2many(
@@ -233,10 +237,12 @@ class AfrQualificacaoRelatorio(models.Model):
 
     # ── numeração / anexos ───────────────────────────────────────────────
     def _body_blocks(self):
-        """Blocos do texto principal (incluídos e sem vínculo a anexo), ordenados."""
+        """Blocos do corpo principal (incluídos e que não são conteúdo de
+        anexo), ordenados. Conteúdo de anexo = bloco apontado por
+        `afr.relatorio.anexo.block_id`."""
         self.ensure_one()
         return self.block_ids.filtered(
-            lambda b: b.included and not b.anexo_code).sorted(sort_key)
+            lambda b: b.included and not b.is_anexo_content).sorted(sort_key)
 
     def _block_numbering(self):
         self.ensure_one()

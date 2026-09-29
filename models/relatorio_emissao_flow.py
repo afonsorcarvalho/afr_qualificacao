@@ -91,7 +91,8 @@ class AfrQualificacaoRelatorioEmissao(models.Model):
         "data_inicio_ensaios", "data_fim_ensaios",
         "amb_temperatura", "amb_umidade",
         "tolerancia_acima", "criterio_f0_fator",
-        "block_ids", "anexo_ids", "checklist_ids", "indicador_ids", "leitura_ib_ids",
+        "block_ids", "body_block_ids", "anexo_ids", "checklist_ids", "indicador_ids",
+        "leitura_ib_ids",
     })
 
     # Âncoras do relatório (fix round 2 do Task 9): cliente/empresa derivam da

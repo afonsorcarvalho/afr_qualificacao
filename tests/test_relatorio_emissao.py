@@ -396,6 +396,11 @@ class TestRelatorioAprovacoes(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
                 edit()
                 self.assertFalse(self._internal_approved(), label)
 
+    def test_editing_body_block_list_invalidates(self):
+        self._approve_internal()
+        self.rel.write({"body_block_ids": [(1, self.block.id, {"body": "<p>via lista</p>"})]})
+        self.assertFalse(self._internal_approved())
+
     def test_non_editorial_write_keeps_approvals(self):
         self._approve_internal()
         att = self._attachment(b"%PDF-1.4", "m.pdf", "application/pdf")
