@@ -1035,6 +1035,7 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         # link cruzado direto no ORM (bypassa o domain do campo M1): anexo de
         # OUTRO relatório aponta pro bloco "Objetivo" deste relatório.
         other_anexo.write({"slot_kind": "bloco", "block_id": objetivo.id})
+        self.assertEqual(other_anexo.block_id, objetivo)
         self.assertFalse(objetivo.is_anexo_content)
         self.assertIn(objetivo, self.rel.body_block_ids)
 
