@@ -80,7 +80,8 @@ class AfrRelatorioTemplateLine(models.Model):
     show_title = fields.Boolean(string="Titulado", default=True)
     anexo_code = fields.Char(
         string="Código do anexo",
-        help="Liga o bloco a uma posição de anexo (separador ou conteúdo do anexo 'bloco').",
+        help="Chave de semente: `_apply_template()` usa este código pra "
+             "setar `block_id` no anexo de origem 'bloco' correspondente.",
     )
     display_label = fields.Char(compute="_compute_display_label", string="Conteúdo")
     display_number = fields.Char(compute="_compute_display_number", string="Nº")

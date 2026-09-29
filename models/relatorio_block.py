@@ -49,10 +49,15 @@ class AfrRelatorioBlock(models.Model):
             block.display_label = (
                 block.title or block.section_id.name or labels.get(block.block_kind, ""))
 
-    @api.depends("anexo_ids")
+    @api.depends("anexo_ids", "anexo_ids.relatorio_id")
     def _compute_is_anexo_content(self):
+        """Achado M3 (review final): `anexo_ids` é o inverso de `block_id`
+        sem domain — um `block_id` de RPC (ou dado legado) apontando pra um
+        bloco de OUTRO relatório marcava esse bloco como conteúdo de anexo
+        por engano. Filtra pelo mesmo `relatorio_id` do bloco."""
         for block in self:
-            block.is_anexo_content = bool(block.anexo_ids)
+            block.is_anexo_content = bool(
+                block.anexo_ids.filtered(lambda a: a.relatorio_id == block.relatorio_id))
 
     @api.depends(
         "relatorio_id", "sequence", "parent_id", "show_number", "included", "is_anexo_content",

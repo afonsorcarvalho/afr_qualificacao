@@ -34,7 +34,8 @@ class AfrRelatorioAnexo(models.Model):
     cert_roles = fields.Char(string="Papéis de certificado")
     block_id = fields.Many2one(
         "afr.relatorio.block", string="Bloco", ondelete="set null",
-        domain="[('relatorio_id', '=', relatorio_id)]")
+        domain="[('relatorio_id', '=', relatorio_id), "
+               "('block_kind', 'in', ['protocolo', 'laudo_micro', 'static'])]")
     attachment_ids = fields.Many2many(
         "ir.attachment", relation="afr_relatorio_anexo_attachment_rel",
         column1="anexo_id", column2="attachment_id", string="Arquivos")
@@ -68,6 +69,32 @@ class AfrRelatorioAnexo(models.Model):
             numbers.update({anexo: n for n, anexo in enumerate(included, 1)})
         for anexo in self:
             anexo.numero = numbers.get(anexo, 0)
+
+    @api.onchange("slot_kind")
+    def _onchange_slot_kind_clears_block(self):
+        """Achado M2 (review final): trocar a origem pra longe de 'bloco'
+        deixava `block_id` setado e escondido pelo `attrs` do form — o bloco
+        continuava `is_anexo_content` (fora do corpo) sem nenhum anexo
+        visível apontando pra ele. Espelhado em `create`/`write` pra cobrir
+        RPC, que não passa pelo onchange."""
+        for anexo in self:
+            if anexo.slot_kind != "bloco":
+                anexo.block_id = False
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Achado M2: mesma guarda do onchange, do lado do servidor."""
+        for vals in vals_list:
+            if vals.get("slot_kind", "upload") != "bloco":
+                vals["block_id"] = False
+        return super().create(vals_list)
+
+    def write(self, vals):
+        """Achado M2: mudar `slot_kind` pra longe de 'bloco' limpa
+        `block_id` mesmo vindo de RPC (sem passar pelo onchange)."""
+        if "slot_kind" in vals and vals["slot_kind"] != "bloco":
+            vals = dict(vals, block_id=False)
+        return super().write(vals)
 
     def action_edit_block_content(self):
         """Abre o bloco de conteúdo (origem 'Bloco do relatório') no mesmo

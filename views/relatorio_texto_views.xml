@@ -12,8 +12,8 @@
                         <group>
                             <field name="block_kind" readonly="1"/>
                             <field name="title"/>
-                            <field name="parent_id"/>
-                            <field name="anexo_code" readonly="1"/>
+                            <field name="parent_id"
+                                   domain="[('relatorio_id', '=', relatorio_id), ('id', '!=', id), ('is_anexo_content', '=', False)]"/>
                         </group>
                         <group>
                             <field name="included"/>

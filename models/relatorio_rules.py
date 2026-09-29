@@ -250,9 +250,9 @@ def rule_anexo_ilegivel(rel):
 
 def rule_token_nao_resolvido(rel):
     """Ruling 1.4/1.6 (P5 preflight): só percorre `rendered_blocks(rel)` —
-    o corpo principal mais separadores/conteúdo de anexo que de fato entram
-    no documento — para não acusar token não resolvido num bloco que nunca
-    é impresso.
+    o corpo principal mais o conteúdo dos anexos de origem 'bloco' que de
+    fato entram no documento — para não acusar token não resolvido num
+    bloco que nunca é impresso.
 
     Fix round 1, achado 2: o render de cada bloco roda no seu próprio
     savepoint — igual ao isolamento por regra de `run_rules` — para que um

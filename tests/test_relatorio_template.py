@@ -8,6 +8,7 @@ from odoo import fields
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase
 from odoo.tools import mute_logger
+from odoo.tools.safe_eval import safe_eval
 
 from odoo.addons.afr_qualificacao.hooks import _seed_relatorio_templates
 from odoo.addons.afr_qualificacao.models._numbering import hierarchical_numbering
@@ -923,6 +924,7 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.assertTrue(new.is_anexo_content)
         self.assertFalse(old.is_anexo_content)
         self.assertIn(old, self.rel.body_block_ids)
+        self.assertNotIn(new, self.rel.body_block_ids)
 
     def test_orphan_anexo_code_block_is_body_and_numbered(self):
         anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
@@ -958,6 +960,83 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         anexo.block_id = False
         with self.assertRaises(UserError):
             anexo.action_edit_block_content()
+
+    def test_bloco_anexo_block_id_domain_excludes_non_content_kinds(self):
+        """M1 (review final): o domain aberto (`block_id` aceitava qualquer
+        bloco do relatório) deixava escolher um bloco estrutural — ex.:
+        "Quadro de Assinaturas" — que precisa permanecer no corpo; virar
+        conteúdo de anexo o some silenciosamente. O domain restringe a
+        escolha a protocolo/laudo_micro/static (candidatos legítimos a
+        conteúdo de anexo, como o "Objetivo")."""
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        domain = safe_eval(
+            anexo._fields["block_id"].domain, {"relatorio_id": anexo.relatorio_id.id})
+        allowed = self.env["afr.relatorio.block"].search(domain)
+        assinaturas = self.rel.block_ids.filtered(lambda b: b.block_kind == "assinaturas")
+        objetivo = self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        self.assertTrue(assinaturas)
+        self.assertNotIn(assinaturas, allowed)
+        self.assertIn(objetivo, allowed)
+        self.assertIn(anexo.block_id, allowed)
+
+    def test_slot_kind_away_from_bloco_clears_block_id_on_write(self):
+        """M2 (review final): trocar `slot_kind` sem limpar `block_id`
+        deixava o bloco escondido (ainda `is_anexo_content`) e inalcançável
+        — nem no corpo nem em nenhum anexo visível."""
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        block = anexo.block_id
+        self.assertTrue(block.is_anexo_content)
+        anexo.write({"slot_kind": "upload"})
+        self.assertFalse(anexo.block_id)
+        self.assertFalse(block.is_anexo_content)
+        self.assertIn(block, self.rel.body_block_ids)
+
+    def test_slot_kind_away_from_bloco_clears_block_id_onchange(self):
+        """M2: mesma guarda do lado do onchange (UI), num registro virtual
+        (NewId) — `write()` não roda nesse modo, então precisa do próprio
+        `@api.onchange`."""
+        anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        virtual = self.env["afr.relatorio.anexo"].new({
+            "relatorio_id": self.rel.id,
+            "code": anexo.code,
+            "title": anexo.title,
+            "slot_kind": "bloco",
+            "block_id": anexo.block_id.id,
+        })
+        self.assertTrue(virtual.block_id)
+        virtual.slot_kind = "upload"
+        virtual._onchange_slot_kind_clears_block()
+        self.assertFalse(virtual.block_id)
+
+    def test_is_anexo_content_ignores_block_from_other_relatorio(self):
+        """M3 (review final): `_compute_is_anexo_content` contava qualquer
+        anexo apontando pro bloco, mesmo de OUTRO relatório — um `block_id`
+        cruzado (RPC/dado legado) marcava o bloco como conteúdo de anexo
+        por engano."""
+        so2 = self._apply(do_qi=True, qo_cycles=1)
+        os2 = self._confirm_and_generate_os(so2)
+        other_employee = self.env["hr.employee"].create({"name": "Técnico Teste M3"})
+        self.env["afr.qualificacao.os.relatorio"].create({
+            "os_id": os2.id,
+            "descricao": "Dia 1",
+            "data_inicio": "2026-09-01 08:00:00",
+            "data_fim": "2026-09-01 17:00:00",
+            "tecnico_ids": [(6, 0, other_employee.ids)],
+            "signature_technician_date": "2026-09-01 17:05:00",
+        })
+        os2.action_generate_relatorios_open()
+        other_rel = os2.relatorio_final_ids.filtered(lambda r: r.equipment_id == self.equip1)
+        other_rel.template_id = self.hosp
+        other_rel.action_reload_template()
+        objetivo = self.rel.block_ids.filtered(lambda b: b.title == "Objetivo")
+        self.assertFalse(objetivo.is_anexo_content)
+        other_anexo = other_rel.anexo_ids.filtered(lambda a: a.code == "protocolo")
+        other_anexo.write({"slot_kind": "upload"})
+        # link cruzado direto no ORM (bypassa o domain do campo M1): anexo de
+        # OUTRO relatório aponta pro bloco "Objetivo" deste relatório.
+        other_anexo.write({"slot_kind": "bloco", "block_id": objetivo.id})
+        self.assertFalse(objetivo.is_anexo_content)
+        self.assertIn(objetivo, self.rel.body_block_ids)
 
     def test_texto_page_has_body_then_anexos_and_no_anexos_page(self):
         arch = self.env["afr.qualificacao.relatorio"].get_view(view_type="form")["arch"]
