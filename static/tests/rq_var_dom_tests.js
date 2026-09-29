@@ -40,4 +40,24 @@ QUnit.module("afr_qualificacao.rq_var_dom", () => {
         const src = '<p style="color:red">A&nbsp;B</p>';
         assert.strictEqual(cleanVarsHtml(src), src);
     });
+    QUnit.test("chain normalize -> decorate -> clean over bare tokens equals normalized form", (assert) => {
+        const bare = "<p>A {{ criterio['tolerancia'] }} e {{foo.bar}} B</p>";
+        const d = el(bare);
+        normalizeVars(d);
+        const normalized = d.innerHTML;
+        assert.strictEqual(normalized,
+            '<p>A <span class="rq-var">{{ criterio[\'tolerancia\'] }}</span> e <span class="rq-var">{{ foo.bar }}</span> B</p>');
+        decorateVars(d, CAT);
+        assert.strictEqual(cleanVarsHtml(d.innerHTML), normalized);
+    });
+    QUnit.test("clean parses in an inert document (no onerror)", async (assert) => {
+        window.__rqCleanFired = false;
+        const html = '<p><span class="rq-var" data-rq-expr="x">X</span>' +
+            '<img src="data:rq-invalid" onerror="window.__rqCleanFired = true"></p>';
+        const out = cleanVarsHtml(html);
+        assert.ok(out.includes('<span class="rq-var">{{ x }}</span>'));
+        await new Promise((r) => setTimeout(r, 100));
+        assert.strictEqual(window.__rqCleanFired, false);
+        delete window.__rqCleanFired;
+    });
 });

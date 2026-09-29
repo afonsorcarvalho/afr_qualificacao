@@ -1,6 +1,6 @@
 /** @odoo-module **/
 import { Dialog } from "@web/core/dialog/dialog";
-import { Component, useState } from "@odoo/owl";
+import { Component, markup, useState } from "@odoo/owl";
 
 // Busca case/acento-insensível: "tolerancia" acha "Tolerância".
 function fold(s) {
@@ -41,6 +41,41 @@ RqVariableDialog.components = { Dialog };
 RqVariableDialog.props = {
     catalog: Array,
     showValues: { type: Boolean, optional: true },
+    onPick: Function,
+    close: Function,
+};
+
+// Ordem declarada das abas (NÃO derivar dos dados: rq_snippet_list ordena
+// pela chave armazenada, alfabética).
+export const RQ_SNIPPET_TABS = [
+    { key: "tabela", label: "Tabelas técnicas" },
+    { key: "lista", label: "Listas e texto" },
+    { key: "destaque", label: "Destaques" },
+    { key: "layout", label: "Layout" },
+];
+
+export class RqSnippetDialog extends Component {
+    setup() {
+        this.tabs = RQ_SNIPPET_TABS;
+        this.state = useState({ cat: "tabela" });
+    }
+    get visibleSnippets() {
+        return this.props.snippets
+            .filter((s) => s.category === this.state.cat)
+            .map((s) => ({ ...s, html: markup(s.body || "") }));
+    }
+    count(cat) {
+        return this.props.snippets.filter((s) => s.category === cat).length;
+    }
+    pick(snippet) {
+        this.props.onPick(snippet.body || "");
+        this.props.close();
+    }
+}
+RqSnippetDialog.template = "afr_qualificacao.RqSnippetDialog";
+RqSnippetDialog.components = { Dialog };
+RqSnippetDialog.props = {
+    snippets: Array,
     onPick: Function,
     close: Function,
 };

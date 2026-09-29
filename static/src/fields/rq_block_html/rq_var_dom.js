@@ -90,9 +90,12 @@ export function cleanVarsHtml(html) {
     if (!html || !html.includes("rq-var")) {
         return html;
     }
-    const d = document.createElement("div");
-    d.innerHTML = html;
-    for (const span of d.querySelectorAll("span.rq-var")) {
+    // <template>: o conteúdo é parseado num documento inerte (sem browsing
+    // context) — <img onerror> e afins NÃO carregam nem executam aqui, ao
+    // contrário de um <div> do documento vivo.
+    const t = document.createElement("template");
+    t.innerHTML = html;
+    for (const span of t.content.querySelectorAll("span.rq-var")) {
         const expr = exprOf(span);
         for (const a of [...span.attributes]) {
             if (a.name !== "class") {
@@ -103,5 +106,5 @@ export function cleanVarsHtml(html) {
         span.className = "rq-var";
         span.textContent = `{{ ${expr} }}`;
     }
-    return d.innerHTML;
+    return t.innerHTML;
 }
