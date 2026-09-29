@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="afr_qualificacao.RqBuildProgressField" owl="1">
+        <span class="d-inline-flex align-items-center gap-2 align-middle">
+            <span class="progress d-inline-flex" style="width: 12rem; height: 0.6rem;">
+                <span class="progress-bar progress-bar-striped progress-bar-animated"
+                      role="progressbar"
+                      t-att-aria-valuenow="state.progress" aria-valuemin="0" aria-valuemax="100"
+                      t-attf-style="width: {{ Math.max(state.progress, 4) }}%"/>
+            </span>
+            <span class="small fw-bold"><t t-esc="state.progress"/> %</span>
+        </span>
+    </t>
+</templates>

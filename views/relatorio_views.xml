@@ -27,109 +27,104 @@
                 <sheet>
                     <div class="oe_button_box" name="button_box"/>
                     <div class="oe_title">
-                        <h1><field name="name" readonly="1"/></h1>
-                        <h3><field name="revision_label"/></h3>
+                        <h1 class="d-flex align-items-center gap-3">
+                            <field name="name" readonly="1" class="w-auto flex-grow-0"/>
+                            <span class="badge rounded-pill text-bg-light border fs-6 fw-normal">
+                                <field name="revision_label"/>
+                            </span>
+                        </h1>
                     </div>
                     <group>
-                        <group string="Identificação">
+                        <group string="Equipamento e cliente">
                             <field name="os_id" readonly="1"/>
                             <field name="equipment_id" readonly="1"/>
                             <field name="partner_id"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
-                        <group string="Controle">
-                            <field name="index" readonly="1"/>
-                            <field name="revision" readonly="1"/>
-                            <field name="proxima_qualificacao"/>
+                        <group string="Qualificação">
                             <field name="qualificacao_ids" widget="many2many_tags" readonly="1"/>
+                            <field name="proxima_qualificacao"/>
                         </group>
                     </group>
                     <notebook>
                         <page string="Dados de campo" name="page_dados_campo">
-                            <div class="row">
-                                <div class="col-lg-8">
-                                    <group>
-                                        <group string="Período dos ensaios">
-                                            <field name="data_inicio_ensaios"/>
-                                            <field name="data_fim_ensaios"/>
-                                        </group>
-                                        <group string="Ambiente">
-                                            <field name="amb_temperatura" placeholder="22 a 25 °C"/>
-                                            <field name="amb_umidade" placeholder="41 %UR"/>
-                                        </group>
-                                    </group>
-                                    <group>
-                                        <group string="Critérios de aceitação">
-                                            <field name="tolerancia_acima"/>
-                                            <field name="criterio_f0_fator"/>
-                                        </group>
-                                    </group>
-                                    <separator string="Checklist de instalação"/>
-                                    <field name="checklist_ids" nolabel="1">
-                                        <tree editable="bottom"
-                                              decoration-danger="status == 'reprovado'"
-                                              decoration-muted="status == 'na'">
-                                            <field name="sequence" widget="handle"/>
-                                            <field name="grupo"/>
-                                            <field name="descricao"/>
-                                            <field name="status"/>
-                                            <field name="comentario"/>
-                                        </tree>
-                                    </field>
-                                    <separator string="Indicadores biológicos e químicos"/>
-                                    <field name="indicador_ids" nolabel="1">
-                                        <tree editable="bottom">
-                                            <field name="tipo"/>
-                                            <field name="marca"/>
-                                            <field name="modelo_tipo"/>
-                                            <field name="lote"/>
-                                            <field name="validade"/>
-                                            <field name="valor_d"/>
-                                            <field name="populacao"/>
-                                            <field name="evidencia_collect_item_id"
-                                                   domain="[('qualif_id', 'in', parent.qualificacao_ids)]"
-                                                   options="{'no_create': True}"/>
-                                        </tree>
-                                    </field>
-                                    <separator string="Leituras de IB"/>
-                                    <button name="action_preencher_leituras_lote"
-                                            type="object"
-                                            string="Preencher leituras em lote"
-                                            class="btn-secondary mb-2"
-                                            attrs="{'invisible': [('state', '!=', 'draft')]}"
-                                            groups="afr_qualificacao.group_afr_qualificacao_user"/>
-                                    <field name="leitura_ib_ids" nolabel="1">
-                                        <tree editable="bottom"
-                                              decoration-danger="resultado == 'positivo'">
-                                            <field name="cycle_id"
-                                                   domain="[('id', 'in', parent.cycle_ids)]"
-                                                   options="{'no_create': True}"/>
-                                            <field name="indicador_id"
-                                                   domain="[('relatorio_id', '=', parent.id)]"
-                                                   options="{'no_create': True}"/>
-                                            <field name="data_incubacao"/>
-                                            <field name="data_leitura"/>
-                                            <field name="leitor"/>
-                                            <field name="resultado"/>
-                                            <field name="controle_positivo_ok"/>
-                                            <field name="quantidade"/>
-                                        </tree>
-                                    </field>
-                                </div>
-                                <div class="col-lg-4">
-                                    <separator string="Itens de coleta (consulta)"/>
-                                    <field name="os_collect_item_ids" nolabel="1" readonly="1">
-                                        <tree>
-                                            <field name="name"/>
-                                            <field name="cycle_id" optional="show"/>
-                                            <field name="state" widget="badge"/>
-                                            <field name="filename" optional="hide"/>
-                                        </tree>
-                                    </field>
-                                </div>
-                            </div>
+                            <group col="3">
+                                <group string="Período dos ensaios">
+                                    <field name="data_inicio_ensaios" string="Início"/>
+                                    <field name="data_fim_ensaios" string="Fim"/>
+                                </group>
+                                <group string="Ambiente">
+                                    <field name="amb_temperatura" string="Temperatura" placeholder="22 a 25 °C"/>
+                                    <field name="amb_umidade" string="Umidade" placeholder="41 %UR"/>
+                                </group>
+                                <group string="Critérios de aceitação">
+                                    <field name="tolerancia_acima" string="Tolerância (°C)"/>
+                                    <field name="criterio_f0_fator" string="Fator F0 (× D)"/>
+                                </group>
+                            </group>
+                            <separator string="Checklist de instalação"/>
+                            <field name="checklist_ids" nolabel="1">
+                                <tree editable="bottom"
+                                      decoration-danger="status == 'reprovado'"
+                                      decoration-muted="status == 'na'">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="grupo"/>
+                                    <field name="descricao"/>
+                                    <field name="status" widget="badge"
+                                           decoration-success="status == 'aprovado'"
+                                           decoration-danger="status == 'reprovado'"/>
+                                    <field name="comentario"/>
+                                </tree>
+                            </field>
                         </page>
-                        <page string="Ciclos" name="page_ciclos">
+                        <page string="Indicadores" name="page_indicadores">
+                            <separator string="Indicadores biológicos e químicos"/>
+                            <field name="indicador_ids" nolabel="1">
+                                <tree editable="bottom">
+                                    <field name="tipo"/>
+                                    <field name="marca"/>
+                                    <field name="modelo_tipo"/>
+                                    <field name="lote"/>
+                                    <field name="validade"/>
+                                    <field name="valor_d"/>
+                                    <field name="populacao"/>
+                                    <field name="evidencia_collect_item_id"
+                                           domain="[('qualif_id', 'in', parent.qualificacao_ids)]"
+                                           options="{'no_create': True}"/>
+                                </tree>
+                            </field>
+                            <div class="d-flex align-items-center justify-content-between mt-4">
+                                <separator string="Leituras de IB" class="flex-grow-1"/>
+                                <button name="action_preencher_leituras_lote"
+                                        type="object"
+                                        string="Preencher leituras em lote"
+                                        icon="fa-magic"
+                                        class="btn-secondary ms-3"
+                                        attrs="{'invisible': [('state', '!=', 'draft')]}"
+                                        groups="afr_qualificacao.group_afr_qualificacao_user"/>
+                            </div>
+                            <field name="leitura_ib_ids" nolabel="1">
+                                <tree editable="bottom"
+                                      decoration-danger="resultado == 'positivo'">
+                                    <field name="cycle_id"
+                                           domain="[('id', 'in', parent.cycle_ids)]"
+                                           options="{'no_create': True}"/>
+                                    <field name="indicador_id"
+                                           domain="[('relatorio_id', '=', parent.id)]"
+                                           options="{'no_create': True}"/>
+                                    <field name="data_incubacao"/>
+                                    <field name="data_leitura"/>
+                                    <field name="leitor"/>
+                                    <field name="resultado" widget="badge"
+                                           decoration-success="resultado == 'negativo'"
+                                           decoration-danger="resultado == 'positivo'"/>
+                                    <field name="controle_positivo_ok"/>
+                                    <field name="quantidade"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Ciclos e coleta" name="page_ciclos">
+                            <separator string="Ciclos"/>
                             <field name="cycle_ids" nolabel="1" readonly="1">
                                 <tree>
                                     <field name="qualificacao_id"/>
@@ -141,6 +136,17 @@
                                     <field name="sensor_pos_count"/>
                                     <button name="action_open_relatorio_cycle" type="object"
                                             icon="fa-pencil" title="Editar janela e sensores"/>
+                                </tree>
+                            </field>
+                            <separator string="Itens de coleta da OS (consulta)"/>
+                            <field name="os_collect_item_ids" nolabel="1" readonly="1">
+                                <tree decoration-muted="state == 'skipped'">
+                                    <field name="name"/>
+                                    <field name="cycle_id" optional="show"/>
+                                    <field name="filename" optional="hide"/>
+                                    <field name="state" widget="badge"
+                                           decoration-success="state == 'collected'"
+                                           decoration-warning="state == 'pending'"/>
                                 </tree>
                             </field>
                         </page>

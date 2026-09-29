@@ -314,6 +314,9 @@
     },
     # F9.4 — SCSS da cotação online LabQuali (portal)
     "assets": {
+        "web.assets_backend": [
+            "afr_qualificacao/static/src/fields/rq_build_progress/*",
+        ],
         "web.assets_frontend": [
             "afr_qualificacao/static/src/scss/sale_portal_qualif.scss",
             "afr_qualificacao/static/src/js/optional_portal.js",

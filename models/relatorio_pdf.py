@@ -28,6 +28,13 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError
 from odoo.tools.mimetypes import guess_mimetype
 from odoo.tools.pdf import PdfFileReader, PdfFileWriter
+from PyPDF2.generic import ArrayObject, NameObject, NullObject
+
+# Linhas do índice saem do wkhtmltopdf como link externo com a chave do
+# page_map; `link_toc` troca por salto interno depois que corpo e anexos já
+# estão intercalados (âncoras `#` do wkhtmltopdf não sobrevivem à montagem).
+# TLD .invalid (RFC 2606): se escapar sem troca, não resolve para ninguém.
+TOC_LINK_PREFIX = "http://rq-toc.invalid/"
 
 MARKER_RE = re.compile(r"@@RQ:(bloco|anexo):([A-Za-z0-9_\-]+)@@")
 A4_W, A4_H = A4
@@ -434,6 +441,52 @@ def stamp_pdf(content, header, watermark):
     return pdf_bytes(writer)
 
 
+
+def _as_text(value):
+    if isinstance(value, bytes):
+        return value.decode("latin-1")
+    return str(value) if value is not None else ""
+
+
+def link_toc(content, page_map):
+    """Troca os links `TOC_LINK_PREFIX<chave>` por /Dest na página final.
+
+    :param page_map: {chave: nº final 1-based} (o mesmo impresso no índice)
+    Link sem destino no mapa é removido. Sem nenhum link do índice, devolve
+    `content` intacto.
+    """
+    reader = PdfFileReader(io.BytesIO(content), strict=False)
+    writer = PdfFileWriter()
+    for idx in range(reader.getNumPages()):
+        writer.addPage(reader.getPage(idx))
+    kids = writer.getObject(writer._pages)["/Kids"]
+    changed = False
+    for kid in kids:
+        page = kid.getObject()
+        annots = page.get("/Annots")
+        if annots is None:
+            continue
+        kept = ArrayObject()
+        for ref in annots.getObject():
+            annot = ref.getObject()
+            action = annot.get("/A")
+            uri = _as_text(action.getObject().get("/URI")) if action is not None else ""
+            if annot.get("/Subtype") != "/Link" or not uri.startswith(TOC_LINK_PREFIX):
+                kept.append(ref)
+                continue
+            changed = True
+            target = page_map.get(uri[len(TOC_LINK_PREFIX):])
+            if not target or not 1 <= target <= len(kids):
+                continue
+            del annot["/A"]
+            annot[NameObject("/Dest")] = ArrayObject([
+                kids[target - 1], NameObject("/XYZ"), NullObject(), NullObject(), NullObject(),
+            ])
+            kept.append(ref)
+        page[NameObject("/Annots")] = kept
+    return pdf_bytes(writer) if changed else content
+
+
 MAX_PASSES = 3
 
 # Pipeline em etapas (emenda P4): cada fatia cabe no limite de CPU do worker.
@@ -814,6 +867,7 @@ class AfrRelatorioPdf(models.AbstractModel):
         first = relatorio._body_blocks()[:1]
         st.update(
             final_pages=final, total=len(final), stamp=0, stamped=[], phase="stamp",
+            page_map=layout["page_map"],
             qr_page_index=self._qr_page_index(relatorio, markers, layout),
             section_labels=section_labels(
                 layout["page_map"], relatorio._report_section_entries(), len(final)),
@@ -871,10 +925,10 @@ class AfrRelatorioPdf(models.AbstractModel):
 
     @api.model
     def _stage_concat(self, relatorio, st, store, budget):
-        """Junta as faixas carimbadas (uma só faixa: reaproveita o blob)."""
+        """Junta as faixas carimbadas e liga o índice às páginas finais."""
         stamped = st["stamped"]
         if len(stamped) == 1:
-            st["final_blob"] = stamped[0]
+            content = store.get(stamped[0])
         else:
             writer, keep_alive = PdfFileWriter(), []
             for key in stamped:
@@ -882,7 +936,8 @@ class AfrRelatorioPdf(models.AbstractModel):
                 keep_alive.append(reader)
                 for idx in range(reader.getNumPages()):
                     writer.addPage(reader.getPage(idx))
-            st["final_blob"] = store.put("final", pdf_bytes(writer))
+            content = pdf_bytes(writer)
+        st["final_blob"] = store.put("final", link_toc(content, st.get("page_map") or {}))
         st["phase"] = "done"
 
     @api.model

@@ -6,7 +6,7 @@
         <field name="model">afr.qualificacao.relatorio</field>
         <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_relatorio_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//header/field[@name='state']" position="before">
+            <xpath expr="//header/button[@name='action_gerar_minuta']" position="before">
                 <button name="action_verificar" type="object" string="Verificar"
                         icon="fa-search" class="btn-secondary"
                         groups="afr_qualificacao.group_afr_qualificacao_user"

@@ -355,6 +355,65 @@ class TestRelatorioPdfCore(TransactionCase):
         self.assertIsNone(rp.cover_page_index({}, "bloco:10"))
 
 
+    # ---- índice clicável: links rq-toc viram saltos internos ----------------
+
+    @staticmethod
+    def _pdf_with_toc_links(pages, links):
+        """`links`: [(página 0-based, url)] — um link por item, retângulo fixo."""
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas as rl_canvas
+        buf = io.BytesIO()
+        c = rl_canvas.Canvas(buf, pagesize=A4)
+        for idx in range(pages):
+            c.drawString(72, 720, "pagina %d" % (idx + 1))
+            for n, (page, url) in enumerate(links):
+                if page == idx:
+                    y = 700 - 20 * n
+                    c.linkURL(url, (72, y, 400, y + 14), relative=0)
+            c.showPage()
+        c.save()
+        return buf.getvalue()
+
+    @staticmethod
+    def _link_annots(content):
+        reader = PdfFileReader(io.BytesIO(content), strict=False)
+        pages = [reader.getPage(i) for i in range(reader.getNumPages())]
+        page_ids = [p.indirectRef.idnum for p in pages]
+        out = []
+        for idx, page in enumerate(pages):
+            for ref in page.get("/Annots") or []:
+                annot = ref.getObject()
+                if annot.get("/Subtype") != "/Link":
+                    continue
+                action = annot.get("/A")
+                action = action.getObject() if action is not None else {}
+                dest = annot.get("/Dest")
+                target = page_ids.index(dest[0].idnum) + 1 if dest else None
+                out.append((idx, action.get("/URI"), target))
+        return out
+
+    def test_link_toc_rewrites_markers_to_final_pages(self):
+        content = self._pdf_with_toc_links(5, [
+            (1, rp.TOC_LINK_PREFIX + "bloco:7"),
+            (1, rp.TOC_LINK_PREFIX + "anexo:dados"),
+            (1, "https://exemplo.com/fora"),
+        ])
+        linked = rp.link_toc(content, {"bloco:7": 3, "anexo:dados": 5})
+        self.assertEqual(sorted(self._link_annots(linked), key=str), sorted([
+            (1, None, 3),
+            (1, None, 5),
+            (1, "https://exemplo.com/fora", None),
+        ], key=str))
+        self.assertEqual(PdfFileReader(io.BytesIO(linked)).getNumPages(), 5)
+
+    def test_link_toc_drops_link_without_target(self):
+        content = self._pdf_with_toc_links(2, [(0, rp.TOC_LINK_PREFIX + "bloco:99")])
+        self.assertEqual(self._link_annots(rp.link_toc(content, {})), [])
+
+    def test_link_toc_without_markers_returns_same_bytes(self):
+        content = self._pdf_with_toc_links(2, [(0, "https://exemplo.com")])
+        self.assertIs(rp.link_toc(content, {"bloco:1": 1}), content)
+
 @tagged("post_install", "-at_install", "afr_relatorio_final")
 class TestRelatorioAnexoFiles(RelatorioFixtureMixin, AfrQualificacaoTestCommon):
 

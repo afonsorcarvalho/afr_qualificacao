@@ -39,19 +39,24 @@
         <field name="model">afr.qualificacao.relatorio</field>
         <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_relatorio_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//page[@name='page_ciclos']" position="after">
+            <!-- relatorio_certificados_views.xml carrega antes (manifest): Texto/Anexos/Aprovações vêm depois de Certificados -->
+            <xpath expr="//page[@name='page_certificados']" position="after">
                 <page string="Texto" name="page_texto">
                     <group>
                         <group>
                             <field name="template_id" options="{'no_create': True}"
                                    attrs="{'readonly': [('state', '!=', 'draft')]}"/>
                         </group>
+                        <group>
+                            <div colspan="2">
+                                <button name="action_reload_template" type="object"
+                                        string="Recarregar template" icon="fa-refresh" class="btn-secondary"
+                                        groups="afr_qualificacao.group_afr_qualificacao_user"
+                                        attrs="{'invisible': [('state', '!=', 'draft')]}"
+                                        confirm="Recarregar descarta as edições dos blocos e os arquivos anexados às posições de anexo deste relatório. Continuar?"/>
+                            </div>
+                        </group>
                     </group>
-                    <button name="action_reload_template" type="object"
-                            string="Recarregar template" class="btn-secondary"
-                            groups="afr_qualificacao.group_afr_qualificacao_user"
-                            attrs="{'invisible': [('state', '!=', 'draft')]}"
-                            confirm="Recarregar descarta as edições dos blocos e os arquivos anexados às posições de anexo deste relatório. Continuar?"/>
                     <field name="block_ids" attrs="{'readonly': [('state', '!=', 'draft')]}">
                         <tree editable="bottom">
                             <field name="relatorio_id" invisible="1"/>
@@ -74,7 +79,7 @@
                     </field>
                 </page>
                 <page string="Anexos" name="page_anexos">
-                    <p class="text-muted">
+                    <p class="text-muted small">
                         A ordem desta lista é a ordem dos anexos no PDF e define a numeração
                         usada pelo token <code>{{ anexo('code') }}</code>.
                     </p>

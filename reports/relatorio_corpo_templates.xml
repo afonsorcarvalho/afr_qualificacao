@@ -35,13 +35,18 @@
             .rq-cover-subtitle { font-size: 13px; color: #5A7184; margin: 10px 0 70px 0; }
             .rq-cover-meta { width: 75%; border-top: 1px solid #0A3D62; }
             .rq-cover-meta td { font-weight: bold; color: #212529; }
-            .rq-toc { width: 100%; border-collapse: collapse; font-size: 12px; }
-            .rq-toc-row td { height: 18px; padding: 0 4px; border-bottom: 1px dotted #C9D3DC; }
-            .rq-toc-l1 td { font-weight: bold; color: #0A3D62; }
-            .rq-toc-num { width: 50px; color: #F86A30; }
+            /* separate: com collapse, o WebKit do wkhtmltopdf desenha o
+               "border-style: solid" do reboot do Bootstrap no tbody. */
+            .rq-toc { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; margin-top: 4px; }
+            .rq-toc, .rq-toc thead, .rq-toc tbody, .rq-toc tr, .rq-toc td { border: 0 none !important; background: transparent !important; }
+            .rq-toc td { padding: 2px 4px; vertical-align: baseline; }
+            .rq-toc a { display: block; color: inherit !important; text-decoration: none !important; }
+            .rq-toc-l1 td { font-weight: bold; color: #0A3D62; padding-top: 8px; }
+            .rq-toc-num { width: 46px; color: #F86A30; }
+            .rq-toc-child td { color: #3D4D5C; font-size: 11.5px; }
             .rq-toc-child .rq-toc-title { padding-left: 16px; }
-            .rq-toc-child .rq-toc-num { color: #5A7184; }
-            .rq-toc-page-cell { width: 50px; text-align: right; }
+            .rq-toc-child .rq-toc-num { color: #8A9AA8; }
+            .rq-toc-page-cell { width: 40px; text-align: right; color: #5A7184; }
             .rq-anexo-sep { page-break-before: always; page-break-after: always; padding-top: 230px; }
             .rq-anexo-eyebrow { color: #5A7184; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; }
             .rq-anexo-num { color: #F86A30; font-size: 64px; font-weight: bold; line-height: 1; }
@@ -76,13 +81,16 @@
         </div>
     </template>
 
+    <!-- Link com a chave do page_map: relatorio_pdf.link_toc troca por salto
+         interno para a página final (TOC_LINK_PREFIX). -->
     <template id="rq_block_indice">
         <table class="rq-toc">
             <t t-foreach="doc._report_index_entries()" t-as="entry">
+                <t t-set="toc_href" t-value="'http://rq-toc.invalid/%s' % entry['key']"/>
                 <tr t-attf-class="rq-toc-row #{'rq-toc-child' if entry['child'] else 'rq-toc-l1'}">
-                    <td class="rq-toc-num" t-esc="doc._rq_fmt_number(entry['number'])"/>
-                    <td class="rq-toc-title" t-esc="entry['title']"/>
-                    <td class="rq-toc-page-cell"><span class="rq-toc-page" t-esc="pmap.get(entry['key'], '')"/></td>
+                    <td class="rq-toc-num"><a t-att-href="toc_href" t-esc="doc._rq_fmt_number(entry['number'])"/></td>
+                    <td class="rq-toc-title"><a t-att-href="toc_href" t-esc="entry['title']"/></td>
+                    <td class="rq-toc-page-cell"><a t-att-href="toc_href"><span class="rq-toc-page" t-esc="pmap.get(entry['key'], '')"/></a></td>
                 </tr>
             </t>
         </table>
