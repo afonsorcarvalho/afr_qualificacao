@@ -8,23 +8,28 @@
             <form string="Bloco do Relatório">
                 <sheet>
                     <field name="relatorio_id" invisible="1"/>
-                    <group>
+                    <div class="d-flex flex-wrap align-items-end gap-3 mb-2">
+                        <div class="flex-grow-1">
+                            <label for="title"/>
+                            <h3 class="mb-0"><field name="title" placeholder="Título do bloco"/></h3>
+                        </div>
+                        <field name="block_kind" readonly="1" class="badge text-bg-light"/>
+                    </div>
+                    <div class="d-flex flex-wrap gap-4 mb-2">
+                        <div><field name="included" widget="boolean_toggle"/><label for="included"/></div>
+                        <div><field name="page_break" widget="boolean_toggle"/><label for="page_break"/></div>
+                        <div><field name="show_number" widget="boolean_toggle"/><label for="show_number"/></div>
+                        <div><field name="show_title" widget="boolean_toggle"/><label for="show_title"/></div>
+                    </div>
+                    <details class="mb-3">
+                        <summary class="text-muted">Mais opções</summary>
                         <group>
-                            <field name="block_kind" readonly="1"/>
-                            <field name="title"/>
                             <field name="parent_id"
                                    domain="[('relatorio_id', '=', relatorio_id), ('id', '!=', id), ('is_anexo_content', '=', False)]"/>
-                        </group>
-                        <group>
-                            <field name="included"/>
-                            <field name="page_break"/>
-                            <field name="show_number"/>
-                            <field name="show_title"/>
                             <field name="section_id" readonly="1"/>
                         </group>
-                    </group>
-                    <separator string="Conteúdo (aceita {{ expressões }}: relatorio, os, partner, equipment, company, criterio['tolerancia'], anexo('code'))"/>
-                    <field name="body" options="{'codeview': True}"/>
+                    </details>
+                    <field name="body" widget="rq_block_html" nolabel="1" options="{'codeview': True}"/>
                 </sheet>
                 <footer>
                     <button string="Salvar e Fechar" class="btn-primary" special="save"/>

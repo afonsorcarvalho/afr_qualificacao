@@ -1,0 +1,13 @@
+.rq-block-editor {
+  // Campo é inline-block por padrão; bloco inteiro p/ a página centralizar.
+  &.o_field_widget { display: block; width: 100%; }
+  .rq-toolbar { position: sticky; top: 0; z-index: 5; display: flex; gap: .5rem; align-items: center;
+    padding: .4rem .5rem; background: $o-view-background-color; border-bottom: 1px solid $border-color; }
+  .note-editable, .odoo-editor-editable { max-width: 794px; margin: 0 auto; min-height: 320px;
+    padding: 24px 32px; font-size: 11pt; line-height: 1.45; }
+  span.rq-var { display: inline-block; padding: 0 .45em; margin: 0 .05em; border-radius: 1em;
+    background: #e7f1ff; color: #0a58ca; border: 1px solid #b6d4fe; font-size: .92em; line-height: 1.5;
+    cursor: default; user-select: all;
+    &.rq-var-unknown { background: #fdecea; color: #b02a37; border-color: #f5c2c7; }
+  }
+}

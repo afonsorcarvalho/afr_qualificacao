@@ -108,4 +108,5 @@ class AfrRelatorioBlock(models.Model):
             "view_mode": "form",
             "views": [(self.env.ref("afr_qualificacao.view_relatorio_block_form").id, "form")],
             "target": "new",
+            "context": {"dialog_size": "extra-large"},
         }

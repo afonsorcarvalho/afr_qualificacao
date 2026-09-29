@@ -320,6 +320,10 @@
     "assets": {
         "web.assets_backend": [
             "afr_qualificacao/static/src/fields/rq_build_progress/*",
+            "afr_qualificacao/static/src/fields/rq_block_html/*",
+        ],
+        "web.qunit_suite_tests": [
+            "afr_qualificacao/static/tests/rq_var_dom_tests.js",
         ],
         "web.assets_frontend": [
             "afr_qualificacao/static/src/scss/sale_portal_qualif.scss",
