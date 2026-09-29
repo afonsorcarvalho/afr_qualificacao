@@ -32,6 +32,12 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
             "location_id": cls.location.id,
             "marca_id": cls.marca.id,
         })
+        # 16.0.8.9.0: o wizard bloqueia linha incluída sem procedimento —
+        # padrão da categoria p/ as linhas pré-preenchidas resolverem.
+        cls.env["afr.qualificacao.procedimento"].create({
+            "name": "Proc OS por grupo", "equipment_category_id": cls.category.id,
+            "is_default": True,
+        })
 
     def _build_so(self, equipment_lines_spec):
         """Cria SO com linhas managed via configurador."""
@@ -54,11 +60,21 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
             {"equipment_id": self.equip3.id, "do_qi": True},
         ])
 
-    def _gerar(self, so, equipments):
-        wiz = self.env["afr.qualificacao.os.generate.wizard"].create({
+    def _wizard_vals(self, so, equipments):
+        """Wizard com uma linha (incluída, pré-preenchida) por equipamento
+        — inclusive fora do pool, p/ exercitar a revalidação."""
+        Wizard = self.env["afr.qualificacao.os.generate.wizard"]
+        return {
             "sale_order_id": so.id,
-            "equipment_ids": [(6, 0, equipments.ids)],
-        })
+            "line_ids": [
+                (0, 0, vals) for vals in Wizard._prepare_line_values(so, equipments)
+            ],
+        }
+
+    def _gerar(self, so, equipments):
+        wiz = self.env["afr.qualificacao.os.generate.wizard"].create(
+            self._wizard_vals(so, equipments)
+        )
         action = wiz.action_generate()
         return self.env["afr.qualificacao.os"].browse(action["res_id"])
 
@@ -128,10 +144,9 @@ class TestOsPorGrupo(AfrQualificacaoTestCommon):
 
     def test_wizard_rejeita_so_nao_confirmada(self):
         so = self._so_tres_equipamentos()
-        wiz = self.env["afr.qualificacao.os.generate.wizard"].create({
-            "sale_order_id": so.id,
-            "equipment_ids": [(6, 0, so.equipamentos_sem_os_ids.ids)],
-        })
+        wiz = self.env["afr.qualificacao.os.generate.wizard"].create(
+            self._wizard_vals(so, so.equipamentos_sem_os_ids)
+        )
         with self.assertRaisesRegex(UserError, "Confirme a cotação"):
             wiz.action_generate()
 

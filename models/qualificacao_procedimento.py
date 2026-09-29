@@ -173,17 +173,22 @@ class AfrQualificacaoProcedimento(models.Model):
         )
 
     @api.model
-    def _resolve_for_equipment(self, equipment, partner):
+    def _resolve_for_equipment(self, equipment, partner, company=None):
         """Resolve o procedimento aplicável a `equipment` (e `partner`).
 
         Ordem: 1) procedimento explícito no equipamento → 'equipamento';
         2) procedimento do cliente (commercial_partner_id) da mesma categoria
         → 'cliente'; 3) padrão da categoria → 'categoria'; 4) padrão genérico
         → 'generico'; 5) genérico mais antigo (menor id) → 'generico'; senão
-        recordset vazio + False. Sempre restrito à empresa corrente
-        (self.env.company).
+        recordset vazio + False.
+
+        `company` (opcional, `res.company` record) restringe os passos de
+        cliente/categoria/genérico; por padrão `self.env.company`. Chamadores
+        com cotação/OS já resolvida (wizard Gerar OS, materialização) devem
+        passar a empresa DELA — sob cron/sudo/multi-company `env.company`
+        pode divergir e a busca acharia o procedimento errado (ou nenhum).
         """
-        company = self.env.company
+        company = company or self.env.company
         domain = [("active", "=", True), ("company_id", "=", company.id)]
 
         if equipment.afr_procedimento_id:

@@ -1418,7 +1418,7 @@ class SaleOrder(models.Model):
         )
         return managed.filtered(lambda l: not l.afr_qualificacao_id)
 
-    def _materialize_qualificacoes(self, lines, os):
+    def _materialize_qualificacoes(self, lines, os, choices=None):
         """Cria afr.qualificacao + sub-records de `lines`, dentro de `os`.
 
         - 1 afr.qualificacao por (equipamento, qualification_type)
@@ -1429,6 +1429,14 @@ class SaleOrder(models.Model):
 
         Não resolve OS — o chamador escolhe o destino. É o que permite
         1 cotação → N OS.
+
+        `choices` (opcional): `{equipment_id: {'procedimento': rec,
+        'template': rec}}` vindo do wizard Gerar OS — o procedimento
+        escolhido é gravado em `procedimento_id` e explodido em collect.items;
+        o template vai para `relatorio_template_id`. Equipamento fora de
+        `choices` (ou `choices=None`: PWA/API/testes) resolve o procedimento
+        por `_resolve_for_equipment` na empresa da cotação e deixa o template
+        vazio (o Relatório Final resolve cliente/categoria na hora).
         """
         self.ensure_one()
         Qualif = self.env["afr.qualificacao"]
@@ -1441,15 +1449,33 @@ class SaleOrder(models.Model):
         for line in lines:
             by_equipment[line.equipment_id] |= line
 
+        choices = choices or {}
         for equipment, equip_lines in by_equipment.items():
             by_type = defaultdict(lambda: self.env["sale.order.line"])
             for line in equip_lines:
                 by_type[line.qualification_type] |= line
 
-            for qtype, type_lines in by_type.items():
-                qualif = Qualif.create(
-                    self._prepare_qualificacao_values(equipment, qtype, os)
+            # Procedimento/template por equipamento: escolha do wizard ou,
+            # sem ela, a regra 5 (equipamento > cliente > categoria >
+            # genérico) na empresa da cotação.
+            # sudo: quem gera a OS pode não ter grupos de qualificação.
+            choice = choices.get(equipment.id)
+            if choice is not None:
+                proc = choice.get("procedimento") or Procedimento
+                rel_tpl = choice.get("template") or self.env["afr.relatorio.template"]
+            else:
+                proc, _origem = Procedimento.sudo()._resolve_for_equipment(
+                    equipment, self.partner_id, company=self.company_id
                 )
+                rel_tpl = self.env["afr.relatorio.template"]
+
+            for qtype, type_lines in by_type.items():
+                qualif_vals = self._prepare_qualificacao_values(equipment, qtype, os)
+                qualif_vals.update({
+                    "procedimento_id": proc.id if proc else False,
+                    "relatorio_template_id": rel_tpl.id if rel_tpl else False,
+                })
+                qualif = Qualif.create(qualif_vals)
                 type_lines.write({"afr_qualificacao_id": qualif.id})
 
                 # F10 — snapshot dos pontos QD (cópia própria do template),
@@ -1491,11 +1517,12 @@ class SaleOrder(models.Model):
                                 "sequence": seq * 10,
                             })
 
-                # F3/F1: explode procedimento default em collect.items.
-                # sudo: quem confirma a SO pode não ter grupos de qualificação.
-                proc = Procedimento.sudo().resolve_for(equipment.category_id)
+                # F3/F1: explode o procedimento (escolhido/resolvido acima)
+                # em collect.items.
                 if proc:
-                    self._explode_collect_items(CollectItem.sudo(), qualif, proc, qtype)
+                    self._explode_collect_items(
+                        CollectItem.sudo(), qualif, proc.sudo(), qtype
+                    )
 
     def _explode_collect_items(self, CollectItem, qualif, procedimento, phase):
         """F3/F1: thin wrapper — delega para afr.qualificacao.procedimento._explode_into().
