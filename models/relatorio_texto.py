@@ -11,7 +11,7 @@ from markupsafe import Markup
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
-from odoo.tools import is_html_empty
+from odoo.tools import html_sanitize, is_html_empty
 from odoo.tools.misc import clean_context
 
 from ._numbering import hierarchical_numbering, sort_key
@@ -370,7 +370,7 @@ class AfrQualificacaoRelatorio(models.Model):
             expr = "anexo('%s')" % anx.code
             items.append({
                 "expr": expr,
-                "label": _("Nº do anexo — %s") % anx.title,
+                "label": _("Nº do anexo — %s") % (anx.title or anx.code),
                 "group": _("Anexos"),
                 "value": self._anexo_number(anx.code),
             })
@@ -397,7 +397,10 @@ class AfrQualificacaoRelatorio(models.Model):
         for expr in dict.fromkeys(_RQ_EXPR_RE.findall(str(body or ""))):
             if not self._rq_render_expr(expr):
                 missing.append(expr)
-        return {"html": str(html), "missing": missing}
+        # Valores de registro (nome de cliente/equipamento/OS) entram no
+        # render sem escape e o widget injeta o HTML com markup(): sanitizar
+        # aqui fecha o XSS armazenado (também cobre o fallback de corpo cru).
+        return {"html": str(html_sanitize(str(html))), "missing": missing}
 
 
     # ── helpers do corpo QWeb ────────────────────────────────────────────

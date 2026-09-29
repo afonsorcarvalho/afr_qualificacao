@@ -108,3 +108,17 @@ export function cleanVarsHtml(html) {
     }
     return t.innerHTML;
 }
+
+// Forma canônica para comparar "valor salvo" × "valor do editor" (dirty
+// check do campo). O editor normaliza {{ x }} nu em etiqueta ao abrir; sem
+// aplicar o mesmo aqui, um bloco legado intocado pareceria alterado e o
+// Salvar gravaria o body (invalidando aprovações). Espelha o
+// HtmlField._isDirty 16.0: vazio vale <p><br></p> e a comparação é sobre o
+// innerHTML re-serializado pelo DOMParser (inerte, não executa nada).
+export function normalizeForCompare(html) {
+    const t = document.createElement("template");
+    t.innerHTML = html || "<p><br></p>";
+    normalizeVars(t.content);
+    const cleaned = cleanVarsHtml(t.innerHTML);
+    return new DOMParser().parseFromString(cleaned, "text/html").body.innerHTML;
+}

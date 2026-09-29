@@ -1,5 +1,5 @@
 /** @odoo-module **/
-import { normalizeVars, decorateVars, cleanVarsHtml } from "@afr_qualificacao/fields/rq_block_html/rq_var_dom";
+import { normalizeVars, decorateVars, cleanVarsHtml, normalizeForCompare } from "@afr_qualificacao/fields/rq_block_html/rq_var_dom";
 
 function el(html) { const d = document.createElement("div"); d.innerHTML = html; return d; }
 const CAT = { "criterio['tolerancia']": { label: "Tolerância acima (°C)", value: "3" } };
@@ -59,5 +59,30 @@ QUnit.module("afr_qualificacao.rq_var_dom", () => {
         await new Promise((r) => setTimeout(r, 100));
         assert.strictEqual(window.__rqCleanFired, false);
         delete window.__rqCleanFired;
+    });
+    QUnit.test("legacy bare tokens equal their normalized editor form", (assert) => {
+        const legacy = "<p>Tol {{ criterio['tolerancia'] }} C</p>";
+        const d = el(legacy);
+        normalizeVars(d);
+        decorateVars(d, CAT);
+        const editing = cleanVarsHtml(d.innerHTML);
+        assert.notStrictEqual(legacy, editing);
+        assert.strictEqual(normalizeForCompare(legacy), normalizeForCompare(editing));
+    });
+    QUnit.test("a real edit is still different", (assert) => {
+        const legacy = "<p>Tol {{ criterio['tolerancia'] }} C</p>";
+        const edited = '<p>Tol <span class="rq-var">{{ criterio[\'tolerancia\'] }}</span> CX</p>';
+        assert.notStrictEqual(normalizeForCompare(legacy), normalizeForCompare(edited));
+    });
+    QUnit.test("empty value compares as <p><br></p>", (assert) => {
+        assert.strictEqual(normalizeForCompare(""), normalizeForCompare("<p><br></p>"));
+        assert.strictEqual(normalizeForCompare(false), normalizeForCompare("<p><br></p>"));
+    });
+    QUnit.test("compare parses inertly (no onerror)", async (assert) => {
+        window.__rqCmpFired = false;
+        normalizeForCompare('<p>{{ x }}<img src="data:rq-invalid" onerror="window.__rqCmpFired = true"></p>');
+        await new Promise((r) => setTimeout(r, 100));
+        assert.strictEqual(window.__rqCmpFired, false);
+        delete window.__rqCmpFired;
     });
 });

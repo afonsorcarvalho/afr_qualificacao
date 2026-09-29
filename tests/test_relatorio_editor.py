@@ -108,3 +108,22 @@ class TestRelatorioEditorBackend(RelatorioTestCommon):
             self.rel.with_user(self.user_technician).rq_preview_block("<p>x</p>")
         res = self.rel.with_user(self.user_qualif).rq_preview_block("<p>x</p>")
         self.assertIn("x", res["html"])
+
+    def test_preview_sanitizes_rendered_values(self):
+        self.rel.partner_id.name = 'ACME <img src=x onerror=alert(1)>'
+        body = '<p>Cliente <span class="rq-var">{{ partner.name }}</span></p>'
+        res = self.rel.rq_preview_block(body)
+        self.assertNotIn("onerror", res["html"])
+        self.assertIn("ACME", res["html"])
+
+    def test_preview_sanitizes_raw_body_fallback(self):
+        body = '<p onclick="alert(1)">{{ ( }}<script>alert(2)</script></p>'
+        res = self.rel.rq_preview_block(body)
+        self.assertNotIn("onclick", res["html"])
+        self.assertNotIn("<script", res["html"])
+
+    def test_catalog_anexo_without_title_falls_back_to_code(self):
+        self.anx.title = ""
+        cat = self._cat()
+        self.assertEqual(cat["anexo('CERT')"]["label"], "Nº do anexo — CERT")
+        self.assertNotIn("False", cat["anexo('CERT')"]["label"])

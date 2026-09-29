@@ -1,9 +1,9 @@
 /** @odoo-module **/
 import { registry } from "@web/core/registry";
 import { useService } from "@web/core/utils/hooks";
-import { HtmlField } from "@web_editor/js/backend/html_field";
+import { HtmlField, stripHistoryIds } from "@web_editor/js/backend/html_field";
 import { markup, useState } from "@odoo/owl";
-import { normalizeVars, decorateVars, cleanVarsHtml, makeVarNode } from "./rq_var_dom";
+import { normalizeVars, decorateVars, cleanVarsHtml, makeVarNode, normalizeForCompare } from "./rq_var_dom";
 import { RqSnippetDialog, RqVariableDialog } from "./rq_block_dialogs";
 
 // Editor de corpo de bloco do relatório: variáveis viram etiquetas
@@ -113,6 +113,32 @@ export class RqBlockHtmlField extends HtmlField {
     // html_field.js) devolve this.wysiwyg.getValue() — já limpo pelo patch
     // de instância acima — ou o textarea do codeview, semeado com o
     // props.value (limpo). O patch de getValue é a única guarda.
+    // Bloco legado com {{ x }} nu: a abertura normaliza para a etiqueta
+    // (span), então o valor do editor difere do salvo sem edição nenhuma.
+    // O _isDirty base (compara innerHTML) marcaria o campo sujo e o Salvar
+    // gravaria o body → _rq_touch invalida aprovações / estoura fora do
+    // rascunho. Compara as duas formas canônicas (normalizeForCompare).
+    _isDirty() {
+        if (this.props.readonly) {
+            return false;
+        }
+        const editing = this.getEditingValue();
+        if (editing === null) {
+            return false;
+        }
+        const saved = this.props.value ? String(this.props.value) : "";
+        return normalizeForCompare(stripHistoryIds(saved)) !==
+            normalizeForCompare(stripHistoryIds(editing));
+    }
+    // updateValue base compara as strings cruas; no commit urgente
+    // (beforeunload) ele roda sem passar pelo _isDirty e gravaria a forma
+    // normalizada de um bloco intocado.
+    async updateValue() {
+        if (!this._isDirty()) {
+            return;
+        }
+        return super.updateValue(...arguments);
+    }
     _selectionInEditable() {
         const editor = this.wysiwyg.odooEditor;
         const sel = editor.document.getSelection();
