@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Editor de blocos do Relatório Final — Task 1: biblioteca de blocos
+        prontos (afr.relatorio.snippet). Inseridos pelo widget rq_block_html
+        (Task 3) no corpo de um bloco do relatório.
+
+        noupdate="1": gestor edita/desativa/cria via UI sem perder em upgrade.
+
+        wkhtmltopdf-friendly: sem flex/grid; colunas via <table>; estilos
+        inline (o corpo é inserido dentro de blocos já renderizados pelo
+        motor de PDF do relatório).
+    -->
+
+    <!-- ==================== tabela ==================== -->
+
+    <record id="snippet_tabela_criterios_aceitacao" model="afr.relatorio.snippet">
+        <field name="name">Critérios de aceitação</field>
+        <field name="category">tabela</field>
+        <field name="sequence">10</field>
+        <field name="body" type="html">
+            <table style="border-collapse:collapse;width:100%">
+                <thead>
+                    <tr>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Critério</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Requisito</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Referência</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Temperatura</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Variação máxima de <span class="rq-var">{{ criterio['tolerancia'] }}</span> °C em relação ao valor nominal</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">ABNT NBR ISO 17665</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Tempo de exposição</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Conforme parâmetros do ciclo validado</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Procedimento interno</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Pressão</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Dentro da faixa especificada pelo fabricante</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Manual do equipamento</td>
+                    </tr>
+                </tbody>
+            </table>
+        </field>
+    </record>
+
+    <record id="snippet_tabela_instrumentos_utilizados" model="afr.relatorio.snippet">
+        <field name="name">Instrumentos utilizados</field>
+        <field name="category">tabela</field>
+        <field name="sequence">20</field>
+        <field name="body" type="html">
+            <table style="border-collapse:collapse;width:100%">
+                <thead>
+                    <tr>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Instrumento</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Nº de série</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Certificado</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Validade</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Termopar tipo T</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000/00</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">00/00/0000</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Termopar tipo T</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000/00</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">00/00/0000</td>
+                    </tr>
+                </tbody>
+            </table>
+        </field>
+    </record>
+
+    <record id="snippet_tabela_resultados_por_ciclo" model="afr.relatorio.snippet">
+        <field name="name">Resultados por ciclo</field>
+        <field name="category">tabela</field>
+        <field name="sequence">30</field>
+        <field name="body" type="html">
+            <table style="border-collapse:collapse;width:100%">
+                <thead>
+                    <tr>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Ciclo</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Resultado</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Observação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Ciclo 1</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Aprovado</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">—</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Ciclo 2</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Aprovado</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">—</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Ciclo 3</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Aprovado</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">—</td>
+                    </tr>
+                </tbody>
+            </table>
+        </field>
+    </record>
+
+    <!-- ==================== lista ==================== -->
+
+    <record id="snippet_lista_verificacao" model="afr.relatorio.snippet">
+        <field name="name">Lista de verificação</field>
+        <field name="category">lista</field>
+        <field name="sequence">10</field>
+        <field name="body" type="html">
+            <ul>
+                <li>Item verificado 1 — conforme</li>
+                <li>Item verificado 2 — conforme</li>
+                <li>Item verificado 3 — conforme</li>
+                <li>Item verificado 4 — conforme</li>
+            </ul>
+        </field>
+    </record>
+
+    <record id="snippet_lista_paragrafo_com_variaveis" model="afr.relatorio.snippet">
+        <field name="name">Parágrafo com variáveis</field>
+        <field name="category">lista</field>
+        <field name="sequence">20</field>
+        <field name="body" type="html">
+            <p>O presente relatório, <span class="rq-var">{{ relatorio.name }}</span>,
+            documenta a qualificação do equipamento
+            <span class="rq-var">{{ equipment.name }}</span>, executada para o
+            cliente <span class="rq-var">{{ partner.name }}</span>.</p>
+        </field>
+    </record>
+
+    <record id="snippet_lista_definicoes" model="afr.relatorio.snippet">
+        <field name="name">Definições</field>
+        <field name="category">lista</field>
+        <field name="sequence">30</field>
+        <field name="body" type="html">
+            <table style="border-collapse:collapse;width:100%">
+                <thead>
+                    <tr>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Termo</th>
+                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Definição</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">F0</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Letalidade equivalente do ciclo, expressa em minutos a 121,1 °C.</td>
+                    </tr>
+                    <tr>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Valor D</td>
+                        <td style="border:1px solid #adb5bd;padding:4px 6px">Tempo, em minutos, necessário para reduzir a população microbiana em um ciclo logarítmico a uma dada temperatura.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </field>
+    </record>
+
+    <!-- ==================== destaque ==================== -->
+
+    <record id="snippet_destaque_nota" model="afr.relatorio.snippet">
+        <field name="name">Nota</field>
+        <field name="category">destaque</field>
+        <field name="sequence">10</field>
+        <field name="body" type="html">
+            <div style="border-left:4px solid #0d6efd;background:#e7f1ff;padding:8px 12px">
+                <p><strong>Nota:</strong> texto explicativo adicional sobre o item anterior.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="snippet_destaque_atencao" model="afr.relatorio.snippet">
+        <field name="name">Atenção</field>
+        <field name="category">destaque</field>
+        <field name="sequence">20</field>
+        <field name="body" type="html">
+            <div style="border-left:4px solid #ffc107;background:#fff8e1;padding:8px 12px">
+                <p><strong>Atenção:</strong> texto de alerta sobre condição relevante para a leitura deste relatório.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="snippet_destaque_conclusao" model="afr.relatorio.snippet">
+        <field name="name">Conclusão</field>
+        <field name="category">destaque</field>
+        <field name="sequence">30</field>
+        <field name="body" type="html">
+            <table style="border-collapse:collapse;width:100%">
+                <tr>
+                    <td style="border:2px solid #198754;padding:8px 12px">
+                        <p>O equipamento foi considerado <strong>APROVADO</strong> nesta
+                        qualificação, atendendo aos critérios de aceitação definidos.</p>
+                    </td>
+                </tr>
+            </table>
+        </field>
+    </record>
+
+    <record id="snippet_destaque_citacao_de_norma" model="afr.relatorio.snippet">
+        <field name="name">Citação de norma</field>
+        <field name="category">destaque</field>
+        <field name="sequence">40</field>
+        <field name="body" type="html">
+            <blockquote>
+                <p>ABNT NBR ISO 17665 — Esterilização de produtos para saúde —
+                Calor úmido — Parte 1: Requisitos para o desenvolvimento,
+                validação e controle de rotina de um processo de esterilização
+                para produtos para a saúde.</p>
+            </blockquote>
+        </field>
+    </record>
+
+    <!-- ==================== layout ==================== -->
+
+    <record id="snippet_layout_duas_colunas" model="afr.relatorio.snippet">
+        <field name="name">Duas colunas</field>
+        <field name="category">layout</field>
+        <field name="sequence">10</field>
+        <field name="body" type="html">
+            <table style="width:100%">
+                <tr>
+                    <td style="width:50%;vertical-align:top">
+                        <p>Texto da primeira coluna.</p>
+                    </td>
+                    <td style="width:50%;vertical-align:top">
+                        <p>Texto da segunda coluna.</p>
+                    </td>
+                </tr>
+            </table>
+        </field>
+    </record>
+
+    <record id="snippet_layout_figura_com_legenda" model="afr.relatorio.snippet">
+        <field name="name">Figura com legenda</field>
+        <field name="category">layout</field>
+        <field name="sequence">20</field>
+        <field name="body" type="html">
+            <div>
+                <p style="text-align:center"><img src="/web/static/img/placeholder.png" style="width:50%"/></p>
+                <p style="text-align:center"><em>Figura 1 — Legenda da figura</em></p>
+            </div>
+        </field>
+    </record>
+
+    <record id="snippet_layout_quebra_de_pagina" model="afr.relatorio.snippet">
+        <field name="name">Quebra de página</field>
+        <field name="category">layout</field>
+        <field name="sequence">30</field>
+        <field name="body" type="html">
+            <div>
+                <div style="page-break-after:always"></div>
+                <p><br/></p>
+            </div>
+        </field>
+    </record>
+
+</odoo>

@@ -267,6 +267,10 @@
         "wizards/leitura_ib_lote_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
+        # Editor de blocos Task 1 — biblioteca de blocos prontos (seed antes
+        # da view/action que a referencia; menu sob Configurações)
+        "data/relatorio_snippet_seed.xml",
+        "views/relatorio_snippet_views.xml",
         # Relatório Final P3 — config de templates (menus sob Configurações)
         "views/relatorio_template_views.xml",
         "views/calibration_instruments_views.xml",

@@ -128,3 +128,6 @@ from . import test_relatorio_ai
 
 # Relatório Final P6 — preencher leituras de IB em lote
 from . import test_leitura_ib_lote
+
+# Editor de blocos — Task 1: biblioteca de blocos prontos (afr.relatorio.snippet)
+from . import test_relatorio_editor
