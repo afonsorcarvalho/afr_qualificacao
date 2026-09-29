@@ -10,7 +10,7 @@ from odoo.exceptions import UserError
 
 class AfrQualificacaoOsRelatorioWizard(models.TransientModel):
     _name = "afr.qualificacao.os.relatorio.wizard"
-    _description = "Wizard: novo relatório parcial de OS qualificação"
+    _description = "Wizard: novo relatório de campo de OS qualificação"
 
     os_id = fields.Many2one(
         "afr.qualificacao.os",
@@ -73,7 +73,7 @@ class AfrQualificacaoOsRelatorioWizard(models.TransientModel):
         })
         return {
             "type": "ir.actions.act_window",
-            "name": _("Relatório parcial"),
+            "name": _("Relatório de campo"),
             "res_model": "afr.qualificacao.os.relatorio",
             "view_mode": "form",
             "res_id": relatorio.id,

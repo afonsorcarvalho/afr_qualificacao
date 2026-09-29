@@ -32,7 +32,7 @@
 
     <menuitem
         id="menu_afr_qualificacao_os_relatorio"
-        name="Relatórios parciais"
+        name="Relatórios de campo"
         parent="menu_afr_qualificacao_root"
         action="afr_qualificacao.action_afr_qualificacao_os_relatorio"
         sequence="15"

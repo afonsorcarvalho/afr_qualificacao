@@ -8,7 +8,7 @@
         <field name="name">afr.qualificacao.os.relatorio.form</field>
         <field name="model">afr.qualificacao.os.relatorio</field>
         <field name="arch" type="xml">
-            <form string="Relatório parcial">
+            <form string="Relatório de campo">
                 <header>
                     <button name="action_done" type="object"
                             string="Concluir" class="btn-primary"
@@ -229,7 +229,7 @@
     <!-- ACTION                                                    -->
     <!-- ======================================================== -->
     <record id="action_afr_qualificacao_os_relatorio" model="ir.actions.act_window">
-        <field name="name">Relatórios parciais</field>
+        <field name="name">Relatórios de campo</field>
         <field name="res_model">afr.qualificacao.os.relatorio</field>
         <field name="view_mode">tree,form</field>
         <field name="search_view_id" ref="view_afr_qualificacao_os_relatorio_search"/>

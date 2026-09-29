@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Form do wizard de novo relatório parcial -->
+    <!-- Form do wizard de novo relatório de campo -->
     <record id="view_afr_qualificacao_os_relatorio_wizard_form" model="ir.ui.view">
         <field name="name">afr.qualificacao.os.relatorio.wizard.form</field>
         <field name="model">afr.qualificacao.os.relatorio.wizard</field>
         <field name="arch" type="xml">
-            <form string="Novo relatório parcial">
+            <form string="Novo relatório de campo">
                 <sheet>
                     <group>
                         <group string="Intervalo">
