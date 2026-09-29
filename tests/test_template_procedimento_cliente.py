@@ -10,7 +10,7 @@ categoria, constraint de procedimento do equipamento restrito à categoria.
 import re
 
 from odoo.exceptions import UserError, ValidationError
-from odoo.tests import tagged
+from odoo.tests import Form, tagged
 
 from .common import AfrQualificacaoTestCommon
 
@@ -527,6 +527,91 @@ class TestGenerateOsWizardLines(AfrQualificacaoTestCommon):
         self.assertEqual(qd.procedimento_id, self.p_alt)
         self.assertEqual(qd.relatorio_template_id, self.t_a)
         self.assertEqual(self._collect_procs(qd), self.p_alt)
+
+        # Fix round 1: template escolhido sincroniza TODAS as qualificações
+        # não-canceladas do equipamento na OS (senão `_resolve_template`
+        # pegaria a primeira, com o template antigo); procedimento não.
+        equip_qualifs = os1.qualificacao_ids.filtered(
+            lambda q: q.equipment_id == self.equip1
+        )
+        self.assertEqual(len(equip_qualifs), 2)
+        self.assertEqual(equip_qualifs.mapped("relatorio_template_id"), self.t_a)
+        qi = equip_qualifs.filtered(lambda q: q.qualification_type == "installation")
+        self.assertEqual(qi.procedimento_id, self.p_def)
+        tpl, origem = self.env["afr.qualificacao.relatorio"]._resolve_template(
+            self.equip1, so.partner_id, equip_qualifs, company=so.company_id
+        )
+        self.assertEqual((tpl, origem), (self.t_a, "qualificacao"))
+
+    def test_existing_os_route_empty_template_choice_keeps_siblings(self):
+        """Escolha de template vazia na rota OS existente não apaga o
+        template já gravado nas qualificações irmãs."""
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        conf = self.env["afr.qualificacao.configurator"].create({"sale_order_id": so.id})
+        conf.equipment_line_ids = [(0, 0, {"equipment_id": self.equip1.id, "do_qi": True})]
+        self.env["afr.qualificacao.configurator.optional.qualif"].create({
+            "wizard_id": conf.id, "equipment_id": self.equip1.id,
+            "qualification_type": "performance",
+            "cycle_type_id": self.cycle_cmax.id, "qty": 1,
+            "estimated_hours": 1.0, "accepted": False,
+        })
+        conf.action_apply()
+        so.action_confirm()
+        wiz = self._wizard(so)
+        self._line(wiz, self.equip1).relatorio_template_id = self.t_b
+        os1 = self._gerar(wiz)
+        so.order_line.filtered(
+            lambda l: l.is_proposal_optional and l.equipment_id == self.equip1
+        ).optional_accepted = True
+        wiz2 = self._wizard(so)
+        self._line(wiz2, self.equip1).relatorio_template_id = False
+        self._gerar(wiz2)
+        qi = os1.qualificacao_ids.filtered(lambda q: q.qualification_type == "installation")
+        self.assertEqual(qi.relatorio_template_id, self.t_b)
+
+    # ── origem na UI (onchange + rótulo "—") ─────────────────────────
+
+    def test_onchange_origem_follows_manual_choice(self):
+        self.partner.afr_relatorio_template_id = self.t_b
+        so = self._so_confirmada()
+        form = Form(self.env["afr.qualificacao.os.generate.wizard"].with_context(
+            default_sale_order_id=so.id
+        ))
+        idx = None
+        for i in range(len(form.line_ids)):
+            with form.line_ids.edit(i) as probe:
+                if probe.equipment_id == self.equip1:
+                    idx = i
+        self.assertIsNotNone(idx)
+        with form.line_ids.edit(idx) as line:
+            self.assertEqual(line.procedimento_origem, "categoria")
+            self.assertEqual(line.procedimento_origem_label, "Categoria")
+            line.procedimento_id = self.p_alt
+            self.assertFalse(line.procedimento_origem)
+            self.assertEqual(line.procedimento_origem_label, "—")
+            line.procedimento_id = self.p_def
+            self.assertEqual(line.procedimento_origem, "categoria")
+
+            self.assertEqual(line.template_origem, "cliente")
+            line.relatorio_template_id = self.t_a
+            self.assertFalse(line.template_origem)
+            self.assertEqual(line.template_origem_label, "—")
+            line.relatorio_template_id = self.t_b
+            self.assertEqual(line.template_origem, "cliente")
+            self.assertEqual(line.template_origem_label, "Cliente")
+
+    def test_procedimento_without_company_accepted(self):
+        """Procedimento sem empresa passa na validação (domain alinhado)."""
+        p_noco = self.env["afr.qualificacao.procedimento"].create({
+            "name": "pWiz_sem_empresa", "equipment_category_id": self.category.id,
+            "company_id": False,
+        })
+        so = self._so_confirmada()
+        wiz = self._wizard(so)
+        self._line(wiz, self.equip1).procedimento_id = p_noco
+        os = self._gerar(wiz)
+        q1 = os.qualificacao_ids.filtered(lambda q: q.equipment_id == self.equip1)
+        self.assertEqual(q1.procedimento_id, p_noco)
 
     # ── salvar como padrão ───────────────────────────────────────────
 

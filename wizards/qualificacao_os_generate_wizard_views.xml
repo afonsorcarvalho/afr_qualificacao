@@ -32,11 +32,13 @@
                             <field name="category_id" readonly="1" options="{'no_open': True}"/>
                             <field name="company_id" invisible="1"/>
                             <field name="procedimento_id"
-                                   domain="[('company_id', '=', company_id), '|', ('equipment_category_id', '=', category_id), ('equipment_category_id', '=', False)]"
+                                   domain="[('company_id', 'in', [company_id, False]), '|', ('equipment_category_id', '=', category_id), ('equipment_category_id', '=', False)]"
                                    options="{'no_create': True}"/>
-                            <field name="procedimento_origem" widget="badge" readonly="1" force_save="1" string="Origem"/>
+                            <field name="procedimento_origem" invisible="1" force_save="1"/>
+                            <field name="procedimento_origem_label" widget="badge" string="Origem"/>
                             <field name="relatorio_template_id" options="{'no_create': True}"/>
-                            <field name="template_origem" widget="badge" readonly="1" force_save="1" string="Origem"/>
+                            <field name="template_origem" invisible="1" force_save="1"/>
+                            <field name="template_origem_label" widget="badge" string="Origem"/>
                         </tree>
                     </field>
                     <group>

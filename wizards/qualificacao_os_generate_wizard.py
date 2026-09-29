@@ -168,6 +168,29 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
                     "padrão\"."
                 ) % ", ".join(templates.mapped("name")))
 
+    def _sync_template_existing_os(self, os_rec, equipments, choices):
+        """Rota OS existente: o template escolhido vale para o equipamento
+        inteiro na OS — grava em TODAS as qualificações não-canceladas dele,
+        senão `_resolve_template` (que pega a primeira com template) ignoraria
+        a escolha em silêncio. Escolha vazia não mexe; `procedimento_id` não
+        é sincronizado (é por qualificação/fase). Relatórios Finais já
+        existentes não são alterados.
+
+        sudo(): mesmo argumento da busca de irmãs (record rule não pode
+        esconder uma qualificação do equipamento)."""
+        for equipment in equipments:
+            template = (choices.get(equipment.id) or {}).get("template")
+            if not template:
+                continue
+            siblings = self.env["afr.qualificacao"].sudo().search([
+                ("os_id", "=", os_rec.id),
+                ("equipment_id", "=", equipment.id),
+                ("state", "!=", "cancelled"),
+                ("relatorio_template_id", "!=", template.id),
+            ])
+            if siblings:
+                siblings.write({"relatorio_template_id": template.id})
+
     def _save_as_default(self, included):
         """Grava as escolhas como padrão: procedimento no equipamento e
         template no parceiro comercial da cotação.
@@ -303,6 +326,7 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
             por_os_existente[os_por_equipamento[line.equipment_id.id]] |= line
         for os_existente, grupo in por_os_existente.items():
             so._materialize_qualificacoes(grupo, os_existente, choices=choices)
+            self._sync_template_existing_os(os_existente, grupo.mapped("equipment_id"), choices)
             os_afetadas |= os_existente
 
         os_nova = self.env["afr.qualificacao.os"]
@@ -382,7 +406,7 @@ class AfrQualificacaoOsGenerateWizardLine(models.TransientModel):
     procedimento_id = fields.Many2one(
         "afr.qualificacao.procedimento",
         string="Procedimento",
-        domain="[('company_id', '=', company_id), "
+        domain="[('company_id', 'in', [company_id, False]), "
                "'|', ('equipment_category_id', '=', category_id), "
                "('equipment_category_id', '=', False)]",
     )
@@ -403,6 +427,23 @@ class AfrQualificacaoOsGenerateWizardLine(models.TransientModel):
         help="De onde veio o template pré-preenchido. Vazio (—) quando "
              "escolhido manualmente ou quando nada resolve.",
     )
+
+    # Rótulo exibido (badge): a origem vazia aparece como "—" (constraint
+    # global de UI); o valor gravado continua False na Selection.
+    procedimento_origem_label = fields.Char(
+        string="Origem", compute="_compute_origem_labels",
+    )
+    template_origem_label = fields.Char(
+        string="Origem", compute="_compute_origem_labels",
+    )
+
+    @api.depends("procedimento_origem", "template_origem")
+    def _compute_origem_labels(self):
+        proc_labels = dict(PROCEDIMENTO_ORIGEM_SELECTION)
+        tpl_labels = dict(TEMPLATE_ORIGEM_SELECTION)
+        for line in self:
+            line.procedimento_origem_label = proc_labels.get(line.procedimento_origem, "—")
+            line.template_origem_label = tpl_labels.get(line.template_origem, "—")
 
     def _so(self):
         return self.wizard_id.sale_order_id
