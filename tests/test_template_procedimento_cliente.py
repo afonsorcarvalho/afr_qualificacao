@@ -279,3 +279,41 @@ class TestTemplateResolver(AfrQualificacaoTestCommon):
             "equipment_id": self.equip_tpl.id,
         })
         self.assertEqual(rel.template_id, self.t_ind)
+
+    def test_category_match_uses_os_company_not_env_company(self):
+        """Fix round 1: o passo de categoria deve resolver dentro da empresa
+        da OS, não de `self.env.company` — sob cron/sudo/multi-company as
+        duas podem divergir, e resolver pela empresa errada acharia vazio em
+        silêncio."""
+        company_b = self.env["res.company"].create({"name": "Test Empresa B TplRes"})
+        self.assertNotEqual(self.env.company, company_b)
+        tpl_b = self.env["afr.relatorio.template"].create({
+            "name": "Tpl Resolver Empresa B", "code": "TPLRES-COMPB", "sequence": 5,
+            "company_id": company_b.id,
+            "equipment_category_ids": [(6, 0, self.cat_tpl.ids)],
+        })
+
+        # 1) _resolve_template direto, empresa passada explicitamente.
+        tpl, origem = self.env["afr.qualificacao.relatorio"]._resolve_template(
+            self.equip_tpl, self.env["res.partner"], self.env["afr.qualificacao"],
+            company_b,
+        )
+        self.assertEqual(tpl, tpl_b)
+        self.assertEqual(origem, "categoria")
+
+        # 2) fluxo completo: OS na empresa B, env.company continua sendo a
+        # empresa default (A) — create() deve resolver via `os.company_id`,
+        # não `self.env.company`.
+        os_b = self.env["afr.qualificacao.os"].create({"company_id": company_b.id})
+        self.env["afr.qualificacao"].create({
+            "name": "RF-tplres-compb-%s" % os_b.id,
+            "equipment_id": self.equip_tpl.id,
+            "qualification_type": "installation",
+            "os_id": os_b.id,
+            "company_id": company_b.id,
+        })
+        rel = self.env["afr.qualificacao.relatorio"].create({
+            "os_id": os_b.id,
+            "equipment_id": self.equip_tpl.id,
+        })
+        self.assertEqual(rel.template_id, tpl_b)

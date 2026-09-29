@@ -56,7 +56,12 @@ class AfrQualificacaoRelatorio(models.Model):
 
     template_id = fields.Many2one(
         "afr.relatorio.template", string="Template", ondelete="set null",
-        tracking=True, help="Sugerido pela categoria do equipamento.")
+        tracking=True,
+        help=(
+            "Sugerido por: template já gravado na qualificação da OS, "
+            "senão o padrão do cliente, senão o da categoria do "
+            "equipamento (ver `_resolve_template`). Sem match, nasce vazio."
+        ))
     block_ids = fields.One2many(
         "afr.relatorio.block", "relatorio_id", string="Blocos do texto", copy=False)
     body_block_ids = fields.One2many(
@@ -91,7 +96,7 @@ class AfrQualificacaoRelatorio(models.Model):
         return super().create(vals_list)
 
     @api.model
-    def _resolve_template(self, equipment, partner, qualificacoes):
+    def _resolve_template(self, equipment, partner, qualificacoes, company=None):
         """Resolve o template do Relatório Final para `equipment` (design
         decisão 6). Ordem: 1) `relatorio_template_id` já gravado numa das
         qualificações do equipamento na OS ("Definido na OS") → origem
@@ -102,11 +107,16 @@ class AfrQualificacaoRelatorio(models.Model):
 
         Sem fallback silencioso pela "menor sequence" da empresa: um
         relatório sem match nasce sem template (a verificação/"Recarregar
-        template" acusam — ver `action_reload_template`). Restrito à
-        empresa corrente (`self.env.company`).
-        """
+        template" acusam — ver `action_reload_template`).
+
+        `company` (opcional, `res.company` record) restringe o passo de
+        categoria; por padrão `self.env.company`. Chamadores com uma OS já
+        resolvida devem passar a empresa DA OS explicitamente — sob
+        cron/sudo/multi-company `self.env.company` pode não ser a empresa da
+        OS, e a busca por categoria acharia vazio em silêncio (achado do
+        Fix round 1)."""
         Template = self.env["afr.relatorio.template"]
-        company = self.env.company
+        company = company or self.env.company
 
         qualif_com_template = qualificacoes.filtered(
             lambda q: q.relatorio_template_id
@@ -133,8 +143,10 @@ class AfrQualificacaoRelatorio(models.Model):
         """Sugestão de template a partir de um `vals` de criação (sem
         depender do registro já existir): usa `_resolve_template` com o
         equipamento, o cliente da OS (`os.partner_id`, ou `vals['partner_id']`
-        se a OS não resolver) e as qualificações não-canceladas do
-        equipamento na OS."""
+        se a OS não resolver), as qualificações não-canceladas do
+        equipamento na OS, e a empresa (`vals['company_id']`, senão
+        `os.company_id`, senão `self.env.company` — nunca só `env.company`,
+        que sob cron/sudo pode divergir da empresa da OS)."""
         equipment = self.env["engc.equipment"].browse(vals.get("equipment_id"))
         os = self.env["afr.qualificacao.os"].browse(vals.get("os_id"))
         partner_id = (os.partner_id.id if os else False) or vals.get("partner_id")
@@ -142,17 +154,21 @@ class AfrQualificacaoRelatorio(models.Model):
         qualificacoes = os.qualificacao_ids.filtered(
             lambda q: q.equipment_id == equipment and q.state != "cancelled"
         ) if os else self.env["afr.qualificacao"]
-        template, _origem = self._resolve_template(equipment, partner, qualificacoes)
+        company_id = vals.get("company_id") or (os.company_id.id if os else False)
+        company = self.env["res.company"].browse(company_id) if company_id else self.env.company
+        template, _origem = self._resolve_template(equipment, partner, qualificacoes, company)
         return template
 
     def _suggest_template(self):
         """Sugestão de template para o registro atual — mesma regra de
-        `_suggest_template_from_vals()`."""
+        `_suggest_template_from_vals()`, passando a empresa do próprio
+        relatório (`self.company_id`)."""
         self.ensure_one()
         return self._suggest_template_from_vals({
             "equipment_id": self.equipment_id.id,
             "os_id": self.os_id.id,
             "partner_id": self.partner_id.id,
+            "company_id": (self.company_id or self.env.company).id,
         })
 
     def _apply_template(self):
