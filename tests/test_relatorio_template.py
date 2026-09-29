@@ -670,7 +670,12 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
 
     def test_programmatic_generate_only_suggests_template(self):
         """Compatibilidade com P1: action_generate_relatorios() (recordset)
-        não semeia nada; só o template é sugerido no create()."""
+        não semeia nada; só o template é sugerido no create().
+
+        Task 2: sem fallback pela "menor sequence" a sugestão só acontece
+        com um match explícito — aqui via template padrão do cliente
+        (equip1 não tem categoria em comum com RQT-HOSP/RQT-IND)."""
+        self.partner.afr_relatorio_template_id = self.hosp
         so2 = self._apply(do_qi=True)
         os2 = self._confirm_and_generate_os(so2)
         rels2 = os2.action_generate_relatorios()
@@ -936,17 +941,17 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         self.assertIn(block.id, self.rel._block_numbering())
         self.assertTrue(block.display_number)
 
-    def test_suggest_template_by_category_then_sequence(self):
+    def test_suggest_template_by_category_no_fallback(self):
+        """Task 2 (decisão 6): sem match de categoria/cliente/qualificação,
+        `_suggest_template()` não cai mais no "menor sequence" da empresa —
+        devolve vazio."""
         tpl = self.env["afr.relatorio.template"].create({
             "name": "Tpl Categoria", "code": "RQT-CAT", "sequence": 99,
             "equipment_category_ids": [(6, 0, self.category.ids)],
         })
         self.assertEqual(self.rel._suggest_template(), tpl)
         tpl.equipment_category_ids = [(5, 0, 0)]
-        lowest = self.env["afr.relatorio.template"].search(
-            [("company_id", "in", [self.rel.company_id.id, False])],
-            order="sequence, id", limit=1)
-        self.assertEqual(self.rel._suggest_template(), lowest)
+        self.assertFalse(self.rel._suggest_template())
 
     def test_edit_block_content_opens_linked_block(self):
         anexo = self.rel.anexo_ids.filtered(lambda a: a.code == "protocolo")

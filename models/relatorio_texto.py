@@ -90,30 +90,69 @@ class AfrQualificacaoRelatorio(models.Model):
                     vals["template_id"] = template.id
         return super().create(vals_list)
 
-    def _suggest_template_from_vals(self, vals):
-        """Sugestão de template a partir de um `vals` de criação (sem
-        depender do registro já existir): mesma regra de `_suggest_template()`
-        — categoria do equipamento primeiro, senão o de menor sequence."""
+    @api.model
+    def _resolve_template(self, equipment, partner, qualificacoes):
+        """Resolve o template do Relatório Final para `equipment` (design
+        decisão 6). Ordem: 1) `relatorio_template_id` já gravado numa das
+        qualificações do equipamento na OS ("Definido na OS") → origem
+        `qualificacao`; 2) template padrão do cliente (commercial partner)
+        → `cliente`; 3) template cujo `equipment_category_ids` contém a
+        categoria do equipamento → `categoria`; senão recordset vazio +
+        `False`.
+
+        Sem fallback silencioso pela "menor sequence" da empresa: um
+        relatório sem match nasce sem template (a verificação/"Recarregar
+        template" acusam — ver `action_reload_template`). Restrito à
+        empresa corrente (`self.env.company`).
+        """
         Template = self.env["afr.relatorio.template"]
-        os = self.env["afr.qualificacao.os"].browse(vals.get("os_id"))
-        company_id = vals.get("company_id") or os.company_id.id or self.env.company.id
-        company_dom = [("company_id", "in", [company_id, False])]
-        equipment = self.env["engc.equipment"].browse(vals.get("equipment_id"))
+        company = self.env.company
+
+        qualif_com_template = qualificacoes.filtered(
+            lambda q: q.relatorio_template_id
+        )[:1] if qualificacoes else self.env["afr.qualificacao"]
+        if qualif_com_template:
+            return qualif_com_template.relatorio_template_id, "qualificacao"
+
+        commercial = partner.commercial_partner_id if partner else self.env["res.partner"]
+        if commercial and commercial.afr_relatorio_template_id:
+            return commercial.afr_relatorio_template_id, "cliente"
+
         category = equipment.category_id if equipment else False
         if category:
             tpl = Template.search(
-                company_dom + [("equipment_category_ids", "in", category.ids)],
+                [("company_id", "in", [company.id, False]),
+                 ("equipment_category_ids", "in", category.ids)],
                 order="sequence, id", limit=1)
             if tpl:
-                return tpl
-        return Template.search(company_dom, order="sequence, id", limit=1)
+                return tpl, "categoria"
+
+        return Template.browse(), False
+
+    def _suggest_template_from_vals(self, vals):
+        """Sugestão de template a partir de um `vals` de criação (sem
+        depender do registro já existir): usa `_resolve_template` com o
+        equipamento, o cliente da OS (`os.partner_id`, ou `vals['partner_id']`
+        se a OS não resolver) e as qualificações não-canceladas do
+        equipamento na OS."""
+        equipment = self.env["engc.equipment"].browse(vals.get("equipment_id"))
+        os = self.env["afr.qualificacao.os"].browse(vals.get("os_id"))
+        partner_id = (os.partner_id.id if os else False) or vals.get("partner_id")
+        partner = self.env["res.partner"].browse(partner_id) if partner_id else self.env["res.partner"]
+        qualificacoes = os.qualificacao_ids.filtered(
+            lambda q: q.equipment_id == equipment and q.state != "cancelled"
+        ) if os else self.env["afr.qualificacao"]
+        template, _origem = self._resolve_template(equipment, partner, qualificacoes)
+        return template
 
     def _suggest_template(self):
-        """Template cuja categoria = categoria do equipamento; senão o de menor sequence."""
+        """Sugestão de template para o registro atual — mesma regra de
+        `_suggest_template_from_vals()`."""
         self.ensure_one()
         return self._suggest_template_from_vals({
             "equipment_id": self.equipment_id.id,
-            "company_id": (self.company_id or self.env.company).id,
+            "os_id": self.os_id.id,
+            "partner_id": self.partner_id.id,
         })
 
     def _apply_template(self):

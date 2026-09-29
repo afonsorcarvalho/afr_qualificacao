@@ -158,3 +158,124 @@ class TestProcedimentoResolver(AfrQualificacaoTestCommon):
         rec = self.env["afr.qualificacao.procedimento"].resolve_for(other_cat)
         self.assertEqual(rec, self.pGen)
         self.pGen.is_default = True
+
+
+@tagged("afr_qualificacao", "relatorio", "post_install", "-at_install")
+class TestTemplateResolver(AfrQualificacaoTestCommon):
+    """Testes de `afr.qualificacao.relatorio._resolve_template` (Task 2):
+    qualificação (template gravado na OS) > cliente > categoria > vazio.
+    Sem fallback silencioso pela "menor sequence" (decisão 6 do design)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.cat_tpl = cls.env["engc.equipment.category"].create({
+            "name": "Test-TplResolver-Cat",
+        })
+        Template = cls.env["afr.relatorio.template"]
+        cls.t_hosp = Template.create({
+            "name": "Tpl Resolver Hosp", "code": "TPLRES-HOSP", "sequence": 10,
+            "equipment_category_ids": [(6, 0, cls.cat_tpl.ids)],
+        })
+        cls.t_ind = Template.create({
+            "name": "Tpl Resolver Ind", "code": "TPLRES-IND", "sequence": 20,
+        })
+
+        cls.equip_tpl = cls.env["engc.equipment"].create({
+            "client_id": cls.partner.id, "category_id": cls.cat_tpl.id,
+            "model": "EqTplRes", "serial_number": "TSN-RES-TPL",
+            "means_of_aquisition_id": cls.means.id,
+            "location_id": cls.location.id, "marca_id": cls.marca.id,
+        })
+
+        cls.os_tpl = cls.env["afr.qualificacao.os"].create({})
+        cls.qualif_tpl = cls.env["afr.qualificacao"].create({
+            "name": "RF-tplres-%s" % cls.os_tpl.id,
+            "equipment_id": cls.equip_tpl.id,
+            "qualification_type": "installation",
+            "os_id": cls.os_tpl.id,
+            "company_id": cls.os_tpl.company_id.id,
+        })
+
+    def _resolve(self, equipment=None, partner=None, qualificacoes=None):
+        Relatorio = self.env["afr.qualificacao.relatorio"]
+        return Relatorio._resolve_template(
+            equipment if equipment is not None else self.equip_tpl,
+            partner if partner is not None else self.partner,
+            qualificacoes if qualificacoes is not None else self.qualif_tpl,
+        )
+
+    def test_qualificacao_template_wins_over_client_template(self):
+        self.qualif_tpl.relatorio_template_id = self.t_ind
+        self.partner.afr_relatorio_template_id = self.t_hosp
+        tpl, origem = self._resolve()
+        self.assertEqual(tpl, self.t_ind)
+        self.assertEqual(origem, "qualificacao")
+
+    def test_client_template_used_when_no_qualificacao_template(self):
+        self.partner.afr_relatorio_template_id = self.t_ind
+        tpl, origem = self._resolve()
+        self.assertEqual(tpl, self.t_ind)
+        self.assertEqual(origem, "cliente")
+
+    def test_category_template_used_when_no_qualificacao_or_client(self):
+        tpl, origem = self._resolve()
+        self.assertEqual(tpl, self.t_hosp)
+        self.assertEqual(origem, "categoria")
+
+    def test_empty_when_nothing_resolves(self):
+        self.t_hosp.equipment_category_ids = [(5, 0, 0)]
+        tpl, origem = self._resolve()
+        self.assertFalse(tpl)
+        self.assertFalse(origem)
+        self.t_hosp.equipment_category_ids = [(6, 0, self.cat_tpl.ids)]
+
+    def test_relatorio_created_without_matching_template_has_no_template_and_no_blocks(self):
+        """Sem fallback silencioso: equipamento sem match nasce com
+        `template_id` vazio, e sem blocos — inclusive pelo caminho de UI
+        (`action_generate_relatorios_open()`, que chama `_apply_template()`
+        em seguida; sem template, `_apply_template` não tem o que aplicar).
+        'Recarregar template' levanta `UserError` nesse estado — ver
+        `test_reload_without_template_raises`."""
+        other_cat = self.env["engc.equipment.category"].create({
+            "name": "Test-TplResolver-CatSemMatch",
+        })
+        equip_no_match = self.env["engc.equipment"].create({
+            "client_id": self.partner.id, "category_id": other_cat.id,
+            "model": "EqSemMatch", "serial_number": "TSN-RES-NOMATCH",
+            "means_of_aquisition_id": self.means.id,
+            "location_id": self.location.id, "marca_id": self.marca.id,
+        })
+        other_os = self.env["afr.qualificacao.os"].create({})
+        self.env["afr.qualificacao"].create({
+            "name": "RF-tplres-nomatch-%s" % other_os.id,
+            "equipment_id": equip_no_match.id,
+            "qualification_type": "installation",
+            "os_id": other_os.id,
+            "company_id": other_os.company_id.id,
+        })
+        other_os.action_generate_relatorios_open()
+        rel = other_os.relatorio_final_ids.filtered(
+            lambda r: r.equipment_id == equip_no_match)
+        self.assertTrue(rel)
+        self.assertFalse(rel.template_id)
+        self.assertFalse(rel.block_ids)
+
+    def test_default_template_id_context_still_wins(self):
+        """`default_template_id` no contexto continua vencendo mesmo quando
+        a qualificação/cliente/categoria resolveriam outro template."""
+        other_os = self.env["afr.qualificacao.os"].create({})
+        self.env["afr.qualificacao"].create({
+            "name": "RF-tplres-ctxdef-%s" % other_os.id,
+            "equipment_id": self.equip_tpl.id,
+            "qualification_type": "installation",
+            "os_id": other_os.id,
+            "company_id": other_os.company_id.id,
+        })
+        rel = self.env["afr.qualificacao.relatorio"].with_context(
+            default_template_id=self.t_ind.id
+        ).create({
+            "os_id": other_os.id,
+            "equipment_id": self.equip_tpl.id,
+        })
+        self.assertEqual(rel.template_id, self.t_ind)
