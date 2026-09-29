@@ -1498,38 +1498,18 @@ class SaleOrder(models.Model):
                     self._explode_collect_items(CollectItem.sudo(), qualif, proc, qtype)
 
     def _explode_collect_items(self, CollectItem, qualif, procedimento, phase):
-        """F3/F1: Cria N collect.items por procedimento.item conforme target_level.
+        """F3/F1: thin wrapper — delega para afr.qualificacao.procedimento._explode_into().
 
-        Filtra os itens do procedimento pela `phase` da qualificação (F1).
-        target_level=qualificacao → 1 item por qualif
-        target_level=cycle → 1 item por cycle existente (qualif QD)
-        target_level=malha → 1 item por malha existente (qualif Calib)
+        Mantido (mesma assinatura) porque é chamado por _materialize_qualificacoes
+        durante o confirm da SO. A explosão em si (target_level → N collect.items,
+        filtro por phase) vive em procedimento._explode_into, compartilhada com o
+        wizard "Aplicar Procedimento" (wizards/apply_procedimento_wizard.py).
+
+        `CollectItem` chega sudo'd do caller (quem confirma a SO pode não ter
+        grupos de qualificação); rodamos a explosão com o env de `CollectItem`
+        para preservar esse sudo independentemente do sudo de `procedimento`.
         """
-        items = procedimento.item_ids.filtered(lambda pi: pi.phase == phase)
-        for pi in items:
-            base_vals = {
-                "name": pi.name,
-                "sequence": pi.sequence,
-                "kind": pi.kind,
-                "required": pi.required,
-                "instruction": pi.instruction,
-                "procedimento_item_id": pi.id,
-                "qualif_id": qualif.id,
-            }
-            if pi.target_level == "qualificacao":
-                CollectItem.create(base_vals)
-            elif pi.target_level == "cycle":
-                for cycle in qualif.cycle_ids:
-                    vals = dict(base_vals)
-                    vals["cycle_id"] = cycle.id
-                    vals["name"] = cycle.display_name
-                    CollectItem.create(vals)
-            elif pi.target_level == "malha":
-                for malha in qualif.malha_ids:
-                    vals = dict(base_vals)
-                    vals["malha_id"] = malha.id
-                    vals["name"] = malha.display_name
-                    CollectItem.create(vals)
+        return procedimento.with_env(CollectItem.env)._explode_into(qualif, phase=phase)
 
     def _prepare_qualificacao_os_values(self, equipments=None, pending_equipments=None):
         """Hook: valores para criar afr.qualificacao.os a partir do SO.

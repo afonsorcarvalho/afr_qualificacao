@@ -9,16 +9,20 @@
                 <sheet>
                     <group>
                         <field name="os_id" readonly="1"/>
-                        <field name="procedimento_id"/>
                         <field name="overwrite_existing"/>
                     </group>
                     <separator string="Qualificações alvo"/>
-                    <field name="qualificacao_ids" nolabel="1">
-                        <tree>
-                            <field name="name"/>
-                            <field name="equipment_id"/>
-                            <field name="qualification_type"/>
-                            <field name="state"/>
+                    <field name="line_ids" nolabel="1">
+                        <tree editable="bottom" create="0" delete="0"
+                              decoration-warning="not procedimento_id">
+                            <field name="selected" widget="boolean_toggle" string="Aplicar"/>
+                            <field name="qualificacao_id" readonly="1" force_save="1" string="Qualificação" options="{'no_open': True}"/>
+                            <field name="equipment_id" readonly="1" options="{'no_open': True}"/>
+                            <field name="equipment_category_id" string="Categoria" options="{'no_open': True}"/>
+                            <field name="qualification_type" readonly="1"/>
+                            <field name="state" readonly="1"/>
+                            <field name="procedimento_id"/>
+                            <field name="company_id" invisible="1"/>
                         </tree>
                     </field>
                 </sheet>

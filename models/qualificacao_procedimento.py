@@ -133,6 +133,54 @@ class AfrQualificacaoProcedimento(models.Model):
             domain + [("equipment_category_id", "=", False)], limit=1
         )
 
+    def _explode_into(self, qualif, phase=None):
+        """Cria N collect.items em `qualif` conforme target_level de cada item.
+
+        Compartilhado por sale_order._explode_collect_items (auto-explosão no
+        confirm da SO, onde `phase` vem explícito do loop de qtype) e pelo
+        wizard "Aplicar Procedimento" (aplicação manual/re-aplicação, onde
+        `phase` é omitido e cai no default = qualif.qualification_type).
+
+        target_level=qualificacao → 1 item por qualif
+        target_level=cycle → 1 item por ciclo existente (qualif QD)
+        target_level=malha → 1 item por malha existente (qualif Calib)
+
+        Retorna a quantidade de collect.items criados.
+        """
+        self.ensure_one()
+        phase = phase or qualif.qualification_type
+        CollectItem = self.env["afr.qualificacao.collect.item"]
+        created = 0
+        items = self.item_ids.filtered(lambda pi: pi.phase == phase)
+        for pi in items:
+            base_vals = {
+                "name": pi.name,
+                "sequence": pi.sequence,
+                "kind": pi.kind,
+                "required": pi.required,
+                "instruction": pi.instruction,
+                "procedimento_item_id": pi.id,
+                "qualif_id": qualif.id,
+            }
+            if pi.target_level == "qualificacao":
+                CollectItem.create(base_vals)
+                created += 1
+            elif pi.target_level == "cycle":
+                for cycle in qualif.cycle_ids:
+                    vals = dict(base_vals)
+                    vals["cycle_id"] = cycle.id
+                    vals["name"] = cycle.display_name
+                    CollectItem.create(vals)
+                    created += 1
+            elif pi.target_level == "malha":
+                for malha in qualif.malha_ids:
+                    vals = dict(base_vals)
+                    vals["malha_id"] = malha.id
+                    vals["name"] = malha.display_name
+                    CollectItem.create(vals)
+                    created += 1
+        return created
+
 
 class AfrQualificacaoProcedimentoItem(models.Model):
     _name = "afr.qualificacao.procedimento.item"

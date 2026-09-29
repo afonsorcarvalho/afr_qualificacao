@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Testes da explosão de procedimento em collect.items no SO confirm (F3)."""
-from odoo.tests import tagged
+import base64
+
+from odoo.exceptions import UserError
+from odoo.tests import Form, tagged
 
 from .common import AfrQualificacaoTestCommon
 
@@ -158,17 +161,177 @@ class TestProcedimentoExplosion(AfrQualificacaoTestCommon):
         os = so.qualificacao_os_ids
         # limpa coletas auto-explodidas no confirm p/ isolar o efeito do wizard
         qualif.collect_item_ids.unlink()
-        wiz = self.env["afr.qualificacao.os.apply.procedimento.wizard"].create({
-            "os_id": os.id,
-            "procedimento_id": self.proc_category.id,
-            "qualificacao_ids": [(6, 0, qualif.ids)],
-        })
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+        wiz = Wizard.with_context(default_os_id=os.id).create({})
+        line = wiz.line_ids
+        self.assertEqual(len(line), 1)
+        self.assertEqual(line.qualificacao_id, qualif)
+        # default_get já resolveu o procedimento da categoria do equipamento
+        self.assertEqual(line.procedimento_id, self.proc_category)
         wiz.action_apply()
         names = qualif.collect_item_ids.mapped("name")
         # proc_category tem QI(2) + QD(3) + Calib(1); qualif QI recebe só os 2 QI
         self.assertEqual(len(qualif.collect_item_ids), 2)
         self.assertIn("Foto plaqueta", names)
         self.assertNotIn("Dados qualificador térmico", names)  # item QD fica de fora
+
+    def test_wizard_form_save_keeps_qualificacao_id(self):
+        """Regressão: qualificacao_id é readonly na tree — sem force_save="1"
+        no XML, o client web descarta o valor no save e o create() da linha
+        falha (required). Form() reproduz o mesmo caminho do client."""
+        so = self._confirm_so_with([
+            {"equipment_id": self.equip1.id, "do_qi": True},
+        ])
+        qualif = so.qualificacao_ids
+        os = so.qualificacao_os_ids
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+        with Form(Wizard.with_context(default_os_id=os.id)) as f:
+            pass
+        wiz = f.save()
+        self.assertEqual(wiz.line_ids.qualificacao_id, qualif)
+
+    # ─────────────────────────────────────────────────────────────
+    # OS mista: categorias diferentes → procedimento default por linha
+    # ─────────────────────────────────────────────────────────────
+    def _make_mixed_os(self):
+        """OS com 2 qualifs de categorias diferentes (fora do fluxo SO/
+        configurador, que restringe cycle/malha types por categoria — aqui
+        só interessa exercitar o wizard sobre afr.qualificacao.os)."""
+        category2 = self.env["engc.equipment.category"].create({"name": "Test-Seladora"})
+        equip3 = self.env["engc.equipment"].create({
+            "client_id": self.partner.id,
+            "category_id": category2.id,
+            "model": "TestModel3", "serial_number": "TSN-003",
+            "means_of_aquisition_id": self.means.id,
+            "location_id": self.location.id,
+            "marca_id": self.marca.id,
+        })
+        os = self.env["afr.qualificacao.os"].create({})
+        qualif1 = self.env["afr.qualificacao"].create({
+            "name": "Qualif mista 1 (categoria específica)",
+            "equipment_id": self.equip1.id,
+            "qualification_type": "installation",
+            "company_id": self.company.id,
+            "os_id": os.id,
+        })
+        qualif2 = self.env["afr.qualificacao"].create({
+            "name": "Qualif mista 2 (fallback)",
+            "equipment_id": equip3.id,
+            "qualification_type": "installation",
+            "company_id": self.company.id,
+            "os_id": os.id,
+        })
+        return os, qualif1, qualif2, category2, equip3
+
+    def test_wizard_default_lines_resolve_procedimento_per_qualif_mixed_os(self):
+        os, qualif1, qualif2, _category2, _equip3 = self._make_mixed_os()
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+        wiz = Wizard.with_context(default_os_id=os.id).create({})
+        self.assertEqual(len(wiz.line_ids), 2)
+        line1 = wiz.line_ids.filtered(lambda l: l.qualificacao_id == qualif1)
+        line2 = wiz.line_ids.filtered(lambda l: l.qualificacao_id == qualif2)
+        # qualif1: equipamento da categoria com procedimento específico
+        self.assertEqual(line1.procedimento_id, self.proc_category)
+        # qualif2: categoria sem procedimento específico → fallback genérico
+        self.assertEqual(line2.procedimento_id, self.proc_fallback)
+
+    def test_wizard_action_apply_rejects_procedimento_of_other_category(self):
+        """Domain do campo só protege a UI — server-side tem que validar
+        de novo, senão dá pra forçar via RPC um procedimento de categoria
+        errada (ex: aplicar protocolo de autoclave numa seladora)."""
+        os, _qualif1, qualif2, _category2, _equip3 = self._make_mixed_os()
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+        wiz = Wizard.with_context(default_os_id=os.id).create({})
+        line2 = wiz.line_ids.filtered(lambda l: l.qualificacao_id == qualif2)
+        # força um procedimento específico de OUTRA categoria (o domain do
+        # campo impediria isso na UI, mas o servidor tem que barrar também)
+        line2.procedimento_id = self.proc_category.id
+        with self.assertRaises(UserError):
+            wiz.action_apply()
+
+    def test_wizard_action_apply_rejects_selected_line_without_procedimento(self):
+        so = self._confirm_so_with([
+            {"equipment_id": self.equip1.id, "do_qi": True},
+        ])
+        qualif = so.qualificacao_ids
+        os = so.qualificacao_os_ids
+        qualif.collect_item_ids.unlink()
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+        wiz = Wizard.with_context(default_os_id=os.id).create({})
+        wiz.line_ids.procedimento_id = False
+        with self.assertRaises(UserError):
+            wiz.action_apply()
+
+    # ─────────────────────────────────────────────────────────────
+    # overwrite_existing: troca de procedimento sem duplicar / sem apagar coletado
+    # ─────────────────────────────────────────────────────────────
+    def test_wizard_overwrite_switches_procedure_leaves_only_new_set(self):
+        so = self._confirm_so_with([
+            {"equipment_id": self.equip1.id, "do_qi": True},
+        ])
+        qualif = so.qualificacao_ids
+        os = so.qualificacao_os_ids
+        qualif.collect_item_ids.unlink()
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+
+        # 1ª aplicação: proc_category (2 itens QI)
+        wiz1 = Wizard.with_context(default_os_id=os.id).create({})
+        wiz1.action_apply()
+        self.assertEqual(len(qualif.collect_item_ids), 2)
+
+        # procedimento QI alternativo (genérico, categoria vazia — não colide
+        # com proc_fallback: unique(equipment_category_id, company_id) trata
+        # NULL como distinto entre si no Postgres)
+        proc_qi_alt = self.env["afr.qualificacao.procedimento"].create({
+            "name": "Procedimento QI Alternativo",
+            "item_ids": [
+                (0, 0, {"name": "Assinatura termo", "kind": "pdf",
+                        "phase": "installation", "target_level": "qualificacao",
+                        "sequence": 10}),
+            ],
+        })
+
+        # 2ª aplicação com overwrite: troca de procedimento, sem duplicar
+        wiz2 = Wizard.with_context(default_os_id=os.id).create({
+            "overwrite_existing": True,
+        })
+        wiz2.line_ids.procedimento_id = proc_qi_alt.id
+        wiz2.action_apply()
+        self.assertEqual(qualif.collect_item_ids.mapped("name"), ["Assinatura termo"])
+
+    def test_wizard_overwrite_refuses_when_collected(self):
+        so = self._confirm_so_with([
+            {"equipment_id": self.equip1.id, "do_qi": True},
+        ])
+        qualif = so.qualificacao_ids
+        os = so.qualificacao_os_ids
+        qualif.collect_item_ids.unlink()
+        Wizard = self.env["afr.qualificacao.os.apply.procedimento.wizard"]
+
+        wiz1 = Wizard.with_context(default_os_id=os.id).create({})
+        wiz1.action_apply()
+        items = qualif.collect_item_ids
+        self.assertEqual(len(items), 2)
+        # marca um item como coletado (write com file dispara state=collected)
+        items[0].write({"file": base64.b64encode(b"conteudo-fake")})
+        self.assertEqual(items[0].state, "collected")
+
+        proc_qi_alt = self.env["afr.qualificacao.procedimento"].create({
+            "name": "Procedimento QI Alternativo 2",
+            "item_ids": [
+                (0, 0, {"name": "Outro doc", "kind": "pdf",
+                        "phase": "installation", "target_level": "qualificacao",
+                        "sequence": 10}),
+            ],
+        })
+        wiz2 = Wizard.with_context(default_os_id=os.id).create({
+            "overwrite_existing": True,
+        })
+        wiz2.line_ids.procedimento_id = proc_qi_alt.id
+        with self.assertRaises(UserError):
+            wiz2.action_apply()
+        # nada foi apagado
+        self.assertEqual(len(qualif.collect_item_ids), 2)
 
     # ─────────────────────────────────────────────────────────────
     # Nome do collect.item ciclo/malha = display_name do ciclo/malha
