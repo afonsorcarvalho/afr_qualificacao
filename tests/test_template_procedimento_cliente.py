@@ -269,9 +269,10 @@ class TestTemplateResolver(AfrQualificacaoTestCommon):
 
     def test_relatorio_created_without_matching_template_has_no_template_and_no_blocks(self):
         """Sem fallback silencioso: equipamento sem match nasce com
-        `template_id` vazio, e sem blocos — inclusive pelo caminho de UI
-        (`action_generate_relatorios_open()`, que chama `_apply_template()`
-        em seguida; sem template, `_apply_template` não tem o que aplicar).
+        `template_id` vazio, e sem blocos (sem template, `_apply_template`
+        não tem o que aplicar). Pelo caminho de UI
+        (`action_generate_relatorios_open()`) o botão abre o wizard de
+        template em vez de criar (Task 4).
         'Recarregar template' levanta `UserError` nesse estado — ver
         `test_reload_without_template_raises`."""
         other_cat = self.env["engc.equipment.category"].create({
@@ -291,7 +292,14 @@ class TestTemplateResolver(AfrQualificacaoTestCommon):
             "os_id": other_os.id,
             "company_id": other_os.company_id.id,
         })
-        other_os.action_generate_relatorios_open()
+        # Caminho de UI (Task 4, decisão 8): sem template resolvido o botão
+        # pergunta (wizard) e não cria nada.
+        action = other_os.action_generate_relatorios_open()
+        self.assertEqual(action["res_model"], "afr.qualificacao.relatorio.template.wizard")
+        self.assertFalse(other_os.relatorio_final_ids)
+        # Caminho programático: cria sem template e sem blocos.
+        other_os.action_generate_relatorios()
+        other_os.relatorio_final_ids._apply_template()
         rel = other_os.relatorio_final_ids.filtered(
             lambda r: r.equipment_id == equip_no_match)
         self.assertTrue(rel)
@@ -671,3 +679,267 @@ class TestGenerateOsWizardLines(AfrQualificacaoTestCommon):
         self.assertEqual(self._collect_procs(q2), self.p_def)
         # Sem escolha explícita, o template fica para o Relatório resolver.
         self.assertFalse(q1.relatorio_template_id)
+
+
+@tagged("afr_qualificacao", "relatorio", "post_install", "-at_install")
+class TestRelatorioTemplateWizard(AfrQualificacaoTestCommon):
+    """Task 4: "Gerar relatórios finais" pergunta o template quando algum
+    equipamento sem relatório não resolve (design decisão 8), e o wizard
+    "Aplicar procedimento" usa a regra 5 e grava `procedimento_id`
+    (decisão 9)."""
+
+    WIZ = "afr.qualificacao.relatorio.template.wizard"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        Template = cls.env["afr.relatorio.template"]
+        cls.t_a = Template.create({"name": "Tpl RelWiz A", "code": "TPLRELWIZ-A"})
+        cls.t_b = Template.create({"name": "Tpl RelWiz B", "code": "TPLRELWIZ-B"})
+        Proc = cls.env["afr.qualificacao.procedimento"]
+        cls.p_def = Proc.create({
+            "name": "pRelWiz_def", "equipment_category_id": cls.category.id,
+            "is_default": True,
+        })
+        cls.p_cli = Proc.create({
+            "name": "pRelWiz_cli", "equipment_category_id": cls.category.id,
+        })
+        cls.p_eq = Proc.create({
+            "name": "pRelWiz_eq", "equipment_category_id": cls.category.id,
+        })
+        cls.p_gen = Proc.create({"name": "pRelWiz_gen"})
+        other_cat = cls.env["engc.equipment.category"].create({
+            "name": "Test-RelWiz-OutraCat",
+        })
+        cls.p_other_cat = Proc.create({
+            "name": "pRelWiz_outra", "equipment_category_id": other_cat.id,
+        })
+
+    # ── helpers ───────────────────────────────────────────────────────
+
+    def _os(self, equipments=None):
+        equipments = equipments or (self.equip1 | self.equip2)
+        os = self.env["afr.qualificacao.os"].create({})
+        for equip in equipments:
+            self.env["afr.qualificacao"].create({
+                "name": "RF-relwiz-%s-%s" % (os.id, equip.id),
+                "equipment_id": equip.id,
+                "qualification_type": "installation",
+                "os_id": os.id,
+                "company_id": os.company_id.id,
+            })
+        return os
+
+    def _open_wizard(self, action):
+        self.assertEqual(action.get("res_model"), self.WIZ)
+        return self.env[self.WIZ].with_context(**action.get("context", {})).create({})
+
+    def _line(self, wiz, equipment):
+        return wiz.line_ids.filtered(lambda l: l.equipment_id == equipment)
+
+    # ── botão ────────────────────────────────────────────────────────
+
+    def test_all_resolved_generates_directly(self):
+        self.partner.afr_relatorio_template_id = self.t_a
+        os = self._os()
+        action = os.action_generate_relatorios_open()
+        self.assertEqual(action["res_model"], "afr.qualificacao.relatorio")
+        self.assertEqual(len(os.relatorio_final_ids), 2)
+        self.assertEqual(os.relatorio_final_ids.mapped("template_id"), self.t_a)
+
+    def test_missing_template_opens_wizard_without_creating(self):
+        os = self._os()
+        action = os.action_generate_relatorios_open()
+        self.assertEqual(action["res_model"], self.WIZ)
+        self.assertEqual(action["target"], "new")
+        self.assertFalse(os.relatorio_final_ids)
+
+    def test_wizard_lines_prefilled_with_origin(self):
+        os = self._os()
+        q2 = os.qualificacao_ids.filtered(lambda q: q.equipment_id == self.equip2)
+        q2.relatorio_template_id = self.t_b
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        self.assertEqual(wiz.os_id, os)
+        l1, l2 = self._line(wiz, self.equip1), self._line(wiz, self.equip2)
+        self.assertEqual((l1.relatorio_template_id, l1.origem, l1.origem_label),
+                         (self.env["afr.relatorio.template"], False, "—"))
+        self.assertTrue(l1.pending)
+        self.assertEqual((l2.relatorio_template_id, l2.origem, l2.origem_label),
+                         (self.t_b, "qualificacao", "Definido na OS"))
+        self.assertFalse(l2.pending)
+        self.assertFalse(wiz.save_as_default)
+
+    def test_existing_relatorio_equipment_not_in_wizard(self):
+        os = self._os()
+        self.partner.afr_relatorio_template_id = self.t_a
+        os.action_generate_relatorios()  # relatórios de equip1 e equip2
+        equip3 = self.equip1.copy({"serial_number": "TSN-RELWIZ-3"})
+        self.partner.afr_relatorio_template_id = False
+        self.env["afr.qualificacao"].create({
+            "name": "RF-relwiz-e3-%s" % os.id, "equipment_id": equip3.id,
+            "qualification_type": "installation", "os_id": os.id,
+            "company_id": os.company_id.id,
+        })
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        self.assertEqual(wiz.line_ids.mapped("equipment_id"), equip3)
+
+    def test_confirm_generates_with_chosen_template(self):
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        wiz.line_ids.relatorio_template_id = self.t_b
+        action = wiz.action_confirm()
+        self.assertEqual(action["res_model"], "afr.qualificacao.relatorio")
+        self.assertEqual(len(os.relatorio_final_ids), 2)
+        self.assertEqual(os.relatorio_final_ids.mapped("template_id"), self.t_b)
+        self.assertEqual(os.qualificacao_ids.mapped("relatorio_template_id"), self.t_b)
+        # _apply_template rodou (aprovações padrão semeadas)
+        self.assertTrue(all(r.aprovacao_ids for r in os.relatorio_final_ids))
+        self.assertFalse(self.partner.afr_relatorio_template_id)
+
+    def test_form_roundtrip_confirm(self):
+        """Caminho do client web (Form): `pending`/equipamento/template
+        sobrevivem ao save; linha resolvida é readonly; confirmar gera."""
+        os = self._os()
+        q2 = os.qualificacao_ids.filtered(lambda q: q.equipment_id == self.equip2)
+        q1 = os.qualificacao_ids - q2
+        q2.relatorio_template_id = self.t_b
+        Wiz = self.env[self.WIZ].with_context(default_os_id=os.id)
+        # Ordem das linhas = ordem do default_get (sem abrir a linha
+        # pendente: sair dela vazia falharia no `required`).
+        order = [cmd[2]["equipment_id"] for cmd in Wiz.default_get(["os_id", "line_ids"])["line_ids"]]
+        idx = {self.env["engc.equipment"].browse(e): i for i, e in enumerate(order)}
+        f = Form(Wiz)
+        with f.line_ids.edit(idx[self.equip2]) as line:
+            with self.assertRaises(AssertionError):
+                line.relatorio_template_id = self.t_a
+        with f.line_ids.edit(idx[self.equip1]) as line:
+            line.relatorio_template_id = self.t_a
+        wiz = f.save()
+        self.assertEqual(wiz.line_ids.filtered("pending").equipment_id, self.equip1)
+        action = wiz.action_confirm()
+        self.assertEqual(action["res_model"], "afr.qualificacao.relatorio")
+        self.assertEqual(len(os.relatorio_final_ids), 2)
+        self.assertEqual(q1.relatorio_template_id, self.t_a)
+        self.assertEqual(q2.relatorio_template_id, self.t_b)
+
+    def test_confirm_does_not_touch_resolved_lines(self):
+        """Linha resolvida (cliente/categoria) é informativa: a origem não é
+        congelada na qualificação."""
+        os = self._os()
+        q2 = os.qualificacao_ids.filtered(lambda q: q.equipment_id == self.equip2)
+        q1 = os.qualificacao_ids - q2
+        q2.relatorio_template_id = self.t_b
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        self._line(wiz, self.equip1).relatorio_template_id = self.t_a
+        wiz.action_confirm()
+        self.assertEqual(q1.relatorio_template_id, self.t_a)
+        self.assertEqual(q2.relatorio_template_id, self.t_b)
+        rel2 = os.relatorio_final_ids.filtered(lambda r: r.equipment_id == self.equip2)
+        self.assertEqual(rel2.template_id, self.t_b)
+
+    def test_save_as_default_writes_commercial_partner(self):
+        company = self.env["res.partner"].create({"name": "RelWiz Holding", "is_company": True})
+        self.partner.parent_id = company
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        wiz.line_ids.relatorio_template_id = self.t_a
+        wiz.save_as_default = True
+        wiz.action_confirm()
+        self.assertEqual(company.afr_relatorio_template_id, self.t_a)
+        self.assertFalse(self.partner.afr_relatorio_template_id)
+
+    def test_save_as_default_conflicting_templates_raises(self):
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        self._line(wiz, self.equip1).relatorio_template_id = self.t_a
+        self._line(wiz, self.equip2).relatorio_template_id = self.t_b
+        wiz.save_as_default = True
+        with self.assertRaisesRegex(UserError, "template"):
+            wiz.action_confirm()
+        self.assertFalse(os.relatorio_final_ids)
+        self.assertFalse(os.qualificacao_ids.mapped("relatorio_template_id"))
+        self.assertFalse(self.partner.afr_relatorio_template_id)
+
+    def test_line_without_template_raises(self):
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        self._line(wiz, self.equip1).relatorio_template_id = self.t_a
+        with self.assertRaisesRegex(UserError, re.escape(self.equip2.display_name)):
+            wiz.action_confirm()
+        self.assertFalse(os.relatorio_final_ids)
+        self.assertFalse(os.qualificacao_ids.mapped("relatorio_template_id"))
+
+    def test_template_other_company_raises(self):
+        other_company = self.env["res.company"].create({"name": "RelWiz Outra Empresa"})
+        t_other = self.env["afr.relatorio.template"].create({
+            "name": "Tpl RelWiz Outra", "code": "TPLRELWIZ-OUT",
+            "company_id": other_company.id,
+        })
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        wiz.line_ids.relatorio_template_id = t_other
+        with self.assertRaises(UserError):
+            wiz.action_confirm()
+        self.assertFalse(os.relatorio_final_ids)
+
+    def test_confirm_ignores_forged_default_context(self):
+        """O wizard roda no contexto do botão: `default_*` não pode vazar
+        para relatório/blocos/aprovações (defesa P3 Task 5)."""
+        other_user = self.env["res.users"].create({
+            "name": "Outro RelWiz", "login": "outro.relwiz.test",
+            "groups_id": [(6, 0, [self.env.ref("base.group_user").id])],
+        })
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        wiz.line_ids.relatorio_template_id = self.t_a
+        wiz.with_context(
+            default_approved_at="2000-01-01 00:00:00",
+            default_user_id=other_user.id,
+            default_state="issued",
+        ).action_confirm()
+        self.assertEqual(len(os.relatorio_final_ids), 2)
+        self.assertEqual(set(os.relatorio_final_ids.mapped("state")), {"draft"})
+        for ap in os.relatorio_final_ids.mapped("aprovacao_ids").filtered(
+                lambda a: a.papel in ("elaborador", "emissor")):
+            self.assertFalse(ap.approved_at)
+            self.assertFalse(ap.user_id)
+
+    # ── Aplicar procedimento (decisão 9) ─────────────────────────────
+
+    def _apply_wizard(self, os):
+        return self.env["afr.qualificacao.os.apply.procedimento.wizard"].with_context(
+            default_os_id=os.id
+        ).create({})
+
+    def test_apply_default_follows_rule_5(self):
+        self.equip1.afr_procedimento_id = self.p_eq
+        self.partner.afr_procedimento_ids = [(6, 0, self.p_cli.ids)]
+        os = self._os()
+        wiz = self._apply_wizard(os)
+        l1 = wiz.line_ids.filtered(lambda l: l.equipment_id == self.equip1)
+        l2 = wiz.line_ids.filtered(lambda l: l.equipment_id == self.equip2)
+        self.assertEqual(l1.procedimento_id, self.p_eq)
+        self.assertEqual(l2.procedimento_id, self.p_cli)
+        self.partner.afr_procedimento_ids = [(5, 0, 0)]
+        wiz2 = self._apply_wizard(os)
+        l2b = wiz2.line_ids.filtered(lambda l: l.equipment_id == self.equip2)
+        self.assertEqual(l2b.procedimento_id, self.p_def)
+
+    def test_apply_records_procedimento_on_qualificacao(self):
+        os = self._os()
+        wiz = self._apply_wizard(os)
+        wiz.line_ids.procedimento_id = self.p_gen
+        wiz.action_apply()
+        self.assertEqual(os.qualificacao_ids.mapped("procedimento_id"), self.p_gen)
+
+    def test_apply_rejects_procedimento_other_company(self):
+        other_company = self.env["res.company"].create({"name": "RelWiz Outra Empresa P"})
+        p_other = self.env["afr.qualificacao.procedimento"].create({
+            "name": "pRelWiz_outra_empresa", "company_id": other_company.id,
+        })
+        os = self._os(self.equip1)
+        wiz = self._apply_wizard(os)
+        wiz.line_ids.procedimento_id = p_other
+        with self.assertRaises(UserError):
+            wiz.action_apply()
+        self.assertFalse(os.qualificacao_ids.procedimento_id)

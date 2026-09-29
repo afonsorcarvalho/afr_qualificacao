@@ -229,7 +229,13 @@
                     </group>
                     <separator string="Procedimentos padrão (por categoria)"/>
                     <field name="afr_procedimento_ids"
-                           options="{'no_create_edit': True}"/>
+                           options="{'no_create_edit': True}">
+                        <tree>
+                            <field name="name" string="Procedimento"/>
+                            <field name="equipment_category_id" string="Categoria"/>
+                            <field name="is_default" string="Padrão" optional="show"/>
+                        </tree>
+                    </field>
                 </page>
             </xpath>
         </field>

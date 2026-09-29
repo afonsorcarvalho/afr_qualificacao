@@ -563,6 +563,9 @@ class TestRelatorioModel(AfrQualificacaoTestCommon):
     # UI (Task 4)
     # ─────────────────────────────────────────────────────────────
     def test_generate_open_action(self):
+        # Task 4: com template resolvido (cliente) o botão gera direto.
+        self.partner.afr_relatorio_template_id = self.env["afr.relatorio.template"].create(
+            {"name": "Tpl OpenAction", "code": "TPL-OPENACT"})
         action = self.os.action_generate_relatorios_open()
         self.assertEqual(action["type"], "ir.actions.act_window")
         self.assertEqual(action["res_model"], "afr.qualificacao.relatorio")

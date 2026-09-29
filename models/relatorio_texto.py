@@ -140,7 +140,11 @@ class AfrQualificacaoRelatorio(models.Model):
         return Template.browse(), False
 
     def _suggest_template_from_vals(self, vals):
-        """Sugestão de template a partir de um `vals` de criação (sem
+        """Só o template de `_resolve_template_from_vals()`."""
+        return self._resolve_template_from_vals(vals)[0]
+
+    def _resolve_template_from_vals(self, vals):
+        """(template, origem) a partir de um `vals` de criação (sem
         depender do registro já existir): usa `_resolve_template` com o
         equipamento, o cliente da OS (`os.partner_id`, ou `vals['partner_id']`
         se a OS não resolver), as qualificações não-canceladas do
@@ -156,8 +160,7 @@ class AfrQualificacaoRelatorio(models.Model):
         ) if os else self.env["afr.qualificacao"]
         company_id = vals.get("company_id") or (os.company_id.id if os else False)
         company = self.env["res.company"].browse(company_id) if company_id else self.env.company
-        template, _origem = self._resolve_template(equipment, partner, qualificacoes, company)
-        return template
+        return self._resolve_template(equipment, partner, qualificacoes, company)
 
     def _suggest_template(self):
         """Sugestão de template para o registro atual — mesma regra de
@@ -616,7 +619,44 @@ class AfrQualificacaoOs(models.Model):
         emitido derrubaria o botão pra toda a OS por um único equipamento
         já finalizado.
         """
+        self.ensure_one()
+        # Decisão 8 (16.0.8.9.0): sem fallback silencioso de template — se
+        # algum equipamento ainda sem relatório não resolve, pergunta ANTES
+        # de criar qualquer relatório.
+        if any(not line["template"] for line in self._relatorio_final_template_lines()):
+            return self._relatorio_template_wizard_action()
         action = super().action_generate_relatorios_open()
         self.mapped("relatorio_final_ids").filtered(
             lambda r: r.state == "draft")._apply_template()
         return action
+
+    def _relatorio_final_template_lines(self):
+        """Um dict `{equipment, template, origem}` por equipamento elegível
+        (`_relatorio_final_equipments()`) que ainda não tem relatório final.
+
+        Resolve pelos MESMOS insumos do `create()` do relatório
+        (`_resolve_template_from_vals` com `os_id`/`equipment_id`), para que
+        a checagem prévia e a criação nunca discordem."""
+        self.ensure_one()
+        Relatorio = self.env["afr.qualificacao.relatorio"]
+        existing = self.relatorio_final_ids.mapped("equipment_id")
+        lines = []
+        for equip in self._relatorio_final_equipments():
+            if equip in existing:
+                continue
+            tpl, origem = Relatorio._resolve_template_from_vals({
+                "os_id": self.id, "equipment_id": equip.id,
+            })
+            lines.append({"equipment": equip, "template": tpl, "origem": origem})
+        return lines
+
+    def _relatorio_template_wizard_action(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Template dos Relatórios Finais"),
+            "res_model": "afr.qualificacao.relatorio.template.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_os_id": self.id},
+        }

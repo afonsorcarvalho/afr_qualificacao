@@ -639,6 +639,9 @@ class RelatorioTemplateFixture(AfrQualificacaoTestCommon):
         super().setUpClass()
         _seed_relatorio_templates(cls.env)
         cls.hosp = cls.env.ref("afr_qualificacao.relatorio_template_hosp")
+        # Task 4: sem template resolvido o botão "Gerar relatórios finais"
+        # abre o wizard em vez de gerar — o cliente padrão resolve.
+        cls.partner.afr_relatorio_template_id = cls.hosp
 
     def setUp(self):
         super().setUp()
@@ -760,6 +763,7 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         })
         os2.with_user(user).action_generate_relatorios_open()
         rel2 = os2.relatorio_final_ids
+        self.assertTrue(rel2)
         executor = rel2.aprovacao_ids.filtered(lambda a: a.papel == "executor")
         self.assertTrue(executor.approved_at)
         cliente = rel2.aprovacao_ids.filtered(lambda a: a.papel == "cliente")
@@ -811,6 +815,7 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         }
         os2.with_user(user).with_context(**forged_ctx).action_generate_relatorios_open()
         rel2 = os2.relatorio_final_ids
+        self.assertTrue(rel2)
         ap = rel2.aprovacao_ids
         for papel in ("elaborador", "emissor"):
             row = ap.filtered(lambda a, p=papel: a.papel == p)
@@ -945,6 +950,7 @@ class TestRelatorioApplyTemplate(RelatorioTemplateFixture):
         """Task 2 (decisão 6): sem match de categoria/cliente/qualificação,
         `_suggest_template()` não cai mais no "menor sequence" da empresa —
         devolve vazio."""
+        self.partner.afr_relatorio_template_id = False  # fixture usa o cliente
         tpl = self.env["afr.relatorio.template"].create({
             "name": "Tpl Categoria", "code": "RQT-CAT", "sequence": 99,
             "equipment_category_ids": [(6, 0, self.category.ids)],

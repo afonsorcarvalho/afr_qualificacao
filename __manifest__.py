@@ -265,6 +265,7 @@
         "wizards/apply_procedimento_wizard_views.xml",
         "wizards/qualificacao_os_generate_wizard_views.xml",
         "wizards/leitura_ib_lote_wizard_views.xml",
+        "wizards/relatorio_template_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
         # Editor de blocos Task 1 — biblioteca de blocos prontos (seed antes

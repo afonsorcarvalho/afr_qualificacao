@@ -7,10 +7,11 @@
 - Procedimento foi atualizado e quer-se regenerar items pendentes
 
 Uma OS pode misturar categorias de equipamento (autoclave a vapor, ETO,
-seladora...), cada uma com seu próprio procedimento (afr.qualificacao.
-procedimento.resolve_for). Por isso o wizard resolve o procedimento default
-POR LINHA (por qualificação) em vez de um único procedimento de cabeçalho
-aplicado indiscriminadamente a todas as qualifs selecionadas.
+seladora...), cada uma com seu próprio procedimento (regra 5:
+`afr.qualificacao.procedimento._resolve_for_equipment`). Por isso o wizard
+resolve o procedimento default POR LINHA (por qualificação) em vez de um
+único procedimento de cabeçalho aplicado indiscriminadamente a todas as
+qualifs selecionadas. Aplicar grava `procedimento_id` na qualificação.
 """
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
@@ -58,8 +59,12 @@ class AfrQualificacaoOsApplyProcedimentoWizard(models.TransientModel):
         Procedimento = self.env["afr.qualificacao.procedimento"]
         lines = []
         for qualif in os.qualificacao_ids:
-            proc = Procedimento.with_company(qualif.company_id).resolve_for(
-                qualif.equipment_id.category_id
+            # Decisão 9 (16.0.8.9.0): regra 5 — equipamento > cliente >
+            # categoria > genérico, na empresa da qualificação.
+            proc, _origem = Procedimento._resolve_for_equipment(
+                qualif.equipment_id,
+                qualif.partner_id or os.partner_id,
+                company=qualif.company_id,
             )
             lines.append((0, 0, {
                 "qualificacao_id": qualif.id,
@@ -94,6 +99,15 @@ class AfrQualificacaoOsApplyProcedimentoWizard(models.TransientModel):
                         "qualif_cat": qualif_cat.name if qualif_cat else _("(sem categoria)"),
                     }
                 )
+            proc_company = line.procedimento_id.company_id
+            if proc_company and proc_company != line.qualificacao_id.company_id:
+                raise UserError(
+                    _("Procedimento '%(proc)s' é de outra empresa "
+                      "(qualificação '%(qualif)s').") % {
+                        "proc": line.procedimento_id.name,
+                        "qualif": line.qualificacao_id.display_name,
+                    }
+                )
             if self.overwrite_existing:
                 collected = line.qualificacao_id.collect_item_ids.filtered(
                     lambda c: c.procedimento_item_id and c.state == "collected"
@@ -115,6 +129,8 @@ class AfrQualificacaoOsApplyProcedimentoWizard(models.TransientModel):
                     lambda c: c.procedimento_item_id
                 )
                 existing.unlink()
+            # Registra o procedimento aplicado (decisão 9).
+            qualif.procedimento_id = line.procedimento_id
             total += line.procedimento_id._explode_into(
                 qualif, phase=qualif.qualification_type
             )
@@ -169,7 +185,7 @@ class AfrQualificacaoOsApplyProcedimentoWizardLine(models.TransientModel):
     procedimento_id = fields.Many2one(
         "afr.qualificacao.procedimento",
         string="Procedimento a aplicar",
-        domain="[('active', '=', True), ('company_id', '=', company_id), "
+        domain="[('active', '=', True), ('company_id', 'in', [company_id, False]), "
                "'|', ('equipment_category_id', '=', False), "
                "('equipment_category_id', '=', equipment_category_id)]",
     )
