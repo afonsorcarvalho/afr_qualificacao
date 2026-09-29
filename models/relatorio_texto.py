@@ -39,6 +39,7 @@ RQ_STATIC_VARS = [
     ("os.name", "Nº da OS", "Cliente e equipamento"),
     ("partner.name", "Cliente", "Cliente e equipamento"),
     ("equipment.name", "Equipamento", "Cliente e equipamento"),
+    ("equipment.serial_number", "Nº de série do equipamento", "Cliente e equipamento"),
     ("company.name", "Empresa executora", "Cliente e equipamento"),
 ]
 

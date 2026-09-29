@@ -1,10 +1,39 @@
+// Padrão visual do Relatório Final — ESPELHO de
+// reports/relatorio_corpo_templates.xml (.rq-page/.rq-body/.rq-table/...).
+// Editor, Visualizar e miniaturas mostram o que sai no PDF.
+@mixin rq-report-content {
+  color: #212529; font-family: Arial, Helvetica, sans-serif; font-size: 13px; line-height: 1.45; text-align: justify;
+  table:not(.rq-cols) { border: 0 none !important; thead, tbody, tr { border: 0 none !important; }
+    width: 100% !important; border-collapse: collapse !important; margin: 4px 0 12px 0; font-size: 11px; background: transparent !important;
+    th, td { border: none !important; border-bottom: 1px solid #DCE3E9 !important; padding: 3px 6px !important; background: transparent !important;
+      vertical-align: top; text-align: left; color: #212529; }
+    thead th, thead td { color: #0A3D62 !important; font-weight: bold; border-bottom: 1px solid #0A3D62 !important; }
+    p { margin: 0; }
+  }
+  table.rq-cols { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 8px 0;
+    &, thead, tbody, tr, td { border: 0 none !important; background: transparent !important; }
+    td { width: 50%; padding: 0 10px 0 0; vertical-align: top; outline: 1px dashed #DCE3E9; }  // guia só na tela
+    td + td { padding: 0 0 0 10px; }
+  }
+  blockquote, .rq-box-info { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #F86A30; background: #EEF2F5; }
+  .rq-box-info { border-left-color: #0A3D62; }
+  .rq-box-warn { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #C0392B; background: #FBECEC; font-weight: bold; }
+  .rq-box-ok { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #1E8449; background: #EAF5EE; }
+  .rq-box-info, .rq-box-warn, .rq-box-ok, blockquote { p:last-child { margin-bottom: 0; } }
+  img { max-width: 100%; height: auto; }
+  .rq-figure { text-align: center; margin: 8px 0 12px 0; p { text-align: center; margin: 0; } }
+  .rq-figure-caption { font-size: 10.5px; color: #5A7184; font-style: italic; margin-top: 4px !important; }
+  .rq-page-break-after { border-top: 1px dashed #F86A30; margin: 8px 0; }  // marca da quebra na tela
+  h1, h2, h3, h4, h5, h6 { color: #0A3D62; font-weight: bold; font-size: 14px; line-height: 1.3; margin: 14px 0 5px 0; }
+}
+
 .rq-block-editor {
   // Campo é inline-block por padrão; bloco inteiro p/ a página centralizar.
   &.o_field_widget { display: block; width: 100%; }
   .rq-toolbar { position: sticky; top: 0; z-index: 5; display: flex; gap: .5rem; align-items: center;
-    padding: .4rem .5rem; background: $o-view-background-color; border-bottom: 1px solid $border-color; }
+    padding: .5rem .5rem; background: $o-view-background-color; border-bottom: 1px solid $border-color; }
   .note-editable, .odoo-editor-editable, .rq-preview { max-width: 794px; margin: 0 auto; min-height: 320px;
-    padding: 24px 32px; font-size: 11pt; line-height: 1.45; }
+    padding: 24px 32px; @include rq-report-content; }
   .rq-preview { border: 1px dashed $border-color; background: $o-view-background-color; margin-top: .5rem; }
   .rq-preview-missing { max-width: 794px; margin-left: auto; margin-right: auto; }
   span.rq-var { display: inline-block; padding: 0 .45em; margin: 0 .05em; border-radius: 1em;
@@ -19,10 +48,11 @@
 
 // Galeria de blocos prontos: miniatura = UM wrapper escalado (escalar cada
 // filho gera sobreposição).
-.rq-snip-grid { display: grid; grid-template-columns: repeat(auto-fill, 222px); gap: .75rem; }
+.rq-snip-grid { display: grid; grid-template-columns: repeat(auto-fill, 342px); gap: 1rem; justify-content: center; }
 .rq-snip-card { cursor: pointer; border: 1px solid $border-color; border-radius: .5rem; overflow: hidden;
   background: $o-view-background-color;
   &:hover, &:focus { border-color: $o-brand-primary; box-shadow: 0 0 0 2px rgba($o-brand-primary, .2); } }
-.rq-snip-thumb { width: 220px; height: 150px; overflow: hidden; pointer-events: none; padding: 6px;
-  > .rq-snip-inner { transform: scale(.45); transform-origin: top left; width: 222%; font-size: 11pt; } }
-.rq-snip-name { font-size: .85rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rq-snip-thumb { width: 340px; height: 200px; overflow: hidden; pointer-events: none; padding: 8px;
+  // Escala .7 sobre largura virtual ~465px (≈ coluna do PDF): texto ~10px legível.
+  > .rq-snip-inner { transform: scale(.7); transform-origin: top left; width: 143%; @include rq-report-content; } }
+.rq-snip-name { font-size: 1rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

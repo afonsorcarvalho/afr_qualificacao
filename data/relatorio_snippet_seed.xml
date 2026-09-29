@@ -7,9 +7,11 @@
 
         noupdate="1": gestor edita/desativa/cria via UI sem perder em upgrade.
 
-        wkhtmltopdf-friendly: sem flex/grid; colunas via <table>; estilos
-        inline (o corpo é inserido dentro de blocos já renderizados pelo
-        motor de PDF do relatório).
+        wkhtmltopdf-friendly: sem flex/grid; colunas via <table>. SEM estilo
+        inline: só classes do relatório (rq-table, rq-cols, rq-box-*,
+        rq-figure) definidas em reports/relatorio_corpo_templates.xml e
+        espelhadas no editor (rq_block_html.scss) — o bloco herda o padrão
+        visual do Relatório Final.
     -->
 
     <!-- ==================== tabela ==================== -->
@@ -19,29 +21,29 @@
         <field name="category">tabela</field>
         <field name="sequence">10</field>
         <field name="body" type="html">
-            <table style="border-collapse:collapse;width:100%">
+            <table class="rq-table">
                 <thead>
                     <tr>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Critério</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Requisito</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Referência</th>
+                        <th>Critério</th>
+                        <th>Requisito</th>
+                        <th>Referência</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Temperatura</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Variação máxima de <span class="rq-var">{{ criterio['tolerancia'] }}</span> °C em relação ao valor nominal</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">ABNT NBR ISO 17665</td>
+                        <td>Temperatura</td>
+                        <td>Variação máxima de <span class="rq-var">{{ criterio['tolerancia'] }}</span> °C em relação ao valor nominal</td>
+                        <td>ABNT NBR ISO 17665</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Tempo de exposição</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Conforme parâmetros do ciclo validado</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Procedimento interno</td>
+                        <td>Tempo de exposição</td>
+                        <td>Conforme parâmetros do ciclo validado</td>
+                        <td>Procedimento interno</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Pressão</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Dentro da faixa especificada pelo fabricante</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Manual do equipamento</td>
+                        <td>Pressão</td>
+                        <td>Dentro da faixa especificada pelo fabricante</td>
+                        <td>Manual do equipamento</td>
                     </tr>
                 </tbody>
             </table>
@@ -53,27 +55,27 @@
         <field name="category">tabela</field>
         <field name="sequence">20</field>
         <field name="body" type="html">
-            <table style="border-collapse:collapse;width:100%">
+            <table class="rq-table">
                 <thead>
                     <tr>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Instrumento</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Nº de série</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Certificado</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Validade</th>
+                        <th>Instrumento</th>
+                        <th>Nº de série</th>
+                        <th>Certificado</th>
+                        <th>Validade</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Termopar tipo T</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000/00</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">00/00/0000</td>
+                        <td>Termopar tipo T</td>
+                        <td>0000</td>
+                        <td>0000/00</td>
+                        <td>00/00/0000</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Termopar tipo T</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">0000/00</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">00/00/0000</td>
+                        <td>Termopar tipo T</td>
+                        <td>0000</td>
+                        <td>0000/00</td>
+                        <td>00/00/0000</td>
                     </tr>
                 </tbody>
             </table>
@@ -85,29 +87,29 @@
         <field name="category">tabela</field>
         <field name="sequence">30</field>
         <field name="body" type="html">
-            <table style="border-collapse:collapse;width:100%">
+            <table class="rq-table">
                 <thead>
                     <tr>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Ciclo</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Resultado</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Observação</th>
+                        <th>Ciclo</th>
+                        <th>Resultado</th>
+                        <th>Observação</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Ciclo 1</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Aprovado</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">—</td>
+                        <td>Ciclo 1</td>
+                        <td>Aprovado</td>
+                        <td>—</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Ciclo 2</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Aprovado</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">—</td>
+                        <td>Ciclo 2</td>
+                        <td>Aprovado</td>
+                        <td>—</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Ciclo 3</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Aprovado</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">—</td>
+                        <td>Ciclo 3</td>
+                        <td>Aprovado</td>
+                        <td>—</td>
                     </tr>
                 </tbody>
             </table>
@@ -147,21 +149,21 @@
         <field name="category">lista</field>
         <field name="sequence">30</field>
         <field name="body" type="html">
-            <table style="border-collapse:collapse;width:100%">
+            <table class="rq-table">
                 <thead>
                     <tr>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Termo</th>
-                        <th style="border:1px solid #adb5bd;padding:4px 6px;background:#e9ecef;font-weight:bold">Definição</th>
+                        <th>Termo</th>
+                        <th>Definição</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">F0</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Letalidade equivalente do ciclo, expressa em minutos a 121,1 °C.</td>
+                        <td>F0</td>
+                        <td>Letalidade equivalente do ciclo, expressa em minutos a 121,1 °C.</td>
                     </tr>
                     <tr>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Valor D</td>
-                        <td style="border:1px solid #adb5bd;padding:4px 6px">Tempo, em minutos, necessário para reduzir a população microbiana em um ciclo logarítmico a uma dada temperatura.</td>
+                        <td>Valor D</td>
+                        <td>Tempo, em minutos, necessário para reduzir a população microbiana em um ciclo logarítmico a uma dada temperatura.</td>
                     </tr>
                 </tbody>
             </table>
@@ -175,7 +177,7 @@
         <field name="category">destaque</field>
         <field name="sequence">10</field>
         <field name="body" type="html">
-            <div style="border-left:4px solid #0d6efd;background:#e7f1ff;padding:8px 12px">
+            <div class="rq-box-info">
                 <p><strong>Nota:</strong> texto explicativo adicional sobre o item anterior.</p>
             </div>
         </field>
@@ -186,7 +188,7 @@
         <field name="category">destaque</field>
         <field name="sequence">20</field>
         <field name="body" type="html">
-            <div style="border-left:4px solid #ffc107;background:#fff8e1;padding:8px 12px">
+            <div class="rq-box-warn">
                 <p><strong>Atenção:</strong> texto de alerta sobre condição relevante para a leitura deste relatório.</p>
             </div>
         </field>
@@ -197,14 +199,10 @@
         <field name="category">destaque</field>
         <field name="sequence">30</field>
         <field name="body" type="html">
-            <table style="border-collapse:collapse;width:100%">
-                <tr>
-                    <td style="border:2px solid #198754;padding:8px 12px">
-                        <p>O equipamento foi considerado <strong>APROVADO</strong> nesta
-                        qualificação, atendendo aos critérios de aceitação definidos.</p>
-                    </td>
-                </tr>
-            </table>
+            <div class="rq-box-ok">
+                <p>O equipamento foi considerado <strong>APROVADO</strong> nesta
+                qualificação, atendendo aos critérios de aceitação definidos.</p>
+            </div>
         </field>
     </record>
 
@@ -229,12 +227,12 @@
         <field name="category">layout</field>
         <field name="sequence">10</field>
         <field name="body" type="html">
-            <table style="width:100%">
+            <table class="rq-cols">
                 <tr>
-                    <td style="width:50%;vertical-align:top">
+                    <td>
                         <p>Texto da primeira coluna.</p>
                     </td>
-                    <td style="width:50%;vertical-align:top">
+                    <td>
                         <p>Texto da segunda coluna.</p>
                     </td>
                 </tr>
@@ -247,9 +245,9 @@
         <field name="category">layout</field>
         <field name="sequence">20</field>
         <field name="body" type="html">
-            <div>
-                <p style="text-align:center"><img src="/web/static/img/placeholder.png" style="width:50%"/></p>
-                <p style="text-align:center"><em>Figura 1 — Legenda da figura</em></p>
+            <div class="rq-figure">
+                <p><img src="/web/static/img/placeholder.png" style="width:50%"/></p>
+                <p class="rq-figure-caption">Figura 1 — Legenda da figura</p>
             </div>
         </field>
     </record>
@@ -260,7 +258,7 @@
         <field name="sequence">30</field>
         <field name="body" type="html">
             <div>
-                <div style="page-break-after:always"></div>
+                <div class="rq-page-break-after"></div>
                 <p><br/></p>
             </div>
         </field>

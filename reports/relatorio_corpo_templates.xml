@@ -56,6 +56,32 @@
             .rq-doc-title { font-size: 19px; font-weight: bold; color: #0A3D62; text-transform: uppercase; }
             .rq-doc-number { font-size: 12px; color: #5A7184; }
             .rq-var { background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+            /* Conteúdo livre dos blocos (editor rq_block_html, /table nativo,
+               colagem): normaliza para o padrão do relatório. !important vence
+               estilo inline e as classes table/table-bordered do editor.
+               Espelhado em static/src/fields/rq_block_html/rq_block_html.scss. */
+            .rq-body table:not(.rq-cols) { width: 100% !important; border-collapse: collapse !important; margin: 4px 0 12px 0; font-size: 11px; background: transparent !important; }
+            .rq-body table:not(.rq-cols) th, .rq-body table:not(.rq-cols) td { border: none !important; border-bottom: 1px solid #DCE3E9 !important; padding: 3px 6px !important; background: transparent !important; vertical-align: top; text-align: left; color: #212529; }
+            .rq-body table:not(.rq-cols) thead th, .rq-body table:not(.rq-cols) thead td { color: #0A3D62 !important; font-weight: bold; border-bottom: 1px solid #0A3D62 !important; }
+            .rq-body table:not(.rq-cols) p { margin: 0; }
+            /* tbody/tr: o reboot do Bootstrap dá "border-style: solid" e o WebKit
+               do wkhtmltopdf desenha as laterais (mesmo caso do .rq-toc). */
+            .rq-body table:not(.rq-cols), .rq-body table:not(.rq-cols) thead, .rq-body table:not(.rq-cols) tbody, .rq-body table:not(.rq-cols) tr { border: 0 none !important; }
+            /* Duas colunas: layout, sem borda (separate: ver .rq-toc). */
+            .rq-cols { width: 100%; border-collapse: separate; border-spacing: 0; margin: 4px 0 8px 0; }
+            .rq-cols, .rq-cols thead, .rq-cols tbody, .rq-cols tr, .rq-cols td { border: 0 none !important; background: transparent !important; }
+            .rq-cols td { width: 50%; padding: 0 10px 0 0; vertical-align: top; }
+            .rq-cols td + td { padding: 0 0 0 10px; }
+            .rq-box-ok { margin: 8px 0; padding: 6px 10px; border-left: 3px solid #1E8449; background: #EAF5EE; }
+            .rq-body .rq-box-info p:last-child, .rq-body .rq-box-warn p:last-child, .rq-body .rq-box-ok p:last-child, .rq-body blockquote p:last-child { margin-bottom: 0; }
+            .rq-body img { max-width: 100%; height: auto; }
+            .rq-figure { text-align: center; margin: 8px 0 12px 0; page-break-inside: avoid; }
+            .rq-figure p { text-align: center; margin: 0; }
+            .rq-figure-caption { font-size: 10.5px; color: #5A7184; font-style: italic; margin-top: 4px !important; }
+            .rq-page-break-after { page-break-after: always; }
+            /* Títulos digitados no corpo (H1–H6 do editor) = subtítulo do
+               relatório; a hierarquia numerada é só a dos blocos. */
+            .rq-body h1, .rq-body h2, .rq-body h3, .rq-body h4, .rq-body h5, .rq-body h6 { color: #0A3D62; font-weight: bold; font-size: 14px; line-height: 1.3; margin: 14px 0 5px 0; text-transform: none; page-break-after: avoid; }
         </style>
     </template>
 
