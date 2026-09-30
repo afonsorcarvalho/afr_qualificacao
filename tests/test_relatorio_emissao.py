@@ -20,6 +20,7 @@ from odoo.addons.afr_qualificacao.controllers.relatorio import (
 from odoo.addons.afr_qualificacao.models import relatorio_pdf as rp
 
 from ..models import relatorio_rules
+from ..models.relatorio_emissao_flow import company_tz
 from .common import AfrQualificacaoTestCommon
 from .relatorio_fakes import (FakeCorpo, RelatorioFixtureMixin, make_user,
                               pdf_pages_text, run_build_jobs, squash)
@@ -675,7 +676,11 @@ class TestRelatorioEmissaoFlow(RelatorioEmissaoBase):
         self.rel.write({"data_fim_ensaios": date(2026, 7, 1)})
         self.assertEqual(self.rel.proxima_qualificacao, date(2027, 7, 1))
         emissao = self._approve_and_emit()
-        issued_local = fields.Datetime.context_timestamp(self.rel, emissao.issued_at).date()
+        # Mesmo fuso do compute (emissor > empresa > America/Sao_Paulo), não
+        # o do contexto do teste — senão falha entre 21:00 e 24:00 BRT.
+        tz = emissao.issued_by.tz or company_tz(self.rel.company_id)
+        issued_local = fields.Datetime.context_timestamp(
+            self.rel.with_context(tz=tz), emissao.issued_at).date()
         self.assertEqual(self.rel.proxima_qualificacao, issued_local + relativedelta(months=12))
 
     def test_minuta_forbidden_for_technician(self):

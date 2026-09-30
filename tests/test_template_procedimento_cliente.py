@@ -197,6 +197,82 @@ class TestProcedimentoResolver(AfrQualificacaoTestCommon):
         self.assertEqual((proc, origem), (self.pA_def, "categoria"))
 
 
+    # ── final review: item 1 (primeiro da categoria nasce padrão) ─────
+
+    def test_first_procedure_of_category_becomes_default(self):
+        Proc = self.env["afr.qualificacao.procedimento"]
+        cat = self.env["engc.equipment.category"].create({"name": "Test-FirstDef-Cat"})
+        p1 = Proc.create({"name": "pFirst1", "equipment_category_id": cat.id})
+        p2 = Proc.create({"name": "pFirst2", "equipment_category_id": cat.id})
+        self.assertTrue(p1.is_default)
+        self.assertFalse(p2.is_default)
+        equip = self.equipC.copy({"category_id": cat.id, "serial_number": "TSN-FIRSTDEF"})
+        self.assertEqual(self._resolve(equip, self.partner), (p1, "categoria"))
+
+    def test_first_procedure_explicit_false_respected(self):
+        Proc = self.env["afr.qualificacao.procedimento"]
+        cat = self.env["engc.equipment.category"].create({"name": "Test-FirstDef-CatF"})
+        p = Proc.create({"name": "pFirstF", "equipment_category_id": cat.id, "is_default": False})
+        self.assertFalse(p.is_default)
+
+    def test_first_procedure_batch_create_single_default(self):
+        Proc = self.env["afr.qualificacao.procedimento"]
+        cat = self.env["engc.equipment.category"].create({"name": "Test-FirstDef-CatB"})
+        p1, p2 = Proc.create([
+            {"name": "pBatch1", "equipment_category_id": cat.id},
+            {"name": "pBatch2", "equipment_category_id": cat.id},
+        ])
+        self.assertEqual((p1.is_default, p2.is_default), (True, False))
+        cat2 = self.env["engc.equipment.category"].create({"name": "Test-FirstDef-CatB2"})
+        q1, q2 = Proc.create([
+            {"name": "qBatch1", "equipment_category_id": cat2.id, "is_default": True},
+            {"name": "qBatch2", "equipment_category_id": cat2.id},
+        ])
+        self.assertEqual((q1.is_default, q2.is_default), (True, False))
+
+    # ── final review: item 5 (passo equipamento só ativo/da empresa) ──
+
+    def test_equipment_procedure_archived_falls_through(self):
+        self.equipA.afr_procedimento_id = self.pA_alt
+        self.pA_alt.active = False
+        self.assertEqual(self._resolve(self.equipA, self.partner), (self.pA_def, "categoria"))
+
+    def test_equipment_procedure_other_company_falls_through(self):
+        company_b = self.env["res.company"].create({"name": "Test Empresa EqProc"})
+        p_b = self.env["afr.qualificacao.procedimento"].create({
+            "name": "pEq_b", "equipment_category_id": self.catA.id,
+            "company_id": company_b.id, "is_default": False,
+        })
+        self.equipA.afr_procedimento_id = p_b
+        self.assertEqual(self._resolve(self.equipA, self.partner), (self.pA_def, "categoria"))
+        proc, origem = self.env["afr.qualificacao.procedimento"]._resolve_for_equipment(
+            self.equipA, self.partner, company=company_b)
+        self.assertEqual((proc, origem), (p_b, "equipamento"))
+
+    # ── final review: item 7 (company in [company, False]) ────────────
+
+    def test_shared_procedure_used_and_company_one_preferred(self):
+        Proc = self.env["afr.qualificacao.procedimento"]
+        cat = self.env["engc.equipment.category"].create({"name": "Test-Shared-Cat"})
+        equip = self.equipC.copy({"category_id": cat.id, "serial_number": "TSN-SHARED"})
+        p_shared = Proc.create({
+            "name": "pShared", "equipment_category_id": cat.id,
+            "company_id": False, "is_default": True, "sequence": 1,
+        })
+        self.assertEqual(self._resolve(equip, self.partner), (p_shared, "categoria"))
+        p_comp = Proc.create({
+            "name": "pComp", "equipment_category_id": cat.id,
+            "is_default": True, "sequence": 99,
+        })
+        self.assertEqual(self._resolve(equip, self.partner), (p_comp, "categoria"))
+        # Cliente com procedimento compartilhado também vale.
+        p_cli_shared = Proc.create({
+            "name": "pCliShared", "equipment_category_id": cat.id, "company_id": False,
+        })
+        self.partner.afr_procedimento_ids = [(6, 0, p_cli_shared.ids)]
+        self.assertEqual(self._resolve(equip, self.partner), (p_cli_shared, "cliente"))
+
+
 @tagged("afr_qualificacao", "relatorio", "post_install", "-at_install")
 class TestTemplateResolver(AfrQualificacaoTestCommon):
     """Testes de `afr.qualificacao.relatorio._resolve_template` (Task 2):
@@ -362,6 +438,49 @@ class TestTemplateResolver(AfrQualificacaoTestCommon):
             "equipment_id": self.equip_tpl.id,
         })
         self.assertEqual(rel.template_id, tpl_b)
+
+
+    # ── final review: itens 5, 7 e 8 ─────────────────────────────────
+
+    def test_client_template_other_company_falls_through_to_category(self):
+        other_company = self.env["res.company"].create({"name": "Test TplRes Outra"})
+        t_other = self.env["afr.relatorio.template"].create({
+            "name": "Tpl Resolver Outra", "code": "TPLRES-OUT",
+            "company_id": other_company.id,
+        })
+        self.partner.afr_relatorio_template_id = t_other
+        tpl, origem = self._resolve(qualificacoes=self.env["afr.qualificacao"])
+        self.assertEqual((tpl, origem), (self.t_hosp, "categoria"))
+
+    def test_category_template_prefers_company_over_shared(self):
+        t_shared = self.env["afr.relatorio.template"].create({
+            "name": "Tpl Resolver Shared", "code": "TPLRES-SHR", "sequence": 1,
+            "company_id": False,
+            "equipment_category_ids": [(6, 0, self.cat_tpl.ids)],
+        })
+        tpl, origem = self._resolve(qualificacoes=self.env["afr.qualificacao"])
+        self.assertEqual((tpl, origem), (self.t_hosp, "categoria"))
+        self.t_hosp.equipment_category_ids = [(5, 0, 0)]
+        tpl, origem = self._resolve(qualificacoes=self.env["afr.qualificacao"])
+        self.assertEqual((tpl, origem), (t_shared, "categoria"))
+
+    def test_resolve_from_vals_returns_template_in_caller_env(self):
+        self.qualif_tpl.relatorio_template_id = self.t_ind
+        # Env de teste já é superuser: chamador = usuário de qualificação.
+        user = self.env["res.users"].create({
+            "name": "TplRes User", "login": "tplres.user.test",
+            "groups_id": [(6, 0, [
+                self.env.ref("base.group_user").id,
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_user").id,
+            ])],
+        })
+        Relatorio = self.env["afr.qualificacao.relatorio"].with_user(user)
+        self.assertFalse(Relatorio.env.su)
+        tpl, origem = Relatorio._resolve_template_from_vals({
+            "os_id": self.os_tpl.id, "equipment_id": self.equip_tpl.id,
+        })
+        self.assertEqual((tpl, origem), (self.t_ind, "qualificacao"))
+        self.assertFalse(tpl.env.su)
 
 
 @tagged("afr_qualificacao", "procedimento", "post_install", "-at_install")
@@ -659,6 +778,56 @@ class TestGenerateOsWizardLines(AfrQualificacaoTestCommon):
         self.assertFalse(so.qualificacao_os_ids)
         self.assertFalse(self.partner.afr_relatorio_template_id)
 
+    # ── final review: item 2 (padrão do cliente só de escolha manual) ─
+
+    def _mixed_category_setup(self):
+        """equip2 em outra categoria; templates por categoria (origem
+        'categoria' nas duas linhas)."""
+        self.equip2.category_id = self.other_category
+        Template = self.env["afr.relatorio.template"]
+        t_cat1 = Template.create({
+            "name": "Tpl Wiz Cat1", "code": "TPLWIZ-C1",
+            "equipment_category_ids": [(6, 0, self.category.ids)],
+        })
+        t_cat2 = Template.create({
+            "name": "Tpl Wiz Cat2", "code": "TPLWIZ-C2",
+            "equipment_category_ids": [(6, 0, self.other_category.ids)],
+        })
+        so = self._so_confirmada()
+        wiz = self._wizard(so)
+        wiz.save_as_default = True
+        l1, l2 = self._line(wiz, self.equip1), self._line(wiz, self.equip2)
+        self.assertEqual((l1.relatorio_template_id, l1.template_origem), (t_cat1, "categoria"))
+        self.assertEqual((l2.relatorio_template_id, l2.template_origem), (t_cat2, "categoria"))
+        self.assertEqual(l2.procedimento_id, self.p_other_cat)
+        return so, wiz, l1, l2
+
+    def test_save_as_default_mixed_category_ignores_category_templates(self):
+        so, wiz, l1, l2 = self._mixed_category_setup()
+        self._gerar(wiz)
+        self.assertTrue(so.qualificacao_os_ids)
+        self.assertFalse(self.partner.afr_relatorio_template_id)
+        self.assertEqual(self.equip1.afr_procedimento_id, self.p_def)
+        self.assertEqual(self.equip2.afr_procedimento_id, self.p_other_cat)
+
+    def test_save_as_default_manual_template_goes_to_client(self):
+        so, wiz, l1, l2 = self._mixed_category_setup()
+        l1.relatorio_template_id = self.t_a
+        l1._onchange_template_origem()
+        self.assertFalse(l1.template_origem)
+        self._gerar(wiz)
+        self.assertEqual(self.partner.afr_relatorio_template_id, self.t_a)
+
+    def test_save_as_default_two_manual_templates_raises(self):
+        so, wiz, l1, l2 = self._mixed_category_setup()
+        l1.relatorio_template_id = self.t_a
+        l2.relatorio_template_id = self.t_b
+        (l1 | l2)._onchange_template_origem()
+        with self.assertRaisesRegex(UserError, "template"):
+            wiz.action_generate()
+        self.assertFalse(so.qualificacao_os_ids)
+        self.assertFalse(self.partner.afr_relatorio_template_id)
+
     # ── caminho sem wizard (PWA/API/testes) ──────────────────────────
 
     def test_materialize_without_choices_uses_resolver(self):
@@ -943,3 +1112,40 @@ class TestRelatorioTemplateWizard(AfrQualificacaoTestCommon):
         with self.assertRaises(UserError):
             wiz.action_apply()
         self.assertFalse(os.qualificacao_ids.procedimento_id)
+
+    # ── final review: item 3 (pending recalculado no servidor) ───────
+
+    def test_forged_pending_on_resolved_line_is_ignored(self):
+        os = self._os()
+        q2 = os.qualificacao_ids.filtered(lambda q: q.equipment_id == self.equip2)
+        q1 = os.qualificacao_ids - q2
+        q2.relatorio_template_id = self.t_b
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        l1, l2 = self._line(wiz, self.equip1), self._line(wiz, self.equip2)
+        l1.relatorio_template_id = self.t_a
+        l2.write({"pending": True, "relatorio_template_id": self.t_a.id})
+        wiz.action_confirm()
+        self.assertEqual(q1.relatorio_template_id, self.t_a)
+        self.assertEqual(q2.relatorio_template_id, self.t_b)
+
+    def test_forged_not_pending_on_unresolved_line_raises(self):
+        os = self._os()
+        wiz = self._open_wizard(os.action_generate_relatorios_open())
+        self._line(wiz, self.equip1).relatorio_template_id = self.t_a
+        self._line(wiz, self.equip2).pending = False
+        with self.assertRaisesRegex(UserError, re.escape(self.equip2.display_name)):
+            wiz.action_confirm()
+        self.assertFalse(os.relatorio_final_ids)
+
+    # ── final review: item 4 (default = procedimento da qualificação) ─
+
+    def test_apply_default_prefers_qualificacao_procedimento(self):
+        self.equip1.afr_procedimento_id = self.p_eq
+        os = self._os()
+        q1 = os.qualificacao_ids.filtered(lambda q: q.equipment_id == self.equip1)
+        q1.procedimento_id = self.p_gen
+        wiz = self._apply_wizard(os)
+        l1 = wiz.line_ids.filtered(lambda l: l.equipment_id == self.equip1)
+        l2 = wiz.line_ids.filtered(lambda l: l.equipment_id == self.equip2)
+        self.assertEqual(l1.procedimento_id, self.p_gen)
+        self.assertEqual(l2.procedimento_id, self.p_def)

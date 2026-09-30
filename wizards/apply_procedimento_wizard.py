@@ -9,7 +9,8 @@
 Uma OS pode misturar categorias de equipamento (autoclave a vapor, ETO,
 seladora...), cada uma com seu próprio procedimento (regra 5:
 `afr.qualificacao.procedimento._resolve_for_equipment`). Por isso o wizard
-resolve o procedimento default POR LINHA (por qualificação) em vez de um
+resolve o procedimento default POR LINHA (por qualificação: o já registrado
+em `procedimento_id`, senão a regra 5) em vez de um
 único procedimento de cabeçalho aplicado indiscriminadamente a todas as
 qualifs selecionadas. Aplicar grava `procedimento_id` na qualificação.
 """
@@ -59,13 +60,16 @@ class AfrQualificacaoOsApplyProcedimentoWizard(models.TransientModel):
         Procedimento = self.env["afr.qualificacao.procedimento"]
         lines = []
         for qualif in os.qualificacao_ids:
-            # Decisão 9 (16.0.8.9.0): regra 5 — equipamento > cliente >
+            # Decisão 9 (16.0.8.9.0): o procedimento já registrado na
+            # qualificação; senão regra 5 — equipamento > cliente >
             # categoria > genérico, na empresa da qualificação.
-            proc, _origem = Procedimento._resolve_for_equipment(
-                qualif.equipment_id,
-                qualif.partner_id or os.partner_id,
-                company=qualif.company_id,
-            )
+            proc = qualif.procedimento_id
+            if not proc:
+                proc, _origem = Procedimento._resolve_for_equipment(
+                    qualif.equipment_id,
+                    qualif.partner_id or os.partner_id,
+                    company=qualif.company_id,
+                )
             lines.append((0, 0, {
                 "qualificacao_id": qualif.id,
                 "procedimento_id": proc.id if proc else False,

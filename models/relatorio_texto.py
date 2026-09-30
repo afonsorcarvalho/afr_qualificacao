@@ -109,8 +109,9 @@ class AfrQualificacaoRelatorio(models.Model):
         relatório sem match nasce sem template (a verificação/"Recarregar
         template" acusam — ver `action_reload_template`).
 
-        `company` (opcional, `res.company` record) restringe o passo de
-        categoria; por padrão `self.env.company`. Chamadores com uma OS já
+        `company` (opcional, `res.company` record) restringe os passos de
+        cliente e categoria (`company_id in [company, False]`, preferindo o
+        da empresa); por padrão `self.env.company`. Chamadores com uma OS já
         resolvida devem passar a empresa DA OS explicitamente — sob
         cron/sudo/multi-company `self.env.company` pode não ser a empresa da
         OS, e a busca por categoria acharia vazio em silêncio (achado do
@@ -124,16 +125,22 @@ class AfrQualificacaoRelatorio(models.Model):
         if qualif_com_template:
             return qualif_com_template.relatorio_template_id, "qualificacao"
 
+        # Cliente: só vale se o template for da empresa ou compartilhado
+        # (sem empresa); senão cai para a categoria.
         commercial = partner.commercial_partner_id if partner else self.env["res.partner"]
-        if commercial and commercial.afr_relatorio_template_id:
-            return commercial.afr_relatorio_template_id, "cliente"
+        client_tpl = commercial.afr_relatorio_template_id if commercial else Template
+        if client_tpl and client_tpl.company_id in (company, self.env["res.company"]):
+            return client_tpl, "cliente"
 
+        # Categoria: `company_id in [company, False]`, preferindo o da empresa
+        # (mesma regra dos passos do procedimento).
         category = equipment.category_id if equipment else False
         if category:
-            tpl = Template.search(
+            tpls = Template.search(
                 [("company_id", "in", [company.id, False]),
                  ("equipment_category_ids", "in", category.ids)],
-                order="sequence, id", limit=1)
+                order="sequence, id")
+            tpl = (tpls.filtered(lambda t: t.company_id == company) or tpls)[:1]
             if tpl:
                 return tpl, "categoria"
 
@@ -155,12 +162,17 @@ class AfrQualificacaoRelatorio(models.Model):
         os = self.env["afr.qualificacao.os"].browse(vals.get("os_id"))
         partner_id = (os.partner_id.id if os else False) or vals.get("partner_id")
         partner = self.env["res.partner"].browse(partner_id) if partner_id else self.env["res.partner"]
-        qualificacoes = os.qualificacao_ids.filtered(
+        # sudo(): record rule não pode esconder uma qualificação do
+        # equipamento (mesmo critério de `_relatorio_final_equipments`).
+        qualificacoes = os.sudo().qualificacao_ids.filtered(
             lambda q: q.equipment_id == equipment and q.state != "cancelled"
         ) if os else self.env["afr.qualificacao"]
         company_id = vals.get("company_id") or (os.company_id.id if os else False)
         company = self.env["res.company"].browse(company_id) if company_id else self.env.company
-        return self._resolve_template(equipment, partner, qualificacoes, company)
+        tpl, origem = self._resolve_template(equipment, partner, qualificacoes, company)
+        # O template vindo da qualificação carrega o env sudo: devolve no
+        # env do chamador.
+        return tpl.with_env(self.env), origem
 
     def _suggest_template(self):
         """Sugestão de template para o registro atual — mesma regra de

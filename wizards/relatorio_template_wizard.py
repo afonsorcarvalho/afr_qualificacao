@@ -76,13 +76,32 @@ class AfrQualificacaoRelatorioTemplateWizard(models.TransientModel):
         ]
         return res
 
-    def _validate(self, pending):
-        """Validação server-side antes de qualquer mutação."""
-        missing = pending.filtered(lambda l: not l.relatorio_template_id)
+    def _server_pending_lines(self):
+        """Linhas pendentes recalculadas no servidor — o `pending` que vem do
+        client não é confiável (um `pending=True` forjado numa linha já
+        resolvida sobrescreveria o template das qualificações dela). Retorna
+        `(linhas, equipamentos_pendentes)`: as linhas cujos equipamentos
+        ainda não resolvem template (`_relatorio_final_template_lines`)."""
+        pending_equips = self.env["engc.equipment"].browse([
+            line["equipment"].id
+            for line in self.os_id._relatorio_final_template_lines()
+            if not line["template"]
+        ])
+        lines = self.line_ids.filtered(lambda l: l.equipment_id in pending_equips)
+        return lines, pending_equips
+
+    def _validate(self, pending, pending_equips=None):
+        """Validação server-side antes de qualquer mutação. Todo equipamento
+        pendente (recalculado no servidor) precisa de uma linha com
+        template — pega também um `pending=False` forjado."""
+        if pending_equips is None:
+            pending_equips = pending.mapped("equipment_id")
+        chosen = pending.filtered("relatorio_template_id").mapped("equipment_id")
+        missing = pending_equips - chosen
         if missing:
             raise UserError(_(
                 "Escolha o template do relatório para: %s."
-            ) % ", ".join(missing.mapped("equipment_id.display_name")))
+            ) % ", ".join(missing.mapped("display_name")))
         company = self.os_id.company_id
         wrong_company = pending.filtered(
             lambda l: l.relatorio_template_id.company_id
@@ -106,8 +125,8 @@ class AfrQualificacaoRelatorioTemplateWizard(models.TransientModel):
     def action_confirm(self):
         self.ensure_one()
         os_rec = self.os_id
-        pending = self.line_ids.filtered("pending")
-        self._validate(pending)
+        pending, pending_equips = self._server_pending_lines()
+        self._validate(pending, pending_equips)
 
         # sudo(): o usuário de qualificação pode não ter escrita em
         # qualificações de outro responsável / no res.partner; a permissão

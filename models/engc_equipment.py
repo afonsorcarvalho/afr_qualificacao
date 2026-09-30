@@ -20,7 +20,7 @@ class EngcEquipment(models.Model):
         comodel_name="afr.qualificacao.procedimento",
         string="Procedimento de Qualificação",
         domain=(
-            "[('active', '=', True), ('company_id', '=', company_id), "
+            "[('active', '=', True), ('company_id', 'in', [company_id, False]), "
             "'|', ('equipment_category_id', '=', False), "
             "('equipment_category_id', '=', category_id)]"
         ),

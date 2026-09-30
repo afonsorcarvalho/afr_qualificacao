@@ -159,7 +159,7 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
                     "co": company.name,
                 })
         if self.save_as_default:
-            templates = included.mapped("relatorio_template_id")
+            templates = self._client_template_lines(included).mapped("relatorio_template_id")
             if len(templates) > 1:
                 raise UserError(_(
                     "Para salvar como padrão do cliente, as linhas incluídas "
@@ -191,9 +191,21 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
             if siblings:
                 siblings.write({"relatorio_template_id": template.id})
 
+    @api.model
+    def _client_template_lines(self, included):
+        """Linhas cujo template conta para o padrão do CLIENTE: com template
+        e origem diferente de 'categoria' (escolha manual — origem vazia — ou
+        já vinda do cliente/da OS). Template derivado da categoria não é
+        promovido ao cliente (numa OS com várias categorias, isso travaria o
+        salvamento e gravaria no cliente um template que é da categoria)."""
+        return included.filtered(
+            lambda l: l.relatorio_template_id and l.template_origem != "categoria"
+        )
+
     def _save_as_default(self, included):
         """Grava as escolhas como padrão: procedimento no equipamento e
-        template no parceiro comercial da cotação.
+        template no parceiro comercial da cotação (só das linhas de
+        `_client_template_lines`; sem nenhuma, o cliente não é tocado).
 
         sudo(): o usuário de qualificação pode não ter escrita em
         engc.equipment/res.partner; o próprio ato de gerar a OS (grupo de
@@ -202,7 +214,7 @@ class AfrQualificacaoOsGenerateWizard(models.TransientModel):
         for line in included:
             if line.equipment_id.afr_procedimento_id != line.procedimento_id:
                 line.equipment_id.sudo().afr_procedimento_id = line.procedimento_id
-        template = included.mapped("relatorio_template_id")[:1]
+        template = self._client_template_lines(included).mapped("relatorio_template_id")[:1]
         commercial = self.sale_order_id.partner_id.commercial_partner_id
         if template and commercial.afr_relatorio_template_id != template:
             commercial.sudo().afr_relatorio_template_id = template

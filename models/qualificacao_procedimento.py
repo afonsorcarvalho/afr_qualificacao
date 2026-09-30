@@ -110,6 +110,42 @@ class AfrQualificacaoProcedimento(models.Model):
         ),
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        """Primeiro procedimento de uma (categoria, empresa) nasce padrão.
+
+        Sem isso, a primeira categoria cadastrada após 16.0.8.9.0 nunca
+        resolveria por categoria (`is_default` nasceria False). Só quando
+        `is_default` não veio explícito (vals nem `default_is_default` no
+        contexto) e não há padrão ativo para a mesma (categoria, empresa) —
+        mesmo escopo de `_check_is_default_unique`. Controla também as chaves
+        já promovidas neste mesmo `vals_list`, senão dois procedimentos da
+        mesma categoria num create só violariam a unicidade."""
+        if "default_is_default" not in self.env.context:
+            defaults = self.default_get(["company_id", "equipment_category_id", "active"])
+            promoted = set()
+            for vals in vals_list:
+                key = (
+                    vals.get("equipment_category_id", defaults.get("equipment_category_id")) or False,
+                    vals.get("company_id", defaults.get("company_id")) or False,
+                )
+                active = vals.get("active", defaults.get("active", True))
+                if "is_default" in vals:
+                    if vals["is_default"] and active:
+                        promoted.add(key)
+                    continue
+                if not active or key in promoted:
+                    continue
+                exists = self.with_context(active_test=True).search_count([
+                    ("is_default", "=", True),
+                    ("equipment_category_id", "=", key[0]),
+                    ("company_id", "=", key[1]),
+                ])
+                if not exists:
+                    vals["is_default"] = True
+                    promoted.add(key)
+        return super().create(vals_list)
+
     @api.depends("item_ids")
     def _compute_item_count(self):
         for r in self:
@@ -141,94 +177,96 @@ class AfrQualificacaoProcedimento(models.Model):
                 )
 
     @api.model
+    def _company_first(self, records, company):
+        """Da busca `company_id in [company, False]`, prefere o registro da
+        empresa; senão o compartilhado (sem empresa). A unicidade de
+        `is_default` é por empresa EXATA, então um padrão da empresa e um
+        compartilhado podem coexistir — sem esta preferência o vencedor
+        dependeria da `_order`."""
+        return (records.filtered(lambda r: r.company_id == company) or records)[:1]
+
+    @api.model
+    def _search_company_first(self, domain, company, order=None):
+        records = self.search(
+            domain + [("active", "=", True), ("company_id", "in", [company.id, False])],
+            order=order,
+        )
+        return self._company_first(records, company)
+
+    @api.model
+    def _resolve_defaults(self, category, company):
+        """(procedimento, origem) pelos passos categoria → genérico padrão →
+        genérico mais antigo, na empresa `company` ou compartilhados
+        (`company_id` vazio), preferindo o da empresa."""
+        if category:
+            rec = self._search_company_first(
+                [("equipment_category_id", "=", category.id), ("is_default", "=", True)],
+                company,
+            )
+            if rec:
+                return rec, "categoria"
+        rec = self._search_company_first(
+            [("equipment_category_id", "=", False), ("is_default", "=", True)], company
+        )
+        if rec:
+            return rec, "generico"
+        rec = self._search_company_first(
+            [("equipment_category_id", "=", False)], company, order="id"
+        )
+        if rec:
+            return rec, "generico"
+        return self.browse(), False
+
+    @api.model
     def resolve_for(self, equipment_category):
         """Retorna o procedimento padrão da categoria (ou fallback genérico).
 
         Preferência: 1) padrão (`is_default`) da categoria → 2) padrão
         genérico (sem categoria) → 3) genérico mais antigo (menor id).
-        Retorna recordset vazio se nenhum. Sempre restrito à empresa corrente
-        (self.env.company). Mantém a assinatura usada por sale_order.py e
-        pelo wizard "Aplicar Procedimento".
+        Retorna recordset vazio se nenhum. Restrito à empresa corrente
+        (self.env.company) ou a procedimentos sem empresa, preferindo os da
+        empresa (mesmos passos de `_resolve_for_equipment`).
         """
-        domain = [
-            ("active", "=", True),
-            ("company_id", "=", self.env.company.id),
-        ]
-        cat_id = equipment_category.id if equipment_category else False
-        if cat_id:
-            rec = self.search(
-                domain + [("equipment_category_id", "=", cat_id), ("is_default", "=", True)],
-                limit=1,
-            )
-            if rec:
-                return rec
-        rec = self.search(
-            domain + [("equipment_category_id", "=", False), ("is_default", "=", True)],
-            limit=1,
-        )
-        if rec:
-            return rec
-        return self.search(
-            domain + [("equipment_category_id", "=", False)], order="id", limit=1
-        )
+        return self._resolve_defaults(equipment_category, self.env.company)[0]
 
     @api.model
     def _resolve_for_equipment(self, equipment, partner, company=None):
         """Resolve o procedimento aplicável a `equipment` (e `partner`).
 
-        Ordem: 1) procedimento explícito no equipamento → 'equipamento';
-        2) procedimento do cliente (commercial_partner_id) da mesma categoria
-        → 'cliente'; 3) padrão da categoria → 'categoria'; 4) padrão genérico
-        → 'generico'; 5) genérico mais antigo (menor id) → 'generico'; senão
-        recordset vazio + False.
+        Ordem: 1) procedimento explícito no equipamento (ativo, da empresa ou
+        sem empresa) → 'equipamento'; 2) procedimento do cliente
+        (commercial_partner_id) da mesma categoria → 'cliente'; 3) padrão da
+        categoria → 'categoria'; 4) padrão genérico → 'generico'; 5) genérico
+        mais antigo (menor id) → 'generico'; senão recordset vazio + False.
+        Um passo que não se aplica (arquivado / outra empresa) cai para o
+        próximo.
 
-        `company` (opcional, `res.company` record) restringe os passos de
-        cliente/categoria/genérico; por padrão `self.env.company`. Chamadores
-        com cotação/OS já resolvida (wizard Gerar OS, materialização) devem
-        passar a empresa DELA — sob cron/sudo/multi-company `env.company`
-        pode divergir e a busca acharia o procedimento errado (ou nenhum).
+        `company` (opcional, `res.company` record) restringe todos os passos
+        a `company_id in [company, False]` (preferindo o da empresa); por
+        padrão `self.env.company`. Chamadores com cotação/OS já resolvida
+        (wizard Gerar OS, materialização) devem passar a empresa DELA — sob
+        cron/sudo/multi-company `env.company` pode divergir e a busca acharia
+        o procedimento errado (ou nenhum).
         """
         company = company or self.env.company
-        domain = [("active", "=", True), ("company_id", "=", company.id)]
 
-        if equipment.afr_procedimento_id:
-            return equipment.afr_procedimento_id, "equipamento"
+        def in_company(proc):
+            return proc.active and proc.company_id in (company, self.env["res.company"])
+
+        equip_proc = equipment.afr_procedimento_id
+        if equip_proc and in_company(equip_proc):
+            return equip_proc, "equipamento"
 
         category = equipment.category_id
         commercial = partner.commercial_partner_id if partner else self.env["res.partner"]
         if category and commercial:
             proc = commercial.afr_procedimento_ids.filtered(
-                lambda p: (
-                    p.equipment_category_id == category
-                    and p.active
-                    and p.company_id == company
-                )
+                lambda p: p.equipment_category_id == category and in_company(p)
             )
             if proc:
-                return proc[:1], "cliente"
+                return self._company_first(proc, company), "cliente"
 
-        if category:
-            rec = self.search(
-                domain + [("equipment_category_id", "=", category.id), ("is_default", "=", True)],
-                limit=1,
-            )
-            if rec:
-                return rec, "categoria"
-
-        rec = self.search(
-            domain + [("equipment_category_id", "=", False), ("is_default", "=", True)],
-            limit=1,
-        )
-        if rec:
-            return rec, "generico"
-
-        rec = self.search(
-            domain + [("equipment_category_id", "=", False)], order="id", limit=1
-        )
-        if rec:
-            return rec, "generico"
-
-        return self.browse(), False
+        return self._resolve_defaults(category, company)
 
     def _explode_into(self, qualif, phase=None):
         """Cria N collect.items em `qualif` conforme target_level de cada item.
