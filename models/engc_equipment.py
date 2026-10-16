@@ -34,6 +34,9 @@ class EngcEquipment(models.Model):
         check_company=True,
     )
 
+    model = fields.Char("Modelo", required=False)
+    serial_number = fields.Char("Número de Série", required=False)
+
     # --- OS de Qualificação do equipamento ---
     afr_qualificacao_ids = fields.One2many(
         comodel_name="afr.qualificacao",

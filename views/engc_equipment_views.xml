@@ -161,6 +161,21 @@
         </field>
     </record>
 
+    <!-- Form padrão do engc_os força required na view: relaxa -->
+    <record id="view_engc_equipment_form_relax_required" model="ir.ui.view">
+        <field name="name">engc.equipment.form.relax.required</field>
+        <field name="model">engc.equipment</field>
+        <field name="inherit_id" ref="engc_os.equipments_form"/>
+        <field name="arch" type="xml">
+            <field name="department" position="attributes">
+                <attribute name="required">0</attribute>
+            </field>
+            <field name="location_id" position="attributes">
+                <attribute name="required">0</attribute>
+            </field>
+        </field>
+    </record>
+
     <record id="action_engc_equipment_qualif" model="ir.actions.act_window">
         <field name="name">Equipamentos</field>
         <field name="res_model">engc.equipment</field>
