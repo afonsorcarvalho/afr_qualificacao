@@ -37,6 +37,19 @@ class EngcEquipment(models.Model):
     model = fields.Char("Modelo", required=False)
     serial_number = fields.Char("Número de Série", required=False)
 
+    @api.depends("category_id", "model", "marca_id", "serial_number")
+    def _compute_name(self):
+        # Original do engc_os zera o nome se faltar qualquer parte; com
+        # modelo/série opcionais, monta só com as partes presentes.
+        for record in self:
+            parts = [
+                record.category_id.name,
+                record.model,
+                record.serial_number,
+                record.marca_id.name,
+            ]
+            record.name = " ".join(p.strip() for p in parts if p and p.strip())
+
     # --- OS de Qualificação do equipamento ---
     afr_qualificacao_ids = fields.One2many(
         comodel_name="afr.qualificacao",
