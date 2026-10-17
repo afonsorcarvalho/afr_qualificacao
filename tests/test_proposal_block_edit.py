@@ -16,20 +16,6 @@ from .common import AfrQualificacaoTestCommon
 @tagged("post_install", "-at_install")
 class TestProposalBlockEdit(AfrQualificacaoTestCommon):
 
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        # F8.8 — cycle_specs removido do seed default; injeta a linha aqui
-        # pra cobrir test_snapshot_cycle_specs_reflects_temperature.
-        tpl = cls.env.ref("afr_qualificacao.proposal_template_labquali")
-        if not tpl.line_ids.filtered(lambda l: l.block_kind == "cycle_specs"):
-            cls.env["afr.proposal.template.line"].create({
-                "template_id": tpl.id,
-                "sequence": 75,
-                "block_kind": "cycle_specs",
-                "title": "Tabela Resumo de Ciclos",
-            })
-
     def _built_so(self):
         so = self.env["sale.order"].create({"partner_id": self.partner.id})
         so.proposal_template_id = self.env.ref(
@@ -80,15 +66,6 @@ class TestProposalBlockEdit(AfrQualificacaoTestCommon):
         # título vem do template (pode ter sido editado pelo cliente);
         # snapshot apenas garante que existe um título não-vazio.
         self.assertTrue(block.title)
-
-    def test_snapshot_cycle_specs_reflects_temperature(self):
-        """Snapshot do bloco de ciclos traz a temperatura do tipo de ciclo."""
-        self.cycle_cmax.temperature = "134°C"
-        so = self._built_so()
-        block = self._block(so, "cycle_specs")
-        block.action_edit_block()
-        self.assertEqual(block.block_kind, "static")
-        self.assertIn("134°C", str(block.body))
 
     def test_financial_block_cannot_be_frozen(self):
         """Congelar o bloco de totais duplicaria o total geral no impresso.

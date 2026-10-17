@@ -253,7 +253,6 @@ class AfrProposalBlock(models.Model):
         self.ensure_one()
         builder = {
             "equipment_scope": self._html_equipment_scope,
-            "cycle_specs": self._html_cycle_specs,
             "schedule": self._html_schedule,
             "standards_table": self._html_standards,
             "optionals": self._html_optionals,
@@ -317,7 +316,6 @@ class AfrProposalBlock(models.Model):
         # Totais no fim do escopo. Emitido sempre, uma única vez — não há
         # mais bloco de Resumo Financeiro separado (ver F8.2x).
         parts.append(order._qualif_grand_total_html())
-        parts.append(self._html_declined_items(order))
         return Markup("").join(parts) or Markup("<p></p>")
 
     def _html_scope_cell(self, row):
@@ -346,77 +344,6 @@ class AfrProposalBlock(models.Model):
             % escape(row["title"]) if row["title"] else Markup("")
         )
         return title + Markup("<ul class='qq-scope-list'>%s</ul>") % items
-
-    def _html_declined_items(self, order):
-        """Box institucional 'Itens Não Solicitados para Execução' (formato c).
-
-        Vazio se não houver Parte 01 declinada. Texto p/ Vigilância/auditoria.
-        Título e corpo lidos de afr.proposal.section(sec_declined_items_box)
-        para que o cliente possa editar na biblioteca de seções.
-        """
-        declined = order._qualif_declined_items()
-        if not declined:
-            return Markup("")
-        rows = Markup("").join(
-            Markup(
-                "<tr><td>%s</td><td>%s</td><td>%s</td>"
-                "<td style='text-align:right;'>%s</td></tr>"
-            ) % (
-                escape(d["equipment"].display_name or ""),
-                escape(d["label"]),
-                escape(d["name"]),
-                escape(self._money(order, d["ref_price"])),
-            )
-            for d in declined
-        )
-        section = self.env.ref(
-            "afr_qualificacao.sec_declined_items_box", raise_if_not_found=False
-        )
-        title = escape(section.name) if section else escape(
-            "Itens Não Solicitados para Execução"
-        )
-        # section.body is already Markup with <p>...</p>; fallback bakes <p> in.
-        intro = section.body if (section and section.body) else Markup(
-            "<p>Os itens listados abaixo integram o escopo técnico recomendado "
-            "da qualificação, conforme exigências da Vigilância Sanitária "
-            "aplicáveis, porém não foram solicitados para execução pelo "
-            "cliente nesta contratação. O registro é mantido para fins de "
-            "rastreabilidade documental e eventual auditoria, evidenciando "
-            "que a não realização decorreu de opção do contratante.</p>"
-        )
-        return Markup(
-            "<div class='qq-declined-box'>"
-            "<h4>%s</h4>"
-            "%s"
-            "<table class='qq-table'><thead><tr>"
-            "<th>Equipamento</th><th>Tipo</th><th>Item</th>"
-            "<th style='text-align:right;'>Valor de referência</th>"
-            "</tr></thead><tbody>%s</tbody></table></div>"
-        ) % (title, intro, rows)
-
-    def _html_cycle_specs(self, order):
-        parts = []
-        for spec in order._qualif_cycle_specs():
-            parts.append(
-                Markup("<h4>%s</h4>") % escape(spec["equipment"].name or "")
-            )
-            rows = Markup("").join(
-                Markup(
-                    "<tr><td>%s</td><td>%s</td><td>%s</td>"
-                    "<td>%s</td><td>%s</td></tr>"
-                ) % (
-                    row["qty"], escape(row["name"]),
-                    escape(row["temperature"]), escape(row["duration"]),
-                    escape(row["load_type"]),
-                )
-                for row in spec["rows"]
-            )
-            parts.append(Markup(
-                "<table><thead><tr><th>Qtd</th><th>Ciclo</th>"
-                "<th>Temperatura</th><th>Tempo</th><th>Carga</th></tr>"
-                "</thead><tbody>%s</tbody></table>"
-            ) % rows)
-        return Markup("").join(parts) or Markup("<p></p>")
 
     def _html_schedule(self, order):
         """F8.14 — tabela cronograma equipamento × horas × dias úteis."""

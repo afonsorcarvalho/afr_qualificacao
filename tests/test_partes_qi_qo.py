@@ -398,17 +398,8 @@ class TestRenderPartes(AfrQualificacaoTestCommon):
         # no box de auditoria — mesmo ajuste já feito no PDF e no portal
         # (ver test_pdf_report_groups_partes_seal_and_box e
         # test_portal_groups_partes_and_seal).
-        self.assertIn("Itens Não Solicitados", html)
+        self.assertNotIn("Itens Não Solicitados", html)
 
-    def test_declined_box_present_only_when_declined(self):
-        so_decl = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
-        so_ok = self._apply(do_qi=True, calib=1)
-        block_decl = self._scope_block(so_decl)
-        block_ok = self._scope_block(so_ok)
-        html_decl = str(block_decl._html_declined_items(so_decl))
-        html_ok = str(block_ok._html_declined_items(so_ok))
-        self.assertIn("Itens Não Solicitados", html_decl)
-        self.assertEqual(html_ok.strip(), "")
 
 
 @tagged("post_install", "-at_install", "afr_qualificacao")
@@ -436,12 +427,7 @@ class TestPortalPartes(AfrQualificacaoTestCommon):
         # (mesmo ajuste já feito em TestPdfReportPartes.
         # test_pdf_report_groups_partes_seal_and_box).
         self.assertIn("lq-scope-stage", html)
-        self.assertIn("Itens Não Solicitados", html)
-
-    def test_portal_declined_box(self):
-        so = self._apply(do_qi=True, qi_part01_declined=True, calib=1)
-        html = self._render_portal(so)
-        self.assertIn("Itens Não Solicitados", html)
+        self.assertNotIn("Itens Não Solicitados", html)
 
     def test_portal_no_box_when_not_declined(self):
         so = self._apply(do_qi=True, calib=1)
@@ -486,4 +472,4 @@ class TestPdfReportPartes(AfrQualificacaoTestCommon):
         # declinadas antes de montar os grupos — elas só sobrevivem no box
         # de auditoria abaixo (sale_order.py:892-898).
         # Box de auditoria.
-        self.assertIn("Itens Não Solicitados", html)
+        self.assertNotIn("Itens Não Solicitados", html)

@@ -22,7 +22,6 @@ from odoo.exceptions import ValidationError
 PROPOSAL_BLOCK_KINDS = [
     ("static", "Bloco de Texto"),
     ("equipment_scope", "Escopo por Equipamento"),
-    ("cycle_specs", "Tabela de Ciclos"),
     ("schedule", "Cronograma Estimado"),
     ("standards_table", "Tabela de Normas"),
     ("financial", "Resumo Financeiro"),

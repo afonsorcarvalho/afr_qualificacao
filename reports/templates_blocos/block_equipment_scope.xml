@@ -92,41 +92,6 @@
                                      equipamento — não há mais bloco de Resumo
                                      Financeiro separado (ver F8.2x). -->
                                 <t t-call="afr_qualificacao.qq_totals_table"/>
-                                <!-- Box de auditoria: itens não solicitados para execução. -->
-                                <t t-set="declined_items" t-value="doc._qualif_declined_items()"/>
-                                <t t-set="declined_section" t-value="doc.env.ref('afr_qualificacao.sec_declined_items_box', raise_if_not_found=False)"/>
-                                <div t-if="declined_items" class="qq-declined-box">
-                                    <h4 t-esc="declined_section.name if declined_section else 'Itens Não Solicitados para Execução'"/>
-                                    <t t-if="declined_section and declined_section.body">
-                                        <div t-out="declined_section.body"/>
-                                    </t>
-                                    <t t-else="">
-                                        <p>Os itens listados abaixo integram o escopo técnico recomendado da qualificação, conforme exigências da Vigilância Sanitária aplicáveis, porém não foram solicitados para execução pelo cliente nesta contratação. O registro é mantido para fins de rastreabilidade documental e eventual auditoria, evidenciando que a não realização decorreu de opção do contratante.</p>
-                                    </t>
-                                    <table class="qq-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Item</th>
-                                                <th style="text-align:right;">Valor de referência</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <t t-set="last_equip_id" t-value="0"/>
-                                            <t t-foreach="declined_items" t-as="d">
-                                                <t t-if="d['equipment'].id != last_equip_id">
-                                                    <t t-set="last_equip_id" t-value="d['equipment'].id"/>
-                                                    <tr class="qq-declined-equip-row">
-                                                        <td colspan="2" t-esc="d['equipment'].display_name"/>
-                                                    </tr>
-                                                </t>
-                                                <tr>
-                                                    <td t-esc="d['name']"/>
-                                                    <td style="text-align:right;" t-esc="d['ref_price']" t-options="{'widget': 'monetary', 'display_currency': doc.currency_id}"/>
-                                                </tr>
-                                            </t>
-                                        </tbody>
-                                    </table>
-                                </div>
                             </div>
     </template>
 </odoo>

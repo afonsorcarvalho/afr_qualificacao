@@ -3,7 +3,6 @@
 Cobre:
 - o report percorre proposal_block_ids e renderiza blocos static;
 - expressões {{ ... }} resolvidas com dados do cliente;
-- bloco dinâmico cycle_specs renderiza as specs técnicas;
 - fallback para o layout fixo quando a SO não tem blocos.
 """
 
@@ -26,17 +25,6 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         cls.proposal_tpl = cls.env.ref(
             "afr_qualificacao.proposal_template_labquali"
         )
-        # F8.8 — cycle_specs removido do seed default; injeta linha pros
-        # tests que validam render do bloco (test_render_cycle_specs_block).
-        if not cls.proposal_tpl.line_ids.filtered(
-            lambda l: l.block_kind == "cycle_specs"
-        ):
-            cls.env["afr.proposal.template.line"].create({
-                "template_id": cls.proposal_tpl.id,
-                "sequence": 75,
-                "block_kind": "cycle_specs",
-                "title": "Tabela Resumo de Ciclos",
-            })
         cls.report = cls.env.ref("sale.action_report_saleorder")
 
     def _built_so(self, with_blocks=True):
@@ -79,14 +67,6 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         html = self._render(so)
         self.assertIn(self.partner.name, html)
 
-    def test_render_cycle_specs_block(self):
-        """Bloco cycle_specs renderiza temperatura/tempo do tipo de ciclo."""
-        so = self._built_so()
-        html = self._render(so)
-        # título do bloco cycle_specs = rótulo do tipo ("Tabela Resumo de Ciclos")
-        self.assertIn("Tabela Resumo de Ciclos", html)
-        self.assertIn("134°C", html)
-
     def test_render_falls_back_without_blocks(self):
         """SO de qualificação sem blocos cai no layout fixo (Sumário)."""
         so = self._built_so(with_blocks=False)
@@ -112,15 +92,6 @@ class TestProposalReport(AfrQualificacaoTestCommon):
         objetivo.body = "<p>MARCADOR_UNICO_OMITIDO</p>"
         html = self._render(so)
         self.assertNotIn("MARCADOR_UNICO_OMITIDO", html)
-
-    def test_render_table_tfoot_subtotals(self):
-        """Tabelas QO/QD do Equipment Scope têm <tfoot> com 'Total: N ciclo'."""
-        self.cycle_cmax.estimated_hours = 2.0
-        so = self._built_so()
-        html = self._render(so)
-        self.assertIn("<tfoot>", html)
-        self.assertIn("Total:", html)
-        self.assertIn("ciclo", html)
 
     def test_render_equipment_scope_omits_cronograma_footer(self):
         """Rodapé Equipment Scope NÃO mostra cronograma (movido para bloco schedule).

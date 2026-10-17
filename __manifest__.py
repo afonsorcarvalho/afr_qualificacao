@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.7.5.2",
+    "version": "16.0.7.5.3",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -216,7 +216,6 @@
         "reports/templates_blocos/block_static.xml",
         "reports/templates_blocos/block_totals.xml",
         "reports/templates_blocos/block_equipment_scope.xml",
-        "reports/templates_blocos/block_cycle_specs.xml",
         "reports/templates_blocos/block_schedule.xml",
         "reports/templates_blocos/block_standards_table.xml",
         "reports/templates_blocos/block_optionals.xml",

@@ -131,13 +131,13 @@ class TestScopeHtmlBlock(TestScopeTable):
         self.assertIn("Execução dos ciclos com carga", html)
         self.assertIn(self.cycle_cmax.name, html)
 
-    def test_html_scope_keeps_declined_box(self):
+    def test_html_scope_has_no_declined_box(self):
         so = self._full_so()
         decl = self._line(so, self.equip1, "installation", "01", 900.0,
                           name="Verificação recusada")
         decl.write({"part01_declined": True, "product_uom_qty": 0.0})
         html = str(self._block(so)._html_equipment_scope(so))
-        self.assertIn("Itens Não Solicitados", html)
+        self.assertNotIn("Itens Não Solicitados", html)
 
     def test_snapshot_to_static_preserves_table(self):
         so = self._full_so()

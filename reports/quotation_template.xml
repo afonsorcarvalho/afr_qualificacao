@@ -180,11 +180,6 @@
                             <t t-call="afr_qualificacao.qq_block_equipment_scope"/>
                         </t>
 
-                        <!-- Tabela de ciclos (specs técnicas) -->
-                        <t t-if="block.block_kind == 'cycle_specs'">
-                            <t t-call="afr_qualificacao.qq_block_cycle_specs"/>
-                        </t>
-
                         <!-- F8.14 — Bloco Cronograma (template-opcional) -->
                         <t t-if="block.block_kind == 'schedule'">
                             <t t-call="afr_qualificacao.qq_block_schedule"/>
