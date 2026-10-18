@@ -205,6 +205,14 @@ describe('saveCycle / deleteCycle', () => {
     expect(o.payload).toEqual({ equipment_id: 100, cycle_type_id: 9, temperature: 121 })
   })
 
+  it('saveCycle com chave tmp obsoleta (reescrita pelo engine) edita o ciclo real', async () => {
+    await db.idmap.put({ tmp: 'tmp:stale', id: 200 })
+    const k = await saveCycle('tmp:stale', '100', { note: 'via tmp' })
+    expect(k).toBe('200')
+    expect((await db.cycles.get('200'))!.note).toBe('via tmp')
+    expect(await db.cycles.get('tmp:stale')).toBeUndefined()
+  })
+
   it('edita ciclo real: só alterados + base_write_date; 2a edição funde', async () => {
     await saveCycle('200', '100', { duration: 6, temperature: 134 })
     await saveCycle('200', '100', { note: 'n' })
@@ -261,6 +269,15 @@ describe('photos', () => {
   beforeEach(async () => {
     pullPartner.mockResolvedValue(serverPartner)
     await downloadPartner(7)
+  })
+
+  it('addPhoto precompressed não recomprime', async () => {
+    const { compressImage } = await import('../photo')
+    vi.mocked(compressImage).mockClear()
+    const blob = new Blob(['ja-comprimida'], { type: 'image/jpeg' })
+    const key = await addPhoto('100', 'geral', blob, undefined, { precompressed: true })
+    expect(compressImage).not.toHaveBeenCalled()
+    expect((await db.photos.get(key))!.blob.size).toBe(blob.size)
   })
 
   it('addPhoto guarda blob comprimido e enfileira photo.add com base64', async () => {

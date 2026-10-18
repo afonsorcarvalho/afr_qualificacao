@@ -88,7 +88,7 @@ describe('FichaPage', () => {
     const sec = (await screen.findByRole('region', { name: 'Termopar' })) as HTMLElement
     fireEvent.click(within(sec).getByRole('button', { name: 'camera' }))
     await waitFor(() => expect(addPhoto).toHaveBeenCalledTimes(1))
-    expect(addPhoto).toHaveBeenCalledWith('10', 'termopar', expect.any(Blob))
+    expect(addPhoto).toHaveBeenCalledWith('10', 'termopar', expect.any(Blob), undefined, { precompressed: true })
   })
 
   it('+ ciclo cria e a edição chama saveCycle; foto do ciclo passa cycleKey e kind ciclo', async () => {
@@ -103,7 +103,7 @@ describe('FichaPage', () => {
     await waitFor(() => expect(saveCycle).toHaveBeenCalledWith('tmp:cyc', '10', { temperature: '134' }), { timeout: 2000 })
     const ciclo = screen.getByRole('group', { name: 'Ciclo 1' })
     fireEvent.click(within(ciclo).getByRole('button', { name: 'camera' }))
-    await waitFor(() => expect(addPhoto).toHaveBeenCalledWith('10', 'ciclo', expect.any(Blob), 'tmp:cyc'))
+    await waitFor(() => expect(addPhoto).toHaveBeenCalledWith('10', 'ciclo', expect.any(Blob), 'tmp:cyc', { precompressed: true }))
   })
 
   it('mic escondido offline, visível online', async () => {
@@ -143,5 +143,100 @@ describe('FichaPage', () => {
     render(<FichaPage />)
     fireEvent.click(await screen.findByRole('button', { name: /erro de envio/i }))
     expect(screen.getByText('Falhou feio')).toBeInTheDocument()
+  })
+
+  it('picker Local aparece só quando o catálogo traz locations', async () => {
+    const { unmount } = render(<FichaPage />)
+    await screen.findByLabelText('Modelo')
+    expect(screen.queryByLabelText('Local')).toBeNull()
+    unmount()
+    await db.catalog.put({ name: 'locations', items: [{ id: 9, name: 'CME' }] })
+    render(<FichaPage />)
+    const sel = await screen.findByLabelText('Local')
+    fireEvent.change(sel, { target: { value: '9' } })
+    await waitFor(() => expect(saveEquipment).toHaveBeenCalledWith('10', '7', { location_id: 9 }), { timeout: 2000 })
+  })
+
+  it('sair do novo antes de 500ms salva uma vez e não navega', async () => {
+    params = { clienteId: '7', eqId: 'novo' }
+    const { unmount } = render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Modelo'), { target: { value: 'M1' } })
+    unmount()
+    await waitFor(() => expect(saveEquipment).toHaveBeenCalledTimes(1))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(saveEquipment).toHaveBeenCalledWith(null, '7', { model: 'M1' })
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('vários campos pendentes são enviados ao desmontar', async () => {
+    const { unmount } = render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Modelo'), { target: { value: 'M9' } })
+    fireEvent.change(screen.getByLabelText('Número de série'), { target: { value: 'S9' } })
+    unmount()
+    await waitFor(() => expect(saveEquipment).toHaveBeenCalledTimes(2))
+    const campos = saveEquipment.mock.calls.map((c) => Object.keys(c[2] as object)[0]).sort()
+    expect(campos).toEqual(['model', 'serial_number'])
+  })
+
+  it('visibilitychange para hidden envia sem esperar o debounce', async () => {
+    render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Número de série'), { target: { value: 'V1' } })
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await waitFor(() => expect(saveEquipment).toHaveBeenCalledWith('10', '7', { serial_number: 'V1' }), { timeout: 300 })
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+  })
+
+  it('falha de autosave aparece na tela', async () => {
+    saveEquipment.mockRejectedValue(new Error('Servidor caiu'))
+    render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Número de série'), { target: { value: 'X' } })
+    expect(await screen.findByRole('alert', {}, { timeout: 2000 })).toHaveTextContent('Servidor caiu')
+  })
+
+  it('falha de autosave de ciclo aparece no ciclo', async () => {
+    await db.cycles.put({ key: '50', id: 50, equipmentKey: '10', sync: 'ok' })
+    saveCycle.mockRejectedValue(new Error('Ciclo recusado'))
+    render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Temperatura'), { target: { value: '1' } })
+    const ciclo = screen.getByRole('group', { name: 'Ciclo 1' })
+    expect(await within(ciclo).findByRole('alert', {}, { timeout: 2000 })).toHaveTextContent('Ciclo recusado')
+  })
+
+  it('ciclo reescrito tmp -> id real não perde o texto digitado', async () => {
+    await db.cycles.put({ key: 'tmp:c1', equipmentKey: '10', sync: 'pendente' })
+    render(<FichaPage />)
+    const antes = await screen.findByLabelText('Temperatura')
+    fireEvent.change(antes, { target: { value: '134' } })
+    await db.cycles.delete('tmp:c1')
+    await db.cycles.put({ key: '77', id: 77, equipmentKey: '10', sync: 'ok' })
+    await db.idmap.put({ tmp: 'tmp:c1', id: 77 })
+    await act(async () => emitSyncTick())
+    await waitFor(() => expect(screen.getByLabelText('Temperatura')).toHaveValue('134'))
+    expect(screen.getByLabelText('Temperatura')).toBe(antes)
+    await waitFor(() => expect(saveCycle).toHaveBeenCalledWith('77', '10', { temperature: '134' }), { timeout: 2000 })
+  })
+
+  it('novo: após o primeiro save a ficha continua renderizada mesmo sem o registro no banco', async () => {
+    params = { clienteId: '7', eqId: 'novo' }
+    const { rerender } = render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Modelo'), { target: { value: 'M1' } })
+    await waitFor(() => expect(replace).toHaveBeenCalled(), { timeout: 2000 })
+    params = { clienteId: '7', eqId: 'tmp%3Anew' }
+    rerender(<FichaPage />)
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByText(/não encontrado/)).toBeNull()
+    expect(screen.getByLabelText('Modelo')).toBeInTheDocument()
+  })
+
+  it('revoga object URLs das miniaturas ao desmontar', async () => {
+    const create = vi.fn(() => 'blob:abc')
+    const revoke = vi.fn()
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke })
+    await db.photos.put({ key: 'p1', equipmentKey: '10', survey_kind: 'termopar', blob: new Blob(['x']), sync: 'ok' })
+    const { unmount } = render(<FichaPage />)
+    await waitFor(() => expect(create).toHaveBeenCalled())
+    unmount()
+    expect(revoke).toHaveBeenCalledWith('blob:abc')
   })
 })

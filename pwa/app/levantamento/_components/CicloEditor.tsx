@@ -22,7 +22,12 @@ export function CicloEditor({
   onDelete: (key: string) => Promise<void>
 }) {
   const [vals, setVals] = useState<Record<string, unknown>>({ ...cycle })
-  const { edit } = useAutosave((changed) => saveCycle(cycle.key, equipmentKey, changed))
+  const [erro, setErro] = useState('')
+  // `cycle.key` / `equipmentKey` são lidos a cada save (ref interna do hook): sobrevivem ao tmp -> id real.
+  const { edit } = useAutosave(
+    (changed) => saveCycle(cycle.key, equipmentKey, changed),
+    (e) => setErro(e instanceof Error ? e.message : 'Falha ao salvar o ciclo'),
+  )
 
   const set = (campo: string, valor: unknown) => {
     setVals((v) => ({ ...v, [campo]: valor }))
@@ -44,6 +49,7 @@ export function CicloEditor({
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>
       </div>
+      {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
       <CampoSelect
         label="Tipo de ciclo"
         value={vals.cycle_type_id}

@@ -11,6 +11,8 @@ export interface Catalog {
   categories: CatItem[]
   marcas: CatItem[]
   cycle_types: CatItem[]
+  /** Ausente em servidores antigos: o seletor de Local some. */
+  locations: CatItem[]
   selections: { load_type: Sel; thermocouple_access: Sel; survey_kind: Sel }
 }
 
@@ -18,6 +20,7 @@ const VAZIO: Catalog = {
   categories: [],
   marcas: [],
   cycle_types: [],
+  locations: [],
   selections: { load_type: [], thermocouple_access: [], survey_kind: [] },
 }
 
@@ -27,6 +30,7 @@ function norm(raw: Record<string, unknown>): Catalog {
     categories: (raw.categories as CatItem[]) ?? [],
     marcas: (raw.marcas as CatItem[]) ?? [],
     cycle_types: (raw.cycle_types as CatItem[]) ?? [],
+    locations: (raw.locations as CatItem[]) ?? [],
     selections: {
       load_type: sel.load_type ?? [],
       thermocouple_access: sel.thermocouple_access ?? [],

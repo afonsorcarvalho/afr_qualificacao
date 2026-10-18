@@ -460,11 +460,18 @@ export async function deleteCycle(key: string): Promise<void> {
 // ------------------------------------------------------------------------ fotos
 
 /**
- * Comprime (JPEG ~1600px/0.8), guarda o blob local e enfileira `photo.add`
+ * Comprime (JPEG ~1600px/0.8, salvo `opts.precompressed`), guarda o blob local e enfileira `photo.add`
  * com base64. Se o equipamento/ciclo ainda não foi enfileirado, a op espera.
  */
-export async function addPhoto(equipmentKey: string, kind: string, file: Blob, cycleKey?: string): Promise<string> {
-  const blob = await compressImage(file)
+export async function addPhoto(
+  equipmentKey: string,
+  kind: string,
+  file: Blob,
+  cycleKey?: string,
+  opts?: { precompressed?: boolean },
+): Promise<string> {
+  // `precompressed`: o chamador já entregou JPEG <= 1600px (ex.: CameraInput) — não recomprime.
+  const blob = opts?.precompressed ? file : await compressImage(file)
   const b64 = await blobToBase64(blob)
   const key = newTmp()
   await db.transaction('rw', allTables(), async () => {

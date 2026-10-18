@@ -19,9 +19,16 @@ export function detalheDoEquip(eq: LocalEquipment, cat: Catalog): string {
   return [nameOf(cat.marcas, eq.marca_id), model, serie].filter(Boolean).join(' · ')
 }
 
-/** Object URLs para Blobs (alinhados por índice); `blobs` deve ser memoizado. Revogadas ao trocar/desmontar. */
+/**
+ * Object URLs para Blobs (alinhadas por índice). `blobs` deve ser memoizado.
+ * As URLs são criadas/revogadas em efeito; enquanto o efeito não rodou para o
+ * `blobs` atual devolve [] (nunca URLs de outro conjunto -> sem miniatura trocada).
+ */
 export function useObjectUrls(blobs: (Blob | undefined)[]): (string | undefined)[] {
-  const [urls, setUrls] = useState<(string | undefined)[]>([])
+  const [estado, setEstado] = useState<{ para: (Blob | undefined)[]; urls: (string | undefined)[] }>({
+    para: [],
+    urls: [],
+  })
   useEffect(() => {
     const criadas: string[] = []
     const lista = blobs.map((b) => {
@@ -34,10 +41,10 @@ export function useObjectUrls(blobs: (Blob | undefined)[]): (string | undefined)
         return undefined // blob inválido/corrompido: cai no ícone
       }
     })
-    setUrls(lista)
+    setEstado({ para: blobs, urls: lista })
     return () => {
       for (const u of criadas) URL.revokeObjectURL?.(u)
     }
   }, [blobs])
-  return urls
+  return estado.para === blobs ? estado.urls : []
 }

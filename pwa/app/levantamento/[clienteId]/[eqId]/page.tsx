@@ -52,11 +52,20 @@ export default function FichaPage() {
   // Chave mais recente do equipamento (null = ainda não criado). Sempre aqui, nunca só na URL.
   const keyRef = useRef<string | null>(null)
   const iniciado = useRef(false)
+  const montado = useRef(true)
+  useEffect(() => {
+    montado.current = true
+    return () => {
+      montado.current = false
+    }
+  }, [])
+  const [criado, setCriado] = useState(false)
+  const [chavesEstaveis, setChavesEstaveis] = useState<Map<string, string>>(new Map())
   const redirecionado = useRef<string | null>(null)
 
   const irParaChave = useCallback(
     (k: string) => {
-      if (redirecionado.current === k) return
+      if (!montado.current || redirecionado.current === k) return
       redirecionado.current = k
       routerRef.current.replace(`/levantamento/${encodeURIComponent(clienteParam)}/${encodeURIComponent(k)}`)
     },
@@ -75,10 +84,15 @@ export default function FichaPage() {
       return
     }
     const rec = await db.equipments.get(key)
-    const [cs, ps] = await Promise.all([
-      db.cycles.where('equipmentKey').equals(key).toArray(),
+    const [mapa, cs, ps] = await Promise.all([
+      db.idmap.toArray(),
+      
+db.cycles.where('equipmentKey').equals(key).toArray(),
       db.photos.where('equipmentKey').equals(key).toArray(),
     ])
+    if (!montado.current) return
+    // id real -> chave tmp original: identidade React do ciclo que sobrevive ao rekey.
+    setChavesEstaveis(new Map(mapa.map((m) => [String(m.id), m.tmp])))
     setEq(rec)
     setCycles(cs)
     setPhotos(ps)
@@ -100,12 +114,16 @@ export default function FichaPage() {
       const primeira = keyRef.current === null
       const k = await saveEquipment(keyRef.current, clienteParam, changed)
       keyRef.current = k
+      if (!montado.current) return // saiu da tela: só persistir, sem navegar
+      setCriado(true)
       if (primeira) irParaChave(k)
       void carregar()
     },
     [clienteParam, irParaChave, carregar],
   )
-  const { edit, enqueue } = useAutosave(salvar)
+  const { edit, enqueue } = useAutosave(salvar, (e) => {
+    if (montado.current) setErro(e instanceof Error ? e.message : 'Falha ao salvar')
+  })
 
   const set = (campo: string, valor: unknown) => {
     setVals((v) => ({ ...v, [campo]: valor }))
@@ -137,7 +155,7 @@ export default function FichaPage() {
   const adicionarFoto = (kind: string, blob: Blob, cycleKey?: string) =>
     guardado(async () => {
       const ek = await garantirChave()
-      await (cycleKey ? addPhoto(ek, kind, blob, cycleKey) : addPhoto(ek, kind, blob))
+      await addPhoto(ek, kind, blob, cycleKey, { precompressed: true }) // CameraInput já entrega JPEG <= 1600px
     })
   const excluirFoto = (key: string) => guardado(() => deletePhoto(key))
   const novoCiclo = () =>
@@ -163,7 +181,7 @@ export default function FichaPage() {
   const opts = (items: { id: number; name: string }[]) => items.map((i) => ({ value: String(i.id), label: i.name }))
   const volta = `/levantamento/${encodeURIComponent(clienteParam)}`
 
-  if (carregado && !novo && !eq) {
+  if (carregado && !novo && !eq && !criado) {
     return (
       <div className="mx-auto max-w-[720px] space-y-3 py-8 text-center text-sm text-muted-foreground">
         <p>Equipamento não encontrado neste aparelho.</p>
@@ -195,6 +213,9 @@ export default function FichaPage() {
         <CampoSelect label="Categoria" value={vals.category_id} onChange={m2o('category_id')} options={opts(cat.categories)} />
         <CampoSelect label="Marca" value={vals.marca_id} onChange={m2o('marca_id')} options={opts(cat.marcas)} />
         <CampoTexto label="Modelo" value={vals.model} onChange={(v) => set('model', v)} />
+        {cat.locations.length > 0 && (
+          <CampoSelect label="Local" value={vals.location_id} onChange={m2o('location_id')} options={opts(cat.locations)} />
+        )}
         <CampoTexto label="Número de série" value={vals.serial_number} onChange={(v) => set('serial_number', v)} />
         <CampoTexto label="Apelido" value={vals.apelido} onChange={(v) => set('apelido', v)} />
         <CampoTexto label="Tag" value={vals.tag} onChange={(v) => set('tag', v)} />
@@ -227,7 +248,7 @@ export default function FichaPage() {
       <FichaSecao titulo="Ciclos">
         {cycles.map((c, i) => (
           <CicloEditor
-            key={c.key}
+            key={chavesEstaveis.get(c.key) ?? c.key}
             indice={i + 1}
             cycle={c}
             equipmentKey={keyRef.current ?? c.equipmentKey}
