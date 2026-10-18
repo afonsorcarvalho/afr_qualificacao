@@ -7,8 +7,14 @@ describe('compressImage', () => {
   it('reduz 4000x3000 para lado maior 1600 (JPEG, qualidade 0.8)', async () => {
     const close = vi.fn()
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 4000, height: 3000, close })))
+    const calls: string[] = []
+    const ctx = {
+      fillStyle: '',
+      fillRect: () => calls.push('fill:' + ctx.fillStyle),
+      drawImage: () => calls.push('draw'),
+    }
     const canvas: Record<string, unknown> = {
-      getContext: () => ({ drawImage: vi.fn() }),
+      getContext: () => ctx,
       toBlob: vi.fn((cb: (b: Blob) => void, type: string, q: number) => {
         canvas.args = [type, q]
         cb(new Blob(['jpg'], { type }))
@@ -21,11 +27,12 @@ describe('compressImage', () => {
     expect(canvas.args).toEqual(['image/jpeg', 0.8])
     expect(out.type).toBe('image/jpeg')
     expect(close).toHaveBeenCalled()
+    expect(calls).toEqual(['fill:#fff', 'draw'])
   })
   it('não amplia imagem pequena', async () => {
     vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 800, height: 1000, close: vi.fn() })))
     const canvas: Record<string, unknown> = {
-      getContext: () => ({ drawImage: vi.fn() }),
+      getContext: () => ({ fillStyle: '', fillRect: vi.fn(), drawImage: vi.fn() }),
       toBlob: (cb: (b: Blob) => void, type: string) => cb(new Blob(['j'], { type })),
     }
     vi.stubGlobal('document', { createElement: () => canvas })

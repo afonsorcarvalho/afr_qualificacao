@@ -22,6 +22,8 @@ export interface PushResult {
   state: 'done' | 'error'
   id: number | false
   error: string | false
+  /** Novo `write_date` do registro no servidor (equipment/cycle upserts). */
+  write_date?: string | false
 }
 export interface PushResponse {
   results: PushResult[]
@@ -260,6 +262,15 @@ async function applyResponse(batch: OutboxEntry[], resp: PushResponse): Promise<
       failed++
     } else if (r.state === 'done') {
       await db.outbox.delete(e.op_uuid)
+      if (r.write_date && (cur.kind === 'equipment.upsert' || cur.kind === 'cycle.upsert')) {
+        // Base de conflito do próprio registro avança: edições seguintes (já
+        // gravadas local e na outbox) não registram "sobrescreveu" do nosso push.
+        await tableFor(cur.kind).update(String(cur.ref), { base_write_date: r.write_date } as never)
+        const later = (await db.outbox.toArray()).filter(
+          (o) => String(o.ref) === String(cur.ref) && o.kind === cur.kind && o.state === 'pendente',
+        )
+        for (const o of later) await db.outbox.update(o.op_uuid, { base_write_date: r.write_date })
+      }
       // Registro só volta a 'ok' se não restar outra op pendente sobre ele.
       const restante = (await db.outbox.toArray()).some((o) => String(o.ref) === String(cur.ref))
       if (!restante) await markRecord(cur, 'ok', undefined)

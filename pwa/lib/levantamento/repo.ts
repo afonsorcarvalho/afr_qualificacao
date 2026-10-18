@@ -68,7 +68,20 @@ export function missingRequired(equipment: Rec): string[] {
 }
 
 function opsFor(key: string): Promise<OutboxEntry[]> {
-  return db.outbox.toArray().then((all) => all.filter((o) => String(o.ref) === key))
+  return db.outbox.where('ref').equals(refOf(key)).toArray()
+}
+
+/**
+ * Edição de registro que já tem upsert `pendente` (não enviado): funde os
+ * campos na op existente (mantém o `base_write_date` original). Devolve false
+ * se não há op a fundir (então o chamador enfileira uma nova).
+ */
+async function coalesce(key: string, kind: SurveyOpKind, diff: Rec): Promise<boolean> {
+  const pend = (await opsFor(key)).filter((o) => o.kind === kind && o.state === 'pendente')
+  if (!pend.length) return false
+  const last = pend.reduce((a, b) => (b.createdAt > a.createdAt ? b : a))
+  await db.outbox.update(last.op_uuid, { payload: { ...last.payload, ...diff } })
+  return true
 }
 /** O registro já existe no servidor ou tem op de criação na outbox? */
 async function isReady(key: string): Promise<boolean> {
@@ -86,6 +99,14 @@ function normM2o(v: unknown): number | false {
   return typeof v === 'number' && v ? v : false
 }
 
+/** Igualdade tolerante a `'12'` vs `12` (inputs de formulário devolvem string). */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  const num = (x: unknown, y: unknown) =>
+    typeof x === 'number' && typeof y === 'string' && y.trim() !== '' && Number(y) === x
+  return num(a, b) || num(b, a)
+}
+
 function diffFields(existing: Rec | undefined, changed: Rec, m2o: string[]): Rec {
   const diff: Rec = {}
   for (const [k, raw] of Object.entries(changed)) {
@@ -95,7 +116,7 @@ function diffFields(existing: Rec | undefined, changed: Rec, m2o: string[]): Rec
       if (!existing || !(k in existing)) diff[k] = v
       continue
     }
-    if (cur !== v) diff[k] = v
+    if (!sameValue(cur, v)) diff[k] = v
   }
   return diff
 }
@@ -305,11 +326,13 @@ async function photosB64(ek: string): Promise<Map<string, string>> {
  */
 export async function saveEquipment(key: string | null, partnerKey: string, changed: Rec): Promise<string> {
   checkFields(changed, EQUIPMENT_FIELDS)
-  const pKey = await resolveKey(partnerKey)
-  const k = key ? await resolveKey(key) : newTmp()
-  const b64 = isTmp(k) && !(await opsFor(k)).length ? await photosB64(k) : new Map<string, string>()
+  // Pré-cálculo fora da transação (best-effort; a chave definitiva é resolvida dentro dela).
+  const preK = key ? await resolveKey(key) : newTmp()
+  const b64 = isTmp(preK) && !(await opsFor(preK)).length ? await photosB64(preK) : new Map<string, string>()
 
-  await db.transaction('rw', allTables(), async () => {
+  const k = await db.transaction('rw', allTables(), async () => {
+    const pKey = await resolveKey(partnerKey)
+    const k = key ? await resolveKey(key) : preK
     const existing = await db.equipments.get(k)
     if (key && !existing) throw new Error(`Equipamento ${k} não encontrado`)
     const diff = diffFields(existing, changed, EQUIPMENT_M2O)
@@ -318,7 +341,8 @@ export async function saveEquipment(key: string | null, partnerKey: string, chan
 
     const hasOp = (await opsFor(k)).length > 0
     if (!isTmp(k) || hasOp) {
-      if (!Object.keys(diff).length) return
+      if (!Object.keys(diff).length) return k
+      if (await coalesce(k, 'equipment.upsert', diff)) return k
       await enqueue({
         kind: 'equipment.upsert', ref: refOf(k), payload: diff,
         ...(isTmp(k) ? {} : { base_write_date: (existing?.base_write_date as string | undefined) ?? false }),
@@ -330,8 +354,32 @@ export async function saveEquipment(key: string | null, partnerKey: string, chan
       })
       await flushChildren(k, b64)
     }
+    return k
   })
+  if (isTmp(k)) await releaseDeferredPhotos(k)
   return k
+}
+
+/**
+ * Rede de segurança pós-criação: fotos que entraram durante a janela do
+ * flush (sem base64 pré-calculado) e seguem sem op são enfileiradas agora.
+ */
+async function releaseDeferredPhotos(ek: string): Promise<void> {
+  if (!(await opsFor(ek)).length) return
+  const orphans: LocalPhoto[] = []
+  for (const p of await db.photos.where('equipmentKey').equals(ek).toArray()) {
+    if (!p.isThumb && !(await opsFor(p.key)).length) orphans.push(p)
+  }
+  if (!orphans.length) return
+  const b64 = new Map<string, string>()
+  for (const p of orphans) b64.set(p.key, await blobToBase64(p.blob))
+  await db.transaction('rw', allTables(), async () => {
+    for (const p of orphans) {
+      if (!(await db.photos.get(p.key)) || (await opsFor(p.key)).length) continue
+      if (p.cycleKey && !(await isReady(p.cycleKey))) continue
+      await enqueue({ kind: 'photo.add', ref: refOf(p.key), payload: photoPayload(p, b64.get(p.key)!) })
+    }
+  })
 }
 
 // ------------------------------------------------------------------------ ciclo
@@ -339,10 +387,10 @@ export async function saveEquipment(key: string | null, partnerKey: string, chan
 /** Cria (key null) ou edita um ciclo. Mesmas regras de `saveEquipment`. */
 export async function saveCycle(key: string | null, equipmentKey: string, changed: Rec): Promise<string> {
   checkFields(changed, CYCLE_FIELDS)
-  const ek = await resolveKey(equipmentKey)
-  const k = key ? await resolveKey(key) : newTmp()
-
-  await db.transaction('rw', allTables(), async () => {
+  const newKey = newTmp()
+  return db.transaction('rw', allTables(), async () => {
+    const ek = await resolveKey(equipmentKey)
+    const k = key ? await resolveKey(key) : newKey
     const existing = await db.cycles.get(k)
     if (key && !existing) throw new Error(`Ciclo ${k} não encontrado`)
     const diff = diffFields(existing, changed, CYCLE_M2O)
@@ -351,7 +399,8 @@ export async function saveCycle(key: string | null, equipmentKey: string, change
 
     const hasOp = (await opsFor(k)).length > 0
     if (!isTmp(k) || hasOp) {
-      if (!Object.keys(diff).length) return
+      if (!Object.keys(diff).length) return k
+      if (await coalesce(k, 'cycle.upsert', diff)) return k
       await enqueue({
         kind: 'cycle.upsert', ref: refOf(k), payload: diff,
         ...(isTmp(k) ? {} : { base_write_date: (existing?.base_write_date as string | undefined) ?? false }),
@@ -362,8 +411,8 @@ export async function saveCycle(key: string | null, equipmentKey: string, change
         payload: { equipment_id: refOf(merged.equipmentKey), ...fullPayload(merged, CYCLE_FIELDS) },
       })
     } // senão: adiado até o equipamento ser enfileirado (flushChildren)
+    return k
   })
-  return k
 }
 
 /**
@@ -395,8 +444,8 @@ async function removeRecord(key: string, deleteKind: SurveyOpKind, enqueueDelete
 
 /** Remove o ciclo localmente já; fotos do ciclo saem junto (cascata local). */
 export async function deleteCycle(key: string): Promise<void> {
-  const k = await resolveKey(key)
   await db.transaction('rw', allTables(), async () => {
+    const k = await resolveKey(key)
     const cycle = await db.cycles.get(k)
     if (!cycle) return
     for (const p of await db.photos.where('cycleKey').equals(k).toArray()) {
@@ -415,12 +464,12 @@ export async function deleteCycle(key: string): Promise<void> {
  * com base64. Se o equipamento/ciclo ainda não foi enfileirado, a op espera.
  */
 export async function addPhoto(equipmentKey: string, kind: string, file: Blob, cycleKey?: string): Promise<string> {
-  const ek = await resolveKey(equipmentKey)
-  const ck = cycleKey ? await resolveKey(cycleKey) : undefined
   const blob = await compressImage(file)
   const b64 = await blobToBase64(blob)
   const key = newTmp()
   await db.transaction('rw', allTables(), async () => {
+    const ek = await resolveKey(equipmentKey)
+    const ck = cycleKey ? await resolveKey(cycleKey) : undefined
     const rec = {
       key, equipmentKey: ek, survey_kind: kind, blob, sync: 'pendente',
       ...(ck ? { cycleKey: ck } : {}),
@@ -434,8 +483,8 @@ export async function addPhoto(equipmentKey: string, kind: string, file: Blob, c
 }
 
 export async function deletePhoto(key: string): Promise<void> {
-  const k = await resolveKey(key)
   await db.transaction('rw', allTables(), async () => {
+    const k = await resolveKey(key)
     if (!(await db.photos.get(k))) return
     await db.photos.delete(k)
     await removeRecord(k, 'photo.delete', true)

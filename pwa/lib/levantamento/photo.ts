@@ -11,6 +11,8 @@ export async function compressImage(file: Blob, maxSide = 1600, quality = 0.8): 
       canvas.height = h
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('canvas 2d indisponível')
+      ctx.fillStyle = '#fff' // PNG/WebP transparentes viram preto em JPEG
+      ctx.fillRect(0, 0, w, h)
       ctx.drawImage(bmp, 0, 0, w, h)
       return await new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(
@@ -23,6 +25,8 @@ export async function compressImage(file: Blob, maxSide = 1600, quality = 0.8): 
     const off = new OffscreenCanvas(w, h)
     const ctx = off.getContext('2d')
     if (!ctx) throw new Error('canvas 2d indisponível')
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, w, h)
     ctx.drawImage(bmp, 0, 0, w, h)
     return await off.convertToBlob({ type: 'image/jpeg', quality })
   } finally {

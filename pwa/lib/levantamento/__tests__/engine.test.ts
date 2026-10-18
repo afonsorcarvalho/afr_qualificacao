@@ -252,3 +252,27 @@ describe('drain', () => {
     expect(await db.outbox.count()).toBe(1)
   })
 })
+
+describe('write_date do push', () => {
+  it('done com write_date atualiza base_write_date do registro', async () => {
+    await db.equipments.put({ key: '5', id: 5, partnerKey: '1', sync: 'pendente', base_write_date: 'old' })
+    await enqueue({ kind: 'equipment.upsert', ref: 5, base_write_date: 'old', payload: { a: 1 } })
+    await drain(async (ops) => ({
+      results: [{ ...ok(ops[0], 5), write_date: '2026-10-18 12:00:00' }],
+      idmap: {},
+    }))
+    expect((await db.equipments.get('5'))!.base_write_date).toBe('2026-10-18 12:00:00')
+  })
+
+  it('op posterior pendente (fora do lote) herda a nova base', async () => {
+    await db.equipments.put({ key: '5', id: 5, partnerKey: '1', sync: 'pendente', base_write_date: 'old' })
+    await enqueue({ kind: 'equipment.upsert', ref: 5, base_write_date: 'old', payload: { a: 1 } })
+    for (let i = 0; i < 49; i++) await enqueue({ kind: 'cycle.upsert', ref: `tmp:f${i}`, payload: {} })
+    const later = await enqueue({ kind: 'equipment.upsert', ref: 5, base_write_date: 'old', payload: { b: 2 } })
+    await drain(async (ops) => ({
+      results: ops.map((o) => ({ ...ok(o, 5), ...(o.payload.a ? { write_date: 'NEW' } : {}) })),
+      idmap: {},
+    }))
+    expect((await db.outbox.get(later))!.base_write_date).toBe('NEW')
+  })
+})

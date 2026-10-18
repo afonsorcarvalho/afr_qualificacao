@@ -99,15 +99,41 @@ describe('saveEquipment', () => {
     await downloadPartner(7)
   })
 
-  it('duas edições mesclam local e enfileiram só campos alterados + base_write_date', async () => {
+  it('duas edições mesclam local; a 2a funde na op pendente (mantém base_write_date original)', async () => {
     await saveEquipment('100', '7', { model: 'M2' })
     await saveEquipment('100', '7', { tag: 'T-1', category_id: 5 })
     const e = await db.equipments.get('100')
     expect(e).toMatchObject({ model: 'M2', tag: 'T-1', category_id: 5, serial_number: 'S1', sync: 'pendente' })
     const o = await ops()
-    expect(o.map((x) => x.payload)).toEqual([{ model: 'M2' }, { tag: 'T-1', category_id: 5 }])
-    expect(o.every((x) => x.kind === 'equipment.upsert' && x.ref === 100)).toBe(true)
-    expect(o[0].base_write_date).toBe('2026-10-01 10:00:00')
+    expect(o).toHaveLength(1)
+    expect(o[0].payload).toEqual({ model: 'M2', tag: 'T-1', category_id: 5 })
+    expect(o[0]).toMatchObject({ kind: 'equipment.upsert', ref: 100, base_write_date: '2026-10-01 10:00:00' })
+  })
+
+  it('edição com op em voo (enviando) enfileira nova op', async () => {
+    await saveEquipment('100', '7', { model: 'M2' })
+    await db.outbox.toCollection().modify({ state: 'enviando' })
+    await saveEquipment('100', '7', { tag: 'T-1' })
+    const o = await ops()
+    expect(o.map((x) => x.payload)).toEqual([{ model: 'M2' }, { tag: 'T-1' }])
+  })
+
+  it('string numérica igual ao número não conta como alteração', async () => {
+    await saveEquipment('100', '7', { chamber_volume_l: '50' })
+    expect(await ops()).toHaveLength(0)
+    await saveCycle('200', '100', { temperature: '134' })
+    expect(await ops()).toHaveLength(0)
+  })
+
+  it('foto adiada que escapou do flush é liberada na próxima gravação', async () => {
+    const ek = await saveEquipment(null, '7', { category_id: 1, marca_id: 2, model: 'm' })
+    await db.photos.put({ key: 'tmp:late', equipmentKey: ek, survey_kind: 'geral', blob: new Blob(['zz']), sync: 'pendente' } as never)
+    expect((await ops()).map((x) => x.kind)).toEqual(['equipment.upsert'])
+    await saveEquipment(ek, '7', { tag: 'x' })
+    const o = await ops()
+    expect(o.map((x) => x.kind)).toEqual(['equipment.upsert', 'photo.add'])
+    expect(o[1]).toMatchObject({ ref: 'tmp:late' })
+    expect(o[1].payload.image_b64).toBe(btoa('zz'))
   })
 
   it('campo não alterado não gera op', async () => {
@@ -133,8 +159,13 @@ describe('saveEquipment', () => {
     expect(o[0].payload).toEqual({ partner_id: 7, name: 'Novo', category_id: 3, marca_id: 4, model: 'X' })
     await saveEquipment(key, '7', { tag: 'T' })
     o = await ops()
+    expect(o).toHaveLength(1) // funde na op de criação ainda pendente
+    expect(o[0].payload).toMatchObject({ model: 'X', tag: 'T' })
+    await db.outbox.toCollection().modify({ state: 'enviando' })
+    await saveEquipment(key, '7', { tag: 'T2' })
+    o = await ops()
     expect(o).toHaveLength(2)
-    expect(o[1].payload).toEqual({ tag: 'T' })
+    expect(o[1].payload).toEqual({ tag: 'T2' })
   })
 
   it('cliente tmp vai como partner_id tmp', async () => {
@@ -174,11 +205,13 @@ describe('saveCycle / deleteCycle', () => {
     expect(o.payload).toEqual({ equipment_id: 100, cycle_type_id: 9, temperature: 121 })
   })
 
-  it('edita ciclo real: só alterados + base_write_date', async () => {
+  it('edita ciclo real: só alterados + base_write_date; 2a edição funde', async () => {
     await saveCycle('200', '100', { duration: 6, temperature: 134 })
-    const [o] = await ops()
-    expect(o).toMatchObject({ ref: 200, base_write_date: '2026-10-01 11:00:00' })
-    expect(o.payload).toEqual({ duration: 6 })
+    await saveCycle('200', '100', { note: 'n' })
+    const o = await ops()
+    expect(o).toHaveLength(1)
+    expect(o[0]).toMatchObject({ ref: 200, base_write_date: '2026-10-01 11:00:00' })
+    expect(o[0].payload).toEqual({ duration: 6, note: 'n' })
   })
 
   it('ciclo em equipamento tmp incompleto fica adiado e é liberado quando o equipamento é enfileirado', async () => {

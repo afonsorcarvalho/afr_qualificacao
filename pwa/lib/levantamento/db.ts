@@ -89,6 +89,8 @@ class LevantamentoDB extends Dexie {
       catalog: '&name',
       idmap: '&tmp',
     })
+    // v2: índice `ref` na outbox (busca de ops por registro sem varrer tudo).
+    this.version(2).stores({ outbox: '&op_uuid, state, createdAt, ref' })
   }
 }
 
