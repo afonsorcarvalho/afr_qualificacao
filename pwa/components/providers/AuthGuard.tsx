@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { odooClient } from '@/lib/odoo/client'
+import { odooClient, OdooSessionError } from '@/lib/odoo/client'
 import { useAuthStore } from '@/lib/store/authStore'
 import { preloadSchemas } from '@/lib/odoo/schema'
 import { buildPostLogoutLoginPath } from '@/lib/utils/loginUrlParams'
@@ -72,7 +72,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         }
         try { await preloadSchemas() } catch { /* tolera falhas de rede */ }
         if (!cancelled) setChecked(true)
-      } catch {
+      } catch (err) {
+        if (cancelled) return
+        // Só desloga quando a sessão é comprovadamente inválida. Falha de rede,
+        // timeout ou 5xx (Odoo inalcançável) não invalida nada: o técnico offline
+        // continua trabalhando com a sessão persistida.
+        const sessaoInvalida = err instanceof OdooSessionError
+        if (!sessaoInvalida && useAuthStore.getState().isAuthenticated) {
+          setChecked(true)
+          return
+        }
         await forceLogout()
         if (!cancelled) router.replace(loginPath)
       }
