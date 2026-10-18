@@ -78,3 +78,10 @@ export const pullPartner = (id: number) =>
 
 export const push = (ops: SurveyOp[]) =>
   odooClient.callKw<PushResponse>(SURVEY_MODEL, 'survey_push', [ops])
+
+/**
+ * O usuário logado pertence ao grupo `xmlid`? `res.users.has_group` é
+ * `@api.model` no Odoo 16 e usa o uid da sessão, então é chamável via call_kw.
+ */
+export const hasGroup = (xmlid: string) =>
+  odooClient.callKw<boolean>('res.users', 'has_group', [xmlid])

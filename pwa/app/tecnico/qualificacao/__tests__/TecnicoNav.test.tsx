@@ -44,6 +44,21 @@ describe('TecnicoNav', () => {
     expect(screen.getByRole('link', { name: /Histórico/ })).toBeInTheDocument()
   })
 
+  it('aba Levantamento só aparece com o grupo e aponta para /levantamento', () => {
+    const { unmount } = render(<TecnicoNav variant="bottom" />)
+    expect(screen.queryByRole('link', { name: /Levantamento/ })).toBeNull()
+    unmount()
+    render(<TecnicoNav variant="bottom" levantamento />)
+    expect(screen.getByRole('link', { name: /Levantamento/ })).toHaveAttribute('href', '/levantamento')
+  })
+
+  it('aba Levantamento fica ativa em /levantamento/...', () => {
+    pathname = '/levantamento/7'
+    render(<TecnicoNav variant="bottom" levantamento />)
+    expect(screen.getByRole('link', { name: /Levantamento/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /OSs/ })).not.toHaveAttribute('aria-current')
+  })
+
   it('marca aria-current no destino ativo', () => {
     pathname = '/tecnico/qualificacao/historico'
     render(<TecnicoNav variant="bottom" />)

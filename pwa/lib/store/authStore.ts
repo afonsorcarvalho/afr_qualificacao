@@ -28,6 +28,11 @@ interface AuthState {
   // Histórico de servidores usados
   serverUrlHistory: string[]
 
+  // Cache de pertencimento a grupos do Odoo (xmlid -> bool). Persistido para
+  // valer offline; limpo no logout (outro usuário pode usar o aparelho).
+  groups: Record<string, boolean>
+  setGroup: (xmlid: string, value: boolean) => void
+
   setServerUrl: (url: string) => void
   setDbName: (db: string) => void
   setUser: (id: number, name: string) => void
@@ -54,6 +59,9 @@ export const useAuthStore = create<AuthState>()(
         availableCompanies: [],
         selectedCompanyId: null,
         serverUrlHistory: [],
+        groups: {},
+
+        setGroup: (xmlid, value) => set({ groups: { ...get().groups, [xmlid]: value } }),
 
         setServerUrl: (serverUrl) => {
           if (serverUrl !== get().serverUrl) {
@@ -101,6 +109,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             availableCompanies: [],
             selectedCompanyId: null,
+            groups: {},
           })
         },
       }),
@@ -117,6 +126,7 @@ export const useAuthStore = create<AuthState>()(
           companyLogo: s.companyLogo,
           selectedCompanyId: s.selectedCompanyId,
           serverUrlHistory: s.serverUrlHistory,
+          groups: s.groups,
         }),
       }
     ),
