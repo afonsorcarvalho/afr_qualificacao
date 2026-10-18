@@ -1,5 +1,5 @@
 import { db, type OutboxEntry, type SurveyOp, type SurveyOpKind, type SyncFields } from './db'
-import type { Table } from 'dexie'
+import Dexie, { type Table } from 'dexie'
 
 export type { SurveyOp, SurveyOpKind } from './db'
 
@@ -9,6 +9,9 @@ export const MAX_BATCH_SIZE = 50
 
 /** Mensagem do backend para op cuja dependência falhou — retentável. */
 const DEP_FAILED = 'dependência falhou'
+const DEP_ERRO_MSG = 'depende de registro com erro'
+/** Teto de tentativas para dependência falhando: vira `erro` terminal. */
+export const MAX_ATTEMPTS = 20
 
 export function backoffMs(attempts: number) {
   return Math.min(BACKOFF_BASE_MS * 2 ** attempts, BACKOFF_CAP_MS)
@@ -30,6 +33,10 @@ export interface DrainResult {
   failed: number
   /** Push falhou por sessão expirada/401/403: o chamador deve reautenticar. */
   authError?: boolean
+  /** Entradas que voltaram a `pendente` (rede, dependência, sem resposta). */
+  retried?: number
+  /** Drain ignorado porque outro já estava em curso. */
+  skipped?: boolean
 }
 
 const isTmp = (v: unknown): v is string => typeof v === 'string' && v.startsWith('tmp:')
@@ -134,43 +141,55 @@ async function applyIdMap(idmap: Record<string, number>) {
   )
 }
 
-async function markRecord(op: OutboxEntry, sync: SyncFields['sync'], syncError?: string) {
-  const t = tableFor(op.kind)
-  const key = String(op.ref)
-  if (await t.get(key)) await t.update(key, { sync, syncError })
+function markRecord(op: OutboxEntry, sync: SyncFields['sync'], syncError?: string) {
+  // `update` em chave inexistente é no-op (devolve 0). Sem async/await nativo:
+  // ver nota em dependsOnErroneous.
+  return tableFor(op.kind).update(String(op.ref), { sync, syncError })
 }
 
 let draining = false
 
+const ALL_TABLES = () => [db.partners, db.equipments, db.cycles, db.photos, db.outbox, db.idmap]
+
+/** A op depende de (ou edita) um registro cuja op criadora/anterior está em `erro`? */
+function dependsOnErroneous(e: OutboxEntry): Promise<boolean> {
+  const tmps = new Set<string>()
+  if (isTmp(e.ref)) tmps.add(e.ref)
+  for (const v of Object.values(e.payload)) if (isTmp(v)) tmps.add(v)
+  if (!tmps.size) return Dexie.Promise.resolve(false)
+  // Sem `async`/`await` nativo aqui: dentro da transação Dexie, um await nativo
+  // que sobra sem operação IDB pendente comita a transação cedo demais.
+  return db.outbox
+    .where('state')
+    .equals('erro')
+    .toArray()
+    .then((erros) => erros.some((o) => o.op_uuid !== e.op_uuid && isTmp(o.ref) && tmps.has(o.ref)))
+}
+
 /**
  * Drena a outbox: envia `pendente` em ordem de `createdAt` (máx. 50) e
- * aplica o resultado por op.
+ * aplica o resultado por op, tudo numa única transação Dexie.
  *
  *  - `done`: remove da outbox, grava idmap e reescreve referências;
  *  - `error`: entrada e registro viram `erro` (não reenvia sozinho) — EXCETO
- *    "dependência falhou", que é retentável (volta a `pendente`, attempts++);
- *  - push lança (rede/auth): todas voltam a `pendente`, attempts++.
- *
- * A ordem estrita por `createdAt` garante que a op criadora vá antes das
- * dependentes dentro do lote.
+ *    "dependência falhou", que é retentável (volta a `pendente`, attempts++),
+ *    salvo se a op criadora está em `erro` ou attempts >= MAX_ATTEMPTS
+ *    (evita starvation da fila);
+ *  - push lança (rede/auth) ou a fase de aplicação falha: voltam a `pendente`.
+ *    Reenvio é seguro: o backend é idempotente por `op_uuid`.
  */
 export async function drain(push: PushFn): Promise<DrainResult> {
-  if (draining) return { sent: 0, failed: 0 }
+  if (draining) return { sent: 0, failed: 0, skipped: true }
   draining = true
+  let batch: OutboxEntry[] = []
   try {
-    const batch = (await db.outbox.where('state').equals('pendente').sortBy('createdAt')).slice(
+    batch = (await db.outbox.where('state').equals('pendente').sortBy('createdAt')).slice(
       0,
       MAX_BATCH_SIZE,
     )
     if (!batch.length) return { sent: 0, failed: 0 }
     const ids = batch.map((e) => e.op_uuid)
     await db.outbox.where('op_uuid').anyOf(ids).modify({ state: 'enviando' })
-
-    const retry = async (entries: OutboxEntry[]) => {
-      for (const e of entries) {
-        await db.outbox.update(e.op_uuid, { state: 'pendente', attempts: e.attempts + 1 })
-      }
-    }
 
     let resp: PushResponse
     try {
@@ -184,43 +203,80 @@ export async function drain(push: PushFn): Promise<DrainResult> {
         })),
       )
     } catch (e) {
-      await retry(batch)
-      return { sent: 0, failed: batch.length, authError: isAuthError(e) || undefined }
-    }
-
-    // Idmap primeiro: mesmo ops com erro podem ter criado ids antes.
-    await applyIdMap(resp.idmap ?? {})
-
-    const byUuid = new Map((resp.results ?? []).map((r) => [r.op_uuid, r]))
-    let sent = 0
-    let failed = 0
-    for (const e of batch) {
-      const r = byUuid.get(e.op_uuid)
-      if (!r) {
-        await retry([e])
-        failed++
-      } else if (r.state === 'done') {
-        await db.outbox.delete(e.op_uuid)
-        // Registro só volta a 'ok' se não restar outra op pendente sobre ele.
-        // (`ref` da entrada pode ter sido reescrito pelo idmap acima.)
-        const fresh = e.ref
-        const real = isTmp(fresh) ? (resp.idmap?.[fresh] ?? fresh) : fresh
-        const restante = (await db.outbox.toArray()).some((o) => String(o.ref) === String(real))
-        if (!restante) await markRecord({ ...e, ref: real }, 'ok', undefined)
-        sent++
-      } else {
-        const msg = r.error || 'erro'
-        failed++
-        if (msg.includes(DEP_FAILED)) {
-          await retry([e])
-        } else {
-          await db.outbox.update(e.op_uuid, { state: 'erro', error: msg })
-          await markRecord(e, 'erro', msg)
-        }
+      await revertSending(ids)
+      return {
+        sent: 0,
+        failed: batch.length,
+        retried: batch.length,
+        authError: isAuthError(e) || undefined,
       }
     }
-    return { sent, failed }
+
+    try {
+      return await db.transaction('rw', ALL_TABLES(), () => applyResponse(batch, resp))
+    } catch {
+      // Transação revertida: as entradas seguem `enviando`.
+      await revertSending(ids)
+      return { sent: 0, failed: batch.length, retried: batch.length }
+    }
   } finally {
     draining = false
   }
+}
+
+async function revertSending(ids: string[]) {
+  for (const id of ids) {
+    const cur = await db.outbox.get(id)
+    if (cur && cur.state === 'enviando') {
+      await db.outbox.update(id, { state: 'pendente', attempts: cur.attempts + 1 })
+    }
+  }
+}
+
+async function applyResponse(batch: OutboxEntry[], resp: PushResponse): Promise<DrainResult> {
+  // Idmap primeiro: mesmo ops com erro podem ter criado ids antes.
+  if (Object.keys(resp.idmap ?? {}).length) await applyIdMap(resp.idmap)
+
+  const byUuid = new Map((resp.results ?? []).map((r) => [r.op_uuid, r]))
+  let sent = 0
+  let failed = 0
+  let retried = 0
+
+  const retry = async (cur: OutboxEntry) => {
+    await db.outbox.update(cur.op_uuid, { state: 'pendente', attempts: cur.attempts + 1 })
+    retried++
+  }
+  const terminal = async (cur: OutboxEntry, msg: string) => {
+    await db.outbox.update(cur.op_uuid, { state: 'erro', error: msg })
+    await markRecord(cur, 'erro', msg)
+  }
+
+  for (const e of batch) {
+    // Reler: o idmap acima pode ter reescrito `ref`/payload desta entrada.
+    const cur = (await db.outbox.get(e.op_uuid)) ?? e
+    const r = byUuid.get(e.op_uuid)
+    if (!r) {
+      await retry(cur)
+      failed++
+    } else if (r.state === 'done') {
+      await db.outbox.delete(e.op_uuid)
+      // Registro só volta a 'ok' se não restar outra op pendente sobre ele.
+      const restante = (await db.outbox.toArray()).some((o) => String(o.ref) === String(cur.ref))
+      if (!restante) await markRecord(cur, 'ok', undefined)
+      sent++
+    } else {
+      const msg = r.error || 'erro'
+      failed++
+      if (!msg.includes(DEP_FAILED)) {
+        await terminal(cur, msg)
+      } else if (await dependsOnErroneous(cur)) {
+        await terminal(cur, DEP_ERRO_MSG)
+      } else if (cur.attempts + 1 >= MAX_ATTEMPTS) {
+        await terminal(cur, msg)
+      } else {
+        await retry(cur)
+      }
+    }
+  }
+  return { sent, failed, retried }
 }

@@ -28,8 +28,10 @@ export function startSurveySync(opts: SurveySyncOptions): { stop(): void; kick()
       const pending = await db.outbox.where('state').equals('pendente').count()
       if (stopped || pending === 0) return
       const r = await drain(opts.push)
-      if (stopped) return
-      if (r.failed > 0 && r.sent === 0) {
+      if (stopped || r.skipped) return
+      // Só falha transitória (voltou a pendente) conta para o backoff; `erro`
+      // terminal é resposta do servidor e não indica problema de conexão.
+      if ((r.retried ?? 0) > 0 && r.sent === 0) {
         failures += 1
         nextAllowed = Date.now() + backoffMs(failures)
       } else {

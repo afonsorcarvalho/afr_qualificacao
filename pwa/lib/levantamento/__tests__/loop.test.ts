@@ -71,4 +71,23 @@ describe('startSurveySync', () => {
     await vi.advanceTimersByTimeAsync(5000)
     expect(push).not.toHaveBeenCalled()
   })
+
+  it('terminal erro does not bump backoff', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:a', payload: {} })
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:b', payload: {} })
+    const push = vi.fn(async (ops: { op_uuid: string }[]): Promise<PushResponse> => ({
+      results: ops.map((o) => ({ op_uuid: o.op_uuid, state: 'error', id: false, error: 'inválido' })),
+      idmap: {},
+    }))
+    const h = startSurveySync({ push, intervalMs: 1000 })
+    await vi.waitFor(async () => {
+      expect(await db.outbox.where('state').equals('erro').count()).toBe(2)
+    })
+    await new Promise((r) => setTimeout(r, 20)) // let the tick finish (running=false)
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: {} })
+    await vi.advanceTimersByTimeAsync(1100)
+    await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(2))
+    h.stop()
+  })
 })

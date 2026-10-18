@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db'
 import { backoffMs, drain, enqueue, type PushResponse, type SurveyOp } from '../engine'
 
@@ -44,7 +44,7 @@ describe('drain', () => {
     const r = await drain(push)
     expect(sizes).toEqual([50])
     expect(first.map((o) => o.payload.i)).toEqual(Array.from({ length: 50 }, (_, i) => i))
-    expect(r).toEqual({ sent: 50, failed: 0 })
+    expect(r).toMatchObject({ sent: 50, failed: 0 })
     expect(await db.outbox.count()).toBe(5)
   })
 
@@ -56,14 +56,8 @@ describe('drain', () => {
     const photo = await enqueue({
       kind: 'photo.add', ref: 'tmp:ph', payload: { equipment_id: 'tmp:e', cycle_id: 'tmp:c' },
     })
-    const push = vi.fn(async (ops: SurveyOp[]): Promise<PushResponse> => ({
-      results: [ok(ops[0], 42)], idmap: { 'tmp:e': 42 },
-    }))
-    // only the equipment op is sent in first call? send both: respond only to first
-    await drain(async (ops) => {
-      const res = await push(ops.slice(0, 1))
-      return res
-    })
+    // backend answers only for the equipment op; the photo op stays pending
+    await drain(async (ops) => ({ results: [ok(ops[0], 42)], idmap: { 'tmp:e': 42 } }))
     const e = await db.equipments.get('42')
     expect(e).toBeTruthy()
     expect(e!.id).toBe(42)
@@ -94,7 +88,7 @@ describe('drain', () => {
       results: [{ op_uuid: ops[0].op_uuid, state: 'error', id: false, error: 'Campo inválido' }],
       idmap: {},
     }))
-    expect(r).toEqual({ sent: 0, failed: 1 })
+    expect(r).toMatchObject({ sent: 0, failed: 1, retried: 0 })
     const entry = await db.outbox.get(id)
     expect(entry!.state).toBe('erro')
     expect(entry!.error).toBe('Campo inválido')
@@ -157,5 +151,104 @@ describe('drain', () => {
     const e = await db.outbox.get(a)
     expect(e!.state).toBe('pendente')
     expect(e!.attempts).toBe(1)
+  })
+
+  it('rewrites partnerKey and photo.cycleKey', async () => {
+    await db.partners.put({ key: 'tmp:p', sync: 'pendente' })
+    await db.equipments.put({ key: 'tmp:e', partnerKey: 'tmp:p', sync: 'pendente' })
+    await db.cycles.put({ key: 'tmp:c', equipmentKey: 'tmp:e', sync: 'pendente' })
+    await db.photos.put({ key: 'tmp:ph', equipmentKey: 'tmp:e', cycleKey: 'tmp:c', blob: new Blob(['x']), sync: 'pendente' })
+    await enqueue({ kind: 'partner.create', ref: 'tmp:p', payload: {} })
+    await drain(async (ops) => ({ results: [ok(ops[0], 5)], idmap: { 'tmp:p': 5, 'tmp:c': 8 } }))
+    expect((await db.equipments.get('tmp:e'))!.partnerKey).toBe('5')
+    expect((await db.photos.get('tmp:ph'))!.cycleKey).toBe('8')
+    expect((await db.cycles.get('8'))!.id).toBe(8)
+  })
+
+  it('replay: already-rewritten ref with idempotent response is consistent', async () => {
+    await db.equipments.put({ key: '42', id: 42, partnerKey: '1', sync: 'pendente' })
+    const id = await enqueue({ kind: 'equipment.upsert', ref: 42, payload: {} })
+    await drain(async (ops) => ({ results: [ok(ops[0], 42)], idmap: { 'tmp:e': 42 } }))
+    expect(await db.outbox.get(id)).toBeUndefined()
+    expect((await db.equipments.get('42'))!.sync).toBe('ok')
+  })
+
+  it('applyIdMap failure returns entries to pendente and rolls back', async () => {
+    await db.equipments.put({ key: 'tmp:e', partnerKey: '1', sync: 'pendente' })
+    const id = await enqueue({ kind: 'equipment.upsert', ref: 'tmp:e', payload: {} })
+    const spy = vi.spyOn(db.idmap, 'put').mockRejectedValueOnce(new Error('boom'))
+    const r = await drain(async (ops) => ({ results: [ok(ops[0], 42)], idmap: { 'tmp:e': 42 } }))
+    spy.mockRestore()
+    expect(r.failed).toBe(1)
+    const e = await db.outbox.get(id)
+    expect(e!.state).toBe('pendente')
+    expect(e!.attempts).toBe(1)
+    expect(await db.equipments.get('tmp:e')).toBeTruthy()
+    expect(await db.equipments.get('42')).toBeUndefined()
+  })
+
+  it('atomic: no record left pendente without outbox entry after done', async () => {
+    await db.equipments.put({ key: 'tmp:e', partnerKey: '1', sync: 'pendente' })
+    await enqueue({ kind: 'equipment.upsert', ref: 'tmp:e', payload: {} })
+    await drain(async (ops) => ({ results: [ok(ops[0], 42)], idmap: { 'tmp:e': 42 } }))
+    const orphans = (await db.equipments.toArray()).filter((r) => r.sync === 'pendente')
+    expect(orphans.length === 0 || (await db.outbox.count()) > 0).toBe(true)
+    expect(orphans).toEqual([])
+  })
+
+  it('error on later op of a record created in the same batch marks rewritten key', async () => {
+    await db.equipments.put({ key: 'tmp:e', partnerKey: '1', sync: 'pendente' })
+    await enqueue({ kind: 'equipment.upsert', ref: 'tmp:e', payload: {} })
+    const edit = await enqueue({ kind: 'equipment.upsert', ref: 'tmp:e', payload: { x: 1 } })
+    await drain(async (ops) => ({
+      results: [ok(ops[0], 42), { op_uuid: ops[1].op_uuid, state: 'error', id: false, error: 'inválido' }],
+      idmap: { 'tmp:e': 42 },
+    }))
+    const rec = await db.equipments.get('42')
+    expect(rec!.sync).toBe('erro')
+    expect(rec!.syncError).toBe('inválido')
+    expect((await db.outbox.get(edit))!.state).toBe('erro')
+  })
+
+  it('dependency failure whose creator is in erro becomes erro (no starvation)', async () => {
+    await db.equipments.put({ key: 'tmp:e', partnerKey: '1', sync: 'pendente' })
+    await db.cycles.put({ key: 'tmp:c', equipmentKey: 'tmp:e', sync: 'pendente' })
+    await enqueue({ kind: 'equipment.upsert', ref: 'tmp:e', payload: {} })
+    const dep = await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: { equipment_id: 'tmp:e' } })
+    await drain(async (ops) => ({
+      results: [
+        { op_uuid: ops[0].op_uuid, state: 'error', id: false, error: 'inválido' },
+        { op_uuid: ops[1].op_uuid, state: 'error', id: false, error: 'dependência falhou' },
+      ],
+      idmap: {},
+    }))
+    const e = await db.outbox.get(dep)
+    expect(e!.state).toBe('erro')
+    expect(e!.error).toBe('depende de registro com erro')
+    expect((await db.cycles.get('tmp:c'))!.sync).toBe('erro')
+  })
+
+  it('dependency failure becomes erro at attempts cap', async () => {
+    const id = await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: {} })
+    await db.outbox.update(id, { attempts: 19 })
+    await drain(async (ops) => ({
+      results: [{ op_uuid: ops[0].op_uuid, state: 'error', id: false, error: 'dependência falhou' }],
+      idmap: {},
+    }))
+    expect((await db.outbox.get(id))!.state).toBe('erro')
+  })
+
+  it('terminal erro/done without a local record does not abort the transaction', async () => {
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:a', payload: {} })
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:b', payload: {} })
+    const r = await drain(async (ops) => ({
+      results: [
+        { op_uuid: ops[0].op_uuid, state: 'error', id: false, error: 'inválido' },
+        ok(ops[1], 3),
+      ],
+      idmap: {},
+    }))
+    expect(r).toMatchObject({ sent: 1, failed: 1, retried: 0 })
+    expect(await db.outbox.count()).toBe(1)
   })
 })
