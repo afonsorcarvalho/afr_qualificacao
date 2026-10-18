@@ -1,0 +1,74 @@
+import 'fake-indexeddb/auto'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { db } from '../db'
+import { enqueue, type PushResponse } from '../engine'
+import { startSurveySync } from '../loop'
+
+beforeEach(async () => {
+  await Promise.all(db.tables.map((t) => t.clear()))
+})
+afterEach(() => vi.useRealTimers())
+
+const okPush = () =>
+  vi.fn(async (ops: { op_uuid: string }[]): Promise<PushResponse> => ({
+    results: ops.map((o) => ({ op_uuid: o.op_uuid, state: 'done', id: 1, error: false })),
+    idmap: {},
+  }))
+
+describe('startSurveySync', () => {
+  it('loop_resets_enviando_on_start', async () => {
+    const id = await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: {} })
+    await db.outbox.update(id, { state: 'enviando' })
+    const push = vi.fn(async () => { throw new Error('offline') })
+    const h = startSurveySync({ push, intervalMs: 1_000_000 })
+    await vi.waitFor(async () => {
+      expect((await db.outbox.get(id))!.state).toBe('pendente')
+    })
+    h.stop()
+  })
+
+  it('drains pending on start and on kick', async () => {
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: {} })
+    const push = okPush()
+    const h = startSurveySync({ push, intervalMs: 1_000_000 })
+    await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(1))
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:d', payload: {} })
+    h.kick()
+    await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(2))
+    h.stop()
+  })
+
+  it('does not call push when nothing is pending', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    const push = okPush()
+    const h = startSurveySync({ push, intervalMs: 1000 })
+    await vi.advanceTimersByTimeAsync(3500)
+    expect(push).not.toHaveBeenCalled()
+    h.stop()
+  })
+
+  it('interval retries pending, honoring backoff after a failure', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: {} })
+    const push = vi.fn(async () => { throw new Error('offline') })
+    const h = startSurveySync({ push, intervalMs: 1000 })
+    await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(1))
+    // backoff after 1 failure = 4000ms; ticks at 1s,2s,3s are skipped
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(push).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2000)
+    await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(2))
+    h.stop()
+  })
+
+  it('stop halts further runs', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] })
+    const push = okPush()
+    const h = startSurveySync({ push, intervalMs: 1000 })
+    h.stop()
+    await enqueue({ kind: 'cycle.upsert', ref: 'tmp:c', payload: {} })
+    h.kick()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(push).not.toHaveBeenCalled()
+  })
+})
