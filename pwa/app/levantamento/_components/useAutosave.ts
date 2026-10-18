@@ -1,0 +1,64 @@
+'use client'
+import { useCallback, useEffect, useRef } from 'react'
+
+const DEBOUNCE_MS = 500
+
+/**
+ * Autosave com debounce por campo e saves SERIALIZADOS por formulário.
+ *
+ * Cada campo tem seu timer (500 ms); ao disparar, o save entra numa fila de
+ * promessas — nunca há dois saves em voo no mesmo formulário. Isso garante que
+ * o segundo save já enxergue a chave devolvida pelo primeiro (sem criar dois
+ * registros `tmp:` para "novo"). Ao desmontar, os campos pendentes são
+ * enviados na hora (não se perde edição de quem sai da tela em < 500 ms).
+ *
+ * `save(changed)` recebe só o(s) campo(s) alterado(s).
+ */
+export function useAutosave(save: (changed: Record<string, unknown>) => Promise<unknown>) {
+  const saveRef = useRef(save)
+  saveRef.current = save
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const pending = useRef(new Map<string, unknown>())
+
+  /** Entra na fila serial; erros não travam a fila. */
+  const enqueue = useCallback(<T,>(job: () => Promise<T>): Promise<T> => {
+    const run = queue.current.then(job, job)
+    queue.current = run.catch(() => undefined)
+    return run
+  }, [])
+
+  const fire = useCallback(
+    (field: string) => {
+      const t = timers.current.get(field)
+      if (t) clearTimeout(t)
+      timers.current.delete(field)
+      if (!pending.current.has(field)) return
+      const value = pending.current.get(field)
+      pending.current.delete(field)
+      void enqueue(() => saveRef.current({ [field]: value })).catch(() => undefined)
+    },
+    [enqueue],
+  )
+
+  const edit = useCallback(
+    (field: string, value: unknown) => {
+      pending.current.set(field, value)
+      const t = timers.current.get(field)
+      if (t) clearTimeout(t)
+      timers.current.set(field, setTimeout(() => fire(field), DEBOUNCE_MS))
+    },
+    [fire],
+  )
+
+  useEffect(() => {
+    const t = timers.current
+    const p = pending.current
+    return () => {
+      for (const field of Array.from(p.keys())) fire(field)
+      t.clear()
+    }
+  }, [fire])
+
+  return { edit, enqueue }
+}
