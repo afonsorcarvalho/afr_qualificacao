@@ -1,6 +1,14 @@
 import { db } from './db'
 import { backoffMs, drain, type PushFn } from './engine'
 
+// Uma vez por carga de página: remontar o provider não pode devolver a
+// 'pendente' entradas que o loop anterior ainda está enviando.
+let bootResetDone = false
+/** Só para testes: simula uma página recém-carregada. */
+export function _resetBootFlagForTests() {
+  bootResetDone = false
+}
+
 export interface SurveySyncOptions {
   push: PushFn
   intervalMs?: number
@@ -55,12 +63,15 @@ export function startSurveySync(opts: SurveySyncOptions): { stop(): void; kick()
   }
 
   // Entradas 'enviando' sobraram de um app fechado no meio do envio.
-  const ready = db.outbox
-    .where('state')
-    .equals('enviando')
-    .modify({ state: 'pendente' })
-    .catch(() => 0)
-    .then(() => tick(true))
+  const ready = bootResetDone
+    ? tick(true)
+    : ((bootResetDone = true),
+      db.outbox
+        .where('state')
+        .equals('enviando')
+        .modify({ state: 'pendente' })
+        .catch(() => 0)
+        .then(() => tick(true)))
 
   const id = setInterval(() => void tick(false), intervalMs)
   if (typeof window !== 'undefined') window.addEventListener('online', onOnline)

@@ -1,26 +1,18 @@
 'use client'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { Ruler } from 'lucide-react'
 import { NavProgressBar, NavProgressProvider } from '@/components/providers/NavProgress'
 import { TecnicoNav } from '@/app/tecnico/qualificacao/_components/TecnicoNav'
-import { push } from '@/lib/odoo/levantamento'
-import { startSurveySync } from '@/lib/levantamento/loop'
 import { SURVEY_GROUP } from '@/lib/levantamento/constants'
 import { useHasGroup } from '@/lib/hooks/useHasGroup'
 
 /**
- * Casca do levantamento de campo. Dono do loop de sincronização (uma vez por
- * montagem) e do pedido de armazenamento persistente: no iOS o IndexedDB pode
- * ser despejado, e o que está na outbox é trabalho de campo ainda não enviado.
+ * Casca do levantamento de campo. O loop de sync e o pedido de storage
+ * persistente moram em `SurveySyncProvider` (app inteiro), para a fila esvaziar
+ * mesmo fora destas telas.
  */
 export default function LevantamentoLayout({ children }: { children: ReactNode }) {
   const temGrupo = useHasGroup(SURVEY_GROUP)
-
-  useEffect(() => {
-    void navigator.storage?.persist?.()
-    const sync = startSurveySync({ push })
-    return () => sync.stop()
-  }, [])
 
   return (
     <NavProgressProvider>

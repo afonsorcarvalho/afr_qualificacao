@@ -2,7 +2,7 @@
 /// <reference types="@testing-library/jest-dom" />
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 const pullPartners = vi.fn()
 const downloadPartner = vi.fn()
@@ -22,6 +22,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 import { db } from '@/lib/levantamento/db'
+import { emitSyncTick } from '@/lib/levantamento/events'
 import ClientesPage from '../page'
 
 const VALID = '11.222.333/0001-81'
@@ -126,5 +127,50 @@ describe('ClientesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
     expect(await screen.findByText('Informe o nome')).toBeInTheDocument()
     expect(createPartner).not.toHaveBeenCalled()
+  })
+
+  it('novo cliente: CNPJ vazio também bloqueia (obrigatório)', async () => {
+    render(<ClientesPage />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Cliente novo' }))
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'Novo Ltda' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(await screen.findByText('CNPJ inválido')).toBeInTheDocument()
+    expect(createPartner).not.toHaveBeenCalled()
+  })
+
+  it('novo cliente: falha em createPartner mostra erro e mantém a folha aberta', async () => {
+    createPartner.mockRejectedValue(new Error('idb'))
+    render(<ClientesPage />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Cliente novo' }))
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: 'Novo Ltda' } })
+    fireEvent.change(screen.getByLabelText('CNPJ'), { target: { value: VALID } })
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Não foi possível salvar/)
+    expect(screen.getByLabelText('Nome')).toHaveValue('Novo Ltda')
+  })
+
+  it('banner no singular', async () => {
+    pendingCount.mockResolvedValue(1)
+    render(<ClientesPage />)
+    expect(await screen.findByText('1 alteração aguardando sinal')).toBeInTheDocument()
+  })
+
+  it('falha do servidor mantém a última lista remota', async () => {
+    pullPartners.mockResolvedValueOnce({ records: [{ id: 9, name: 'Remoto Gama', vat: false, city: false }], total: 1 })
+    render(<ClientesPage />)
+    expect(await screen.findByText('Remoto Gama')).toBeInTheDocument()
+    pullPartners.mockRejectedValue(new Error('offline'))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Gama' } })
+    await waitFor(() => expect(pullPartners).toHaveBeenCalledTimes(2))
+    expect(screen.getByText('Remoto Gama')).toBeInTheDocument()
+  })
+
+  it('recarrega os locais quando o sync em segundo plano avisa', async () => {
+    render(<ClientesPage />)
+    await waitFor(() => expect(pendingCount).toHaveBeenCalled())
+    expect(screen.queryByText('Tardio')).toBeNull()
+    await db.partners.put({ key: '5', id: 5, name: 'Tardio', sync: 'ok', offline: true })
+    act(() => emitSyncTick())
+    expect(await screen.findByText('Tardio')).toBeInTheDocument()
   })
 })

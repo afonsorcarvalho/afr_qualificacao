@@ -78,8 +78,13 @@ export const useAuthStore = create<AuthState>()(
           set({ dbName })
         },
 
+        // Outro usuário no mesmo aparelho (sem logout) não herda os grupos.
         setUser: (userId, userName) =>
-          set({ userId, userName, isAuthenticated: true }),
+          set(
+            get().userId !== null && get().userId !== userId
+              ? { userId, userName, isAuthenticated: true, groups: {} }
+              : { userId, userName, isAuthenticated: true },
+          ),
 
         setCompany: (companyId, companyName, companyLogo) =>
           set({ companyId, companyName, companyLogo }),

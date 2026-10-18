@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { db } from '@/lib/levantamento/db'
 import { downloadPartner } from '@/lib/levantamento/repo'
 import { onlyDigits } from '@/lib/levantamento/cnpj'
+import { onSyncTick } from '@/lib/levantamento/events'
 import { pullPartners } from '@/lib/odoo/levantamento'
 import { ClienteNovoSheet } from './_components/ClienteNovoSheet'
 import { ClienteRow, type ClienteItem } from './_components/ClienteRow'
@@ -46,6 +47,8 @@ export default function ClientesPage() {
 
   useEffect(() => {
     void recarregarLocais()
+    // Sync em segundo plano muda sync/ids dos registros locais.
+    return onSyncTick(() => void recarregarLocais())
   }, [recarregarLocais])
 
   // Busca no servidor com debounce. Falha (offline) só deixa a lista local.
@@ -67,7 +70,7 @@ export default function ClientesPage() {
             })),
           )
         })
-        .catch(() => vivo && setRemotos([]))
+        .catch(() => {}) // mantém a última lista remota
     }, 300)
     return () => {
       vivo = false

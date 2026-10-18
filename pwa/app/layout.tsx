@@ -7,6 +7,7 @@ import { ErrorReporter } from '@/components/providers/ErrorReporter'
 import { AuthGuard } from '@/components/providers/AuthGuard'
 import { PageTitle } from '@/components/providers/PageTitle'
 import { ServiceWorkerRegister } from '@/components/providers/ServiceWorkerRegister'
+import { SurveySyncProvider } from '@/components/providers/SurveySyncProvider'
 import './globals.css'
 
 const geistSans = localFont({
@@ -48,7 +49,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 profundidade vem da escada tonal das superfícies. */}
 
             <PageTitle />
-            <AuthGuard>{children}</AuthGuard>
+            <AuthGuard>
+              <SurveySyncProvider />
+              {children}
+            </AuthGuard>
 
             <Toaster
               position="bottom-right"

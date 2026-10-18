@@ -47,4 +47,12 @@ describe('useHasGroup', () => {
     useAuthStore.getState().logout()
     expect(useAuthStore.getState().groups).toEqual({})
   })
+
+  it('trocar de usuário sem logout descarta o cache de grupos', () => {
+    useAuthStore.setState({ userId: 1, groups: { [G]: true } })
+    useAuthStore.getState().setUser(1, 'a')
+    expect(useAuthStore.getState().groups[G]).toBe(true)
+    useAuthStore.getState().setUser(2, 'b')
+    expect(useAuthStore.getState().groups).toEqual({})
+  })
 })

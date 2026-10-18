@@ -26,20 +26,21 @@ export function ClienteNovoSheet({
   const [erroNome, setErroNome] = useState(false)
   const [erroCnpj, setErroCnpj] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState(false)
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
     const nome = name.trim()
     const nomeRuim = !nome
-    // CNPJ é opcional (nem todo cliente tem em mãos), mas se digitado tem de fechar.
-    const cnpjRuim = onlyDigits(vat).length > 0 && !isValidCnpj(vat)
+    // CNPJ obrigatório: é a chave de merge no servidor.
+    const cnpjRuim = !isValidCnpj(vat)
     setErroNome(nomeRuim)
     setErroCnpj(cnpjRuim)
     if (nomeRuim || cnpjRuim) return
+    setErroSalvar(false)
     setSalvando(true)
     try {
-      const input: Parameters<typeof createPartner>[0] = { name: nome }
-      if (vat) input.vat = maskCnpj(vat)
+      const input: Parameters<typeof createPartner>[0] = { name: nome, vat: maskCnpj(vat) }
       if (city.trim()) input.city = city.trim()
       if (contactName.trim()) input.contact_name = contactName.trim()
       if (contactPhone.trim()) input.contact_phone = contactPhone.trim()
@@ -47,6 +48,8 @@ export function ClienteNovoSheet({
       setName(''); setVat(''); setCity(''); setContactName(''); setContactPhone('')
       onCreated(key)
       onClose()
+    } catch {
+      setErroSalvar(true)
     } finally {
       setSalvando(false)
     }
@@ -95,6 +98,11 @@ export function ClienteNovoSheet({
             onChange={(e) => setContactPhone(e.target.value)}
           />
         </label>
+        {erroSalvar && (
+          <p role="alert" className="text-sm text-danger">
+            Não foi possível salvar o cliente. Tente de novo.
+          </p>
+        )}
         <Button type="submit" className="min-h-[44px] w-full" loading={salvando}>
           Salvar
         </Button>
