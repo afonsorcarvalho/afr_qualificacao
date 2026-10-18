@@ -6,6 +6,7 @@ import type { LocalCycle, LocalPhoto } from '@/lib/levantamento/db'
 import { CampoSelect, CampoTexto } from './Campo'
 import { FotoStrip } from './FotoStrip'
 import { useAutosave } from './useAutosave'
+import { SyncErrorBadge } from './SyncErrorBadge'
 import type { Catalog } from './catalog'
 
 /** Um ciclo usado: tipo, temperatura, duração, carga, nota e foto da tela do programa. */
@@ -27,6 +28,7 @@ export function CicloEditor({
   const { edit } = useAutosave(
     (changed) => saveCycle(cycle.key, equipmentKey, changed),
     (e) => setErro(e instanceof Error ? e.message : 'Falha ao salvar o ciclo'),
+    () => setErro(''),
   )
 
   const set = (campo: string, valor: unknown) => {
@@ -49,6 +51,9 @@ export function CicloEditor({
           <Trash2 className="h-4 w-4" aria-hidden />
         </button>
       </div>
+      {cycle.sync === 'erro' && (
+        <SyncErrorBadge error={cycle.syncError} recordKey={cycle.key} recordKind="cycle" />
+      )}
       {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
       <CampoSelect
         label="Tipo de ciclo"

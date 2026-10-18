@@ -1,12 +1,13 @@
-import { db } from './db'
+import { getDb, type LevantamentoDB } from './db'
 import { backoffMs, drain, type PushFn } from './engine'
 
 // Uma vez por carga de página: remontar o provider não pode devolver a
 // 'pendente' entradas que o loop anterior ainda está enviando.
-let bootResetDone = false
+// Por banco (sessão): cada um tem suas entradas 'enviando' órfãs.
+const bootResetDone = new Set<string>()
 /** Só para testes: simula uma página recém-carregada. */
 export function _resetBootFlagForTests() {
-  bootResetDone = false
+  bootResetDone.clear()
 }
 
 export interface SurveySyncOptions {
@@ -14,6 +15,8 @@ export interface SurveySyncOptions {
   intervalMs?: number
   /** Chamado após cada ciclo que enviou algo ou falhou. */
   onTick?: (r: { sent: number; failed: number; authError?: boolean }) => void
+  /** Banco da sessão; padrão = o da sessão corrente no momento do start. */
+  db?: LevantamentoDB
 }
 
 /**
@@ -23,6 +26,8 @@ export interface SurveySyncOptions {
  */
 export function startSurveySync(opts: SurveySyncOptions): { stop(): void; kick(): void } {
   const intervalMs = opts.intervalMs ?? 15_000
+  // Fixo durante a vida do loop: troca de sessão = parar e iniciar outro.
+  const db = opts.db ?? getDb()
   let stopped = false
   let running = false
   let failures = 0
@@ -35,7 +40,7 @@ export function startSurveySync(opts: SurveySyncOptions): { stop(): void; kick()
     try {
       const pending = await db.outbox.where('state').equals('pendente').count()
       if (stopped || pending === 0) return
-      const r = await drain(opts.push)
+      const r = await drain(opts.push, db)
       if (stopped || r.skipped) return
       // Só falha transitória (voltou a pendente) conta para o backoff; `erro`
       // terminal é resposta do servidor e não indica problema de conexão.
@@ -63,9 +68,9 @@ export function startSurveySync(opts: SurveySyncOptions): { stop(): void; kick()
   }
 
   // Entradas 'enviando' sobraram de um app fechado no meio do envio.
-  const ready = bootResetDone
+  const ready = bootResetDone.has(db.name)
     ? tick(true)
-    : ((bootResetDone = true),
+    : (bootResetDone.add(db.name),
       db.outbox
         .where('state')
         .equals('enviando')

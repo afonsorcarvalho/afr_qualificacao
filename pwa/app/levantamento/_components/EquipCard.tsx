@@ -56,7 +56,7 @@ export function EquipCard({ clienteKey, eq }: { clienteKey: string; eq: EquipCar
           )}
         </GlassCard>
       </PendingLink>
-      {eq.sync === 'erro' && <SyncErrorBadge error={eq.syncError} />}
+      {eq.sync === 'erro' && <SyncErrorBadge error={eq.syncError} recordKey={eq.key} recordKind="equipment" />}
     </li>
   )
 }

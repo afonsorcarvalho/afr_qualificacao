@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import 'fake-indexeddb/auto'
+import { act, render } from '@testing-library/react'
 
 const stop = vi.fn()
 const startSurveySync = vi.fn((_o: unknown) => ({ stop, kick: vi.fn() }))
 vi.mock('@/lib/levantamento/loop', () => ({ startSurveySync: (o: unknown) => startSurveySync(o) }))
+let pathname = '/levantamento'
+vi.mock('next/navigation', () => ({ usePathname: () => pathname }))
 const hasGroup = vi.fn()
 vi.mock('@/lib/odoo/levantamento', () => ({ push: vi.fn(), hasGroup: (...a: unknown[]) => hasGroup(...a) }))
 
@@ -19,7 +22,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   hasGroup.mockResolvedValue(true)
   Object.defineProperty(navigator, 'storage', { value: { persist }, configurable: true })
-  useAuthStore.setState({ isAuthenticated: true, groups: { [G]: true } })
+  pathname = '/levantamento'
+  useAuthStore.setState({ isAuthenticated: true, groups: { [G]: true }, serverUrl: 'https://s', dbName: 'd', userId: 1 })
 })
 
 describe('SurveySyncProvider', () => {
@@ -53,5 +57,34 @@ describe('SurveySyncProvider', () => {
   it('persist que rejeita não estoura', () => {
     persist.mockRejectedValueOnce(new Error('x'))
     expect(() => render(<SurveySyncProvider />)).not.toThrow()
+  })
+
+  it('não inicia em /login', () => {
+    pathname = '/login'
+    render(<SurveySyncProvider />)
+    expect(startSurveySync).not.toHaveBeenCalled()
+  })
+
+  it('reinicia no banco do novo usuário ao trocar de sessão', async () => {
+    const { openSurveyDb } = await import('@/lib/levantamento/db')
+    render(<SurveySyncProvider />)
+    expect(startSurveySync).toHaveBeenCalledTimes(1)
+    const db1 = (startSurveySync.mock.calls[0][0] as { db: { name: string } }).db
+    expect(db1.name).toBe(openSurveyDb('https://s|d|1').name)
+    act(() => useAuthStore.setState({ userId: 2, groups: { [G]: true } }))
+    expect(stop).toHaveBeenCalledTimes(1)
+    expect(startSurveySync).toHaveBeenCalledTimes(2)
+    const db2 = (startSurveySync.mock.calls[1][0] as { db: { name: string } }).db
+    expect(db2.name).toBe(openSurveyDb('https://s|d|2').name)
+    expect(db2.name).not.toBe(db1.name)
+  })
+
+  it('requestSync chama kick do loop', async () => {
+    const kick = vi.fn()
+    startSurveySync.mockReturnValueOnce({ stop, kick })
+    const { requestSync } = await import('@/lib/levantamento/events')
+    render(<SurveySyncProvider />)
+    requestSync()
+    expect(kick).toHaveBeenCalledTimes(1)
   })
 })

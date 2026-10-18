@@ -33,6 +33,13 @@ vi.mock('@/lib/odoo/client', () => {
   return { odooClient: falso, default: falso }
 })
 
+const pendingCount = vi.fn()
+const errorCount = vi.fn()
+vi.mock('@/lib/levantamento/repo', () => ({
+  pendingCount: () => pendingCount(),
+  errorCount: () => errorCount(),
+}))
+
 vi.mock('@/lib/odoo/companies', () => ({
   fetchAvailableCompanies: vi.fn().mockResolvedValue([]),
 }))
@@ -43,6 +50,8 @@ const wrap = (ui: React.ReactNode) => {
 }
 
 beforeEach(() => {
+  pendingCount.mockReset().mockResolvedValue(0)
+  errorCount.mockReset().mockResolvedValue(0)
   push.mockClear()
   replace.mockClear()
   vi.stubGlobal(
@@ -80,5 +89,30 @@ describe('sair da conta', () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalled())
     expect(useAuthStore.getState().userId).toBeFalsy()
+  })
+
+  it('com ops do levantamento não enviadas pede confirmação; cancelar não sai', async () => {
+    pendingCount.mockResolvedValue(2)
+    errorCount.mockResolvedValue(1)
+    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)
+    Object.defineProperty(window, 'confirm', { value: confirm, configurable: true, writable: true })
+    wrap(<PerfilPage />)
+    fireEvent.click(screen.getByRole('button', { name: /Sair/i }))
+    await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1))
+    expect(confirm.mock.calls[0][0]).toMatch(/2 aguardando envio, 1 com erro/)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(replace).not.toHaveBeenCalled()
+    expect(useAuthStore.getState().userId).toBe(7)
+    fireEvent.click(screen.getByRole('button', { name: /Sair/i }))
+    await waitFor(() => expect(replace).toHaveBeenCalled())
+  })
+
+  it('sem pendências não pergunta', async () => {
+    const confirm = vi.fn()
+    Object.defineProperty(window, 'confirm', { value: confirm, configurable: true, writable: true })
+    wrap(<PerfilPage />)
+    fireEvent.click(screen.getByRole('button', { name: /Sair/i }))
+    await waitFor(() => expect(replace).toHaveBeenCalled())
+    expect(confirm).not.toHaveBeenCalled()
   })
 })

@@ -11,14 +11,14 @@
  *  - Fotos baixadas guardam o THUMBNAIL (JPEG 128px) como `Blob` em `blob`,
  *    com `isThumb: true`. Fotos tiradas no aparelho guardam o JPEG comprimido
  *    (sem `isThumb`). Para exibir: `URL.createObjectURL(photo.blob)`.
- *  - Toda função que recebe uma chave a resolve antes por `db.idmap`
+ *  - Toda função que recebe uma chave a resolve antes por `getDb().idmap`
  *    (a UI pode ainda segurar `tmp:x` já reescrito pelo engine para o id real).
  *    As funções devolvem sempre a chave resolvida.
  *  - Nunca se faz `await` de algo que não seja Dexie dentro de transação:
  *    compressão e base64 acontecem antes.
  */
 import {
-  db,
+  getDb,
   type LocalCycle,
   type LocalEquipment,
   type LocalPartner,
@@ -50,12 +50,12 @@ const newTmp = () => `tmp:${crypto.randomUUID()}`
 const refOf = (key: string): string | number => (isTmp(key) ? key : Number(key))
 const isEmpty = (v: unknown) => v === undefined || v === null || v === false || v === ''
 
-const allTables = () => [db.partners, db.equipments, db.cycles, db.photos, db.outbox, db.idmap]
+const allTables = () => [getDb().partners, getDb().equipments, getDb().cycles, getDb().photos, getDb().outbox, getDb().idmap]
 
 /** `tmp:x` já reescrito pelo engine → id real (string); senão devolve a própria chave. */
 export async function resolveKey(key: string): Promise<string> {
   if (!isTmp(key)) return key
-  const m = await db.idmap.get(key)
+  const m = await getDb().idmap.get(key)
   return m ? String(m.id) : key
 }
 
@@ -68,7 +68,7 @@ export function missingRequired(equipment: Rec): string[] {
 }
 
 function opsFor(key: string): Promise<OutboxEntry[]> {
-  return db.outbox.where('ref').equals(refOf(key)).toArray()
+  return getDb().outbox.where('ref').equals(refOf(key)).toArray()
 }
 
 /**
@@ -80,7 +80,7 @@ async function coalesce(key: string, kind: SurveyOpKind, diff: Rec): Promise<boo
   const pend = (await opsFor(key)).filter((o) => o.kind === kind && o.state === 'pendente')
   if (!pend.length) return false
   const last = pend.reduce((a, b) => (b.createdAt > a.createdAt ? b : a))
-  await db.outbox.update(last.op_uuid, { payload: { ...last.payload, ...diff } })
+  await getDb().outbox.update(last.op_uuid, { payload: { ...last.payload, ...diff } })
   return true
 }
 /** O registro já existe no servidor ou tem op de criação na outbox? */
@@ -148,17 +148,17 @@ function b64ToBlob(b64: string): Blob {
 
 // --------------------------------------------------------------------- catálogo
 
-/** Baixa o catálogo e guarda cada chave em `db.catalog` (`{name, items}`). */
+/** Baixa o catálogo e guarda cada chave em `getDb().catalog` (`{name, items}`). */
 export async function refreshCatalog() {
   const cat = await pullCatalog()
-  await db.transaction('rw', db.catalog, async () => {
-    for (const [name, items] of Object.entries(cat)) await db.catalog.put({ name, items })
+  await getDb().transaction('rw', getDb().catalog, async () => {
+    for (const [name, items] of Object.entries(cat)) await getDb().catalog.put({ name, items })
   })
   return cat
 }
 /** Catálogo local como objeto `{categories, marcas, cycle_types, selections}`. */
 export async function loadCatalog(): Promise<Record<string, unknown>> {
-  const rows = await db.catalog.toArray()
+  const rows = await getDb().catalog.toArray()
   return Object.fromEntries(rows.map((r) => [r.name, r.items]))
 }
 
@@ -182,16 +182,16 @@ export async function downloadPartner(id: number): Promise<void> {
     for (const c of e.cycles ?? []) picsOf(c.pictures ?? [])
   }
 
-  await db.transaction('rw', allTables(), async () => {
-    const outbox = await db.outbox.toArray()
+  await getDb().transaction('rw', allTables(), async () => {
+    const outbox = await getDb().outbox.toArray()
     const delCycles = new Set(outbox.filter((o) => o.kind === 'cycle.delete').map((o) => String(o.ref)))
     const delPhotos = new Set(outbox.filter((o) => o.kind === 'photo.delete').map((o) => String(o.ref)))
     const canWrite = (r?: { sync: string }) => !r || r.sync === 'ok'
 
-    const prev = await db.partners.get(pKey)
+    const prev = await getDb().partners.get(pKey)
     if (canWrite(prev)) {
       const { id: pid, name, vat, city } = data.partner
-      await db.partners.put({ key: pKey, id: pid, name, vat: vat || undefined, city: city || undefined, sync: 'ok', offline: true })
+      await getDb().partners.put({ key: pKey, id: pid, name, vat: vat || undefined, city: city || undefined, sync: 'ok', offline: true })
     }
 
     const srvEq = new Set<string>()
@@ -201,9 +201,9 @@ export async function downloadPartner(id: number): Promise<void> {
     for (const e of data.equipments) {
       const eKey = String(e.id)
       srvEq.add(eKey)
-      if (canWrite(await db.equipments.get(eKey))) {
+      if (canWrite(await getDb().equipments.get(eKey))) {
         const { cycles: _c, pictures: _p, write_date, ...rest } = e
-        await db.equipments.put({
+        await getDb().equipments.put({
           ...splitM2o(rest, EQUIPMENT_M2O),
           key: eKey, id: e.id, partnerKey: pKey, base_write_date: write_date, sync: 'ok',
         } as LocalEquipment)
@@ -211,22 +211,22 @@ export async function downloadPartner(id: number): Promise<void> {
       const putPhoto = async (p: RemotePicture, cycleKey?: string) => {
         const k = String(p.id)
         srvPh.add(k)
-        if (delPhotos.has(k) || !canWrite(await db.photos.get(k))) return
+        if (delPhotos.has(k) || !canWrite(await getDb().photos.get(k))) return
         const rec: Rec = {
           key: k, id: p.id, equipmentKey: eKey, survey_kind: p.survey_kind, name: p.name,
           blob: thumbs.get(p.id)!, isThumb: true, sync: 'ok',
         }
         if (cycleKey) rec.cycleKey = cycleKey
-        await db.photos.put(rec as unknown as LocalPhoto)
+        await getDb().photos.put(rec as unknown as LocalPhoto)
       }
       for (const p of e.pictures ?? []) await putPhoto(p)
       for (const c of e.cycles ?? []) {
         const cKey = String(c.id)
         srvCyc.add(cKey)
         if (delCycles.has(cKey)) continue
-        if (canWrite(await db.cycles.get(cKey))) {
+        if (canWrite(await getDb().cycles.get(cKey))) {
           const { pictures: _pp, write_date, ...rest } = c
-          await db.cycles.put({
+          await getDb().cycles.put({
             ...splitM2o(rest, CYCLE_M2O),
             key: cKey, id: c.id, equipmentKey: eKey, base_write_date: write_date, sync: 'ok',
           } as LocalCycle)
@@ -237,18 +237,18 @@ export async function downloadPartner(id: number): Promise<void> {
 
     // Remoções: só o que é do servidor (id real) e está sincronizado.
     const synced = (r: { sync: string; id?: number }) => r.sync === 'ok' && r.id !== undefined
-    for (const eq of await db.equipments.where('partnerKey').equals(pKey).toArray()) {
+    for (const eq of await getDb().equipments.where('partnerKey').equals(pKey).toArray()) {
       const gone = synced(eq) && !srvEq.has(eq.key)
-      const cycles = await db.cycles.where('equipmentKey').equals(eq.key).toArray()
-      const photos = await db.photos.where('equipmentKey').equals(eq.key).toArray()
+      const cycles = await getDb().cycles.where('equipmentKey').equals(eq.key).toArray()
+      const photos = await getDb().photos.where('equipmentKey').equals(eq.key).toArray()
       for (const c of cycles) {
         if (synced(c) && (gone || !srvCyc.has(c.key))) {
-          await db.cycles.delete(c.key)
-          for (const ph of photos) if (ph.cycleKey === c.key && synced(ph)) await db.photos.delete(ph.key)
+          await getDb().cycles.delete(c.key)
+          for (const ph of photos) if (ph.cycleKey === c.key && synced(ph)) await getDb().photos.delete(ph.key)
         }
       }
-      for (const ph of photos) if (synced(ph) && (gone || !srvPh.has(ph.key))) await db.photos.delete(ph.key)
-      if (gone) await db.equipments.delete(eq.key)
+      for (const ph of photos) if (synced(ph) && (gone || !srvPh.has(ph.key))) await getDb().photos.delete(ph.key)
+      if (gone) await getDb().equipments.delete(eq.key)
     }
   })
 }
@@ -266,8 +266,8 @@ export interface NewPartnerInput {
 export async function createPartner(input: NewPartnerInput): Promise<string> {
   const key = newTmp()
   const payload = fullPayload(input as unknown as Rec, ['name', 'vat', 'city', 'contact_name', 'contact_phone'])
-  await db.transaction('rw', allTables(), async () => {
-    await db.partners.put({ key, name: input.name, vat: input.vat, city: input.city, sync: 'pendente' } as LocalPartner)
+  await getDb().transaction('rw', allTables(), async () => {
+    await getDb().partners.put({ key, name: input.name, vat: input.vat, city: input.city, sync: 'pendente' } as LocalPartner)
     await enqueue({ kind: 'partner.create', ref: key, payload })
   })
   return key
@@ -281,7 +281,7 @@ export async function createPartner(input: NewPartnerInput): Promise<string> {
  * `b64` = base64 pré-calculado das fotos (sem await não-Dexie aqui dentro).
  */
 async function flushChildren(ek: string, b64: Map<string, string>) {
-  const cycles = await db.cycles.where('equipmentKey').equals(ek).toArray()
+  const cycles = await getDb().cycles.where('equipmentKey').equals(ek).toArray()
   for (const c of cycles) {
     if ((await opsFor(c.key)).length) continue
     await enqueue({
@@ -289,7 +289,7 @@ async function flushChildren(ek: string, b64: Map<string, string>) {
       payload: { equipment_id: refOf(ek), ...fullPayload(c, CYCLE_FIELDS) },
     })
   }
-  const photos = await db.photos.where('equipmentKey').equals(ek).toArray()
+  const photos = await getDb().photos.where('equipmentKey').equals(ek).toArray()
   for (const p of photos) {
     if (p.isThumb || (await opsFor(p.key)).length) continue
     if (p.cycleKey && !(await isReady(p.cycleKey))) continue
@@ -307,7 +307,7 @@ function photoPayload(p: LocalPhoto, image_b64: string): Rec {
 
 async function photosB64(ek: string): Promise<Map<string, string>> {
   const out = new Map<string, string>()
-  for (const p of await db.photos.where('equipmentKey').equals(ek).toArray()) {
+  for (const p of await getDb().photos.where('equipmentKey').equals(ek).toArray()) {
     if (!p.isThumb) out.set(p.key, await blobToBase64(p.blob))
   }
   return out
@@ -330,14 +330,14 @@ export async function saveEquipment(key: string | null, partnerKey: string, chan
   const preK = key ? await resolveKey(key) : newTmp()
   const b64 = isTmp(preK) && !(await opsFor(preK)).length ? await photosB64(preK) : new Map<string, string>()
 
-  const k = await db.transaction('rw', allTables(), async () => {
+  const k = await getDb().transaction('rw', allTables(), async () => {
     const pKey = await resolveKey(partnerKey)
     const k = key ? await resolveKey(key) : preK
-    const existing = await db.equipments.get(k)
+    const existing = await getDb().equipments.get(k)
     if (key && !existing) throw new Error(`Equipamento ${k} não encontrado`)
     const diff = diffFields(existing, changed, EQUIPMENT_M2O)
     const merged = { ...(existing ?? { key: k, partnerKey: pKey }), ...diff, sync: 'pendente', syncError: undefined } as LocalEquipment
-    if (!existing || Object.keys(diff).length) await db.equipments.put(merged)
+    if (!existing || Object.keys(diff).length) await getDb().equipments.put(merged)
 
     const hasOp = (await opsFor(k)).length > 0
     if (!isTmp(k) || hasOp) {
@@ -367,15 +367,15 @@ export async function saveEquipment(key: string | null, partnerKey: string, chan
 async function releaseDeferredPhotos(ek: string): Promise<void> {
   if (!(await opsFor(ek)).length) return
   const orphans: LocalPhoto[] = []
-  for (const p of await db.photos.where('equipmentKey').equals(ek).toArray()) {
+  for (const p of await getDb().photos.where('equipmentKey').equals(ek).toArray()) {
     if (!p.isThumb && !(await opsFor(p.key)).length) orphans.push(p)
   }
   if (!orphans.length) return
   const b64 = new Map<string, string>()
   for (const p of orphans) b64.set(p.key, await blobToBase64(p.blob))
-  await db.transaction('rw', allTables(), async () => {
+  await getDb().transaction('rw', allTables(), async () => {
     for (const p of orphans) {
-      if (!(await db.photos.get(p.key)) || (await opsFor(p.key)).length) continue
+      if (!(await getDb().photos.get(p.key)) || (await opsFor(p.key)).length) continue
       if (p.cycleKey && !(await isReady(p.cycleKey))) continue
       await enqueue({ kind: 'photo.add', ref: refOf(p.key), payload: photoPayload(p, b64.get(p.key)!) })
     }
@@ -388,14 +388,14 @@ async function releaseDeferredPhotos(ek: string): Promise<void> {
 export async function saveCycle(key: string | null, equipmentKey: string, changed: Rec): Promise<string> {
   checkFields(changed, CYCLE_FIELDS)
   const newKey = newTmp()
-  return db.transaction('rw', allTables(), async () => {
+  return getDb().transaction('rw', allTables(), async () => {
     const ek = await resolveKey(equipmentKey)
     const k = key ? await resolveKey(key) : newKey
-    const existing = await db.cycles.get(k)
+    const existing = await getDb().cycles.get(k)
     if (key && !existing) throw new Error(`Ciclo ${k} não encontrado`)
     const diff = diffFields(existing, changed, CYCLE_M2O)
     const merged = { ...(existing ?? { key: k, equipmentKey: ek }), ...diff, sync: 'pendente', syncError: undefined } as LocalCycle
-    if (!existing || Object.keys(diff).length) await db.cycles.put(merged)
+    if (!existing || Object.keys(diff).length) await getDb().cycles.put(merged)
 
     const hasOp = (await opsFor(k)).length > 0
     if (!isTmp(k) || hasOp) {
@@ -422,7 +422,7 @@ export async function saveCycle(key: string | null, equipmentKey: string, change
 async function dropUnsent(key: string): Promise<boolean> {
   const ops = await opsFor(key)
   if (ops.some((o) => o.state === 'enviando')) return false
-  await db.outbox.bulkDelete(ops.map((o) => o.op_uuid))
+  await getDb().outbox.bulkDelete(ops.map((o) => o.op_uuid))
   return true
 }
 
@@ -437,22 +437,22 @@ async function removeRecord(key: string, deleteKind: SurveyOpKind, enqueueDelete
   } else {
     // upserts ainda não enviados perdem o sentido
     const ops = (await opsFor(key)).filter((o) => o.state === 'pendente' && o.kind !== deleteKind)
-    await db.outbox.bulkDelete(ops.map((o) => o.op_uuid))
+    await getDb().outbox.bulkDelete(ops.map((o) => o.op_uuid))
   }
   await enqueue({ kind: deleteKind, ref: refOf(key), payload: {} })
 }
 
 /** Remove o ciclo localmente já; fotos do ciclo saem junto (cascata local). */
 export async function deleteCycle(key: string): Promise<void> {
-  await db.transaction('rw', allTables(), async () => {
+  await getDb().transaction('rw', allTables(), async () => {
     const k = await resolveKey(key)
-    const cycle = await db.cycles.get(k)
+    const cycle = await getDb().cycles.get(k)
     if (!cycle) return
-    for (const p of await db.photos.where('cycleKey').equals(k).toArray()) {
-      await db.photos.delete(p.key)
+    for (const p of await getDb().photos.where('cycleKey').equals(k).toArray()) {
+      await getDb().photos.delete(p.key)
       await removeRecord(p.key, 'photo.delete', false)
     }
-    await db.cycles.delete(k)
+    await getDb().cycles.delete(k)
     await removeRecord(k, 'cycle.delete', true)
   })
 }
@@ -474,14 +474,14 @@ export async function addPhoto(
   const blob = opts?.precompressed ? file : await compressImage(file)
   const b64 = await blobToBase64(blob)
   const key = newTmp()
-  await db.transaction('rw', allTables(), async () => {
+  await getDb().transaction('rw', allTables(), async () => {
     const ek = await resolveKey(equipmentKey)
     const ck = cycleKey ? await resolveKey(cycleKey) : undefined
     const rec = {
       key, equipmentKey: ek, survey_kind: kind, blob, sync: 'pendente',
       ...(ck ? { cycleKey: ck } : {}),
     } as LocalPhoto
-    await db.photos.put(rec)
+    await getDb().photos.put(rec)
     if ((await isReady(ek)) && (!ck || (await isReady(ck)))) {
       await enqueue({ kind: 'photo.add', ref: key, payload: photoPayload(rec, b64) })
     }
@@ -490,10 +490,10 @@ export async function addPhoto(
 }
 
 export async function deletePhoto(key: string): Promise<void> {
-  await db.transaction('rw', allTables(), async () => {
+  await getDb().transaction('rw', allTables(), async () => {
     const k = await resolveKey(key)
-    if (!(await db.photos.get(k))) return
-    await db.photos.delete(k)
+    if (!(await getDb().photos.get(k))) return
+    await getDb().photos.delete(k)
     await removeRecord(k, 'photo.delete', true)
   })
 }
@@ -502,7 +502,136 @@ export async function deletePhoto(key: string): Promise<void> {
 
 /** Ops aguardando envio (pendente + enviando); `erro` fica fora. */
 export const pendingCount = (): Promise<number> =>
-  db.outbox.where('state').anyOf('pendente', 'enviando').count()
+  getDb().outbox.where('state').anyOf('pendente', 'enviando').count()
 
 /** Ops paradas em erro terminal (precisam de ação do usuário). */
-export const errorCount = (): Promise<number> => db.outbox.where('state').equals('erro').count()
+export const errorCount = (): Promise<number> => getDb().outbox.where('state').equals('erro').count()
+
+// ---------------------------------------------------------- recuperação de erro
+
+export type RecordKind = 'partner' | 'equipment' | 'cycle' | 'photo'
+type Kind = RecordKind
+interface Node {
+  kind: Kind
+  key: string
+}
+
+const tableOf = (kind: Kind) => {
+  const d = getDb()
+  return (
+    { partner: d.partners, equipment: d.equipments, cycle: d.cycles, photo: d.photos } as unknown as Record<
+      Kind,
+      import('dexie').Table<Rec & { key: string; sync: string }, string>
+    >
+  )[kind]
+}
+
+/** Acha em que tabela mora a chave (já resolvida). Id real é ambíguo entre modelos: prefira passar o tipo. */
+async function kindOf(key: string): Promise<Kind | undefined> {
+  for (const kind of ['partner', 'equipment', 'cycle', 'photo'] as Kind[]) {
+    if (await tableOf(kind).get(key)) return kind
+  }
+  return undefined
+}
+
+/** O registro e todos os seus dependentes locais (pais antes dos filhos). */
+async function withDependents(root: Node): Promise<Node[]> {
+  const d = getDb()
+  const out: Node[] = [root]
+  const seen = new Set<string>([`${root.kind}:${root.key}`])
+  const add = (n: Node) => {
+    const id = `${n.kind}:${n.key}`
+    if (!seen.has(id)) {
+      seen.add(id)
+      out.push(n)
+    }
+  }
+  for (let i = 0; i < out.length; i++) {
+    const n = out[i]
+    if (n.kind === 'partner') {
+      for (const e of await d.equipments.where('partnerKey').equals(n.key).toArray()) add({ kind: 'equipment', key: e.key })
+    } else if (n.kind === 'equipment') {
+      for (const c of await d.cycles.where('equipmentKey').equals(n.key).toArray()) add({ kind: 'cycle', key: c.key })
+      for (const p of await d.photos.where('equipmentKey').equals(n.key).toArray()) add({ kind: 'photo', key: p.key })
+    } else if (n.kind === 'cycle') {
+      for (const p of await d.photos.where('cycleKey').equals(n.key).toArray()) add({ kind: 'photo', key: p.key })
+    }
+  }
+  return out
+}
+
+/** Kinds de op que pertencem a cada tipo de registro (ref numérico se repete entre modelos). */
+const OP_KINDS: Record<Kind, SurveyOpKind[]> = {
+  partner: ['partner.create'],
+  equipment: ['equipment.upsert'],
+  cycle: ['cycle.upsert', 'cycle.delete'],
+  photo: ['photo.add', 'photo.delete'],
+}
+const opsOfNode = async (n: Node) => (await opsFor(n.key)).filter((o) => OP_KINDS[n.kind].includes(o.kind))
+
+const CREATE_KIND: Partial<Record<Kind, SurveyOpKind>> = {
+  partner: 'partner.create',
+  equipment: 'equipment.upsert',
+  cycle: 'cycle.upsert',
+}
+
+/** Payload completo de criação a partir do registro local atual. */
+function createPayload(kind: Kind, rec: Rec): Rec {
+  if (kind === 'partner') return fullPayload(rec, ['name', 'vat', 'city', 'contact_name', 'contact_phone'])
+  if (kind === 'equipment')
+    return { partner_id: refOf(rec.partnerKey as string), ...fullPayload(rec, EQUIPMENT_FIELDS) }
+  return { equipment_id: refOf(rec.equipmentKey as string), ...fullPayload(rec, CYCLE_FIELDS) }
+}
+
+/**
+ * "Reenviar": ops em `erro` do registro e dos seus dependentes voltam a
+ * `pendente` (attempts=0) e os registros a `sync: 'pendente'`. Se o registro
+ * é `tmp:` e a op que o cria falhou, o payload dela é refeito com o registro
+ * local COMPLETO (não um diff). Devolve quantas ops voltaram à fila.
+ */
+export async function retryRecord(key: string, recordKind?: RecordKind): Promise<number> {
+  const d = getDb()
+  return d.transaction('rw', allTables(), async () => {
+    const k = await resolveKey(key)
+    const kind = recordKind ?? (await kindOf(k))
+    if (!kind) return 0
+    let n = 0
+    for (const node of await withDependents({ kind, key: k })) {
+      const ops = (await opsOfNode(node)).sort((a, b) => a.createdAt - b.createdAt)
+      const erros = ops.filter((o) => o.state === 'erro')
+      if (!erros.length) continue
+      const rec = await tableOf(node.kind).get(node.key)
+      const create = isTmp(node.key) ? ops[0] : undefined
+      for (const o of erros) {
+        const patch: Partial<OutboxEntry> = { state: 'pendente', attempts: 0, error: undefined }
+        if (rec && create && o.op_uuid === create.op_uuid && o.kind === CREATE_KIND[node.kind]) {
+          patch.payload = { ...o.payload, ...createPayload(node.kind, rec) }
+        }
+        await d.outbox.update(o.op_uuid, patch)
+        n++
+      }
+      if (rec) await tableOf(node.kind).update(node.key, { sync: 'pendente', syncError: undefined })
+    }
+    return n
+  })
+}
+
+/**
+ * "Descartar": apaga o registro local, as ops dele na outbox e os dependentes
+ * (ciclos/fotos de um equipamento; equipamentos… de um cliente). Nada é
+ * enviado ao servidor — um registro já sincronizado volta no próximo download.
+ */
+export async function discardRecord(key: string, recordKind?: RecordKind): Promise<void> {
+  const d = getDb()
+  await d.transaction('rw', allTables(), async () => {
+    const k = await resolveKey(key)
+    const kind = recordKind ?? (await kindOf(k))
+    if (!kind) return
+    const nodes = await withDependents({ kind, key: k })
+    for (const node of nodes.reverse()) {
+      const ops = await opsOfNode(node)
+      await d.outbox.bulkDelete(ops.map((o) => o.op_uuid))
+      await tableOf(node.kind).delete(node.key)
+    }
+  })
+}

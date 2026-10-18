@@ -15,7 +15,7 @@ vi.mock('../photo', async (orig) => ({
 import { db } from '../db'
 import {
   addPhoto, createPartner, loadCatalog, refreshCatalog, deleteCycle, deletePhoto, downloadPartner, missingRequired,
-  pendingCount, saveCycle, saveEquipment,
+  pendingCount, saveCycle, saveEquipment, retryRecord, discardRecord,
 } from '../repo'
 
 beforeEach(async () => {
@@ -318,4 +318,82 @@ describe('catálogo', () => {
     expect(await db.catalog.count()).toBe(2)
     expect(await loadCatalog()).toEqual({ categories: [{ id: 1, name: 'A' }], selections: { load_type: [] } })
   })
+})
+
+describe('retryRecord / discardRecord', () => {
+  const failAll = async (msg: string) => {
+    await db.outbox.toCollection().modify({ state: 'erro', error: msg, attempts: 7 })
+  }
+
+  it('Reenviar: ops em erro do registro e dependentes voltam a pendente; create tmp refeito com o registro completo', async () => {
+    const pk = await createPartner({ name: 'Novo', vat: '1' })
+    const ek = await saveEquipment(null, pk, { category_id: 3, marca_id: 4, model: 'M' })
+    const ck = await saveCycle(null, ek, { temperature: 121 })
+    await failAll('boom')
+    await db.equipments.update(ek, { sync: 'erro', syncError: 'boom' })
+    // edição local depois da falha (vai como op nova, não fundida)
+    await saveEquipment(ek, pk, { name: 'Autoclave A' })
+    await db.equipments.update(ek, { sync: 'erro', syncError: 'boom' })
+
+    const n = await retryRecord(ek)
+    expect(n).toBe(2) // create do equipamento + ciclo (partner não é dependente)
+    const all = await ops()
+    const eqCreate = all.find((o) => o.kind === 'equipment.upsert' && 'partner_id' in o.payload)!
+    expect(eqCreate).toMatchObject({ state: 'pendente', attempts: 0 })
+    expect(eqCreate.error).toBeUndefined()
+    expect(eqCreate.payload).toMatchObject({ partner_id: pk, category_id: 3, marca_id: 4, model: 'M', name: 'Autoclave A' })
+    expect(all.find((o) => o.kind === 'cycle.upsert')!.state).toBe('pendente')
+    expect(all.find((o) => o.kind === 'partner.create')!.state).toBe('erro')
+    expect((await db.equipments.get(ek))!.sync).toBe('pendente')
+    expect((await db.equipments.get(ek))!.syncError).toBeUndefined()
+    expect((await db.cycles.get(ck))!.sync).toBe('pendente')
+  })
+
+  it('Reenviar no cliente tmp alcança equipamentos dependentes', async () => {
+    const pk = await createPartner({ name: 'Novo', contact_name: 'Zé' })
+    await saveEquipment(null, pk, { category_id: 3, marca_id: 4, model: 'M' })
+    await failAll('x')
+    await db.partners.update(pk, { name: 'Novo Nome' })
+    expect(await retryRecord(pk)).toBe(2)
+    const pc = (await ops()).find((o) => o.kind === 'partner.create')!
+    expect(pc.payload).toMatchObject({ name: 'Novo Nome', contact_name: 'Zé' })
+    expect((await ops()).every((o) => o.state === 'pendente')).toBe(true)
+  })
+
+  it('Descartar: remove registro, ops e dependentes', async () => {
+    const pk = await createPartner({ name: 'Novo' })
+    const ek = await saveEquipment(null, pk, { category_id: 3, marca_id: 4, model: 'M' })
+    const ck = await saveCycle(null, ek, { temperature: 121 })
+    const fk = await addPhoto(ek, 'geral', new Blob(['a']), ck)
+    const outro = await createPartner({ name: 'Outro' })
+    await discardRecord(pk)
+    expect(await db.partners.get(pk)).toBeUndefined()
+    expect(await db.equipments.get(ek)).toBeUndefined()
+    expect(await db.cycles.get(ck)).toBeUndefined()
+    expect(await db.photos.get(fk)).toBeUndefined()
+    const rest = await ops()
+    expect(rest).toHaveLength(1)
+    expect(rest[0].ref).toBe(outro)
+  })
+
+  it('Descartar equipamento real não mexe em op de outro modelo com o mesmo id', async () => {
+    await db.equipments.put({ key: '5', id: 5, partnerKey: '7', sync: 'erro' })
+    await db.cycles.put({ key: '5', id: 5, equipmentKey: '99', sync: 'ok' })
+    await saveEquipment('5', '7', { model: 'Z' })
+    await saveCycle('5', '99', { temperature: 1 })
+    await discardRecord('5', 'equipment')
+    expect(await db.equipments.get('5')).toBeUndefined()
+    expect(await db.cycles.get('5')).toBeDefined()
+    expect((await ops()).map((o) => o.kind)).toEqual(['cycle.upsert'])
+  })
+})
+
+it('Descartar ciclo real pelo tipo explícito', async () => {
+  await db.equipments.put({ key: '5', id: 5, partnerKey: '7', sync: 'ok' })
+  await db.cycles.put({ key: '5', id: 5, equipmentKey: '99', sync: 'erro' })
+  await saveCycle('5', '99', { temperature: 1 })
+  await discardRecord('5', 'cycle')
+  expect(await db.cycles.get('5')).toBeUndefined()
+  expect(await db.equipments.get('5')).toBeDefined()
+  expect(await db.outbox.count()).toBe(0)
 })

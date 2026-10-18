@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { PendingLink } from '@/components/ui/PendingLink'
-import { db } from '@/lib/levantamento/db'
+import { getDb } from '@/lib/levantamento/db'
 import { resolveKey } from '@/lib/levantamento/repo'
 import { onSyncTick } from '@/lib/levantamento/events'
 import { EquipCard, type EquipCardData } from '../_components/EquipCard'
@@ -23,13 +23,13 @@ export default function EquipamentosPage() {
   const carregar = useCallback(async () => {
     const resolvida = await resolveKey(clienteParam)
     const chaves = Array.from(new Set([clienteParam, resolvida]))
-    const partner = await db.partners.get(resolvida)
-    const eqs = await db.equipments.where('partnerKey').anyOf(chaves).toArray()
+    const partner = await getDb().partners.get(resolvida)
+    const eqs = await getDb().equipments.where('partnerKey').anyOf(chaves).toArray()
     const out: (EquipCardData & { capa?: Blob })[] = []
     for (const eq of eqs) {
       const [cycles, photos] = await Promise.all([
-        db.cycles.where('equipmentKey').equals(eq.key).count(),
-        db.photos.where('equipmentKey').equals(eq.key).toArray(),
+        getDb().cycles.where('equipmentKey').equals(eq.key).count(),
+        getDb().photos.where('equipmentKey').equals(eq.key).toArray(),
       ])
       const doEquip = photos.filter((p) => !p.cycleKey)
       const capa = doEquip.find((p) => p.survey_kind === 'geral') ?? doEquip[0]

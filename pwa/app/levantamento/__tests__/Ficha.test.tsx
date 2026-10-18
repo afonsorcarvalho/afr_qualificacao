@@ -239,4 +239,54 @@ describe('FichaPage', () => {
     unmount()
     expect(revoke).toHaveBeenCalledWith('blob:abc')
   })
+
+  it('erro de autosave some depois de um save bem-sucedido (ficha e ciclo)', async () => {
+    await db.cycles.put({ key: '50', id: 50, equipmentKey: '10', sync: 'ok' })
+    saveEquipment.mockRejectedValueOnce(new Error('Servidor caiu'))
+    saveCycle.mockRejectedValueOnce(new Error('Ciclo recusado'))
+    render(<FichaPage />)
+    fireEvent.change(await screen.findByLabelText('Temperatura'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Número de série'), { target: { value: 'X' } })
+    await screen.findByText('Servidor caiu', {}, { timeout: 2000 })
+    const ciclo = screen.getByRole('group', { name: 'Ciclo 1' })
+    await within(ciclo).findByText('Ciclo recusado', {}, { timeout: 2000 })
+    fireEvent.change(screen.getByLabelText('Número de série'), { target: { value: 'XY' } })
+    fireEvent.change(screen.getByLabelText('Temperatura'), { target: { value: '12' } })
+    await waitFor(() => expect(screen.queryByText('Servidor caiu')).toBeNull(), { timeout: 2000 })
+    await waitFor(() => expect(within(ciclo).queryByText('Ciclo recusado')).toBeNull(), { timeout: 2000 })
+  })
+
+  it('ciclo e foto com erro de envio mostram selo; Reenviar devolve as ops à fila', async () => {
+    await db.cycles.put({ key: '50', id: 50, equipmentKey: '10', sync: 'erro', syncError: 'Ciclo inválido' })
+    await db.photos.put({
+      key: '60', id: 60, equipmentKey: '10', survey_kind: 'plaqueta', blob: new Blob(['a']), sync: 'erro', syncError: 'Foto grande',
+    })
+    await db.outbox.add({
+      op_uuid: 'u1', kind: 'cycle.upsert', ref: 50, payload: { temperature: 1 }, state: 'erro', attempts: 3, createdAt: 1, error: 'Ciclo inválido',
+    })
+    render(<FichaPage />)
+    const ciclo = await screen.findByRole('group', { name: 'Ciclo 1' })
+    fireEvent.click(within(ciclo).getByRole('button', { name: /erro de envio/ }))
+    expect(within(ciclo).getByText('Ciclo inválido')).toBeInTheDocument()
+    fireEvent.click(within(ciclo).getByRole('button', { name: 'Reenviar' }))
+    await waitFor(async () => expect((await db.outbox.get('u1'))!.state).toBe('pendente'))
+    expect((await db.outbox.get('u1'))!.attempts).toBe(0)
+    await waitFor(async () => expect((await db.cycles.get('50'))!.sync).toBe('pendente'))
+
+    const foto = await screen.findByRole('button', { name: /erro de envio da foto \(Plaqueta\)/ })
+    fireEvent.click(foto)
+    expect(screen.getByText('Foto grande')).toBeInTheDocument()
+  })
+
+  it('Descartar o equipamento com erro apaga local e volta para a lista', async () => {
+    await db.equipments.update('10', { sync: 'erro', syncError: 'x' })
+    await db.cycles.put({ key: '50', id: 50, equipmentKey: '10', sync: 'ok' })
+    Object.defineProperty(window, 'confirm', { value: vi.fn(() => true), configurable: true, writable: true })
+    render(<FichaPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /^erro de envio$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/levantamento/7'))
+    expect(await db.equipments.get('10')).toBeUndefined()
+    expect(await db.cycles.get('50')).toBeUndefined()
+  })
 })

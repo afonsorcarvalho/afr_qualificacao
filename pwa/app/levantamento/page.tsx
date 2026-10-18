@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { db } from '@/lib/levantamento/db'
+import { getDb } from '@/lib/levantamento/db'
 import { downloadPartner } from '@/lib/levantamento/repo'
 import { onlyDigits } from '@/lib/levantamento/cnpj'
 import { onSyncTick } from '@/lib/levantamento/events'
@@ -31,7 +31,7 @@ export default function ClientesPage() {
   const [novoAberto, setNovoAberto] = useState(false)
 
   const recarregarLocais = useCallback(async () => {
-    const rows = await db.partners.toArray()
+    const rows = await getDb().partners.toArray()
     setLocais(
       rows.map((p) => ({
         key: p.key,
@@ -41,6 +41,8 @@ export default function ClientesPage() {
         city: typeof p.city === 'string' && p.city ? p.city : undefined,
         offline: p.offline === true,
         pendente: p.sync === 'pendente',
+        syncErro: p.sync === 'erro',
+        syncError: p.syncError,
       })),
     )
   }, [])

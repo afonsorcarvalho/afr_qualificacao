@@ -65,6 +65,22 @@ export default function PerfilPage() {
     : null
 
   const handleLogout = async () => {
+    // Levantamento offline: ops não enviadas ficam no banco desta sessão e só
+    // voltam a ser enviadas quando este mesmo usuário entrar de novo.
+    try {
+      const { pendingCount, errorCount } = await import('@/lib/levantamento/repo')
+      const [pend, erro] = await Promise.all([pendingCount(), errorCount()])
+      if (pend + erro > 0) {
+        const partes = [pend ? `${pend} aguardando envio` : '', erro ? `${erro} com erro` : ''].filter(Boolean)
+        const ok = window.confirm(
+          `Há alterações do levantamento não enviadas (${partes.join(', ')}). ` +
+            'Elas ficam guardadas neste aparelho e só serão enviadas quando você entrar de novo. Sair mesmo assim?',
+        )
+        if (!ok) return
+      }
+    } catch {
+      /* sem IndexedDB: segue o logout */
+    }
     setLoggingOut(true)
     try { await odooClient.logout() } catch { /* ignora */ }
     logout()

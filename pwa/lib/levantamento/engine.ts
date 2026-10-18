@@ -1,4 +1,4 @@
-import { db, type OutboxEntry, type SurveyOp, type SurveyOpKind, type SyncFields } from './db'
+import { getDb, type LevantamentoDB, type OutboxEntry, type SurveyOp, type SurveyOpKind, type SyncFields } from './db'
 import Dexie, { type Table } from 'dexie'
 
 export type { SurveyOp, SurveyOpKind } from './db'
@@ -6,6 +6,33 @@ export type { SurveyOp, SurveyOpKind } from './db'
 const BACKOFF_BASE_MS = 2000
 const BACKOFF_CAP_MS = 5 * 60 * 1000
 export const MAX_BATCH_SIZE = 50
+/** Teto do lote em bytes de JSON serializado (fotos em base64 pesam). */
+export const MAX_BATCH_BYTES = 4 * 1024 * 1024
+
+const toWire = ({ op_uuid, kind, ref, base_write_date, payload }: OutboxEntry): SurveyOp => ({
+  op_uuid,
+  kind,
+  ref,
+  base_write_date,
+  payload,
+})
+
+/**
+ * Corta a fila (já ordenada) em até MAX_BATCH_SIZE ops e ~MAX_BATCH_BYTES de
+ * payload serializado; sempre leva ao menos 1 op (mesmo se sozinha passar).
+ */
+export function limitBatch(sorted: OutboxEntry[]): OutboxEntry[] {
+  const out: OutboxEntry[] = []
+  let bytes = 2
+  for (const e of sorted) {
+    if (out.length >= MAX_BATCH_SIZE) break
+    const size = new TextEncoder().encode(JSON.stringify(toWire(e))).length + 1
+    if (out.length && bytes + size > MAX_BATCH_BYTES) break
+    out.push(e)
+    bytes += size
+  }
+  return out
+}
 
 /** Mensagem do backend para op cuja dependência falhou — retentável. */
 const DEP_FAILED = 'dependência falhou'
@@ -44,27 +71,27 @@ export interface DrainResult {
 const isTmp = (v: unknown): v is string => typeof v === 'string' && v.startsWith('tmp:')
 
 /** Tabela onde mora o registro a que a op se refere. */
-function tableFor(kind: SurveyOpKind): Table<SyncFields, string> {
+function tableFor(d: LevantamentoDB, kind: SurveyOpKind): Table<SyncFields, string> {
   switch (kind) {
     case 'partner.create':
-      return db.partners as unknown as Table<SyncFields, string>
+      return d.partners as unknown as Table<SyncFields, string>
     case 'equipment.upsert':
-      return db.equipments as unknown as Table<SyncFields, string>
+      return d.equipments as unknown as Table<SyncFields, string>
     case 'photo.add':
     case 'photo.delete':
-      return db.photos as unknown as Table<SyncFields, string>
+      return d.photos as unknown as Table<SyncFields, string>
     default:
-      return db.cycles as unknown as Table<SyncFields, string>
+      return d.cycles as unknown as Table<SyncFields, string>
   }
 }
 
 /** Enfileira uma op; devolve o `op_uuid`. `createdAt` é estritamente crescente. */
-export async function enqueue(op: Omit<SurveyOp, 'op_uuid'>): Promise<string> {
+export async function enqueue(op: Omit<SurveyOp, 'op_uuid'>, d: LevantamentoDB = getDb()): Promise<string> {
   const op_uuid = crypto.randomUUID()
-  await db.transaction('rw', db.outbox, async () => {
-    const last = await db.outbox.orderBy('createdAt').last()
+  await d.transaction('rw', d.outbox, async () => {
+    const last = await d.outbox.orderBy('createdAt').last()
     const createdAt = Math.max(Date.now(), (last?.createdAt ?? 0) + 1)
-    await db.outbox.add({ ...op, op_uuid, state: 'pendente', attempts: 0, createdAt })
+    await d.outbox.add({ ...op, op_uuid, state: 'pendente', attempts: 0, createdAt })
   })
   return op_uuid
 }
@@ -80,15 +107,15 @@ function isAuthError(e: unknown): boolean {
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 /** Reescreve `tmp:x` → id real em tabelas locais e em ops ainda na outbox. */
-async function applyIdMap(idmap: Record<string, number>) {
+async function applyIdMap(d: LevantamentoDB, idmap: Record<string, number>) {
   const entries = Object.entries(idmap)
   if (!entries.length) return
-  await db.transaction(
+  await d.transaction(
     'rw',
-    [db.partners, db.equipments, db.cycles, db.photos, db.outbox, db.idmap],
+    [d.partners, d.equipments, d.cycles, d.photos, d.outbox, d.idmap],
     async () => {
       for (const [tmp, id] of entries) {
-        await db.idmap.put({ tmp, id })
+        await d.idmap.put({ tmp, id })
       }
       const map = new Map(entries)
       const fk = (v: unknown): string | undefined => {
@@ -97,7 +124,7 @@ async function applyIdMap(idmap: Record<string, number>) {
       }
 
       // Chave primária: troca `tmp:x` por "<id>".
-      const tables = [db.partners, db.equipments, db.cycles, db.photos] as unknown as Table<
+      const tables = [d.partners, d.equipments, d.cycles, d.photos] as unknown as Table<
         Record<string, unknown> & SyncFields,
         string
       >[]
@@ -110,24 +137,24 @@ async function applyIdMap(idmap: Record<string, number>) {
         }
       }
       // Chaves estrangeiras locais.
-      for (const rec of await db.equipments.toArray()) {
+      for (const rec of await d.equipments.toArray()) {
         const v = fk(rec.partnerKey)
-        if (v) await db.equipments.update(rec.key, { partnerKey: v })
+        if (v) await d.equipments.update(rec.key, { partnerKey: v })
       }
-      for (const rec of await db.cycles.toArray()) {
+      for (const rec of await d.cycles.toArray()) {
         const v = fk(rec.equipmentKey)
-        if (v) await db.cycles.update(rec.key, { equipmentKey: v })
+        if (v) await d.cycles.update(rec.key, { equipmentKey: v })
       }
-      for (const rec of await db.photos.toArray()) {
+      for (const rec of await d.photos.toArray()) {
         const patch: Record<string, string> = {}
         const e = fk(rec.equipmentKey)
         const c = fk(rec.cycleKey)
         if (e) patch.equipmentKey = e
         if (c) patch.cycleKey = c
-        if (Object.keys(patch).length) await db.photos.update(rec.key, patch)
+        if (Object.keys(patch).length) await d.photos.update(rec.key, patch)
       }
       // Ops pendentes: ref e valores do payload.
-      for (const op of await db.outbox.toArray()) {
+      for (const op of await d.outbox.toArray()) {
         const payload: Record<string, unknown> = { ...op.payload }
         let changed = false
         for (const [k, v] of Object.entries(payload)) {
@@ -137,31 +164,31 @@ async function applyIdMap(idmap: Record<string, number>) {
           }
         }
         const ref = isTmp(op.ref) && map.has(op.ref) ? map.get(op.ref)! : op.ref
-        if (changed || ref !== op.ref) await db.outbox.update(op.op_uuid, { payload, ref })
+        if (changed || ref !== op.ref) await d.outbox.update(op.op_uuid, { payload, ref })
       }
     },
   )
 }
 
-function markRecord(op: OutboxEntry, sync: SyncFields['sync'], syncError?: string) {
+function markRecord(d: LevantamentoDB, op: OutboxEntry, sync: SyncFields['sync'], syncError?: string) {
   // `update` em chave inexistente é no-op (devolve 0). Sem async/await nativo:
   // ver nota em dependsOnErroneous.
-  return tableFor(op.kind).update(String(op.ref), { sync, syncError })
+  return tableFor(d, op.kind).update(String(op.ref), { sync, syncError })
 }
 
 let draining = false
 
-const ALL_TABLES = () => [db.partners, db.equipments, db.cycles, db.photos, db.outbox, db.idmap]
+const ALL_TABLES = (d: LevantamentoDB) => [d.partners, d.equipments, d.cycles, d.photos, d.outbox, d.idmap]
 
 /** A op depende de (ou edita) um registro cuja op criadora/anterior está em `erro`? */
-function dependsOnErroneous(e: OutboxEntry): Promise<boolean> {
+function dependsOnErroneous(d: LevantamentoDB, e: OutboxEntry): Promise<boolean> {
   const tmps = new Set<string>()
   if (isTmp(e.ref)) tmps.add(e.ref)
   for (const v of Object.values(e.payload)) if (isTmp(v)) tmps.add(v)
   if (!tmps.size) return Dexie.Promise.resolve(false)
   // Sem `async`/`await` nativo aqui: dentro da transação Dexie, um await nativo
   // que sobra sem operação IDB pendente comita a transação cedo demais.
-  return db.outbox
+  return d.outbox
     .where('state')
     .equals('erro')
     .toArray()
@@ -180,32 +207,21 @@ function dependsOnErroneous(e: OutboxEntry): Promise<boolean> {
  *  - push lança (rede/auth) ou a fase de aplicação falha: voltam a `pendente`.
  *    Reenvio é seguro: o backend é idempotente por `op_uuid`.
  */
-export async function drain(push: PushFn): Promise<DrainResult> {
+export async function drain(push: PushFn, d: LevantamentoDB = getDb()): Promise<DrainResult> {
   if (draining) return { sent: 0, failed: 0, skipped: true }
   draining = true
   let batch: OutboxEntry[] = []
   try {
-    batch = (await db.outbox.where('state').equals('pendente').sortBy('createdAt')).slice(
-      0,
-      MAX_BATCH_SIZE,
-    )
+    batch = limitBatch(await d.outbox.where('state').equals('pendente').sortBy('createdAt'))
     if (!batch.length) return { sent: 0, failed: 0 }
     const ids = batch.map((e) => e.op_uuid)
-    await db.outbox.where('op_uuid').anyOf(ids).modify({ state: 'enviando' })
+    await d.outbox.where('op_uuid').anyOf(ids).modify({ state: 'enviando' })
 
     let resp: PushResponse
     try {
-      resp = await push(
-        batch.map(({ op_uuid, kind, ref, base_write_date, payload }) => ({
-          op_uuid,
-          kind,
-          ref,
-          base_write_date,
-          payload,
-        })),
-      )
+      resp = await push(batch.map(toWire))
     } catch (e) {
-      await revertSending(ids)
+      await revertSending(d, ids)
       return {
         sent: 0,
         failed: batch.length,
@@ -215,10 +231,10 @@ export async function drain(push: PushFn): Promise<DrainResult> {
     }
 
     try {
-      return await db.transaction('rw', ALL_TABLES(), () => applyResponse(batch, resp))
+      return await d.transaction('rw', ALL_TABLES(d), () => applyResponse(d, batch, resp))
     } catch {
       // Transação revertida: as entradas seguem `enviando`.
-      await revertSending(ids)
+      await revertSending(d, ids)
       return { sent: 0, failed: batch.length, retried: batch.length }
     }
   } finally {
@@ -226,18 +242,18 @@ export async function drain(push: PushFn): Promise<DrainResult> {
   }
 }
 
-async function revertSending(ids: string[]) {
+async function revertSending(d: LevantamentoDB, ids: string[]) {
   for (const id of ids) {
-    const cur = await db.outbox.get(id)
+    const cur = await d.outbox.get(id)
     if (cur && cur.state === 'enviando') {
-      await db.outbox.update(id, { state: 'pendente', attempts: cur.attempts + 1 })
+      await d.outbox.update(id, { state: 'pendente', attempts: cur.attempts + 1 })
     }
   }
 }
 
-async function applyResponse(batch: OutboxEntry[], resp: PushResponse): Promise<DrainResult> {
+async function applyResponse(d: LevantamentoDB, batch: OutboxEntry[], resp: PushResponse): Promise<DrainResult> {
   // Idmap primeiro: mesmo ops com erro podem ter criado ids antes.
-  if (Object.keys(resp.idmap ?? {}).length) await applyIdMap(resp.idmap)
+  if (Object.keys(resp.idmap ?? {}).length) await applyIdMap(d, resp.idmap)
 
   const byUuid = new Map((resp.results ?? []).map((r) => [r.op_uuid, r]))
   let sent = 0
@@ -245,42 +261,42 @@ async function applyResponse(batch: OutboxEntry[], resp: PushResponse): Promise<
   let retried = 0
 
   const retry = async (cur: OutboxEntry) => {
-    await db.outbox.update(cur.op_uuid, { state: 'pendente', attempts: cur.attempts + 1 })
+    await d.outbox.update(cur.op_uuid, { state: 'pendente', attempts: cur.attempts + 1 })
     retried++
   }
   const terminal = async (cur: OutboxEntry, msg: string) => {
-    await db.outbox.update(cur.op_uuid, { state: 'erro', error: msg })
-    await markRecord(cur, 'erro', msg)
+    await d.outbox.update(cur.op_uuid, { state: 'erro', error: msg })
+    await markRecord(d, cur, 'erro', msg)
   }
 
   for (const e of batch) {
     // Reler: o idmap acima pode ter reescrito `ref`/payload desta entrada.
-    const cur = (await db.outbox.get(e.op_uuid)) ?? e
+    const cur = (await d.outbox.get(e.op_uuid)) ?? e
     const r = byUuid.get(e.op_uuid)
     if (!r) {
       await retry(cur)
       failed++
     } else if (r.state === 'done') {
-      await db.outbox.delete(e.op_uuid)
+      await d.outbox.delete(e.op_uuid)
       if (r.write_date && (cur.kind === 'equipment.upsert' || cur.kind === 'cycle.upsert')) {
         // Base de conflito do próprio registro avança: edições seguintes (já
         // gravadas local e na outbox) não registram "sobrescreveu" do nosso push.
-        await tableFor(cur.kind).update(String(cur.ref), { base_write_date: r.write_date } as never)
-        const later = (await db.outbox.toArray()).filter(
+        await tableFor(d, cur.kind).update(String(cur.ref), { base_write_date: r.write_date } as never)
+        const later = (await d.outbox.toArray()).filter(
           (o) => String(o.ref) === String(cur.ref) && o.kind === cur.kind && o.state === 'pendente',
         )
-        for (const o of later) await db.outbox.update(o.op_uuid, { base_write_date: r.write_date })
+        for (const o of later) await d.outbox.update(o.op_uuid, { base_write_date: r.write_date })
       }
       // Registro só volta a 'ok' se não restar outra op pendente sobre ele.
-      const restante = (await db.outbox.toArray()).some((o) => String(o.ref) === String(cur.ref))
-      if (!restante) await markRecord(cur, 'ok', undefined)
+      const restante = (await d.outbox.toArray()).some((o) => String(o.ref) === String(cur.ref))
+      if (!restante) await markRecord(d, cur, 'ok', undefined)
       sent++
     } else {
       const msg = r.error || 'erro'
       failed++
       if (!msg.includes(DEP_FAILED)) {
         await terminal(cur, msg)
-      } else if (await dependsOnErroneous(cur)) {
+      } else if (await dependsOnErroneous(d, cur)) {
         await terminal(cur, DEP_ERRO_MSG)
       } else if (cur.attempts + 1 >= MAX_ATTEMPTS) {
         await terminal(cur, msg)

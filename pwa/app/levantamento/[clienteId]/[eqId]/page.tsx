@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react'
 import { PendingLink } from '@/components/ui/PendingLink'
 import { Button } from '@/components/ui/button'
 import { MicButton } from '@/app/tecnico/qualificacao/_components/MicButton'
-import { db, type LocalCycle, type LocalEquipment, type LocalPhoto } from '@/lib/levantamento/db'
+import { getDb, type LocalCycle, type LocalEquipment, type LocalPhoto } from '@/lib/levantamento/db'
 import { onSyncTick } from '@/lib/levantamento/events'
 import {
   addPhoto, deleteCycle, deletePhoto, missingRequired, resolveKey, saveCycle, saveEquipment,
@@ -83,12 +83,12 @@ export default function FichaPage() {
       setCarregado(true)
       return
     }
-    const rec = await db.equipments.get(key)
+    const rec = await getDb().equipments.get(key)
     const [mapa, cs, ps] = await Promise.all([
-      db.idmap.toArray(),
+      getDb().idmap.toArray(),
       
-db.cycles.where('equipmentKey').equals(key).toArray(),
-      db.photos.where('equipmentKey').equals(key).toArray(),
+      getDb().cycles.where('equipmentKey').equals(key).toArray(),
+      getDb().photos.where('equipmentKey').equals(key).toArray(),
     ])
     if (!montado.current) return
     // id real -> chave tmp original: identidade React do ciclo que sobrevive ao rekey.
@@ -121,9 +121,15 @@ db.cycles.where('equipmentKey').equals(key).toArray(),
     },
     [clienteParam, irParaChave, carregar],
   )
-  const { edit, enqueue } = useAutosave(salvar, (e) => {
-    if (montado.current) setErro(e instanceof Error ? e.message : 'Falha ao salvar')
-  })
+  const { edit, enqueue } = useAutosave(
+    salvar,
+    (e) => {
+      if (montado.current) setErro(e instanceof Error ? e.message : 'Falha ao salvar')
+    },
+    () => {
+      if (montado.current) setErro('')
+    },
+  )
 
   const set = (campo: string, valor: unknown) => {
     setVals((v) => ({ ...v, [campo]: valor }))
@@ -201,7 +207,14 @@ db.cycles.where('equipmentKey').equals(key).toArray(),
         </h1>
       </div>
 
-      {eq?.sync === 'erro' && <SyncErrorBadge error={eq.syncError} />}
+      {eq?.sync === 'erro' && (
+        <SyncErrorBadge
+          error={eq.syncError}
+          recordKey={eq.key}
+          recordKind="equipment"
+          onDiscarded={() => routerRef.current.replace(volta)}
+        />
+      )}
       {aindaLocal && faltando.length > 0 && (
         <p role="status" className="rounded-md border border-warn/30 bg-warn-surface p-3 text-sm text-warn">
           {`Preencha ${listaPt(faltando)} para enviar`}

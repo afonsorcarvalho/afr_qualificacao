@@ -16,6 +16,8 @@ export interface SurveyCatalog {
   categories: CatalogItem[]
   marcas: CatalogItem[]
   cycle_types: CatalogItem[]
+  /** Locais (company-scoped) para o seletor da ficha. */
+  locations: CatalogItem[]
   selections: {
     load_type: [string, string][]
     thermocouple_access: [string, string][]

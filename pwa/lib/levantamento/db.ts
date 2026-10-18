@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { useAuthStore } from '@/lib/store/authStore'
 
 /** Estado de sincronização de um registro local. */
 export type SyncState = 'ok' | 'pendente' | 'erro'
@@ -69,7 +70,7 @@ export interface IdMapEntry {
   id: number
 }
 
-class LevantamentoDB extends Dexie {
+export class LevantamentoDB extends Dexie {
   partners!: Table<LocalPartner, string>
   equipments!: Table<LocalEquipment, string>
   cycles!: Table<LocalCycle, string>
@@ -78,8 +79,8 @@ class LevantamentoDB extends Dexie {
   catalog!: Table<CatalogEntry, string>
   idmap!: Table<IdMapEntry, string>
 
-  constructor() {
-    super('levantamento')
+  constructor(name = 'levantamento') {
+    super(name)
     this.version(1).stores({
       partners: '&key, id, vat',
       equipments: '&key, partnerKey, id',
@@ -94,4 +95,59 @@ class LevantamentoDB extends Dexie {
   }
 }
 
-export const db = new LevantamentoDB()
+/** Hash curto e estável (FNV-1a 32 bits, hex). */
+function shortHash(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16).padStart(8, '0')
+}
+
+export interface SurveySession {
+  serverUrl: string
+  dbName: string
+  userId: number | null
+}
+
+/** Chave da sessão: servidor + base Odoo + uid. */
+export const sessionKeyOf = (s: SurveySession) => `${s.serverUrl}|${s.dbName}|${s.userId ?? ''}`
+/** Nome do IndexedDB da sessão: `levantamento:<hash>`. */
+export const surveyDbName = (sessionKey: string) => `levantamento:${shortHash(sessionKey)}`
+
+const opened = new Map<string, LevantamentoDB>()
+
+/**
+ * Banco local de uma sessão (reaproveita a instância). Cada servidor/base/
+ * usuário tem o seu: um não enxerga a outbox do outro.
+ */
+export function openSurveyDb(key: string): LevantamentoDB {
+  const name = surveyDbName(key)
+  let d = opened.get(name)
+  if (!d) {
+    d = new LevantamentoDB(name)
+    opened.set(name, d)
+  }
+  return d
+}
+
+/** Chave da sessão corrente (servidor/base/uid do authStore). */
+export const currentSessionKey = () => sessionKeyOf(useAuthStore.getState())
+
+/** Banco local da sessão corrente. Use sempre isto (nada de singleton fixo). */
+export function getDb(): LevantamentoDB {
+  return openSurveyDb(currentSessionKey())
+}
+
+/**
+ * Atalho para o banco da sessão corrente (resolve a cada acesso). Mantido
+ * para testes; código de produção usa `getDb()`.
+ */
+export const db: LevantamentoDB = new Proxy({} as LevantamentoDB, {
+  get(_t, prop) {
+    const d = getDb()
+    const v = Reflect.get(d, prop, d)
+    return typeof v === 'function' ? v.bind(d) : v
+  },
+})

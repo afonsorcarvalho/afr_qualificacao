@@ -4,6 +4,7 @@ import { CloudDownload, CheckCircle2, Clock } from 'lucide-react'
 import { PendingLink } from '@/components/ui/PendingLink'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { SyncErrorBadge } from './SyncErrorBadge'
 
 export interface ClienteItem {
   /** Chave local: id do servidor (string) ou `tmp:<uuid>`. */
@@ -17,6 +18,9 @@ export interface ClienteItem {
   offline: boolean
   /** Criado/alterado aqui e ainda não enviado. */
   pendente: boolean
+  /** Envio falhou (registro local em `erro`). */
+  syncErro?: boolean
+  syncError?: string
 }
 
 export function ClienteRow({
@@ -68,6 +72,11 @@ export function ClienteRow({
             {erro && <p className="mt-1 text-xs text-danger">Falha ao baixar. Tente de novo.</p>}
           </GlassCard>
         </PendingLink>
+        {cliente.syncErro && (
+          <div className="mt-1">
+            <SyncErrorBadge error={cliente.syncError} recordKey={cliente.key} recordKind="partner" />
+          </div>
+        )}
       </div>
       {podeBaixar && (
         <button

@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { CameraInput } from '@/app/tecnico/qualificacao/_components/CameraInput'
 import type { LocalPhoto } from '@/lib/levantamento/db'
 import { useObjectUrls } from './equipInfo'
+import { SyncErrorBadge } from './SyncErrorBadge'
 
 export interface FotoKind {
   kind: string
@@ -46,6 +47,9 @@ export function FotoStrip({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const mostradas = useMemo(() => photosRef.current.filter((p) => assinatura.split('|').includes(p.key)), [assinatura])
   const urls = useObjectUrls(useMemo(() => mostradas.map((p) => p.blob), [mostradas]))
+  // Estado de sync vem sempre do array atual (a lista memoizada só segura blobs/URLs).
+  const atual = new Map(photos.map((p) => [p.key, p]))
+  const comErro = mostradas.map((p) => atual.get(p.key) ?? p).filter((p) => p.sync === 'erro')
 
   return (
     <div className="space-y-2">
@@ -64,7 +68,13 @@ export function FotoStrip({
       {mostradas.length > 0 && (
         <ul className="flex flex-wrap gap-2">
           {mostradas.map((p, i) => (
-            <li key={p.key} className="relative h-16 w-16 overflow-hidden rounded-md border border-border bg-muted">
+            <li
+              key={p.key}
+              data-sync={atual.get(p.key)?.sync ?? p.sync}
+              className={`relative h-16 w-16 overflow-hidden rounded-md border bg-muted ${
+                (atual.get(p.key)?.sync ?? p.sync) === 'erro' ? 'border-2 border-danger' : 'border-border'
+              }`}
+            >
               {urls[i] && (
                 // Blob local: next/image não otimiza object URL.
                 // eslint-disable-next-line @next/next/no-img-element
@@ -82,6 +92,15 @@ export function FotoStrip({
           ))}
         </ul>
       )}
+      {comErro.map((p) => (
+        <SyncErrorBadge
+          key={p.key}
+          error={p.syncError}
+          recordKey={p.key}
+          recordKind="photo"
+          label={`erro de envio da foto (${kinds.find((k) => k.kind === p.survey_kind)?.label ?? 'Foto'})`}
+        />
+      ))}
     </div>
   )
 }

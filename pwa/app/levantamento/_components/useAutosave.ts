@@ -12,16 +12,20 @@ const DEBOUNCE_MS = 500
  * registros `tmp:` para "novo"). Ao desmontar (ou com a página indo para segundo plano), os campos pendentes são
  * enviados na hora (não se perde edição de quem sai da tela em < 500 ms).
  *
- * `save(changed)` recebe só o(s) campo(s) alterado(s).
+ * `save(changed)` recebe só o(s) campo(s) alterado(s). `onSuccess` roda após
+ * cada save do autosave que deu certo (ex.: limpar mensagem de erro anterior).
  */
 export function useAutosave(
   save: (changed: Record<string, unknown>) => Promise<unknown>,
   onError?: (e: unknown) => void,
+  onSuccess?: () => void,
 ) {
   const saveRef = useRef(save)
   saveRef.current = save
   const errRef = useRef(onError)
   errRef.current = onError
+  const okRef = useRef(onSuccess)
+  okRef.current = onSuccess
   const queue = useRef<Promise<unknown>>(Promise.resolve())
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const pending = useRef(new Map<string, unknown>())
@@ -41,7 +45,10 @@ export function useAutosave(
       if (!pending.current.has(field)) return
       const value = pending.current.get(field)
       pending.current.delete(field)
-      enqueue(() => saveRef.current({ [field]: value })).catch((e) => errRef.current?.(e))
+      enqueue(() => saveRef.current({ [field]: value })).then(
+        () => okRef.current?.(),
+        (e) => errRef.current?.(e),
+      )
     },
     [enqueue],
   )

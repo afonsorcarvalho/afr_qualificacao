@@ -276,3 +276,55 @@ describe('write_date do push', () => {
     expect((await db.outbox.get(later))!.base_write_date).toBe('NEW')
   })
 })
+
+describe('lote limitado por bytes', () => {
+  it('para de juntar ops ao passar ~4 MB, sempre leva ao menos 1', async () => {
+    const big = 'x'.repeat(1.5 * 1024 * 1024)
+    for (let i = 0; i < 4; i++) await enqueue({ kind: 'photo.add', ref: `tmp:f${i}`, payload: { image_b64: big } })
+    const sizes: number[] = []
+    const push = vi.fn(async (ops: SurveyOp[]): Promise<PushResponse> => {
+      sizes.push(ops.length)
+      return { results: ops.map((o) => ok(o)), idmap: {} }
+    })
+    await drain(push)
+    await drain(push)
+    expect(sizes).toEqual([2, 2])
+
+    await enqueue({ kind: 'photo.add', ref: 'tmp:huge', payload: { image_b64: 'y'.repeat(5 * 1024 * 1024) } })
+    await drain(push)
+    expect(sizes[2]).toBe(1)
+    expect(await db.outbox.count()).toBe(0)
+  })
+})
+
+describe('isolamento por sessão', () => {
+  it('duas chaves de sessão não veem a outbox uma da outra', async () => {
+    const { openSurveyDb, surveyDbName } = await import('../db')
+    const a = openSurveyDb('https://a|db1|1')
+    const b = openSurveyDb('https://a|db1|2')
+    expect(a.name).not.toBe(b.name)
+    expect(a.name).toBe(surveyDbName('https://a|db1|1'))
+    expect(a.name.startsWith('levantamento:')).toBe(true)
+    await a.outbox.clear()
+    await b.outbox.clear()
+    await enqueue({ kind: 'partner.create', ref: 'tmp:p', payload: {} }, a)
+    expect(await a.outbox.count()).toBe(1)
+    expect(await b.outbox.count()).toBe(0)
+    const push = vi.fn()
+    expect((await drain(push, b)).sent).toBe(0)
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('getDb segue servidor/base/uid do authStore', async () => {
+    const { getDb } = await import('../db')
+    const { useAuthStore } = await import('@/lib/store/authStore')
+    useAuthStore.setState({ serverUrl: 'https://s', dbName: 'x', userId: 1 })
+    const d1 = getDb()
+    useAuthStore.setState({ userId: 2 })
+    const d2 = getDb()
+    expect(d1.name).not.toBe(d2.name)
+    useAuthStore.setState({ userId: 1 })
+    expect(getDb()).toBe(d1)
+    useAuthStore.setState({ serverUrl: '', dbName: '', userId: null })
+  })
+})

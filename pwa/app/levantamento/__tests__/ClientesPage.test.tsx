@@ -8,6 +8,9 @@ const pullPartners = vi.fn()
 const downloadPartner = vi.fn()
 const createPartner = vi.fn()
 const pendingCount = vi.fn()
+const errorCount = vi.fn()
+const retryRecord = vi.fn()
+const discardRecord = vi.fn()
 vi.mock('@/lib/odoo/levantamento', () => ({
   pullPartners: (...a: unknown[]) => pullPartners(...a),
 }))
@@ -15,6 +18,9 @@ vi.mock('@/lib/levantamento/repo', () => ({
   downloadPartner: (...a: unknown[]) => downloadPartner(...a),
   createPartner: (...a: unknown[]) => createPartner(...a),
   pendingCount: () => pendingCount(),
+  errorCount: () => errorCount(),
+  retryRecord: (...a: unknown[]) => retryRecord(...a),
+  discardRecord: (...a: unknown[]) => discardRecord(...a),
 }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -31,6 +37,9 @@ beforeEach(async () => {
   vi.clearAllMocks()
   await Promise.all(db.tables.map((t) => t.clear()))
   pendingCount.mockResolvedValue(0)
+  errorCount.mockResolvedValue(0)
+  retryRecord.mockResolvedValue(1)
+  discardRecord.mockResolvedValue(undefined)
   pullPartners.mockRejectedValue(new Error('offline'))
   downloadPartner.mockResolvedValue(undefined)
   createPartner.mockResolvedValue('tmp:1')
@@ -172,5 +181,37 @@ describe('ClientesPage', () => {
     await db.partners.put({ key: '5', id: 5, name: 'Tardio', sync: 'ok', offline: true })
     act(() => emitSyncTick())
     expect(await screen.findByText('Tardio')).toBeInTheDocument()
+  })
+
+  it('banner mostra "N com erro" (singular e plural)', async () => {
+    pendingCount.mockResolvedValue(2)
+    errorCount.mockResolvedValue(1)
+    const { unmount } = render(<ClientesPage />)
+    expect(await screen.findByText('2 alterações aguardando sinal · 1 com erro')).toBeInTheDocument()
+    unmount()
+    pendingCount.mockResolvedValue(0)
+    errorCount.mockResolvedValue(3)
+    render(<ClientesPage />)
+    expect(await screen.findByText('3 com erro')).toBeInTheDocument()
+  })
+
+  it('cliente com erro de envio mostra selo com Reenviar e Descartar (com confirmação)', async () => {
+    await db.partners.put({ key: 'tmp:p', name: 'Novo Delta', sync: 'erro', syncError: 'CNPJ inválido' })
+    render(<ClientesPage />)
+    await screen.findByText('Novo Delta')
+    fireEvent.click(screen.getByRole('button', { name: /erro de envio/ }))
+    expect(screen.getByText('CNPJ inválido')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Reenviar' }))
+    await waitFor(() => expect(retryRecord).toHaveBeenCalledWith('tmp:p', 'partner'))
+
+    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)
+    vi.stubGlobal('confirm', confirm)
+    Object.defineProperty(window, 'confirm', { value: confirm, configurable: true, writable: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }))
+    expect(discardRecord).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Descartar' }))
+    await waitFor(() => expect(discardRecord).toHaveBeenCalledWith('tmp:p', 'partner'))
+    expect(confirm).toHaveBeenCalledTimes(2)
+    vi.unstubAllGlobals()
   })
 })
