@@ -6,9 +6,10 @@ import { downloadPartner } from '@/lib/levantamento/repo'
 import { onlyDigits } from '@/lib/levantamento/cnpj'
 import { onSyncTick } from '@/lib/levantamento/events'
 import { pullPartners } from '@/lib/odoo/levantamento'
-import { ClienteNovoSheet } from './_components/ClienteNovoSheet'
-import { ClienteRow, type ClienteItem } from './_components/ClienteRow'
-import { PendenciasBanner } from './_components/PendenciasBanner'
+import { ClienteNovoSheet } from './ClienteNovoSheet'
+import { ClienteRow, type ClienteItem } from './ClienteRow'
+import { PendenciasBanner } from './PendenciasBanner'
+import { useCanEditCtx } from './canEdit'
 
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
@@ -24,7 +25,8 @@ function combina(c: ClienteItem, q: string): boolean {
  * Clientes do levantamento. Local primeiro (funciona sem sinal); quando há
  * sinal, junta os resultados do servidor para achar quem ainda não foi baixado.
  */
-export default function ClientesPage() {
+export function ClientesView() {
+  const podeEditar = useCanEditCtx()
   const [q, setQ] = useState('')
   const [locais, setLocais] = useState<ClienteItem[]>([])
   const [remotos, setRemotos] = useState<ClienteItem[]>([])
@@ -112,9 +114,11 @@ export default function ClientesPage() {
           onChange={(e) => setQ(e.target.value)}
           className="min-h-[44px] min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
         />
-        <Button className="min-h-[44px] shrink-0" onClick={() => setNovoAberto(true)}>
-          + Cliente novo
-        </Button>
+        {podeEditar && (
+          <Button className="min-h-[44px] shrink-0" onClick={() => setNovoAberto(true)}>
+            + Cliente novo
+          </Button>
+        )}
       </div>
       {lista.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
@@ -127,11 +131,13 @@ export default function ClientesPage() {
           ))}
         </ul>
       )}
-      <ClienteNovoSheet
-        open={novoAberto}
-        onClose={() => setNovoAberto(false)}
-        onCreated={() => void recarregarLocais()}
-      />
+      {podeEditar && (
+        <ClienteNovoSheet
+          open={novoAberto}
+          onClose={() => setNovoAberto(false)}
+          onCreated={() => void recarregarLocais()}
+        />
+      )}
     </div>
   )
 }

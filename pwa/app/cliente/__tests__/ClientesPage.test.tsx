@@ -24,12 +24,12 @@ vi.mock('@/lib/levantamento/repo', () => ({
 }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
-  usePathname: () => '/levantamento',
+  usePathname: () => '/cliente',
 }))
 
 import { db } from '@/lib/levantamento/db'
 import { emitSyncTick } from '@/lib/levantamento/events'
-import ClientesPage from '../page'
+import { ClientesView as ClientesPage } from '../_components/ClientesView'
 
 const VALID = '11.222.333/0001-81'
 
@@ -92,7 +92,7 @@ describe('ClientesPage', () => {
     await seed()
     render(<ClientesPage />)
     const link = (await screen.findByText('Hospital Alfa')).closest('a')
-    expect(link).toHaveAttribute('href', '/levantamento/7')
+    expect(link).toHaveAttribute('href', '/cliente?id=7')
   })
 
   it('banner mostra a contagem de pendências', async () => {

@@ -22,7 +22,8 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
   // que aparece depois. Só `false` (modelo ausente) esconde.
   const { data: temAgenda } = useAgendaDisponivel()
   const agendaDisponivel = temAgenda !== false
-  const levantamento = useHasGroup(SURVEY_GROUP)
+  // Aquece o cache do grupo (vale offline): decide edição em /cliente e o sync.
+  useHasGroup(SURVEY_GROUP)
 
   // Refresca `lastUserId` uma vez por montagem do layout (todo entra em
   // /tecnico/qualificacao/*, este layout persiste por baixo). Sem isso, só a
@@ -63,7 +64,7 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
           visível. Efeito colateral aceito: a barra de navegação inferior
           deixa de rolar junto e fica sempre à vista. */}
       <div className="mx-auto flex h-dvh min-h-0 w-full max-w-[480px] flex-col overflow-hidden bg-background sm:max-w-[720px] lg:max-w-none lg:flex-row">
-        <TecnicoNav variant="side" agendaDisponivel={agendaDisponivel} levantamento={levantamento} />
+        <TecnicoNav variant="side" agendaDisponivel={agendaDisponivel} />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-10 border-b border-border bg-card shadow-md lg:static lg:shadow-none">
             <div className="flex items-center justify-between px-4 py-3">
@@ -87,7 +88,7 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
                 ser o `main` inteiro, arrastando as duas colunas juntas. */}
             <div className="h-full p-3">{children}</div>
           </main>
-          <TecnicoNav variant="bottom" agendaDisponivel={agendaDisponivel} levantamento={levantamento} />
+          <TecnicoNav variant="bottom" agendaDisponivel={agendaDisponivel} />
         </div>
       </div>
     </NavProgressProvider>

@@ -1,5 +1,6 @@
 'use client'
 import type { ReactNode } from 'react'
+import { useCanEditCtx } from './canEdit'
 
 const BASE = 'min-h-[44px] w-full rounded-md border border-input bg-background px-3 text-sm'
 
@@ -22,14 +23,16 @@ export function CampoTexto({
   multiline?: boolean
 }) {
   const v = value === false || value === undefined || value === null ? '' : String(value)
+  const disabled = !useCanEditCtx()
   return (
     <Campo label={label}>
       {multiline ? (
-        <textarea className={`${BASE} py-2`} rows={3} value={v} onChange={(e) => onChange(e.target.value)} />
+        <textarea className={`${BASE} py-2`} rows={3} disabled={disabled} value={v} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <input
           className={BASE}
           type={type}
+          disabled={disabled}
           inputMode={type === 'number' ? 'decimal' : undefined}
           step={type === 'number' ? 'any' : undefined}
           value={v}
@@ -50,9 +53,10 @@ export function CampoSelect({
   options: { value: string; label: string }[]
 }) {
   const v = value === false || value === undefined || value === null ? '' : String(value)
+  const disabled = !useCanEditCtx()
   return (
     <Campo label={label}>
-      <select className={BASE} value={v} onChange={(e) => onChange(e.target.value)}>
+      <select className={BASE} disabled={disabled} value={v} onChange={(e) => onChange(e.target.value)}>
         <option value="">—</option>
         {options.map((o) => (
           <option key={o.value} value={o.value}>

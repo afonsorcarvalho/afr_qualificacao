@@ -5,6 +5,7 @@ import { CameraInput } from '@/app/tecnico/qualificacao/_components/CameraInput'
 import type { LocalPhoto } from '@/lib/levantamento/db'
 import { useObjectUrls } from './equipInfo'
 import { SyncErrorBadge } from './SyncErrorBadge'
+import { useCanEditCtx } from './canEdit'
 
 export interface FotoKind {
   kind: string
@@ -34,6 +35,7 @@ export function FotoStrip({
   onAdd: (kind: string, blob: Blob) => Promise<void> | void
   onDelete: (key: string) => Promise<void> | void
 }) {
+  const podeEditar = useCanEditCtx()
   const [rodada, setRodada] = useState<Record<string, number>>({})
   // `photos` costuma chegar como array novo a cada render do pai; a assinatura
   // por chave mantém `mostradas` estável (senão as object URLs seriam
@@ -53,7 +55,7 @@ export function FotoStrip({
 
   return (
     <div className="space-y-2">
-      {kinds.map((k) => (
+      {podeEditar && kinds.map((k) => (
         <div key={k.kind}>
           <p className="mb-1 text-xs text-muted-foreground">Foto: {k.label}</p>
           <CameraInput
@@ -80,14 +82,14 @@ export function FotoStrip({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={urls[i]} alt={kinds.find((k) => k.kind === p.survey_kind)?.label ?? 'Foto'} className="h-full w-full object-cover" />
               )}
-              <button
+              {podeEditar && (<button
                 type="button"
                 aria-label="Excluir foto"
                 onClick={() => void onDelete(p.key)}
                 className="absolute right-0 top-0 flex h-6 w-6 items-center justify-center rounded-bl bg-background/80 text-danger"
               >
                 <X className="h-4 w-4" aria-hidden />
-              </button>
+              </button>)}
             </li>
           ))}
         </ul>

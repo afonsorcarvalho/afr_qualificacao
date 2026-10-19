@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/button'
-import { isValidCnpj, maskCnpj, onlyDigits } from '@/lib/levantamento/cnpj'
+import { isValidCnpj, maskCnpj } from '@/lib/levantamento/cnpj'
 import { createPartner } from '@/lib/levantamento/repo'
 
 const CAMPO =

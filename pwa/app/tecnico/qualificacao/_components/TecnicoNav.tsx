@@ -1,9 +1,10 @@
 'use client'
 import { useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { ClipboardList, CalendarDays, BarChart3, User, Loader2, Ruler } from 'lucide-react'
+import { ClipboardList, CalendarDays, BarChart3, User, Loader2, Building2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useNavProgress } from '@/components/providers/NavProgress'
+import { goCliente } from '@/lib/cliente/nav'
 
 const ROOT_PATH = '/tecnico/qualificacao'
 
@@ -14,14 +15,14 @@ export const NAV_ITEMS = [
   { href: `${ROOT_PATH}/perfil`, label: 'Perfil', Icon: User },
 ] as const
 
-/** Fora do prefixo /tecnico/qualificacao: módulo de levantamento de campo. */
-export const LEVANTAMENTO_PATH = '/levantamento'
-const LEVANTAMENTO_ITEM = { href: LEVANTAMENTO_PATH, label: 'Levantamento', Icon: Ruler } as const
+/** Fora do prefixo /tecnico/qualificacao: página única de clientes (todo usuário autenticado). */
+export const CLIENTES_PATH = '/cliente'
+const CLIENTES_ITEM = { href: CLIENTES_PATH, label: 'Clientes', Icon: Building2 } as const
 
 function useActiveHref() {
   const pathname = usePathname()
-  if (pathname === LEVANTAMENTO_PATH || pathname.startsWith(`${LEVANTAMENTO_PATH}/`)) {
-    return LEVANTAMENTO_PATH
+  if (pathname === CLIENTES_PATH || pathname.startsWith(`${CLIENTES_PATH}/`)) {
+    return CLIENTES_PATH
   }
   const isHist = pathname.startsWith(`${ROOT_PATH}/historico`)
   const isPerfil = pathname.startsWith(`${ROOT_PATH}/perfil`)
@@ -48,13 +49,10 @@ function useActiveHref() {
 export function TecnicoNav({
   variant,
   agendaDisponivel = true,
-  levantamento = false,
 }: {
   variant: 'bottom' | 'side'
   /** Falso esconde a aba Agenda: o módulo de agendamento não está instalado. */
   agendaDisponivel?: boolean
-  /** Verdadeiro mostra a aba Levantamento (usuário do grupo group_survey_user). */
-  levantamento?: boolean
 }) {
   const activeHref = useActiveHref()
   const isSide = variant === 'side'
@@ -62,9 +60,7 @@ export function TecnicoNav({
     (i) => agendaDisponivel || !i.href.endsWith('/agenda'),
   )
   // Antes de Perfil, que fica sempre por último.
-  const itens = levantamento
-    ? [...base.slice(0, -1), LEVANTAMENTO_ITEM, base[base.length - 1]]
-    : base
+  const itens = [...base.slice(0, -1), CLIENTES_ITEM, base[base.length - 1]]
   return (
     <nav
       aria-label={isSide ? 'Navegação principal (lateral)' : 'Navegação principal (barra inferior)'}
@@ -117,6 +113,11 @@ function NavItem({
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
         e.preventDefault()
+        // Dentro de /cliente?id=..: a aba ativa volta para a lista sem buscar RSC.
+        if (active && href === CLIENTES_PATH && window.location.search) {
+          goCliente({})
+          return
+        }
         if (active || isPending) return
         begin()
         startTransition(() => router.push(href))

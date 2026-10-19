@@ -1,6 +1,6 @@
 'use client'
 import { Clock, ImageOff } from 'lucide-react'
-import { PendingLink } from '@/components/ui/PendingLink'
+import { ClienteLink } from './ClienteLink'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SyncErrorBadge } from './SyncErrorBadge'
@@ -19,10 +19,7 @@ export interface EquipCardData {
 export function EquipCard({ clienteKey, eq }: { clienteKey: string; eq: EquipCardData }) {
   return (
     <li className="space-y-1">
-      <PendingLink
-        href={`/levantamento/${encodeURIComponent(clienteKey)}/${encodeURIComponent(eq.key)}`}
-        spinnerClassName="right-4 top-6"
-      >
+      <ClienteLink to={{ id: clienteKey, eq: eq.key }} className="block">
         <GlassCard variant="hover" noPadding className="cursor-pointer p-3">
           <div className="flex items-center gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
@@ -55,7 +52,7 @@ export function EquipCard({ clienteKey, eq }: { clienteKey: string; eq: EquipCar
             </div>
           )}
         </GlassCard>
-      </PendingLink>
+      </ClienteLink>
       {eq.sync === 'erro' && <SyncErrorBadge error={eq.syncError} recordKey={eq.key} recordKind="equipment" />}
     </li>
   )

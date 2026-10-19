@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { CloudDownload, CheckCircle2, Clock } from 'lucide-react'
-import { PendingLink } from '@/components/ui/PendingLink'
+import { ClienteLink } from './ClienteLink'
 import { GlassCard } from '@/components/ui/GlassCard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SyncErrorBadge } from './SyncErrorBadge'
@@ -49,7 +49,7 @@ export function ClienteRow({
   return (
     <li className="flex items-stretch gap-2">
       <div className="min-w-0 flex-1">
-        <PendingLink href={`/levantamento/${encodeURIComponent(cliente.key)}`} spinnerClassName="right-4 top-6">
+        <ClienteLink to={{ id: cliente.key }} className="block">
           <GlassCard variant="hover" noPadding className="cursor-pointer p-3">
             <div className="flex items-center justify-between gap-2">
               <strong className="truncate text-sm text-foreground">{cliente.name}</strong>
@@ -71,7 +71,7 @@ export function ClienteRow({
             )}
             {erro && <p className="mt-1 text-xs text-danger">Falha ao baixar. Tente de novo.</p>}
           </GlassCard>
-        </PendingLink>
+        </ClienteLink>
         {cliente.syncErro && (
           <div className="mt-1">
             <SyncErrorBadge error={cliente.syncError} recordKey={cliente.key} recordKind="partner" />

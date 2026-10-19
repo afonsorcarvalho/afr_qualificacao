@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { AlertTriangle, RotateCcw, Trash2 } from 'lucide-react'
 import { discardRecord, retryRecord, type RecordKind } from '@/lib/levantamento/repo'
 import { emitSyncTick, requestSync } from '@/lib/levantamento/events'
+import { useCanEditCtx } from './canEdit'
 
 const NOME: Record<RecordKind, string> = {
   partner: 'este cliente e os equipamentos dele',
@@ -28,6 +29,7 @@ export function SyncErrorBadge({
   label?: string
   onDiscarded?: () => void
 }) {
+  const podeEditar = useCanEditCtx()
   const [aberto, setAberto] = useState(false)
   const [ocupado, setOcupado] = useState(false)
   const [falha, setFalha] = useState('')
@@ -73,7 +75,7 @@ export function SyncErrorBadge({
       {aberto && (
         <div className="mt-1 space-y-2">
           <p className="text-xs text-danger">{error || 'Falha ao enviar. Tente novamente.'}</p>
-          {recordKey && (
+          {recordKey && podeEditar && (
             <div className="flex gap-2">
               <button
                 type="button"

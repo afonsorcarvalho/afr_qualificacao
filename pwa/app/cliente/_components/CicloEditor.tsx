@@ -8,6 +8,7 @@ import { FotoStrip } from './FotoStrip'
 import { useAutosave } from './useAutosave'
 import { SyncErrorBadge } from './SyncErrorBadge'
 import type { Catalog } from './catalog'
+import { useCanEditCtx } from './canEdit'
 
 /** Um ciclo usado: tipo, temperatura, duração, carga, nota e foto da tela do programa. */
 export function CicloEditor({
@@ -23,6 +24,7 @@ export function CicloEditor({
   onDelete: (key: string) => Promise<void>
 }) {
   const [vals, setVals] = useState<Record<string, unknown>>({ ...cycle })
+  const podeEditar = useCanEditCtx()
   const [erro, setErro] = useState('')
   // `cycle.key` / `equipmentKey` são lidos a cada save (ref interna do hook): sobrevivem ao tmp -> id real.
   const { edit } = useAutosave(
@@ -42,14 +44,14 @@ export function CicloEditor({
     <fieldset aria-label={`Ciclo ${indice}`} role="group" className="space-y-3 rounded-md border border-border p-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Ciclo {indice}</span>
-        <button
+        {podeEditar && (<button
           type="button"
           aria-label={`Excluir ciclo ${indice}`}
           onClick={() => void onDelete(cycle.key)}
           className="flex h-11 w-11 items-center justify-center rounded-md text-danger hover:bg-accent"
         >
           <Trash2 className="h-4 w-4" aria-hidden />
-        </button>
+        </button>)}
       </div>
       {cycle.sync === 'erro' && (
         <SyncErrorBadge error={cycle.syncError} recordKey={cycle.key} recordKind="cycle" />

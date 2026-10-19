@@ -6,11 +6,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 
 let params: Record<string, string> = { clienteId: '7', eqId: '10' }
 const replace = vi.fn()
-vi.mock('next/navigation', () => ({
-  useParams: () => params,
-  useRouter: () => ({ push: vi.fn(), replace }),
-  usePathname: () => '/levantamento/7/10',
-}))
+// A ficha navega por history.replaceState (página única /cliente), não pelo router.
+window.history.replaceState = ((_s: unknown, _t: string, url?: string | URL | null) => replace(String(url))) as typeof window.history.replaceState
 
 const saveEquipment = vi.fn()
 const saveCycle = vi.fn()
@@ -42,7 +39,9 @@ vi.mock('@/app/tecnico/qualificacao/_components/MicButton', () => ({
 
 import { db } from '@/lib/levantamento/db'
 import { emitSyncTick } from '@/lib/levantamento/events'
-import FichaPage from '../[clienteId]/[eqId]/page'
+import { FichaView } from '../_components/FichaView'
+
+const FichaPage = () => <FichaView id={params.clienteId} eq={decodeURIComponent(params.eqId)} />
 
 const setOnline = (v: boolean) => Object.defineProperty(navigator, 'onLine', { value: v, configurable: true })
 
@@ -126,7 +125,7 @@ describe('FichaPage', () => {
     const keys = saveEquipment.mock.calls.map((c) => c[0])
     expect(keys).toEqual([null, 'tmp:new'])
     expect(replace).toHaveBeenCalledTimes(1)
-    expect(replace).toHaveBeenCalledWith('/levantamento/7/tmp%3Anew')
+    expect(replace).toHaveBeenCalledWith('/cliente?id=7&eq=tmp%3Anew')
     expect(screen.getByText('Preencha categoria e marca para enviar')).toBeInTheDocument()
   })
 
@@ -134,7 +133,7 @@ describe('FichaPage', () => {
     params = { clienteId: '7', eqId: 'tmp%3Aold' }
     await db.idmap.put({ tmp: 'tmp:old', id: 10 })
     render(<FichaPage />)
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/levantamento/7/10'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/cliente?id=7&eq=10'))
     expect(await screen.findByLabelText('Modelo')).toHaveValue('X1')
   })
 
@@ -287,7 +286,7 @@ describe('FichaPage', () => {
     render(<FichaPage />)
     fireEvent.click(await screen.findByRole('button', { name: /^erro de envio$/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Descartar' }))
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/levantamento/7'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/cliente?id=7'))
     expect(await db.equipments.get('10')).toBeUndefined()
     expect(await db.cycles.get('50')).toBeUndefined()
   })

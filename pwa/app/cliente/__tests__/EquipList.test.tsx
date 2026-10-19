@@ -1,18 +1,15 @@
 // @vitest-environment happy-dom
 /// <reference types="@testing-library/jest-dom" />
 import 'fake-indexeddb/auto'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
-vi.mock('next/navigation', () => ({
-  useParams: () => ({ clienteId: '7' }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  usePathname: () => '/levantamento/7',
-}))
 
 import { db } from '@/lib/levantamento/db'
 import { emitSyncTick } from '@/lib/levantamento/events'
-import EquipListPage from '../[clienteId]/page'
+import { ClienteView } from '../_components/ClienteView'
+
+const EquipListPage = () => <ClienteView id="7" />
 
 const blob = () => new Blob(['x'], { type: 'image/jpeg' })
 
@@ -42,7 +39,7 @@ describe('EquipListPage', () => {
     expect(screen.getAllByText('sem foto plaqueta')).toHaveLength(1)
     expect(screen.getAllByText('sem ciclos')).toHaveLength(1)
     expect(screen.getByText(/Baumer · X1 · S1/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /\+ Equipamento/ })).toHaveAttribute('href', '/levantamento/7/novo')
+    expect(screen.getByRole('link', { name: /\+ Equipamento/ })).toHaveAttribute('href', '/cliente?id=7&eq=novo')
   })
 
   it('badge de erro vermelho mostra o syncError ao tocar', async () => {

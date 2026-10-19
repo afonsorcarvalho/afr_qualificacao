@@ -1,8 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import { PendingLink } from '@/components/ui/PendingLink'
 import { Button } from '@/components/ui/button'
 import { MicButton } from '@/app/tecnico/qualificacao/_components/MicButton'
 import { getDb, type LocalCycle, type LocalEquipment, type LocalPhoto } from '@/lib/levantamento/db'
@@ -10,15 +8,19 @@ import { onSyncTick } from '@/lib/levantamento/events'
 import {
   addPhoto, deleteCycle, deletePhoto, missingRequired, resolveKey, saveCycle, saveEquipment,
 } from '@/lib/levantamento/repo'
-import { CampoSelect, CampoTexto } from '../../_components/Campo'
-import { CicloEditor } from '../../_components/CicloEditor'
-import { FichaSecao } from '../../_components/FichaSecao'
-import { FotoStrip, type FotoKind } from '../../_components/FotoStrip'
-import { SyncErrorBadge } from '../../_components/SyncErrorBadge'
-import { labelOf, useCatalog } from '../../_components/catalog'
-import { tituloDoEquip } from '../../_components/equipInfo'
-import { useAutosave } from '../../_components/useAutosave'
-import { useOnline } from '../../_components/useOnline'
+import { CampoSelect, CampoTexto } from './Campo'
+import { CicloEditor } from './CicloEditor'
+import { FichaSecao } from './FichaSecao'
+import { FotoStrip, type FotoKind } from './FotoStrip'
+import { SyncErrorBadge } from './SyncErrorBadge'
+import { labelOf, useCatalog } from './catalog'
+import { tituloDoEquip } from './equipInfo'
+import { useAutosave } from './useAutosave'
+import { useOnline } from './useOnline'
+import { ClienteLink } from './ClienteLink'
+import { EmptyOffline } from './EmptyOffline'
+import { useCanEditCtx } from './canEdit'
+import { goCliente } from '@/lib/cliente/nav'
 
 const NOMES_OBRIGATORIOS: Record<string, string> = { category_id: 'categoria', marca_id: 'marca', model: 'modelo' }
 const FALLBACK_KIND: Record<string, string> = {
@@ -30,14 +32,8 @@ function listaPt(nomes: string[]): string {
 }
 
 /** Ficha do equipamento: autosave local (IndexedDB), sem botão salvar. */
-export default function FichaPage() {
-  const params = useParams<{ clienteId: string; eqId: string }>()
-  const router = useRouter()
-  // Ref: identidade estável do router (não pode re-disparar o efeito de carga).
-  const routerRef = useRef(router)
-  routerRef.current = router
-  const clienteParam = decodeURIComponent(params.clienteId)
-  const eqParam = decodeURIComponent(params.eqId)
+export function FichaView({ id: clienteParam, eq: eqParam }: { id: string; eq: string }) {
+  const podeEditar = useCanEditCtx()
   const novo = eqParam === 'novo'
   const cat = useCatalog()
   const online = useOnline()
@@ -67,7 +63,7 @@ export default function FichaPage() {
     (k: string) => {
       if (!montado.current || redirecionado.current === k) return
       redirecionado.current = k
-      routerRef.current.replace(`/levantamento/${encodeURIComponent(clienteParam)}/${encodeURIComponent(k)}`)
+      goCliente({ id: clienteParam, eq: k }, { replace: true })
     },
     [clienteParam],
   )
@@ -185,23 +181,20 @@ export default function FichaPage() {
   const faltando = missingRequired(vals).map((f) => NOMES_OBRIGATORIOS[f] ?? f)
   const aindaLocal = novo || (keyRef.current?.startsWith('tmp:') ?? false)
   const opts = (items: { id: number; name: string }[]) => items.map((i) => ({ value: String(i.id), label: i.name }))
-  const volta = `/levantamento/${encodeURIComponent(clienteParam)}`
+  const volta = { id: clienteParam }
 
   if (carregado && !novo && !eq && !criado) {
     return (
-      <div className="mx-auto max-w-[720px] space-y-3 py-8 text-center text-sm text-muted-foreground">
-        <p>Equipamento não encontrado neste aparelho.</p>
-        <PendingLink href={volta} className="text-primary underline">Voltar aos equipamentos</PendingLink>
-      </div>
+      <EmptyOffline volta={volta} voltaLabel="Voltar aos equipamentos" />
     )
   }
 
   return (
     <div className="mx-auto max-w-[720px] space-y-3 pb-8">
       <div className="flex items-center gap-2">
-        <PendingLink href={volta} aria-label="Voltar aos equipamentos" className="flex h-11 w-11 items-center justify-center">
+        <ClienteLink to={volta} aria-label="Voltar aos equipamentos" className="flex h-11 w-11 items-center justify-center">
           <ArrowLeft className="h-5 w-5" aria-hidden />
-        </PendingLink>
+        </ClienteLink>
         <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
           {novo && !eq ? 'Novo equipamento' : tituloDoEquip({ ...(eq ?? { key: '', partnerKey: '', sync: 'ok' }), ...vals } as LocalEquipment, cat)}
         </h1>
@@ -212,10 +205,10 @@ export default function FichaPage() {
           error={eq.syncError}
           recordKey={eq.key}
           recordKind="equipment"
-          onDiscarded={() => routerRef.current.replace(volta)}
+          onDiscarded={() => goCliente(volta, { replace: true })}
         />
       )}
-      {aindaLocal && faltando.length > 0 && (
+      {podeEditar && aindaLocal && faltando.length > 0 && (
         <p role="status" className="rounded-md border border-warn/30 bg-warn-surface p-3 text-sm text-warn">
           {`Preencha ${listaPt(faltando)} para enviar`}
         </p>
@@ -272,14 +265,16 @@ export default function FichaPage() {
             onDelete={excluirCiclo}
           />
         ))}
-        <Button type="button" variant="outline" className="min-h-[44px] w-full" onClick={() => void novoCiclo()}>
-          + ciclo
-        </Button>
+        {podeEditar && (
+          <Button type="button" variant="outline" className="min-h-[44px] w-full" onClick={() => void novoCiclo()}>
+            + ciclo
+          </Button>
+        )}
       </FichaSecao>
 
       <FichaSecao titulo="Observações">
         <CampoTexto label="Observações do levantamento" multiline value={vals.survey_note} onChange={(v) => set('survey_note', v)} />
-        {online && (
+        {online && podeEditar && (
           <MicButton
             onTranscribe={(texto) => {
               const atual = typeof vals.survey_note === 'string' ? vals.survey_note : ''
