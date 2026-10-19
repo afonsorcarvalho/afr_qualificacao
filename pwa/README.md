@@ -67,9 +67,13 @@ HTTPS não há instalação no aparelho nem uso offline — e uma página HTTPS
 não pode chamar uma API HTTP (conteúdo misto). Ver
 `deploy/setup-pwa-proxy.sh`.
 
-O service worker é registrado com escopo `/` (offline de `/cliente` e `/tecnico`), então o
-PWA precisa ficar em host próprio: no mesmo host do Odoo ele interceptaria as
-navegações do backend. `NEXT_PUBLIC_SW_SCOPE` restringe o escopo se preciso.
+O service worker é registrado com escopo `/` e isso é seguro mesmo em origem
+compartilhada com o Odoo: o cache de páginas (`pages`), RSC e imagens só casa
+rotas do app (`/cliente`, `/levantamento`, `/tecnico` e subpaths, `/login`;
+imagens só de `/_next/` e `/icons/`) — ver `lib/pwa/swRoutes.mjs`. Páginas do
+Odoo (`/web`, `/odoo`, website) nunca são cacheadas. **Rota nova do app deve
+ser adicionada tanto ao Apache quanto às regexes de `swRoutes.mjs`.**
+`NEXT_PUBLIC_SW_SCOPE` restringe o escopo se preciso.
 
 Sem `OPENROUTER_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
 sobe o container com a variável vazia: as features de IA (auto-resumo,

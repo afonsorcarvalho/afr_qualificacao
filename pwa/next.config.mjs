@@ -1,4 +1,5 @@
 import withPWAInit from 'next-pwa'
+import { matchPageNavigation, matchRscRequest, matchAppImage } from './lib/pwa/swRoutes.mjs'
 
 const withPWA = withPWAInit({
   dest: 'public',
@@ -6,6 +7,9 @@ const withPWA = withPWAInit({
   register: true,
   skipWaiting: true,
   buildExcludes: [/app-build-manifest\.json$/],
+  // Escopo `/` é seguro em origem compartilhada com o Odoo porque pages/rsc/
+  // imagens são restritos por path (ver lib/pwa/swRoutes.mjs). Rota nova do app
+  // deve ir no Apache E nas regexes de lá.
   // Ordem importa (primeira que casa vence). As funções são serializadas para
   // dentro do sw.js: precisam ser autocontidas (sem closures).
   runtimeCaching: [
@@ -14,7 +18,7 @@ const withPWA = withPWAInit({
       handler: 'NetworkOnly',
     },
     {
-      urlPattern: ({ request }) => request.mode === 'navigate',
+      urlPattern: matchPageNavigation,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'pages',
@@ -37,8 +41,7 @@ const withPWA = withPWAInit({
       },
     },
     {
-      urlPattern: ({ request, url }) =>
-        request.headers.get('RSC') === '1' && !url.pathname.startsWith('/api/'),
+      urlPattern: matchRscRequest,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'rsc',
@@ -60,7 +63,7 @@ const withPWA = withPWAInit({
       },
     },
     {
-      urlPattern: /^https?.*\.(png|jpg|jpeg|svg|gif|webp|woff2?)$/,
+      urlPattern: matchAppImage,
       handler: 'CacheFirst',
       options: {
         cacheName: 'static-assets',
