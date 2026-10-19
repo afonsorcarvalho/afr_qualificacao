@@ -1,10 +1,14 @@
 'use client'
 import { ReactNode } from 'react'
-import { Ruler } from 'lucide-react'
+import Link from 'next/link'
+import { Ruler, ShieldAlert } from 'lucide-react'
 import { NavProgressBar, NavProgressProvider } from '@/components/providers/NavProgress'
 import { TecnicoNav } from '@/app/tecnico/qualificacao/_components/TecnicoNav'
 import { SURVEY_GROUP } from '@/lib/levantamento/constants'
 import { useHasGroup } from '@/lib/hooks/useHasGroup'
+import { useAuthStore } from '@/lib/store/authStore'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { buttonVariants } from '@/components/ui/button'
 
 /**
  * Casca do levantamento de campo. O loop de sync e o pedido de storage
@@ -13,6 +17,9 @@ import { useHasGroup } from '@/lib/hooks/useHasGroup'
  */
 export default function LevantamentoLayout({ children }: { children: ReactNode }) {
   const temGrupo = useHasGroup(SURVEY_GROUP)
+  // `useHasGroup` devolve false tanto para "não tem" quanto para "ainda não sei";
+  // o store só ganha a chave depois da 1ª resposta (ou do cache persistido).
+  const conhecido = useAuthStore((s) => SURVEY_GROUP in s.groups)
 
   return (
     <NavProgressProvider>
@@ -27,11 +34,36 @@ export default function LevantamentoLayout({ children }: { children: ReactNode }
             <NavProgressBar />
           </header>
           <main className="min-h-0 flex-1 overflow-auto">
-            <div className="h-full p-3">{children}</div>
+            <div className="h-full p-3">
+              {!conhecido ? (
+                <LoadingState label="Verificando permissão..." />
+              ) : temGrupo ? (
+                children
+              ) : (
+                <SemAcesso />
+              )}
+            </div>
           </main>
           <TecnicoNav variant="bottom" levantamento={temGrupo} />
         </div>
       </div>
     </NavProgressProvider>
+  )
+}
+
+/** Sem o grupo o sync nunca roda: bloquear a tela evita dado local que não sobe. */
+function SemAcesso() {
+  return (
+    <div role="alert" className="mx-auto flex max-w-sm flex-col items-center gap-3 py-10 text-center">
+      <ShieldAlert className="h-8 w-8 text-muted-foreground" aria-hidden />
+      <h1 className="text-lg font-semibold">Sem acesso ao Levantamento de campo</h1>
+      <p className="text-sm text-muted-foreground">
+        Seu usuário não tem permissão para o levantamento. Peça ao administrador para incluir você no grupo
+        “Levantamento de campo”.
+      </p>
+      <Link href="/tecnico/qualificacao" className={buttonVariants({ variant: 'outline' })}>
+        Voltar para Qualificação
+      </Link>
+    </div>
   )
 }
