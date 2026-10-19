@@ -67,6 +67,10 @@ HTTPS não há instalação no aparelho nem uso offline — e uma página HTTPS
 não pode chamar uma API HTTP (conteúdo misto). Ver
 `deploy/setup-pwa-proxy.sh`.
 
+O service worker é registrado com escopo `/` (offline de `/cliente` e `/tecnico`), então o
+PWA precisa ficar em host próprio: no mesmo host do Odoo ele interceptaria as
+navegações do backend. `NEXT_PUBLIC_SW_SCOPE` restringe o escopo se preciso.
+
 Sem `OPENROUTER_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
 sobe o container com a variável vazia: as features de IA (auto-resumo,
 ditado, revisão pré-fechamento) ficam desligadas (`/api/groq/status` →

@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { useSchemaStore } from './schemaStore'
+import { clearSwCaches } from '@/lib/pwa/clearSwCaches'
 
 export interface AvailableCompany {
   id: number
@@ -79,12 +80,15 @@ export const useAuthStore = create<AuthState>()(
         },
 
         // Outro usuário no mesmo aparelho (sem logout) não herda os grupos.
-        setUser: (userId, userName) =>
+        setUser: (userId, userName) => {
+          const trocou = get().userId !== null && get().userId !== userId
+          if (trocou) void clearSwCaches()
           set(
-            get().userId !== null && get().userId !== userId
+            trocou
               ? { userId, userName, isAuthenticated: true, groups: {} }
               : { userId, userName, isAuthenticated: true },
-          ),
+          )
+        },
 
         setCompany: (companyId, companyName, companyLogo) =>
           set({ companyId, companyName, companyLogo }),
@@ -106,6 +110,7 @@ export const useAuthStore = create<AuthState>()(
 
         logout: () => {
           useSchemaStore.getState().clear()
+          void clearSwCaches()
           // Preserva serverUrl e dbName para o próximo login reabrir no mesmo
           // contexto (pré-preenchimento via URL ou último server/db usado).
           set({

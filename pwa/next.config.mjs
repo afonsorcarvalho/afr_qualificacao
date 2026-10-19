@@ -21,6 +21,19 @@ const withPWA = withPWAInit({
         networkTimeoutSeconds: 3,
         matchOptions: { ignoreSearch: true },
         expiration: { maxEntries: 50 },
+        plugins: [
+          {
+            // Só respostas 200 same-origin: nunca redirect (ex.: /login),
+            // erro ou opaca. Autocontido: é serializado dentro do sw.js.
+            cacheWillUpdate: async ({ response }) =>
+              response &&
+              response.status === 200 &&
+              !response.redirected &&
+              response.type === 'basic'
+                ? response
+                : null,
+          },
+        ],
       },
     },
     {
@@ -31,6 +44,19 @@ const withPWA = withPWAInit({
         cacheName: 'rsc',
         networkTimeoutSeconds: 3,
         expiration: { maxEntries: 50 },
+        plugins: [
+          {
+            // Só respostas 200 same-origin: nunca redirect (ex.: /login),
+            // erro ou opaca. Autocontido: é serializado dentro do sw.js.
+            cacheWillUpdate: async ({ response }) =>
+              response &&
+              response.status === 200 &&
+              !response.redirected &&
+              response.type === 'basic'
+                ? response
+                : null,
+          },
+        ],
       },
     },
     {
