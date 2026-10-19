@@ -228,7 +228,7 @@ class TestRelatorioCorpoReport(AfrQualificacaoTestCommon):
     def test_level1_title_zero_padded_and_toc_uses_same_number(self):
         html = self._render()
         self.assertRegex(html, r'class="rq-title-num">0\d<')
-        self.assertIn('class="rq-toc-num">0', html)
+        self.assertRegex(html, r'class="rq-toc-num"><a [^>]*>0\d<')
 
     def test_styles_define_manual_palette_and_boxes(self):
         html = self._render()
