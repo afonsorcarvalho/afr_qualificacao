@@ -11,6 +11,7 @@ import {
 import { useHasGroup } from '@/lib/hooks/useHasGroup'
 import { SURVEY_GROUP } from '@/lib/levantamento/constants'
 import { TecnicoNav } from './_components/TecnicoNav'
+import { withBase } from '@/lib/basePath'
 
 const ROOT_PATH = '/tecnico/qualificacao'
 
@@ -33,7 +34,7 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
   // `create_uid`) ou nunca disparava, ou pior, escopava pelo usuário ERRADO
   // se outro técnico tivesse usado o mesmo aparelho antes.
   useEffect(() => {
-    fetch('/api/odoo/session-info')
+    fetch(withBase('/api/odoo/session-info'))
       .then((r) => r.json())
       .then((d) => d?.uid && setLastUserId(d.uid))
       .catch(() => {})

@@ -6,6 +6,7 @@ import { odooClient, OdooSessionError } from '@/lib/odoo/client'
 import { useAuthStore } from '@/lib/store/authStore'
 import { preloadSchemas } from '@/lib/odoo/schema'
 import { buildPostLogoutLoginPath } from '@/lib/utils/loginUrlParams'
+import { withBase } from '@/lib/basePath'
 
 const PUBLIC_PATHS = ['/login']
 
@@ -15,7 +16,7 @@ async function forceLogout() {
   } catch {
     // Se o servidor estiver offline, destrói o cookie manualmente via proxy
     try {
-      await fetch('/api/odoo/web/session/destroy', {
+      await fetch(withBase('/api/odoo/web/session/destroy'), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

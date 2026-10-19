@@ -14,25 +14,32 @@ describe('swRoutes', () => {
     ;(globalThis as any).self = { location: { origin: 'https://x.test' } }
   })
 
-  it('navegação do app casa', () => {
-    expect(matchPageNavigation({ request: nav, url: u('/cliente?id=1') })).toBe(true)
-    expect(matchPageNavigation({ request: nav, url: u('/tecnico/qualificacao') })).toBe(true)
-    expect(matchPageNavigation({ request: nav, url: u('/levantamento') })).toBe(true)
-    expect(matchPageNavigation({ request: nav, url: u('/login') })).toBe(true)
+  it('navegação do app casa (prefixo /app/)', () => {
+    expect(matchPageNavigation({ request: nav, url: u('/app/cliente?id=1') })).toBe(true)
+    expect(matchPageNavigation({ request: nav, url: u('/app/tecnico/qualificacao') })).toBe(true)
+    expect(matchPageNavigation({ request: nav, url: u('/app/levantamento') })).toBe(true)
+    expect(matchPageNavigation({ request: nav, url: u('/app/login') })).toBe(true)
+    expect(matchPageNavigation({ request: nav, url: u('/app/rota-nova') })).toBe(true)
   })
-  it('navegação do Odoo não casa', () => {
+  it('navegação do Odoo / API / fora do prefixo não casa', () => {
     expect(matchPageNavigation({ request: nav, url: u('/web#action=1') })).toBe(false)
-    expect(matchPageNavigation({ request: nav, url: u('/odoo/x') })).toBe(false)
-    expect(matchPageNavigation({ request: nav, url: u('/clientes') })).toBe(false)
+    expect(matchPageNavigation({ request: nav, url: u('/web') })).toBe(false)
+    expect(matchPageNavigation({ request: nav, url: u('/cliente') })).toBe(false)
+    expect(matchPageNavigation({ request: nav, url: u('/application') })).toBe(false)
+    expect(matchPageNavigation({ request: nav, url: u('/app/api/odoo/x') })).toBe(false)
   })
   it('rsc', () => {
-    expect(matchRscRequest({ request: rsc, url: u('/tecnico/qualificacao') })).toBe(true)
+    expect(matchRscRequest({ request: rsc, url: u('/app/tecnico/qualificacao') })).toBe(true)
     expect(matchRscRequest({ request: rsc, url: u('/web/x') })).toBe(false)
-    expect(matchRscRequest({ request: nav, url: u('/tecnico/x') })).toBe(false)
+    expect(matchRscRequest({ request: rsc, url: u('/app/api/odoo/x') })).toBe(false)
+    expect(matchRscRequest({ request: nav, url: u('/app/tecnico/x') })).toBe(false)
   })
   it('imagens', () => {
+    expect(matchAppImage({ request: img, url: u('/web/image/1') })).toBe(false)
     expect(matchAppImage({ request: img, url: u('/web/image/x.png') })).toBe(false)
-    expect(matchAppImage({ request: img, url: u('/_next/static/a.png') })).toBe(true)
-    expect(matchAppImage({ request: img, url: new URL('https://o.test/_next/a.png') })).toBe(false)
+    expect(matchAppImage({ request: img, url: u('/app/_next/a.png') })).toBe(true)
+    expect(matchAppImage({ request: img, url: u('/app/icons/icon-192.png') })).toBe(true)
+    expect(matchAppImage({ request: img, url: u('/_next/static/a.png') })).toBe(false)
+    expect(matchAppImage({ request: img, url: new URL('https://o.test/app/_next/a.png') })).toBe(false)
   })
 })

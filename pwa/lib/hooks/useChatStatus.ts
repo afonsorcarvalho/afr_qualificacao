@@ -1,12 +1,13 @@
 // lib/hooks/useChatStatus.ts
 'use client'
 import { useQuery } from '@tanstack/react-query'
+import { withBase } from '@/lib/basePath'
 
 export function useChatStatus() {
   const q = useQuery({
     queryKey: ['chat-status'],
     queryFn: async () => {
-      const res = await fetch('/api/chat/status')
+      const res = await fetch(withBase('/api/chat/status'))
       if (!res.ok) return { enabled: false }
       return (await res.json()) as { enabled: boolean }
     },

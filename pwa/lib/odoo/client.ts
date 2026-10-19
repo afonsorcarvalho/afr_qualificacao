@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
+import { withBase } from '@/lib/basePath'
 
 interface JsonRpcResponse<T = unknown> {
   jsonrpc: '2.0'
@@ -122,7 +123,7 @@ function rpcPayload(params: Record<string, unknown>) {
   return { jsonrpc: '2.0', method: 'call', id: nextId(), params }
 }
 
-const PROXY_BASE = '/api/odoo'
+const PROXY_BASE = withBase('/api/odoo')
 
 function normalizeTarget(raw: string): string {
   let u = raw.trim().replace(/\/+$/, '')
@@ -154,7 +155,7 @@ class OdooClient {
         (r) => r,
         (error) => {
           if (error.response?.status === 401) {
-            if (typeof window !== 'undefined') window.location.href = '/login'
+            if (typeof window !== 'undefined') window.location.href = withBase('/login')
             throw new OdooSessionError()
           }
           // Traduz aqui, e não em cada `onError` de mutation: assim toda tela

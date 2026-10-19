@@ -11,11 +11,12 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css'
 import 'react-pdf/dist/esm/Page/TextLayer.css'
 import { clsx } from 'clsx'
+import { withBase } from '@/lib/basePath'
 
 // Worker servido localmente a partir de /public (copiado em scripts/postinstall ou manualmente).
 // Evita problemas de MIME type / CORS que o CDN pode ter com arquivos .mjs.
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+  pdfjs.GlobalWorkerOptions.workerSrc = withBase('/pdf.worker.min.mjs')
 }
 
 /**

@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { mensagemDoErro } from '@/lib/utils/erro'
 import type { SummaryRequestBody } from '@/app/api/groq/summary/route'
 import type { ReviewIssue, ReviewIssueType, ReviewResponse } from '@/app/api/groq/review/route'
+import { withBase } from '@/lib/basePath'
 
 interface ReviewPanelProps {
   buildContext: () => SummaryRequestBody
@@ -59,7 +60,7 @@ export function ReviewPanel({
     setErrorMsg(null)
     try {
       const ctx = buildContext()
-      const res = await fetch('/api/groq/review', {
+      const res = await fetch(withBase('/api/groq/review'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ctx),

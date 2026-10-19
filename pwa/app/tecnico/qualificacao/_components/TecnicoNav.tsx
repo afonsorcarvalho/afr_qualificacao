@@ -5,6 +5,7 @@ import { ClipboardList, CalendarDays, BarChart3, User, Loader2, Building2 } from
 import { clsx } from 'clsx'
 import { useNavProgress } from '@/components/providers/NavProgress'
 import { goCliente } from '@/lib/cliente/nav'
+import { withBase } from '@/lib/basePath'
 
 const ROOT_PATH = '/tecnico/qualificacao'
 
@@ -103,7 +104,7 @@ function NavItem({
   const [isPending, startTransition] = useTransition()
   return (
     <a
-      href={href}
+      href={withBase(href)}
       // "page": este link leva a uma rota-destino de nível de app (OSs,
       // Agenda, Histórico, Perfil). Ver ColetaCard: lá a coleta selecionada usa
       // aria-current="true" porque marca seleção dentro de uma lista, não a
@@ -123,7 +124,7 @@ function NavItem({
         // serve a navegação do cache `pages`; um fetch RSC de rota nunca
         // visitada falharia.
         if (href === CLIENTES_PATH) {
-          window.location.assign(href)
+          window.location.assign(withBase(href))
           return
         }
         begin()

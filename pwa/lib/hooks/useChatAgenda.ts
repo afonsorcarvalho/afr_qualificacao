@@ -10,6 +10,7 @@ import {
 } from '@/lib/chat/machine'
 import { runTool } from '@/lib/chat/tools'
 import { buildSystemPrompt, resumirVisitas } from '@/lib/chat/prompt'
+import { withBase } from '@/lib/basePath'
 
 export interface Bolha {
   autor: 'user' | 'assistente' | 'erro'
@@ -35,7 +36,7 @@ export interface TotaisSessao {
 const TOTAIS_ZERADOS: TotaisSessao = { chamadas: 0, entrada: 0, saida: 0, custo: 0, temCusto: false }
 
 async function chamarModelo(messages: LlmMessage[]) {
-  const res = await fetch('/api/chat', {
+  const res = await fetch(withBase('/api/chat'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),

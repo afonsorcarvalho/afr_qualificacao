@@ -25,12 +25,18 @@ export function middleware(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 
   if (!sessionId && !isPublic) {
-    const loginUrl = new URL('/login', request.url)
+    // `nextUrl.clone()` preserva o basePath (`/app`): trocar só o pathname
+    // gera `/app/login`. `new URL('/login', request.url)` perderia o prefixo.
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = '/login'
+    loginUrl.search = ''
     // Guarda o destino original para o login devolver o técnico direto à
     // coleta pedida em vez de cair na home — o valor sai do próprio
     // `nextUrl` da requisição (interno por construção), então não passa por
     // `destinoSeguro` aqui. A validação entra do lado que LÊ `next`
     // (`app/login/page.tsx`), que é o ponto de risco de open redirect.
+    // `pathname` já vem SEM basePath; o login o entrega ao `router.replace`,
+    // que prefixa sozinho (com `/app` aqui sairia `/app/app/...`).
     loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
     return NextResponse.redirect(loginUrl)
   }

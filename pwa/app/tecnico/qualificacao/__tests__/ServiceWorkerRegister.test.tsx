@@ -4,7 +4,7 @@ import { render } from '@testing-library/react'
 import { ServiceWorkerRegister } from '@/components/providers/ServiceWorkerRegister'
 
 /**
- * Escopo padrão `/`: o PWA também serve `/cliente` (fora de /tecnico/) e
+ * Escopo padrão `/app/` (basePath): todo o PWA vive sob o prefixo.
  * precisa funcionar offline. `NEXT_PUBLIC_SW_SCOPE` restringe, se preciso.
  */
 
@@ -26,18 +26,18 @@ afterEach(() => {
 })
 
 describe('ServiceWorkerRegister', () => {
-  it('registra /sw.js com escopo / por padrão', () => {
+  it('registra /app/sw.js com escopo /app/ por padrão', () => {
     render(<ServiceWorkerRegister />)
     expect(register).toHaveBeenCalledTimes(1)
     const [url, opts] = register.mock.calls[0]
-    expect(url).toBe('/sw.js')
-    expect(opts?.scope).toBe('/')
+    expect(url).toBe('/app/sw.js')
+    expect(opts?.scope).toBe('/app/')
   })
 
   it('NEXT_PUBLIC_SW_SCOPE sobrescreve o escopo', () => {
-    vi.stubEnv('NEXT_PUBLIC_SW_SCOPE', '/tecnico/')
+    vi.stubEnv('NEXT_PUBLIC_SW_SCOPE', '/app/tecnico/')
     render(<ServiceWorkerRegister />)
-    expect(register.mock.calls[0][1]?.scope).toBe('/tecnico/')
+    expect(register.mock.calls[0][1]?.scope).toBe('/app/tecnico/')
   })
 
   it('não registra nada fora de produção', () => {

@@ -11,10 +11,10 @@ afterEach(() => {
 
 describe('clienteUrl / levantamentoRedirect', () => {
   it('monta a query', () => {
-    expect(clienteUrl()).toBe('/cliente')
-    expect(clienteUrl({ id: '7' })).toBe('/cliente?id=7')
-    expect(clienteUrl({ id: 'tmp:a', eq: 'novo' })).toBe('/cliente?id=tmp%3Aa&eq=novo')
-    expect(clienteUrl({ eq: '3' })).toBe('/cliente')
+    expect(clienteUrl()).toBe('/app/cliente')
+    expect(clienteUrl({ id: '7' })).toBe('/app/cliente?id=7')
+    expect(clienteUrl({ id: 'tmp:a', eq: 'novo' })).toBe('/app/cliente?id=tmp%3Aa&eq=novo')
+    expect(clienteUrl({ eq: '3' })).toBe('/app/cliente')
   })
   it('mapa de redirecionamento do /levantamento', () => {
     expect(levantamentoRedirect()).toBe('/cliente')
@@ -31,10 +31,10 @@ describe('useClienteNav', () => {
     const { result } = renderHook(() => useClienteNav())
     expect(result.current.id).toBeNull()
     act(() => result.current.go({ id: '7' }))
-    expect(push).toHaveBeenCalledWith(null, '', '/cliente?id=7')
+    expect(push).toHaveBeenCalledWith(null, '', '/app/cliente?id=7')
     expect(result.current).toMatchObject({ id: '7', eq: null })
     act(() => goCliente({ id: '7', eq: 'tmp:x' }, { replace: true }))
-    expect(repl).toHaveBeenCalledWith(null, '', '/cliente?id=7&eq=tmp%3Ax')
+    expect(repl).toHaveBeenCalledWith(null, '', '/app/cliente?id=7&eq=tmp%3Ax')
     expect(result.current).toMatchObject({ id: '7', eq: 'tmp:x' })
     act(() => {
       window.history.replaceState(null, '', '/cliente')

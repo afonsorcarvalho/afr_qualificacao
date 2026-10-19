@@ -12,6 +12,7 @@ import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import { buildSummaryContext } from '@/lib/tecnico/buildSummaryContext'
 import toast from 'react-hot-toast'
 import { mensagemDoErro } from '@/lib/utils/erro'
+import { withBase } from '@/lib/basePath'
 
 /** `/api/groq/summary` devolve `{summary}` no sucesso e `{error}` na falha;
  *  `null` cobre a resposta sem JSON (proxy, 502, corpo vazio). */
@@ -41,7 +42,7 @@ export default function FinalizarPage() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     autoTriggeredRef.current = true
     setGenerating(true)
-    fetch('/api/groq/summary', {
+    fetch(withBase('/api/groq/summary'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildSummaryContext(data)),

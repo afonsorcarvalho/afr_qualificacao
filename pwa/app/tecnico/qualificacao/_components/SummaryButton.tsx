@@ -6,6 +6,7 @@ import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import toast from 'react-hot-toast'
 import { mensagemDoErro } from '@/lib/utils/erro'
 import type { SummaryRequestBody } from '@/app/api/groq/summary/route'
+import { withBase } from '@/lib/basePath'
 
 interface SummaryButtonProps {
   onGenerate: (summary: string) => void
@@ -39,7 +40,7 @@ export function SummaryButton({
     setLoading(true)
     try {
       const ctx = buildContext()
-      const res = await fetch('/api/groq/summary', {
+      const res = await fetch(withBase('/api/groq/summary'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ctx),

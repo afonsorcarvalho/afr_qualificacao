@@ -6,6 +6,7 @@ import { GlassCard } from '@/components/ui/GlassCard'
 import { PdfViewerModal } from '@/components/ui/PdfViewerModal'
 import { InstrumentBadges } from './InstrumentBadges'
 import type { ColetaItemDetail, InstrumentInfo } from '@/lib/odoo/tecnico'
+import { withBase } from '@/lib/basePath'
 
 const NON_IMAGE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   excel: FileSpreadsheet,
@@ -15,7 +16,7 @@ const NON_IMAGE_ICONS: Record<string, React.ComponentType<{ className?: string }
 }
 
 function fileUrl(itemId: number, kind: 'image' | 'content', download = false) {
-  const base = `/api/odoo/web/${kind}/afr.qualificacao.collect.item/${itemId}/file`
+  const base = withBase(`/api/odoo/web/${kind}/afr.qualificacao.collect.item/${itemId}/file`)
   return download ? `${base}?download=true` : base
 }
 

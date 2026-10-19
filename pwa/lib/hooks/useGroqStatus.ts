@@ -1,12 +1,13 @@
 // lib/hooks/useGroqStatus.ts
 'use client'
 import { useQuery } from '@tanstack/react-query'
+import { withBase } from '@/lib/basePath'
 
 export function useGroqStatus() {
   const q = useQuery({
     queryKey: ['groq-status'],
     queryFn: async () => {
-      const res = await fetch('/api/groq/status')
+      const res = await fetch(withBase('/api/groq/status'))
       if (!res.ok) return { enabled: false }
       return (await res.json()) as { enabled: boolean }
     },

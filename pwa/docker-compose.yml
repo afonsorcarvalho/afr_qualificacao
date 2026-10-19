@@ -36,7 +36,7 @@ services:
       # (`MODELO_PADRAO` em `lib/llm/transcribe.ts`).
       OPENROUTER_STT_MODEL: ${OPENROUTER_STT_MODEL:-}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/app/login"]
       interval: 30s
       timeout: 5s
       retries: 3

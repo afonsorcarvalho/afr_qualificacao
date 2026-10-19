@@ -92,7 +92,7 @@ describe('ClientesPage', () => {
     await seed()
     render(<ClientesPage />)
     const link = (await screen.findByText('Hospital Alfa')).closest('a')
-    expect(link).toHaveAttribute('href', '/cliente?id=7')
+    expect(link).toHaveAttribute('href', '/app/cliente?id=7')
   })
 
   it('banner mostra a contagem de pendências', async () => {

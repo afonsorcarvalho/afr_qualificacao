@@ -39,6 +39,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { mensagemDoErro, nomeDoErro } from '@/lib/utils/erro'
 import { avaliarRajada, calcularRms, criarEstadoRajada, type EstadoRajada } from '@/lib/audio/deteccaoSilencio'
+import { withBase } from '@/lib/basePath'
 
 // A OpenRouter documenta que os provedores upstream cortam por volta de
 // 60s por requisição — uma gravação sem limite vira, mais cedo ou mais
@@ -497,7 +498,7 @@ export function useDitado(onTexto: (t: string) => void) {
             let res: Response
             let json: { text?: string; error?: string } | null = null
             try {
-              res = await fetch('/api/groq/transcribe', {
+              res = await fetch(withBase('/api/groq/transcribe'), {
                 method: 'POST',
                 body: form,
                 signal: abortCtrl.signal,

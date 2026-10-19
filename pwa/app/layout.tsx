@@ -9,6 +9,7 @@ import { PageTitle } from '@/components/providers/PageTitle'
 import { ServiceWorkerRegister } from '@/components/providers/ServiceWorkerRegister'
 import { SurveySyncProvider } from '@/components/providers/SurveySyncProvider'
 import './globals.css'
+import { withBase } from '@/lib/basePath'
 
 const geistSans = localFont({
   src: './fonts/GeistVF.woff',
@@ -24,7 +25,7 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: 'Qualificação · Técnico',
   description: 'Coleta de dados de qualificação em campo',
-  manifest: '/manifest.json',
+  manifest: withBase('/manifest.json'),
   themeColor: '#1f6feb',
 }
 

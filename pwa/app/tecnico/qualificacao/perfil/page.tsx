@@ -13,6 +13,7 @@ import { resetSessionCache } from '@/lib/store/resetSessionCache'
 import { fetchAvailableCompanies } from '@/lib/odoo/companies'
 import { buildPostLogoutLoginPath } from '@/lib/utils/loginUrlParams'
 import toast from 'react-hot-toast'
+import { withBase } from '@/lib/basePath'
 
 export default function PerfilPage() {
   const router = useRouter()
@@ -30,7 +31,7 @@ export default function PerfilPage() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/odoo/session-info')
+    fetch(withBase('/api/odoo/session-info'))
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return

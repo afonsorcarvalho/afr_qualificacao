@@ -125,7 +125,7 @@ describe('FichaPage', () => {
     const keys = saveEquipment.mock.calls.map((c) => c[0])
     expect(keys).toEqual([null, 'tmp:new'])
     expect(replace).toHaveBeenCalledTimes(1)
-    expect(replace).toHaveBeenCalledWith('/cliente?id=7&eq=tmp%3Anew')
+    expect(replace).toHaveBeenCalledWith('/app/cliente?id=7&eq=tmp%3Anew')
     expect(screen.getByText('Preencha categoria e marca para enviar')).toBeInTheDocument()
   })
 
@@ -133,7 +133,7 @@ describe('FichaPage', () => {
     params = { clienteId: '7', eqId: 'tmp%3Aold' }
     await db.idmap.put({ tmp: 'tmp:old', id: 10 })
     render(<FichaPage />)
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/cliente?id=7&eq=10'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/app/cliente?id=7&eq=10'))
     expect(await screen.findByLabelText('Modelo')).toHaveValue('X1')
   })
 
@@ -286,7 +286,7 @@ describe('FichaPage', () => {
     render(<FichaPage />)
     fireEvent.click(await screen.findByRole('button', { name: /^erro de envio$/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Descartar' }))
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/cliente?id=7'))
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/app/cliente?id=7'))
     expect(await db.equipments.get('10')).toBeUndefined()
     expect(await db.cycles.get('50')).toBeUndefined()
   })

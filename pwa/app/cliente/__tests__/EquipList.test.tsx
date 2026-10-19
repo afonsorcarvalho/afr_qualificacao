@@ -39,7 +39,7 @@ describe('EquipListPage', () => {
     expect(screen.getAllByText('sem foto plaqueta')).toHaveLength(1)
     expect(screen.getAllByText('sem ciclos')).toHaveLength(1)
     expect(screen.getByText(/Baumer · X1 · S1/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /\+ Equipamento/ })).toHaveAttribute('href', '/cliente?id=7&eq=novo')
+    expect(screen.getByRole('link', { name: /\+ Equipamento/ })).toHaveAttribute('href', '/app/cliente?id=7&eq=novo')
   })
 
   it('badge de erro vermelho mostra o syncError ao tocar', async () => {

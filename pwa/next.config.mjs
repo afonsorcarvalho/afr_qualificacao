@@ -7,14 +7,14 @@ const withPWA = withPWAInit({
   register: true,
   skipWaiting: true,
   buildExcludes: [/app-build-manifest\.json$/],
-  // Escopo `/` é seguro em origem compartilhada com o Odoo porque pages/rsc/
-  // imagens são restritos por path (ver lib/pwa/swRoutes.mjs). Rota nova do app
-  // deve ir no Apache E nas regexes de lá.
+  // Com `basePath: '/app'` o next-pwa emite o SW para `/app/sw.js`, escopo
+  // `/app/`, e prefixa o precache (`/app/_next/...`). As regras abaixo casam
+  // por prefixo `/app/` (lib/pwa/swRoutes.mjs): rota nova não mexe no SW.
   // Ordem importa (primeira que casa vence). As funções são serializadas para
   // dentro do sw.js: precisam ser autocontidas (sem closures).
   runtimeCaching: [
     {
-      urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+      urlPattern: ({ url }) => url.pathname.startsWith('/app/api/'),
       handler: 'NetworkOnly',
     },
     {
@@ -76,6 +76,11 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Prefixo único (spec §9): o PWA divide o domínio com o Odoo e o proxy
+  // precisa de uma regra só. O valor vai ao cliente por NEXT_PUBLIC_BASE_PATH
+  // (lib/basePath.ts) para os caminhos que o Next não prefixa.
+  basePath: '/app',
+  env: { NEXT_PUBLIC_BASE_PATH: '/app' },
 }
 
 export default withPWA(nextConfig)

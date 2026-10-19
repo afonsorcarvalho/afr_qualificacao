@@ -4,11 +4,12 @@ import { OsCard } from './_components/OsCard'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { useOsMine } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
+import { withBase } from '@/lib/basePath'
 
 export default function HomePage() {
   const { filterMine, setFilterMine, lastUserId, setLastUserId } = useTecnicoSettings()
   useEffect(() => {
-    fetch('/api/odoo/session-info')
+    fetch(withBase('/api/odoo/session-info'))
       .then((r) => r.json())
       .then((d) => d?.uid && setLastUserId(d.uid))
       .catch(() => {})

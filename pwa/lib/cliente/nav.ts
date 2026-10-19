@@ -2,6 +2,7 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { SURVEY_GROUP } from '@/lib/levantamento/constants'
 import { useHasGroup } from '@/lib/hooks/useHasGroup'
+import { withBase } from '@/lib/basePath'
 
 /**
  * Navegação da página única `/cliente`. O estado mora na query
@@ -16,7 +17,8 @@ export interface ClienteNavState {
   eq?: string | null
 }
 
-export function clienteUrl({ id, eq }: ClienteNavState = {}): string {
+/** Rota de `/cliente` SEM basePath — para o router (`router.replace`), que prefixa sozinho. */
+function clienteRoute({ id, eq }: ClienteNavState = {}): string {
   const p = new URLSearchParams()
   if (id) {
     p.set('id', id)
@@ -24,6 +26,11 @@ export function clienteUrl({ id, eq }: ClienteNavState = {}): string {
   }
   const q = p.toString()
   return q ? `${CLIENTE_PATH}?${q}` : CLIENTE_PATH
+}
+
+/** URL de navegador (com basePath): `history.pushState` e `<a href>` cru. */
+export function clienteUrl(state: ClienteNavState = {}): string {
+  return withBase(clienteRoute(state))
 }
 
 /** Navega dentro de `/cliente` sem round-trip ao servidor. */
@@ -69,5 +76,5 @@ export function useCanEdit(): boolean {
 /** `/levantamento[/<c>[/<e>]]` (rotas antigas) -> URL equivalente em `/cliente`. */
 export function levantamentoRedirect(segments: string[] = []): string {
   const [c, e] = segments.map((s) => decodeURIComponent(s))
-  return clienteUrl({ id: c ?? null, eq: e ?? null })
+  return clienteRoute({ id: c ?? null, eq: e ?? null })
 }

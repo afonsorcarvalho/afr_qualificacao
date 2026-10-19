@@ -7,6 +7,7 @@ import { FileText, CheckCircle2, Camera, ClipboardList, Clock, ChevronRight } fr
 import { useHistoricoSummary, useRelatoriosFechados } from '@/lib/hooks/useTecnicoQualif'
 import { useTecnicoSettings } from '@/lib/store/tecnicoSettings'
 import type { RelatorioHistorico } from '@/lib/odoo/tecnico'
+import { withBase } from '@/lib/basePath'
 
 function fmtDate(s: string | false): string {
   if (!s) return '—'
@@ -72,7 +73,7 @@ export default function HistoricoPage() {
   const { lastUserId, setLastUserId } = useTecnicoSettings()
 
   useEffect(() => {
-    fetch('/api/odoo/session-info')
+    fetch(withBase('/api/odoo/session-info'))
       .then((r) => r.json())
       .then((d) => d?.uid && setLastUserId(d.uid))
       .catch(() => {})

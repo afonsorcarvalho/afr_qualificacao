@@ -22,19 +22,19 @@ describe('TecnicoNav', () => {
     render(<TecnicoNav variant="bottom" />)
     expect(screen.getByRole('link', { name: /OSs/ })).toHaveAttribute(
       'href',
-      '/tecnico/qualificacao',
+      '/app/tecnico/qualificacao',
     )
     expect(screen.getByRole('link', { name: /Agenda/ })).toHaveAttribute(
       'href',
-      '/tecnico/qualificacao/agenda',
+      '/app/tecnico/qualificacao/agenda',
     )
     expect(screen.getByRole('link', { name: /Histórico/ })).toHaveAttribute(
       'href',
-      '/tecnico/qualificacao/historico',
+      '/app/tecnico/qualificacao/historico',
     )
     expect(screen.getByRole('link', { name: /Perfil/ })).toHaveAttribute(
       'href',
-      '/tecnico/qualificacao/perfil',
+      '/app/tecnico/qualificacao/perfil',
     )
   })
 
@@ -46,7 +46,7 @@ describe('TecnicoNav', () => {
 
   it('aba Clientes aparece para todos e aponta para /cliente', () => {
     render(<TecnicoNav variant="bottom" />)
-    expect(screen.getByRole('link', { name: /Clientes/ })).toHaveAttribute('href', '/cliente')
+    expect(screen.getByRole('link', { name: /Clientes/ })).toHaveAttribute('href', '/app/cliente')
   })
 
   it('aba Clientes fica ativa em /cliente', () => {
@@ -127,7 +127,7 @@ describe('TecnicoNav', () => {
     it('vindo de outra rota usa navegação de documento, não router.push', () => {
       render(<TecnicoNav variant="bottom" />)
       fireEvent.click(screen.getByRole('link', { name: /Clientes/ }))
-      expect(assign).toHaveBeenCalledWith('/cliente')
+      expect(assign).toHaveBeenCalledWith('/app/cliente')
       expect(push).not.toHaveBeenCalled()
     })
 
@@ -137,7 +137,7 @@ describe('TecnicoNav', () => {
       const push2 = vi.spyOn(window.history, 'pushState')
       render(<TecnicoNav variant="bottom" />)
       fireEvent.click(screen.getByRole('link', { name: /Clientes/ }))
-      expect(push2).toHaveBeenCalledWith(null, '', '/cliente')
+      expect(push2).toHaveBeenCalledWith(null, '', '/app/cliente')
       expect(assign).not.toHaveBeenCalled()
       expect(push).not.toHaveBeenCalled()
       push2.mockRestore()

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useGroqStatus } from '@/lib/hooks/useGroqStatus'
 import toast from 'react-hot-toast'
 import { mensagemDoErro, nomeDoErro } from '@/lib/utils/erro'
+import { withBase } from '@/lib/basePath'
 
 interface MicButtonProps {
   onTranscribe: (text: string) => void
@@ -58,7 +59,7 @@ export function MicButton({ onTranscribe, disabled, className }: MicButtonProps)
         const form = new FormData()
         const ext = mimeRef.current.includes('mp4') ? 'mp4' : 'webm'
         form.append('audio', blob, `audio.${ext}`)
-        const res = await fetch('/api/groq/transcribe', { method: 'POST', body: form })
+        const res = await fetch(withBase('/api/groq/transcribe'), { method: 'POST', body: form })
         let json: RespostaTranscricao = null
         try { json = await res.json() } catch { /* sem json */ }
         if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`)

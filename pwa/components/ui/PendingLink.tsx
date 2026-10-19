@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useNavProgress } from '@/components/providers/NavProgress'
+import { withBase } from '@/lib/basePath'
 
 /**
  * Link de navegação que responde ao toque.
@@ -42,7 +43,8 @@ export function PendingLink({
 
   return (
     <a
-      href={href}
+      // `<a href>` cru não recebe o basePath; o router.push abaixo recebe.
+      href={withBase(href)}
       aria-label={ariaLabel}
       aria-current={ariaCurrent}
       aria-busy={isPending || undefined}

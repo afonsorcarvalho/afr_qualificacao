@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { withBase } from '@/lib/basePath'
 
 /**
  * Captura erros não-tratados do browser (window.onerror + unhandledrejection)
@@ -21,7 +22,7 @@ export function ErrorReporter() {
       const batch = queue.splice(0, queue.length)
       Promise.all(
         batch.map((p) =>
-          fetch('/api/debug-log', {
+          fetch(withBase('/api/debug-log'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(p),
