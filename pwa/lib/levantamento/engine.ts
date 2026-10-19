@@ -104,8 +104,6 @@ function isAuthError(e: unknown): boolean {
   return status === 401 || status === 403 || x.code === 401 || x.name === 'OdooSessionError'
 }
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
-
 /** Reescreve `tmp:x` → id real em tabelas locais e em ops ainda na outbox. */
 async function applyIdMap(d: LevantamentoDB, idmap: Record<string, number>) {
   const entries = Object.entries(idmap)

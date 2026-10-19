@@ -9,7 +9,7 @@ vi.mock('@/lib/odoo/levantamento', () => ({
 }))
 vi.mock('../photo', async (orig) => ({
   ...(await orig<typeof import('../photo')>()),
-  compressImage: vi.fn(async (b: Blob) => new Blob(['compressed'], { type: 'image/jpeg' })),
+  compressImage: vi.fn(async (_b: Blob) => new Blob(['compressed'], { type: 'image/jpeg' })),
 }))
 
 import { db } from '../db'

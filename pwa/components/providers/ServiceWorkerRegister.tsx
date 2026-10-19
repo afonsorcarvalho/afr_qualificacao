@@ -12,16 +12,13 @@ import { useEffect } from 'react'
  * (`disable: NODE_ENV === 'development'`), então aqui também não registramos:
  * um `sw.js` inexistente só encheria o console de 404.
  *
- * ESCOPO. O app é servido no MESMO domínio do Odoo do cliente
- * (`labquali.afrsistemas.com.br/tecnico`), atrás do Apache que já atende o
- * backend. Registrado na raiz, o service worker interceptaria também as
- * páginas do Odoo e passaria a servi-las do cache — por isso o escopo é
- * `/tecnico/`. Um script em `/sw.js` pode reivindicar escopo mais estreito
- * que a própria pasta sem header nenhum; o caminho contrário é que exigiria
- * `Service-Worker-Allowed`.
+ * ESCOPO. Padrão `/`: o PWA agora atende também `/cliente`, fora de
+ * `/tecnico/`, e precisa funcionar offline. As regras de runtimeCaching do
+ * `next.config.mjs` só tratam navegações do próprio app e deixam `/api/` em
+ * NetworkOnly (ver spec §8.3).
  *
- * `NEXT_PUBLIC_SW_SCOPE` existe para o dia em que o PWA ganhar subdomínio
- * próprio: lá o escopo passa a ser `/`.
+ * `NEXT_PUBLIC_SW_SCOPE` existe para o dia em que o PWA precisar restringir o escopo
+ * (ex.: `/tecnico/`).
  */
 export function ServiceWorkerRegister() {
   useEffect(() => {
@@ -29,7 +26,7 @@ export function ServiceWorkerRegister() {
     if (!('serviceWorker' in navigator)) return
 
     const register = () => {
-      const scope = process.env.NEXT_PUBLIC_SW_SCOPE || '/tecnico/'
+      const scope = process.env.NEXT_PUBLIC_SW_SCOPE || '/'
       navigator.serviceWorker.register('/sw.js', { scope }).catch((err) => {
         console.warn('[pwa] falha ao registrar o service worker:', err)
       })

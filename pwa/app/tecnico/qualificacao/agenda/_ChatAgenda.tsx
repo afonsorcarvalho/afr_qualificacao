@@ -167,11 +167,12 @@ export function ChatAgenda({
   // invisível, sem nenhum controle visível pro gestor parar. `open` vira
   // `false` → descarta a gravação em andamento, nunca transcreve: o
   // gestor fechou o chat, não pediu o texto.
+  const { pararEDescartar } = ditado
   useEffect(() => {
     if (!open) {
-      ditado.pararEDescartar()
+      pararEDescartar()
     }
-  }, [open, ditado.pararEDescartar])
+  }, [open, pararEDescartar])
 
   if (!payload?.can_manage) return null
 

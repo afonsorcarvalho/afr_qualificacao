@@ -119,6 +119,13 @@ function NavItem({
           return
         }
         if (active || isPending) return
+        // Para /cliente vindo de fora: navegação de documento. Offline, o SW
+        // serve a navegação do cache `pages`; um fetch RSC de rota nunca
+        // visitada falharia.
+        if (href === CLIENTES_PATH) {
+          window.location.assign(href)
+          return
+        }
         begin()
         startTransition(() => router.push(href))
       }}
