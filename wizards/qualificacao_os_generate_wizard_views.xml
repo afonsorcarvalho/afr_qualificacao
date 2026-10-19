@@ -9,27 +9,41 @@
                 <sheet>
                     <group>
                         <field name="sale_order_id" readonly="1"/>
-                        <field name="equipamento_disponivel_ids" invisible="1"/>
+                        <field name="company_id" invisible="1"/>
                     </group>
                     <separator string="Equipamentos desta OS"/>
                     <p class="text-muted">
-                        Marque os equipamentos que serão atendidos nesta OS.
-                        Os que ficarem de fora continuam disponíveis para uma
-                        próxima OS desta mesma cotação.
+                        Marque os equipamentos que serão atendidos nesta OS e
+                        confira o procedimento e o template do relatório de
+                        cada um. Os que ficarem de fora continuam disponíveis
+                        para uma próxima OS desta mesma cotação.
                     </p>
                     <p class="text-muted">
                         Equipamento que já tem OS nesta cotação (ex.: um
                         opcional dele foi aceito depois) entra na OS
                         existente — não gera uma OS nova.
                     </p>
-                    <field name="equipment_ids" nolabel="1"
-                           domain="[('id', 'in', equipamento_disponivel_ids)]"
-                           widget="many2many">
-                        <tree>
-                            <field name="name"/>
-                            <field name="category_id"/>
+                    <field name="line_ids" nolabel="1">
+                        <tree editable="bottom" create="0" delete="0"
+                              decoration-muted="not include"
+                              decoration-warning="include and not procedimento_id">
+                            <field name="include" widget="boolean_toggle" string="Incluir"/>
+                            <field name="equipment_id" readonly="1" force_save="1" options="{'no_open': True}"/>
+                            <field name="category_id" readonly="1" options="{'no_open': True}"/>
+                            <field name="company_id" invisible="1"/>
+                            <field name="procedimento_id"
+                                   domain="[('company_id', 'in', [company_id, False]), '|', ('equipment_category_id', '=', category_id), ('equipment_category_id', '=', False)]"
+                                   options="{'no_create': True}"/>
+                            <field name="procedimento_origem" invisible="1" force_save="1"/>
+                            <field name="procedimento_origem_label" widget="badge" string="Origem"/>
+                            <field name="relatorio_template_id" options="{'no_create': True}"/>
+                            <field name="template_origem" invisible="1" force_save="1"/>
+                            <field name="template_origem_label" widget="badge" string="Origem"/>
                         </tree>
                     </field>
+                    <group>
+                        <field name="save_as_default"/>
+                    </group>
                 </sheet>
                 <footer>
                     <button name="action_generate" type="object"

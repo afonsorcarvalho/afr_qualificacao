@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Relatório Final — P1 (16.0.8.0.0): extensão do form do ciclo.
+    Janela de esterilização, posição dos sensores (com "copiar do ciclo
+    anterior") e os arquivos coletados no ciclo, para consulta.
+-->
+<odoo>
+
+    <record id="view_afr_qualificacao_cycle_form_relatorio_final" model="ir.ui.view">
+        <field name="name">afr.qualificacao.cycle.form.relatorio.final</field>
+        <field name="model">afr.qualificacao.cycle</field>
+        <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_cycle_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header/field[@name='state']" position="before">
+                <button name="action_copy_sensor_pos_from_previous" type="object"
+                        string="Copiar sensores do ciclo anterior" class="btn-secondary"
+                        groups="afr_qualificacao.group_afr_qualificacao_user"
+                        confirm="Substituir as posições de sensor deste ciclo pelas do ciclo anterior?"/>
+            </xpath>
+            <xpath expr="//field[@name='notes']/.." position="before">
+                <group string="Janela de esterilização">
+                    <group>
+                        <field name="janela_inicio"/>
+                        <field name="janela_fim"/>
+                    </group>
+                </group>
+                <separator string="Posição dos sensores"/>
+                <!-- Finding 4 (Preflight B8): técnico não tem ACL de create em
+                     afr.relatorio.sensor.pos (só leitura) — a tabela editável
+                     daria AccessError ao salvar. Dois nós do mesmo campo,
+                     cada um restrito por `groups`, para que só um sobreviva
+                     ao postprocess por usuário (o record field `groups_id`
+                     de ir.ui.view não vale pra view de extensão: Odoo
+                     rejeita com ValidationError, "Use 'groups' attributes
+                     inside the view definition" — daí o atributo aqui). -->
+                <field name="sensor_pos_ids" nolabel="1" readonly="1"
+                       groups="!afr_qualificacao.group_afr_qualificacao_user">
+                    <tree>
+                        <field name="sequence" widget="handle"/>
+                        <field name="canal"/>
+                        <field name="posicao"/>
+                        <field name="ib_label"/>
+                    </tree>
+                </field>
+                <field name="sensor_pos_ids" nolabel="1"
+                       groups="afr_qualificacao.group_afr_qualificacao_user">
+                    <tree editable="bottom">
+                        <field name="sequence" widget="handle"/>
+                        <field name="canal"/>
+                        <field name="posicao"/>
+                        <field name="ib_label"/>
+                    </tree>
+                </field>
+                <separator string="Arquivos do ciclo (coleta)"/>
+                <field name="collect_item_ids" nolabel="1" readonly="1">
+                    <tree>
+                        <field name="name"/>
+                        <field name="docx_section" optional="show"/>
+                        <field name="state" widget="badge"/>
+                        <field name="filename" invisible="1"/>
+                        <field name="file" widget="binary" filename="filename"/>
+                    </tree>
+                </field>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

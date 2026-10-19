@@ -1,0 +1,88 @@
+/** @odoo-module **/
+import { normalizeVars, decorateVars, cleanVarsHtml, normalizeForCompare } from "@afr_qualificacao/fields/rq_block_html/rq_var_dom";
+
+function el(html) { const d = document.createElement("div"); d.innerHTML = html; return d; }
+const CAT = { "criterio['tolerancia']": { label: "Tolerância acima (°C)", value: "3" } };
+
+QUnit.module("afr_qualificacao.rq_var_dom", () => {
+    QUnit.test("normalize wraps bare tokens once", (assert) => {
+        const d = el("<p>A {{ criterio['tolerancia'] }} B</p>");
+        normalizeVars(d); normalizeVars(d);
+        assert.strictEqual(d.innerHTML,
+            '<p>A <span class="rq-var">{{ criterio[\'tolerancia\'] }}</span> B</p>');
+    });
+    QUnit.test("decorate then clean is identity", (assert) => {
+        const src = '<p>A <span class="rq-var">{{ criterio[\'tolerancia\'] }}</span> B</p>';
+        const d = el(src);
+        decorateVars(d, CAT);
+        const span = d.querySelector(".rq-var");
+        assert.strictEqual(span.getAttribute("contenteditable"), "false");
+        assert.strictEqual(span.textContent, "Tolerância acima (°C)");
+        assert.strictEqual(cleanVarsHtml(d.innerHTML), src);
+        decorateVars(d, CAT);
+        assert.strictEqual(cleanVarsHtml(d.innerHTML), src);
+    });
+    QUnit.test("unknown expr decorates with expr as label", (assert) => {
+        const d = el('<p><span class="rq-var">{{ foo.bar }}</span></p>');
+        decorateVars(d, {});
+        assert.strictEqual(d.querySelector(".rq-var").textContent, "foo.bar");
+        assert.ok(d.querySelector(".rq-var").classList.contains("rq-var-unknown"));
+        assert.strictEqual(cleanVarsHtml(d.innerHTML), '<p><span class="rq-var">{{ foo.bar }}</span></p>');
+    });
+    QUnit.test("redecorate keeps the same text node (idempotent)", (assert) => {
+        const d = el('<p><span class="rq-var">{{ criterio[\'tolerancia\'] }}</span></p>');
+        decorateVars(d, CAT);
+        const textNode = d.querySelector(".rq-var").firstChild;
+        decorateVars(d, CAT);
+        assert.strictEqual(d.querySelector(".rq-var").firstChild, textNode);
+    });
+    QUnit.test("clean leaves html without variables untouched", (assert) => {
+        const src = '<p style="color:red">A&nbsp;B</p>';
+        assert.strictEqual(cleanVarsHtml(src), src);
+    });
+    QUnit.test("chain normalize -> decorate -> clean over bare tokens equals normalized form", (assert) => {
+        const bare = "<p>A {{ criterio['tolerancia'] }} e {{foo.bar}} B</p>";
+        const d = el(bare);
+        normalizeVars(d);
+        const normalized = d.innerHTML;
+        assert.strictEqual(normalized,
+            '<p>A <span class="rq-var">{{ criterio[\'tolerancia\'] }}</span> e <span class="rq-var">{{ foo.bar }}</span> B</p>');
+        decorateVars(d, CAT);
+        assert.strictEqual(cleanVarsHtml(d.innerHTML), normalized);
+    });
+    QUnit.test("clean parses in an inert document (no onerror)", async (assert) => {
+        window.__rqCleanFired = false;
+        const html = '<p><span class="rq-var" data-rq-expr="x">X</span>' +
+            '<img src="data:rq-invalid" onerror="window.__rqCleanFired = true"></p>';
+        const out = cleanVarsHtml(html);
+        assert.ok(out.includes('<span class="rq-var">{{ x }}</span>'));
+        await new Promise((r) => setTimeout(r, 100));
+        assert.strictEqual(window.__rqCleanFired, false);
+        delete window.__rqCleanFired;
+    });
+    QUnit.test("legacy bare tokens equal their normalized editor form", (assert) => {
+        const legacy = "<p>Tol {{ criterio['tolerancia'] }} C</p>";
+        const d = el(legacy);
+        normalizeVars(d);
+        decorateVars(d, CAT);
+        const editing = cleanVarsHtml(d.innerHTML);
+        assert.notStrictEqual(legacy, editing);
+        assert.strictEqual(normalizeForCompare(legacy), normalizeForCompare(editing));
+    });
+    QUnit.test("a real edit is still different", (assert) => {
+        const legacy = "<p>Tol {{ criterio['tolerancia'] }} C</p>";
+        const edited = '<p>Tol <span class="rq-var">{{ criterio[\'tolerancia\'] }}</span> CX</p>';
+        assert.notStrictEqual(normalizeForCompare(legacy), normalizeForCompare(edited));
+    });
+    QUnit.test("empty value compares as <p><br></p>", (assert) => {
+        assert.strictEqual(normalizeForCompare(""), normalizeForCompare("<p><br></p>"));
+        assert.strictEqual(normalizeForCompare(false), normalizeForCompare("<p><br></p>"));
+    });
+    QUnit.test("compare parses inertly (no onerror)", async (assert) => {
+        window.__rqCmpFired = false;
+        normalizeForCompare('<p>{{ x }}<img src="data:rq-invalid" onerror="window.__rqCmpFired = true"></p>');
+        await new Promise((r) => setTimeout(r, 100));
+        assert.strictEqual(window.__rqCmpFired, false);
+        delete window.__rqCmpFired;
+    });
+});

@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 import { useSchemaStore } from './schemaStore'
+import { clearSwCaches } from '@/lib/pwa/clearSwCaches'
 
 export interface AvailableCompany {
   id: number
@@ -27,6 +28,11 @@ interface AuthState {
 
   // Histórico de servidores usados
   serverUrlHistory: string[]
+
+  // Cache de pertencimento a grupos do Odoo (xmlid -> bool). Persistido para
+  // valer offline; limpo no logout (outro usuário pode usar o aparelho).
+  groups: Record<string, boolean>
+  setGroup: (xmlid: string, value: boolean) => void
 
   setServerUrl: (url: string) => void
   setDbName: (db: string) => void
@@ -54,6 +60,9 @@ export const useAuthStore = create<AuthState>()(
         availableCompanies: [],
         selectedCompanyId: null,
         serverUrlHistory: [],
+        groups: {},
+
+        setGroup: (xmlid, value) => set({ groups: { ...get().groups, [xmlid]: value } }),
 
         setServerUrl: (serverUrl) => {
           if (serverUrl !== get().serverUrl) {
@@ -70,8 +79,16 @@ export const useAuthStore = create<AuthState>()(
           set({ dbName })
         },
 
-        setUser: (userId, userName) =>
-          set({ userId, userName, isAuthenticated: true }),
+        // Outro usuário no mesmo aparelho (sem logout) não herda os grupos.
+        setUser: (userId, userName) => {
+          const trocou = get().userId !== null && get().userId !== userId
+          if (trocou) void clearSwCaches()
+          set(
+            trocou
+              ? { userId, userName, isAuthenticated: true, groups: {} }
+              : { userId, userName, isAuthenticated: true },
+          )
+        },
 
         setCompany: (companyId, companyName, companyLogo) =>
           set({ companyId, companyName, companyLogo }),
@@ -93,6 +110,7 @@ export const useAuthStore = create<AuthState>()(
 
         logout: () => {
           useSchemaStore.getState().clear()
+          void clearSwCaches()
           // Preserva serverUrl e dbName para o próximo login reabrir no mesmo
           // contexto (pré-preenchimento via URL ou último server/db usado).
           set({
@@ -101,6 +119,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             availableCompanies: [],
             selectedCompanyId: null,
+            groups: {},
           })
         },
       }),
@@ -117,6 +136,7 @@ export const useAuthStore = create<AuthState>()(
           companyLogo: s.companyLogo,
           selectedCompanyId: s.selectedCompanyId,
           serverUrlHistory: s.serverUrlHistory,
+          groups: s.groups,
         }),
       }
     ),

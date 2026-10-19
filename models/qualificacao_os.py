@@ -199,7 +199,7 @@ class AfrQualificacaoOs(models.Model):
     relatorio_ids = fields.One2many(
         "afr.qualificacao.os.relatorio",
         "os_id",
-        string="Relatórios parciais",
+        string="Relatórios de campo",
     )
     relatorio_count = fields.Integer(
         compute="_compute_relatorio_count",
@@ -620,7 +620,7 @@ class AfrQualificacaoOs(models.Model):
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Novo relatório parcial"),
+            "name": _("Novo relatório de campo"),
             "res_model": "afr.qualificacao.os.relatorio.wizard",
             "view_mode": "form",
             "target": "new",
@@ -781,7 +781,7 @@ class AfrQualificacaoOs(models.Model):
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Relatórios parciais"),
+            "name": _("Relatórios de campo"),
             "res_model": "afr.qualificacao.os.relatorio",
             "view_mode": "tree,form",
             "domain": [("os_id", "=", self.id)],

@@ -39,3 +39,6 @@ addons/
 # no clone de desenvolvimento em 2026-09-22 — mesmo risco dos itens acima,
 # num repositório público.
 dados_sensiveis/
+
+# Worktrees locais de feature (isolamento entre sessões).
+/.worktrees/

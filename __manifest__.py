@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.7.5.3",
+    "version": "16.0.8.9.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -107,6 +107,68 @@
               padronizadas sem abreviação parentética. cycle_specs
               default title → "Tabela Resumo de Ciclos". CSS margin
               entre seções aumentada.
+          F11 (16.0.8.x): Relatório Final de Qualificação (montador).
+            P1 (16.0.8.0.0): afr.qualificacao.relatorio por OS × equipamento
+              + dados de campo (checklist, indicadores, leituras de IB)
+              + ciclo com janela/posição de sensores.
+            P2 (16.0.8.1.0): biblioteca de certificados — afr_role
+              (antes/depois/externo) em engc.calibration.instruments
+              .certificates + _afr_select_certificate por data de ensaio
+              no instrumento (spec §4.4). Relatório seleciona um
+              certificado por papel (validador → antes/depois; padrão →
+              externo) e fornece seus arquivos para o PDF (P4);
+              certificados de malha (D4) vêm do report engc_os quando há
+              calibração concluída vinculada (pela malha ou, na
+              ausência, pela qualificação), senão dos itens de coleta
+              já coletados. Nova aba "Certificados" (só leitura) no
+              relatório final lista a seleção e marca "AUSENTE" quando
+              falta certificado para o papel exigido.
+            P3 (16.0.8.2.0): template/blocos/anexos/aprovações do
+              relatório final — afr.relatorio.template (config, por
+              categoria de equipamento) espelha afr.proposal.template
+              (sem mixin); afr.relatorio.block/anexo copiam o template
+              para registros editáveis por relatório; afr.relatorio
+              .aprovacao (elaborador/emissor/executor/cliente, token de
+              acesso para o cliente). afr.proposal.section ganha
+              document_type (proposal/report) para a cotação não
+              oferecer seções de relatório. Seeds idempotentes
+              (hooks._seed_relatorio_templates, chamado no post_init e
+              na migração 16.0.8.2.0) criam os templates prontos
+              RQT-HOSP (Hospitalar, sugerido para autoclave a vapor) e
+              RQT-IND (Industrial), com checklist QI, seções de texto e
+              posições de anexo padrão.
+            P4 (16.0.8.3.0): montagem e emissão do Relatório Final —
+              afr.relatorio.pdf monta o corpo (blocos+anexos intercalados,
+              índice recalculado até estabilizar) e carimba cabeçalho/
+              rodapé, marca d'água e QR de verificação. Montagem pesada
+              enfileirada em etapas (afr.relatorio.build.job + ir.cron,
+              sem depender de queue_job) para não exceder o limite de CPU
+              do worker. afr.relatorio.emissao é o registro imutável de
+              cada revisão (PDF + SHA-256 + token); aprovações internas
+              (elaborador/emissor) e do cliente (portal com token
+              próprio, sem ACL) travam a emissão. Verificação pública em
+              /qualificacao/relatorio/verify/<token>. Botões no header
+              (Gerar minuta, Baixar minuta, Aprovar, Emitir, Enviar para
+              aprovação do cliente, Revisar) e aba "Revisões" (histórico
+              de emissões, só leitura).
+            P5 (16.0.8.4.0): verificação de inconsistências antes de
+              emitir (spec §7) — regras determinísticas (afr.relatorio
+              .achado) + revisão assistiva opcional por IA (OpenRouter,
+              §7.2, desligada por padrão). Botão "Verificar" roda as
+              regras (e a IA, se ligada em Configurações), grava achados
+              bloqueia/alerta/info com carry-over de decisão entre
+              verificações. Bloqueio não aceita decisão (corrigir o dado
+              e verificar de novo); alerta exige decisão (procede ou
+              descartado com motivo) antes de emitir; info não impede.
+              Aba "Verificação" no relatório lista os achados por
+              gravidade; banner "Aguardando" no topo resume os
+              bloqueios. Gate de emissão passa a exigir também nenhum
+              achado pendente (bloqueia ou alerta).
+            P6 (16.0.8.4.1): leitura de IB ganha `quantidade` (Qtd. IB por
+              ciclo) exibida na tabela e no laudo. Botão "Preencher
+              leituras em lote" (rascunho, grupo Usuário) abre wizard que
+              cria uma leitura por ciclo marcado sem leitura — ciclos que
+              já têm leitura são pulados (nunca sobrescritos).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
@@ -202,11 +264,26 @@
         "wizards/relatorio_wizard_views.xml",
         "wizards/apply_procedimento_wizard_views.xml",
         "wizards/qualificacao_os_generate_wizard_views.xml",
+        "wizards/leitura_ib_lote_wizard_views.xml",
+        "wizards/relatorio_template_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
+        # Editor de blocos Task 1 — biblioteca de blocos prontos (seed antes
+        # da view/action que a referencia; menu sob Configurações)
+        "data/relatorio_snippet_seed.xml",
+        "views/relatorio_snippet_views.xml",
+        # Relatório Final P3 — config de templates (menus sob Configurações)
+        "views/relatorio_template_views.xml",
         "views/calibration_instruments_views.xml",
         # Views com menuitem que referencia menu_root (depois dos menus principais)
         "views/docx_template_views.xml",
+        # Relatório Final P1 (16.0.8.0.0) — menuitem sob menu_root, depois dos menus
+        "views/relatorio_views.xml",
+        "views/relatorio_cycle_views.xml",
+        # Relatório Final P2 (16.0.8.1.0) — aba Certificados
+        "views/relatorio_certificados_views.xml",
+        # Relatório Final P3 — abas Texto / Anexos / Aprovações
+        "views/relatorio_texto_views.xml",
         # Reports
         "reports/qualificacao_certificate_template.xml",
         "reports/qualificacao_certificate_report.xml",
@@ -222,6 +299,17 @@
         "reports/templates_blocos/block_sales_items.xml",
         "reports/templates_blocos/block_acceptance.xml",
         "reports/quotation_template.xml",
+        # Relatório Final P3 — corpo QWeb (sub-templates antes do report)
+        "reports/relatorio_corpo_templates.xml",
+        "reports/relatorio_corpo_report.xml",
+        # Relatório Final P4 — fila da montagem do PDF
+        "data/relatorio_build_cron.xml",
+        # Relatório Final P4 — verificação pública, portal e e-mail
+        "views/relatorio_public_templates.xml",
+        # Relatório Final P4 — botões de emissão + aba Revisões
+        "views/relatorio_emissao_views.xml",
+        # Relatório Final P5 — página Verificação + botão Verificar + banner
+        "views/relatorio_verificacao_views.xml",
     ],
     "external_dependencies": {
         "python": [
@@ -230,6 +318,13 @@
     },
     # F9.4 — SCSS da cotação online LabQuali (portal)
     "assets": {
+        "web.assets_backend": [
+            "afr_qualificacao/static/src/fields/rq_build_progress/*",
+            "afr_qualificacao/static/src/fields/rq_block_html/*",
+        ],
+        "web.qunit_suite_tests": [
+            "afr_qualificacao/static/tests/rq_var_dom_tests.js",
+        ],
         "web.assets_frontend": [
             "afr_qualificacao/static/src/scss/sale_portal_qualif.scss",
             "afr_qualificacao/static/src/js/optional_portal.js",

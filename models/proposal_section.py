@@ -32,6 +32,12 @@ PROPOSAL_SECTION_CATEGORIES = [
     ("custom", "Personalizado"),
 ]
 
+# Biblioteca única de seções: proposta (cotação) e relatório final (P3).
+SECTION_DOCUMENT_TYPES = [
+    ("proposal", "Proposta"),
+    ("report", "Relatório"),
+]
+
 
 class AfrProposalSection(models.Model):
     """Bloco de texto reutilizável montável na proposta de cotação."""
@@ -53,6 +59,17 @@ class AfrProposalSection(models.Model):
         default="custom",
         required=True,
         help="Categoria do bloco — agrupa e orienta estilo no relatório.",
+    )
+    document_type = fields.Selection(
+        selection=SECTION_DOCUMENT_TYPES,
+        string="Documento",
+        default="proposal",
+        required=True,
+        index=True,
+        help=(
+            "Em qual documento a seção pode ser usada. A cotação só oferece "
+            "seções de Proposta; o relatório final, só de Relatório."
+        ),
     )
     body = fields.Html(
         string="Conteúdo",

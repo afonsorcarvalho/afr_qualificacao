@@ -32,3 +32,23 @@ from . import engc_equipment             # F10.5 (16.0.5.4.0)
 from . import res_partner                 # F10.6 (16.0.5.5.0)
 from . import engc_equipment_category
 from . import product_product
+from . import relatorio                  # Relatório Final P1 (16.0.8.0.0)
+from . import relatorio_certificados     # Relatório final P2 (16.0.8.1.0)
+from . import relatorio_dados_campo      # Relatório Final P1 — checklist/indicador/leitura IB
+from . import relatorio_os               # Relatório Final P1 — extensão da OS
+from . import relatorio_cycle            # Relatório Final P1 — extensão do ciclo + sensor.pos
+from . import relatorio_template        # Relatório Final P3
+from . import relatorio_block           # Relatório Final P3
+from . import relatorio_anexo           # Relatório Final P3
+from . import relatorio_aprovacao       # Relatório Final P3
+from . import relatorio_texto           # Relatório Final P3 (_inherit relatorio + os)
+from . import relatorio_pdf            # Relatório Final P4
+from . import relatorio_anexo_files    # Relatório Final P4 — arquivos dos anexos
+from . import relatorio_emissao        # Relatório Final P4 — emissão imutável
+from . import relatorio_emissao_flow   # Relatório Final P4 — campos de emissão no relatório
+from . import relatorio_editorial     # Relatório Final P4 — trava/invalidação editorial
+from . import relatorio_build_job     # Relatório Final P4 — fila da montagem do PDF (cron)
+from . import relatorio_achado          # Relatório Final P5 (16.0.8.4.0)
+from . import relatorio_verificacao     # P5 — _inherit afr.qualificacao.relatorio
+from . import relatorio_ai              # P5 — revisão assistiva OpenRouter
+from . import relatorio_snippet         # Editor de blocos Task 1 — biblioteca de blocos prontos

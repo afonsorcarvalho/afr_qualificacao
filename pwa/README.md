@@ -21,6 +21,19 @@ A URL do Odoo não é variável de ambiente: é digitada na tela de login e
 guardada em cookie + localStorage. Em desenvolvimento, apontar para
 `http://localhost:8084` (container `odoo_engenapp-web-qualificacao-1`).
 
+O script `dev` carrega
+`NODE_OPTIONS=--network-family-autoselection-attempt-timeout=2000`. Isso não é
+afinação de performance: em máquina sem caminho IPv6 funcional (WSL2, medido
+em 2026-09-23), o `fetch` do Node tenta IPv6 primeiro, o pacote some no vazio,
+e os 250 ms padrão até cair para IPv4 são curtos demais — o resultado é
+`ETIMEDOUT` intermitente, que a UI mostra como "Falha na conexão com a IA".
+Medido na mesma máquina e no mesmo instante: `fetch` do Node 4/15, `curl`
+15/15; com a flag, 10/10. **Produção não precisa** (o container do labquali fez
+10/10 sem ela), por isso a flag está só no `dev`, não no `build` nem no
+`start`. Mantém o Happy Eyeballs ligado — só espera mais antes de desistir da
+primeira família; desligar de vez (`--no-network-family-autoselection`)
+atrapalharia onde o IPv6 funciona.
+
 ## Testes
 
 ```bash
@@ -53,6 +66,10 @@ TLS na frente: service worker só registra em contexto seguro, então sem
 HTTPS não há instalação no aparelho nem uso offline — e uma página HTTPS
 não pode chamar uma API HTTP (conteúdo misto). Ver
 `deploy/setup-pwa-proxy.sh`.
+
+O service worker é registrado com escopo `/` (offline de `/cliente` e `/tecnico`), então o
+PWA precisa ficar em host próprio: no mesmo host do Odoo ele interceptaria as
+navegações do backend. `NEXT_PUBLIC_SW_SCOPE` restringe o escopo se preciso.
 
 Sem `OPENROUTER_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
 sobe o container com a variável vazia: as features de IA (auto-resumo,

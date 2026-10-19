@@ -229,6 +229,10 @@ const PERMITIDO_TEMA: Record<string, string> = {
   // escuro (`bg-card` é navy), então o papel também não segue o tema aqui.
   'app/tecnico/qualificacao/[osId]/relatorio/[relId]/page.tsx :: bg-white': 'permanente — exibição da assinatura já capturada é documento/papel, mesmo raciocínio do Signature Pad (DESIGN.md)',
 
+  // Compressão de foto do levantamento: o canvas é pintado de branco antes do
+  // drawImage porque JPEG não tem alfa (PNG/WebP transparente viraria preto).
+  // É pixel de arquivo, não superfície de UI; não segue tema.
+  'lib/levantamento/photo.ts :: #fff': 'permanente — fundo branco do canvas ao reencodar para JPEG (sem alfa); conteúdo de imagem, não UI.',
   // --- Task 7: visualizador (PdfViewerModal) — permanente, não é migração ---
   // Decisão de projeto: o visualizador é cromo escuro nos dois temas (foto de
   // coleta e PDF se leem melhor sobre fundo escuro; o overlay já é

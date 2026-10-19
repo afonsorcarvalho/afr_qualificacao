@@ -51,6 +51,24 @@
     </record>
 
     <!-- ============================================================== -->
+    <!-- P2 (16.0.8.1.0): papel do certificado no relatório final        -->
+    <!-- ============================================================== -->
+    <record id="view_engc_calibration_instruments_form_afr_role" model="ir.ui.view">
+        <field name="name">engc.calibration.instruments.form.afr_role</field>
+        <field name="model">engc.calibration.instruments</field>
+        <field name="inherit_id" ref="engc_os.calibration_instruments_form"/>
+        <field name="priority">97</field>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='certificate_ids']/tree/field[@name='certificate_number']" position="after">
+                <field name="afr_role"/>
+            </xpath>
+            <xpath expr="//field[@name='certificate_ids']/form//field[@name='certificate_partner']" position="after">
+                <field name="afr_role"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- ============================================================== -->
     <!-- F4.3: liga unit_of_measurement à grandeza (sensor_kind)         -->
     <!-- ============================================================== -->
     <record id="view_engc_calibration_measurement_unit_form_inherit_qualif" model="ir.ui.view">

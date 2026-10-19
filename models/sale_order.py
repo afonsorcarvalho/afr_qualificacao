@@ -21,6 +21,8 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 from odoo.tools.misc import formatLang
 
+from ._numbering import hierarchical_numbering
+
 
 # Sufixo "— N ciclo(s)/malha(s)" anexado pelo configurador ao nome da linha.
 _QTY_SUFFIX_RE = re.compile(r"\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$")
@@ -1073,43 +1075,10 @@ class SaleOrder(models.Model):
         Ex: {1: '1', 2: '2', 3: '3', 4: '3.1', 5: '3.2', 6: '3.3', 7: '4'}
         Blocos com show_number=False recebem string vazia ''.
         Suporta profundidade arbitrária (1, 1.1, 1.1.1, …).
+        Implementação em models/_numbering.py (compartilhada com o relatório final).
         """
         self.ensure_one()
-        def _sort_key(b):
-            rec_id = b.id
-            if not isinstance(rec_id, int):
-                # NewId (registro virtual em onchange): usa origin ou 0
-                rec_id = getattr(rec_id, "origin", 0) or 0
-            return (b.sequence, rec_id)
-
-        blocks = self.proposal_block_ids.filtered("included").sorted(_sort_key)
-        numbers = {}
-        root_counter = 0
-        child_counters = {}  # parent_id → contagem de filhos vistos
-
-        for block in blocks:
-            if not block.parent_id:
-                if block.show_number:
-                    root_counter += 1
-                    numbers[block.id] = str(root_counter)
-                    child_counters[block.id] = 0
-                else:
-                    numbers[block.id] = ""
-            else:
-                pid = block.parent_id.id
-                child_counters.setdefault(pid, 0)
-                if block.show_number:
-                    child_counters[pid] += 1
-                    parent_num = numbers.get(pid, "")
-                    numbers[block.id] = (
-                        f"{parent_num}.{child_counters[pid]}"
-                        if parent_num
-                        else str(child_counters[pid])
-                    )
-                else:
-                    numbers[block.id] = ""
-
-        return numbers
+        return hierarchical_numbering(self.proposal_block_ids.filtered("included"))
 
     def action_reload_proposal_blocks(self):
         """Apaga blocos atuais e recarrega do template (descarta edições)."""
@@ -1449,7 +1418,7 @@ class SaleOrder(models.Model):
         )
         return managed.filtered(lambda l: not l.afr_qualificacao_id)
 
-    def _materialize_qualificacoes(self, lines, os):
+    def _materialize_qualificacoes(self, lines, os, choices=None):
         """Cria afr.qualificacao + sub-records de `lines`, dentro de `os`.
 
         - 1 afr.qualificacao por (equipamento, qualification_type)
@@ -1460,6 +1429,14 @@ class SaleOrder(models.Model):
 
         Não resolve OS — o chamador escolhe o destino. É o que permite
         1 cotação → N OS.
+
+        `choices` (opcional): `{equipment_id: {'procedimento': rec,
+        'template': rec}}` vindo do wizard Gerar OS — o procedimento
+        escolhido é gravado em `procedimento_id` e explodido em collect.items;
+        o template vai para `relatorio_template_id`. Equipamento fora de
+        `choices` (ou `choices=None`: PWA/API/testes) resolve o procedimento
+        por `_resolve_for_equipment` na empresa da cotação e deixa o template
+        vazio (o Relatório Final resolve cliente/categoria na hora).
         """
         self.ensure_one()
         Qualif = self.env["afr.qualificacao"]
@@ -1472,15 +1449,33 @@ class SaleOrder(models.Model):
         for line in lines:
             by_equipment[line.equipment_id] |= line
 
+        choices = choices or {}
         for equipment, equip_lines in by_equipment.items():
             by_type = defaultdict(lambda: self.env["sale.order.line"])
             for line in equip_lines:
                 by_type[line.qualification_type] |= line
 
-            for qtype, type_lines in by_type.items():
-                qualif = Qualif.create(
-                    self._prepare_qualificacao_values(equipment, qtype, os)
+            # Procedimento/template por equipamento: escolha do wizard ou,
+            # sem ela, a regra 5 (equipamento > cliente > categoria >
+            # genérico) na empresa da cotação.
+            # sudo: quem gera a OS pode não ter grupos de qualificação.
+            choice = choices.get(equipment.id)
+            if choice is not None:
+                proc = choice.get("procedimento") or Procedimento
+                rel_tpl = choice.get("template") or self.env["afr.relatorio.template"]
+            else:
+                proc, _origem = Procedimento.sudo()._resolve_for_equipment(
+                    equipment, self.partner_id, company=self.company_id
                 )
+                rel_tpl = self.env["afr.relatorio.template"]
+
+            for qtype, type_lines in by_type.items():
+                qualif_vals = self._prepare_qualificacao_values(equipment, qtype, os)
+                qualif_vals.update({
+                    "procedimento_id": proc.id if proc else False,
+                    "relatorio_template_id": rel_tpl.id if rel_tpl else False,
+                })
+                qualif = Qualif.create(qualif_vals)
                 type_lines.write({"afr_qualificacao_id": qualif.id})
 
                 # F10 — snapshot dos pontos QD (cópia própria do template),
@@ -1522,45 +1517,26 @@ class SaleOrder(models.Model):
                                 "sequence": seq * 10,
                             })
 
-                # F3/F1: explode procedimento default em collect.items.
-                # sudo: quem confirma a SO pode não ter grupos de qualificação.
-                proc = Procedimento.sudo().resolve_for(equipment.category_id)
+                # F3/F1: explode o procedimento (escolhido/resolvido acima)
+                # em collect.items.
                 if proc:
-                    self._explode_collect_items(CollectItem.sudo(), qualif, proc, qtype)
+                    self._explode_collect_items(
+                        CollectItem.sudo(), qualif, proc.sudo(), qtype
+                    )
 
     def _explode_collect_items(self, CollectItem, qualif, procedimento, phase):
-        """F3/F1: Cria N collect.items por procedimento.item conforme target_level.
+        """F3/F1: thin wrapper — delega para afr.qualificacao.procedimento._explode_into().
 
-        Filtra os itens do procedimento pela `phase` da qualificação (F1).
-        target_level=qualificacao → 1 item por qualif
-        target_level=cycle → 1 item por cycle existente (qualif QD)
-        target_level=malha → 1 item por malha existente (qualif Calib)
+        Mantido (mesma assinatura) porque é chamado por _materialize_qualificacoes
+        durante o confirm da SO. A explosão em si (target_level → N collect.items,
+        filtro por phase) vive em procedimento._explode_into, compartilhada com o
+        wizard "Aplicar Procedimento" (wizards/apply_procedimento_wizard.py).
+
+        `CollectItem` chega sudo'd do caller (quem confirma a SO pode não ter
+        grupos de qualificação); rodamos a explosão com o env de `CollectItem`
+        para preservar esse sudo independentemente do sudo de `procedimento`.
         """
-        items = procedimento.item_ids.filtered(lambda pi: pi.phase == phase)
-        for pi in items:
-            base_vals = {
-                "name": pi.name,
-                "sequence": pi.sequence,
-                "kind": pi.kind,
-                "required": pi.required,
-                "instruction": pi.instruction,
-                "procedimento_item_id": pi.id,
-                "qualif_id": qualif.id,
-            }
-            if pi.target_level == "qualificacao":
-                CollectItem.create(base_vals)
-            elif pi.target_level == "cycle":
-                for cycle in qualif.cycle_ids:
-                    vals = dict(base_vals)
-                    vals["cycle_id"] = cycle.id
-                    vals["name"] = cycle.display_name
-                    CollectItem.create(vals)
-            elif pi.target_level == "malha":
-                for malha in qualif.malha_ids:
-                    vals = dict(base_vals)
-                    vals["malha_id"] = malha.id
-                    vals["name"] = malha.display_name
-                    CollectItem.create(vals)
+        return procedimento.with_env(CollectItem.env)._explode_into(qualif, phase=phase)
 
     def _prepare_qualificacao_os_values(self, equipments=None, pending_equipments=None):
         """Hook: valores para criar afr.qualificacao.os a partir do SO.

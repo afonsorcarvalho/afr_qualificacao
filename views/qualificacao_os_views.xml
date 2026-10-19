@@ -253,7 +253,7 @@
                             </field>
                         </page>
 
-                        <page string="Relatórios parciais" name="relatorios">
+                        <page string="Relatórios de campo" name="relatorios">
                             <field name="relatorio_ids"
                                    context="{'default_os_id': active_id}">
                                 <tree decoration-success="state == 'done'"
@@ -461,7 +461,7 @@
             </p>
             <p>
                 Container que agrupa múltiplos equipamentos e qualificações
-                em uma única OS, com técnico, cronograma e relatórios parciais.
+                em uma única OS, com técnico, cronograma e relatórios de campo.
             </p>
         </field>
     </record>

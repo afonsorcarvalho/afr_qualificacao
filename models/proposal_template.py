@@ -15,6 +15,8 @@ Multi-cliente: cada cliente em potencial pode ter seu próprio template.
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
 
+from ._numbering import hierarchical_numbering
+
 
 # Tipos de bloco montáveis numa proposta. Reutilizado por afr.proposal.block
 # (F8.2). 'static' renderiza um afr.proposal.section; os demais são blocos
@@ -87,6 +89,7 @@ class AfrProposalTemplateLine(models.Model):
         comodel_name="afr.proposal.section",
         string="Seção de Texto",
         ondelete="restrict",
+        domain=[("document_type", "=", "proposal")],
         help="Bloco de texto reutilizável (obrigatório quando tipo = Bloco de Texto).",
     )
     page_break = fields.Boolean(
@@ -161,44 +164,10 @@ class AfrProposalTemplateLine(models.Model):
         Espelha a lógica de SaleOrder._proposal_block_numbering, aplicada
         às linhas do template (todas; sem filtrar por 'included').
         """
-        # Inicializa todas com ""
         for line in self:
             line.display_number = ""
-        # Agrupa por template e calcula
-        templates = self.mapped("template_id")
-        for template in templates:
-            def _sort_key(l):
-                rec_id = l.id
-                if not isinstance(rec_id, int):
-                    # NewId (registro virtual em onchange): usa origin ou 0
-                    rec_id = getattr(rec_id, "origin", 0) or 0
-                return (l.sequence, rec_id)
-
-            lines = template.line_ids.sorted(_sort_key)
-            numbers = {}
-            root_counter = 0
-            child_counters = {}
-            for line in lines:
-                if not line.parent_id:
-                    if line.show_number:
-                        root_counter += 1
-                        numbers[line.id] = str(root_counter)
-                        child_counters[line.id] = 0
-                    else:
-                        numbers[line.id] = ""
-                else:
-                    pid = line.parent_id.id
-                    child_counters.setdefault(pid, 0)
-                    if line.show_number:
-                        child_counters[pid] += 1
-                        parent_num = numbers.get(pid, "")
-                        numbers[line.id] = (
-                            f"{parent_num}.{child_counters[pid]}"
-                            if parent_num
-                            else str(child_counters[pid])
-                        )
-                    else:
-                        numbers[line.id] = ""
+        for template in self.mapped("template_id"):
+            numbers = hierarchical_numbering(template.line_ids)
             for line in template.line_ids:
                 line.display_number = numbers.get(line.id, "")
 

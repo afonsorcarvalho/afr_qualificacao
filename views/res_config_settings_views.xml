@@ -43,6 +43,37 @@
                             </div>
                         </div>
                     </div>
+
+                    <h2>Relatório Final — Verificação por IA</h2>
+                    <div class="row mt16 o_settings_container">
+                        <div class="col-12 col-lg-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="afr_ai_enabled"/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="afr_ai_enabled"/>
+                                <div class="text-muted">
+                                    Na verificação do relatório, envia o texto dos blocos e dos anexos ao
+                                    OpenRouter e registra achados "IA — verificar" (alerta ou info; alerta precisa de decisão antes de emitir). O dado do
+                                    cliente sai do servidor: ligar é decisão do gestor.
+                                </div>
+                                <div class="mt8" attrs="{'invisible': [('afr_ai_enabled', '=', False)]}">
+                                    <div class="row">
+                                        <label for="afr_ai_api_key" class="col-lg-4 o_light_label"/>
+                                        <field name="afr_ai_api_key" password="True" class="col-lg-8"/>
+                                    </div>
+                                    <div class="row">
+                                        <label for="afr_ai_model" class="col-lg-4 o_light_label"/>
+                                        <field name="afr_ai_model" class="col-lg-8"/>
+                                    </div>
+                                    <div class="row">
+                                        <label for="afr_ai_timeout" class="col-lg-4 o_light_label"/>
+                                        <field name="afr_ai_timeout" class="col-lg-8"/>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </xpath>
         </field>

@@ -145,6 +145,14 @@
                             <field name="approver_id" options="{'no_create_edit': True}"/>
                             <field name="parallel_group"
                                    placeholder="ex: G1 (vazio = sozinho)"/>
+                            <!-- Task 1 (16.0.8.9.0): gravados na geração da OS
+                                 (wizard Gerar OS) ou pela resolução automática
+                                 (_resolve_for_equipment/_resolve_template) —
+                                 readonly aqui, sem edição manual na qualif. -->
+                            <field name="procedimento_id" readonly="1"
+                                   options="{'no_create_edit': True}"/>
+                            <field name="relatorio_template_id" readonly="1"
+                                   options="{'no_create_edit': True}"/>
                         </group>
                     </group>
                     <notebook>

@@ -293,6 +293,15 @@ class OdooClient {
       '/web/session/get_session_info',
       rpcPayload({})
     )
+    const err = r.data.error
+    if (err) {
+      // Odoo 16 devolve sessão expirada como erro JSON-RPC com HTTP 200
+      // (code 100 / SessionExpiredException), não como 401.
+      if (err.code === 100 || err.data?.name?.includes('SessionExpired')) {
+        throw new OdooSessionError()
+      }
+      throw new OdooError(err.data?.message || err.message, err.code, err.data?.debug)
+    }
     return r.data.result as { uid: number | false; name: string }
   }
 

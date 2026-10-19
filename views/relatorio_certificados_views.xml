@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Relatório final P2 (16.0.8.1.0): aba de certificados (só leitura) -->
+    <record id="view_afr_qualificacao_relatorio_form_certificados" model="ir.ui.view">
+        <field name="name">afr.qualificacao.relatorio.form.certificados</field>
+        <field name="model">afr.qualificacao.relatorio</field>
+        <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_relatorio_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='page_ciclos']" position="after">
+                <page string="Certificados" name="page_certificados">
+                    <field name="certificados_html" readonly="1" nolabel="1"/>
+                    <div class="text-muted small">
+                        Seleção automática pelas datas dos ensaios:
+                        <b>antes</b> = último certificado do validador até o
+                        início; <b>depois</b> = primeiro certificado do
+                        validador a partir do fim; <b>padrão</b> = certificado
+                        externo vigente no início. Para corrigir, ajuste o
+                        papel e as datas dos certificados no cadastro do
+                        instrumento.
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

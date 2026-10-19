@@ -4,10 +4,8 @@ import { render } from '@testing-library/react'
 import { ServiceWorkerRegister } from '@/components/providers/ServiceWorkerRegister'
 
 /**
- * O PWA é servido no MESMO domínio do Odoo do cliente
- * (labquali.afrsistemas.com.br/tecnico), então o escopo do service worker
- * não é detalhe de configuração: registrado na raiz, ele passaria a
- * interceptar também as páginas do backend do Odoo e a servi-las do cache.
+ * Escopo padrão `/`: o PWA também serve `/cliente` (fora de /tecnico/) e
+ * precisa funcionar offline. `NEXT_PUBLIC_SW_SCOPE` restringe, se preciso.
  */
 
 const register = vi.fn().mockResolvedValue({})
@@ -28,12 +26,18 @@ afterEach(() => {
 })
 
 describe('ServiceWorkerRegister', () => {
-  it('registra o service worker com escopo restrito ao app do técnico', () => {
+  it('registra /sw.js com escopo / por padrão', () => {
     render(<ServiceWorkerRegister />)
     expect(register).toHaveBeenCalledTimes(1)
     const [url, opts] = register.mock.calls[0]
     expect(url).toBe('/sw.js')
-    expect(opts?.scope).toBe('/tecnico/')
+    expect(opts?.scope).toBe('/')
+  })
+
+  it('NEXT_PUBLIC_SW_SCOPE sobrescreve o escopo', () => {
+    vi.stubEnv('NEXT_PUBLIC_SW_SCOPE', '/tecnico/')
+    render(<ServiceWorkerRegister />)
+    expect(register.mock.calls[0][1]?.scope).toBe('/tecnico/')
   })
 
   it('não registra nada fora de produção', () => {

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Editor de blocos do Relatório Final — Task 1: cadastro da biblioteca
+        de blocos prontos (afr.relatorio.snippet). Consumida pelo widget
+        rq_block_html (Task 3) no editor de bloco do relatório.
+
+        `body` usa o widget rq_block_html com catalog='static': etiquetas de
+        variável com o catálogo sem relatório (sem valores); o modo
+        Visualizar fica oculto (não há relatório para renderizar).
+    -->
+
+    <record id="view_afr_relatorio_snippet_tree" model="ir.ui.view">
+        <field name="name">afr.relatorio.snippet.tree</field>
+        <field name="model">afr.relatorio.snippet</field>
+        <field name="arch" type="xml">
+            <tree string="Blocos prontos">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="category"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_afr_relatorio_snippet_form" model="ir.ui.view">
+        <field name="name">afr.relatorio.snippet.form</field>
+        <field name="model">afr.relatorio.snippet</field>
+        <field name="arch" type="xml">
+            <form string="Bloco pronto">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="category"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <separator string="Conteúdo"/>
+                    <field name="body" widget="rq_block_html" nolabel="1"
+                           options="{'catalog': 'static'}"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_afr_relatorio_snippet_search" model="ir.ui.view">
+        <field name="name">afr.relatorio.snippet.search</field>
+        <field name="model">afr.relatorio.snippet</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="category"/>
+                <filter name="filter_inactive" string="Arquivados" domain="[('active', '=', False)]"/>
+                <separator/>
+                <filter name="filter_tabela" string="Tabelas técnicas" domain="[('category', '=', 'tabela')]"/>
+                <filter name="filter_lista" string="Listas e texto" domain="[('category', '=', 'lista')]"/>
+                <filter name="filter_destaque" string="Destaques" domain="[('category', '=', 'destaque')]"/>
+                <filter name="filter_layout" string="Layout" domain="[('category', '=', 'layout')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_category" string="Categoria" context="{'group_by': 'category'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_afr_relatorio_snippet" model="ir.actions.act_window">
+        <field name="name">Blocos prontos</field>
+        <field name="res_model">afr.relatorio.snippet</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_afr_relatorio_snippet_search"/>
+    </record>
+
+    <menuitem
+        id="menu_afr_relatorio_snippet"
+        name="Blocos prontos"
+        parent="menu_afr_qualificacao_config"
+        action="action_afr_relatorio_snippet"
+        sequence="85"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+</odoo>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Form modal do bloco (botão Editar da aba Texto) -->
+    <record id="view_relatorio_block_form" model="ir.ui.view">
+        <field name="name">afr.relatorio.block.form</field>
+        <field name="model">afr.relatorio.block</field>
+        <field name="arch" type="xml">
+            <form string="Bloco do Relatório">
+                <sheet>
+                    <field name="relatorio_id" invisible="1"/>
+                    <div class="d-flex flex-wrap align-items-end gap-3 mb-2">
+                        <div class="flex-grow-1">
+                            <label for="title"/>
+                            <h3 class="mb-0"><field name="title" placeholder="Título do bloco"/></h3>
+                        </div>
+                        <field name="block_kind" readonly="1" class="badge text-bg-light"/>
+                    </div>
+                    <div class="d-flex flex-wrap gap-4 mb-2">
+                        <div><field name="included" widget="boolean_toggle"/><label for="included"/></div>
+                        <div><field name="page_break" widget="boolean_toggle"/><label for="page_break"/></div>
+                        <div><field name="show_number" widget="boolean_toggle"/><label for="show_number"/></div>
+                        <div><field name="show_title" widget="boolean_toggle"/><label for="show_title"/></div>
+                    </div>
+                    <details class="mb-3">
+                        <summary class="text-muted">Mais opções</summary>
+                        <group>
+                            <field name="parent_id"
+                                   domain="[('relatorio_id', '=', relatorio_id), ('id', '!=', id), ('is_anexo_content', '=', False)]"/>
+                            <field name="section_id" readonly="1"/>
+                        </group>
+                    </details>
+                    <field name="body" widget="rq_block_html" nolabel="1" options="{'codeview': True}"/>
+                </sheet>
+                <footer>
+                    <button string="Salvar e Fechar" class="btn-primary" special="save"/>
+                    <button string="Descartar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_afr_qualificacao_relatorio_form_texto" model="ir.ui.view">
+        <field name="name">afr.qualificacao.relatorio.form.texto</field>
+        <field name="model">afr.qualificacao.relatorio</field>
+        <field name="inherit_id" ref="afr_qualificacao.view_afr_qualificacao_relatorio_form"/>
+        <field name="arch" type="xml">
+            <!-- relatorio_certificados_views.xml carrega antes (manifest): Texto/Anexos/Aprovações vêm depois de Certificados -->
+            <xpath expr="//page[@name='page_certificados']" position="after">
+                <page string="Texto" name="page_texto">
+                    <group>
+                        <group>
+                            <field name="template_id" options="{'no_create': True}"
+                                   attrs="{'readonly': [('state', '!=', 'draft')]}"/>
+                        </group>
+                        <group>
+                            <div colspan="2">
+                                <button name="action_reload_template" type="object"
+                                        string="Recarregar template" icon="fa-refresh" class="btn-secondary"
+                                        groups="afr_qualificacao.group_afr_qualificacao_user"
+                                        attrs="{'invisible': [('state', '!=', 'draft')]}"
+                                        confirm="Recarregar descarta as edições dos blocos e os arquivos anexados às posições de anexo deste relatório. Continuar?"/>
+                            </div>
+                        </group>
+                    </group>
+                    <separator string="Corpo do relatório"/>
+                    <field name="body_block_ids" nolabel="1"
+                           attrs="{'readonly': [('state', '!=', 'draft')]}">
+                        <tree editable="bottom">
+                            <field name="relatorio_id" invisible="1"/>
+                            <field name="sequence" widget="handle"/>
+                            <field name="display_number" string="Nº" readonly="1"/>
+                            <field name="included" widget="boolean_toggle"/>
+                            <field name="show_number" widget="boolean_toggle" optional="show"/>
+                            <field name="show_title" widget="boolean_toggle" optional="show"/>
+                            <field name="title"/>
+                            <field name="block_kind"/>
+                            <field name="parent_id"
+                                   domain="[('relatorio_id','=',parent.id),('id','!=',id),('is_anexo_content','=',False)]"
+                                   options="{'no_create': True, 'no_create_edit': True}"
+                                   optional="show"/>
+                            <field name="page_break" widget="boolean_toggle"/>
+                            <button name="action_edit_block" type="object"
+                                    string="Editar" icon="fa-pencil" class="btn-link"/>
+                        </tree>
+                    </field>
+                    <separator string="Anexos"/>
+                    <p class="text-muted small">
+                        Impressos depois do corpo, nesta ordem. A ordem define a numeração
+                        usada pelo token <code>{{ anexo('code') }}</code>.
+                    </p>
+                    <field name="anexo_ids" nolabel="1"
+                           attrs="{'readonly': [('state', '!=', 'draft')]}">
+                        <tree>
+                            <field name="sequence" widget="handle"/>
+                            <field name="numero" string="Nº"/>
+                            <field name="included" widget="boolean_toggle"/>
+                            <field name="code"/>
+                            <field name="title"/>
+                            <field name="slot_kind"/>
+                            <field name="attachment_names" optional="show"/>
+                        </tree>
+                        <form string="Anexo">
+                            <group>
+                                <group>
+                                    <field name="relatorio_id" invisible="1"/>
+                                    <field name="title"/>
+                                    <field name="code"/>
+                                    <field name="slot_kind"/>
+                                    <field name="included"/>
+                                </group>
+                                <group>
+                                    <field name="collect_sections"
+                                           attrs="{'invisible': [('slot_kind', '!=', 'collect_section')]}"/>
+                                    <field name="cert_roles"
+                                           attrs="{'invisible': [('slot_kind', '!=', 'instrument_certs')]}"/>
+                                    <field name="block_id"
+                                           attrs="{'invisible': [('slot_kind', '!=', 'bloco')]}"/>
+                                    <button name="action_edit_block_content" type="object"
+                                            string="Editar conteúdo" icon="fa-pencil"
+                                            class="btn-link"
+                                            attrs="{'invisible': ['|', ('slot_kind', '!=', 'bloco'), ('block_id', '=', False)]}"/>
+                                </group>
+                            </group>
+                            <separator string="Arquivos (upload ou substituição manual)"/>
+                            <field name="attachment_ids" widget="many2many_binary"/>
+                        </form>
+                    </field>
+                </page>
+                <page string="Aprovações" name="page_aprovacoes">
+                    <field name="aprovacao_ids" attrs="{'readonly': [('state', '!=', 'draft')]}">
+                        <tree editable="bottom">
+                            <field name="sequence" widget="handle"/>
+                            <field name="papel"/>
+                            <field name="user_id"
+                                   attrs="{'invisible': [('papel', '=', 'cliente')]}"/>
+                            <field name="partner_id"
+                                   attrs="{'invisible': [('papel', '!=', 'cliente')]}"/>
+                            <field name="nome_exibicao"/>
+                            <field name="registro"/>
+                            <field name="approved_at"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

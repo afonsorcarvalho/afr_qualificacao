@@ -1,9 +1,10 @@
 'use client'
 import { useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { ClipboardList, CalendarDays, BarChart3, User, Loader2 } from 'lucide-react'
+import { ClipboardList, CalendarDays, BarChart3, User, Loader2, Building2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useNavProgress } from '@/components/providers/NavProgress'
+import { goCliente } from '@/lib/cliente/nav'
 
 const ROOT_PATH = '/tecnico/qualificacao'
 
@@ -14,8 +15,15 @@ export const NAV_ITEMS = [
   { href: `${ROOT_PATH}/perfil`, label: 'Perfil', Icon: User },
 ] as const
 
+/** Fora do prefixo /tecnico/qualificacao: página única de clientes (todo usuário autenticado). */
+export const CLIENTES_PATH = '/cliente'
+const CLIENTES_ITEM = { href: CLIENTES_PATH, label: 'Clientes', Icon: Building2 } as const
+
 function useActiveHref() {
   const pathname = usePathname()
+  if (pathname === CLIENTES_PATH || pathname.startsWith(`${CLIENTES_PATH}/`)) {
+    return CLIENTES_PATH
+  }
   const isHist = pathname.startsWith(`${ROOT_PATH}/historico`)
   const isPerfil = pathname.startsWith(`${ROOT_PATH}/perfil`)
   if (isHist) return `${ROOT_PATH}/historico`
@@ -48,9 +56,11 @@ export function TecnicoNav({
 }) {
   const activeHref = useActiveHref()
   const isSide = variant === 'side'
-  const itens = NAV_ITEMS.filter(
+  const base = NAV_ITEMS.filter(
     (i) => agendaDisponivel || !i.href.endsWith('/agenda'),
   )
+  // Antes de Perfil, que fica sempre por último.
+  const itens = [...base.slice(0, -1), CLIENTES_ITEM, base[base.length - 1]]
   return (
     <nav
       aria-label={isSide ? 'Navegação principal (lateral)' : 'Navegação principal (barra inferior)'}
@@ -103,7 +113,19 @@ function NavItem({
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
         e.preventDefault()
+        // Dentro de /cliente?id=..: a aba ativa volta para a lista sem buscar RSC.
+        if (active && href === CLIENTES_PATH && window.location.search) {
+          goCliente({})
+          return
+        }
         if (active || isPending) return
+        // Para /cliente vindo de fora: navegação de documento. Offline, o SW
+        // serve a navegação do cache `pages`; um fetch RSC de rota nunca
+        // visitada falharia.
+        if (href === CLIENTES_PATH) {
+          window.location.assign(href)
+          return
+        }
         begin()
         startTransition(() => router.push(href))
       }}

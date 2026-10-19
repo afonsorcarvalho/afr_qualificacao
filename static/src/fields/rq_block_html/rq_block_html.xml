@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!-- Barra do editor de bloco. mousedown.prevent: o clique não tira o
+         foco do editável (senão blur → commit e a seleção se perde).
+         O xpath substitui o adapter por barra + wrapper (d-none no modo
+         Visualizar) + preview; atributos do adapter copiados verbatim de
+         web_editor.HtmlField (16.0). -->
+    <t t-name="afr_qualificacao.RqBlockHtmlField" t-inherit="web_editor.HtmlField" t-inherit-mode="primary" owl="1">
+        <xpath expr="//HtmlFieldWysiwygAdapterComponent" position="replace">
+            <div class="rq-toolbar">
+                <button type="button" class="btn btn-secondary" title="Inserir bloco pronto (tabela, lista, destaque, layout)"
+                        t-att-disabled="rq.mode === 'preview'"
+                        t-on-mousedown.prevent="" t-on-click="() => this.openSnippets()">
+                    <i class="fa fa-th-large me-1"/>Inserir bloco
+                </button>
+                <button type="button" class="btn btn-secondary" title="Inserir variável do relatório"
+                        t-att-disabled="rq.mode === 'preview'"
+                        t-on-mousedown.prevent="" t-on-click="() => this.openVariables()">
+                    <i class="fa fa-tag me-1"/>Variável
+                </button>
+                <button type="button" class="btn btn-secondary" title="Inserir imagem"
+                        t-att-disabled="rq.mode === 'preview'"
+                        t-on-mousedown.prevent="" t-on-click="() => this.openImage()">
+                    <i class="fa fa-image me-1"/>Imagem
+                </button>
+                <div t-if="canPreview" class="btn-group ms-auto" role="group">
+                    <button type="button" t-attf-class="btn {{ rq.mode === 'edit' ? 'btn-primary' : 'btn-secondary' }}"
+                            t-on-mousedown.prevent="" t-on-click="() => this.setMode('edit')">
+                        <i class="fa fa-pencil me-1"/>Editar
+                    </button>
+                    <button type="button" t-attf-class="btn {{ rq.mode === 'preview' ? 'btn-primary' : 'btn-secondary' }}"
+                            t-att-disabled="rq.loading"
+                            t-on-mousedown.prevent="" t-on-click="() => this.setMode('preview')">
+                        <i t-attf-class="fa {{ rq.loading ? 'fa-spinner fa-spin' : 'fa-eye' }} me-1"/>Visualizar
+                    </button>
+                </div>
+            </div>
+            <!-- Modo Visualizar: editor só oculto (d-none), não destruído —
+                 voltar a Editar mantém conteúdo, histórico e cursor. -->
+            <div t-att-class="{'d-none': rq.mode === 'preview'}">
+                <HtmlFieldWysiwygAdapterComponent Component="this.Wysiwyg"
+                    startWysiwyg.bind="this.startWysiwyg"
+                    editingValue="this.currentEditingValue"
+                    widgetArgs="[this.wysiwygOptions]" />
+            </div>
+            <t t-if="rq.mode === 'preview'">
+                <div t-if="rq.missing.length" class="alert alert-warning mt-2 mb-0 rq-preview-missing" role="alert">
+                    <i class="fa fa-exclamation-triangle me-1"/>Variáveis sem valor:
+                    <t t-esc="rq.missing.join(', ')"/>
+                </div>
+                <div class="rq-preview o_readonly" t-out="rq.previewHtml"/>
+            </t>
+        </xpath>
+    </t>
+
+    <t t-name="afr_qualificacao.RqSnippetDialog" owl="1">
+        <Dialog title="'Inserir bloco pronto'" size="'xl'">
+            <ul class="nav nav-tabs mb-3">
+                <li t-foreach="tabs" t-as="tab" t-key="tab.key" class="nav-item">
+                    <a href="#" t-attf-class="nav-link {{ state.cat === tab.key ? 'active' : '' }}"
+                       t-on-click.prevent="() => state.cat = tab.key">
+                        <t t-esc="tab.label"/>
+                        <span class="badge rounded-pill text-bg-light ms-1" t-esc="count(tab.key)"/>
+                    </a>
+                </li>
+            </ul>
+            <div class="rq-snip-grid">
+                <t t-foreach="visibleSnippets" t-as="snip" t-key="snip.id">
+                    <button type="button" class="rq-snip-card btn p-0 text-start" t-att-title="snip.name"
+                            t-on-click="() => this.pick(snip)">
+                        <div class="rq-snip-thumb"><div class="rq-snip-inner" t-out="snip.html"/></div>
+                        <div class="rq-snip-name px-3 py-2 border-top" t-esc="snip.name"/>
+                    </button>
+                </t>
+            </div>
+            <p t-if="!visibleSnippets.length" class="text-muted mb-0">Nenhum bloco pronto nesta categoria.</p>
+            <t t-set-slot="footer">
+                <button class="btn btn-secondary" t-on-click="props.close">Cancelar</button>
+            </t>
+        </Dialog>
+    </t>
+
+    <t t-name="afr_qualificacao.RqVariableDialog" owl="1">
+        <Dialog title="'Inserir variável'" size="'md'">
+            <input type="search" class="form-control mb-3" placeholder="Buscar por nome ou expressão…"
+                   t-model="state.search" autofocus="autofocus"/>
+            <div class="rq-var-list">
+                <t t-foreach="groups" t-as="group" t-key="group.name">
+                    <h6 class="text-muted text-uppercase small mt-3 mb-1" t-esc="group.name"/>
+                    <div class="list-group list-group-flush">
+                        <t t-foreach="group.items" t-as="item" t-key="item.expr">
+                            <button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2"
+                                    t-att-title="'{{ ' + item.expr + ' }}'" t-on-click="() => this.pick(item)">
+                                <span t-esc="item.label"/>
+                                <t t-if="props.showValues">
+                                    <small t-if="hasValue(item)" class="text-muted text-truncate" style="max-width: 50%">→ <t t-esc="item.value"/></small>
+                                    <small t-else="" class="text-warning">sem valor</small>
+                                </t>
+                            </button>
+                        </t>
+                    </div>
+                </t>
+                <p t-if="!groups.length" class="text-muted mb-0">Nenhuma variável encontrada.</p>
+            </div>
+            <t t-set-slot="footer">
+                <button class="btn btn-secondary" t-on-click="props.close">Cancelar</button>
+            </t>
+        </Dialog>
+    </t>
+
+</templates>

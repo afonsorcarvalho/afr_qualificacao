@@ -11,9 +11,9 @@
         <field name="company_id" eval="False"/>
     </record>
 
-    <!-- Sequence: Relatório parcial de OS -->
+    <!-- Sequence: Relatório de campo de OS -->
     <record id="seq_afr_qualificacao_os_relatorio" model="ir.sequence">
-        <field name="name">Relatório parcial OS Qualificação</field>
+        <field name="name">Relatório de campo OS Qualificação</field>
         <field name="code">afr.qualificacao.os.relatorio.sequence</field>
         <field name="prefix">RQOS</field>
         <field name="padding">5</field>

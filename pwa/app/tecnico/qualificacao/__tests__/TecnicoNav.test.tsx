@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /// <reference types="@testing-library/jest-dom" />
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { TecnicoNav } from '../_components/TecnicoNav'
 
 const push = vi.fn()
@@ -42,6 +42,18 @@ describe('TecnicoNav', () => {
     render(<TecnicoNav variant="bottom" agendaDisponivel={false} />)
     expect(screen.queryByRole('link', { name: /Agenda/ })).toBeNull()
     expect(screen.getByRole('link', { name: /Histórico/ })).toBeInTheDocument()
+  })
+
+  it('aba Clientes aparece para todos e aponta para /cliente', () => {
+    render(<TecnicoNav variant="bottom" />)
+    expect(screen.getByRole('link', { name: /Clientes/ })).toHaveAttribute('href', '/cliente')
+  })
+
+  it('aba Clientes fica ativa em /cliente', () => {
+    pathname = '/cliente'
+    render(<TecnicoNav variant="bottom" />)
+    expect(screen.getByRole('link', { name: /Clientes/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /OSs/ })).not.toHaveAttribute('aria-current')
   })
 
   it('marca aria-current no destino ativo', () => {
@@ -96,5 +108,39 @@ describe('TecnicoNav', () => {
     expect(nav.className).toContain('flex-col')
     expect(nav.className).toContain('border-r')
     expect(nav.className).not.toContain('shadow-[0_-8px_24px')
+  })
+  describe('aba Clientes: navegação', () => {
+    const assign = vi.fn()
+    const original = window.location
+    beforeEach(() => {
+      assign.mockClear()
+      Object.defineProperty(window, 'location', {
+        value: { ...original, assign, search: '' },
+        configurable: true,
+        writable: true,
+      })
+    })
+    afterEach(() => {
+      Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true })
+    })
+
+    it('vindo de outra rota usa navegação de documento, não router.push', () => {
+      render(<TecnicoNav variant="bottom" />)
+      fireEvent.click(screen.getByRole('link', { name: /Clientes/ }))
+      expect(assign).toHaveBeenCalledWith('/cliente')
+      expect(push).not.toHaveBeenCalled()
+    })
+
+    it('ativa com query volta à lista via pushState, sem recarregar nem router', () => {
+      pathname = '/cliente'
+      ;(window.location as { search: string }).search = '?id=5'
+      const push2 = vi.spyOn(window.history, 'pushState')
+      render(<TecnicoNav variant="bottom" />)
+      fireEvent.click(screen.getByRole('link', { name: /Clientes/ }))
+      expect(push2).toHaveBeenCalledWith(null, '', '/cliente')
+      expect(assign).not.toHaveBeenCalled()
+      expect(push).not.toHaveBeenCalled()
+      push2.mockRestore()
+    })
   })
 })

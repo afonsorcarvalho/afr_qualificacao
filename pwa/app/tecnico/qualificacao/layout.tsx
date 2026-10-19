@@ -8,6 +8,8 @@ import {
   NavProgressBar,
   NavProgressProvider,
 } from '@/components/providers/NavProgress'
+import { useHasGroup } from '@/lib/hooks/useHasGroup'
+import { SURVEY_GROUP } from '@/lib/levantamento/constants'
 import { TecnicoNav } from './_components/TecnicoNav'
 
 const ROOT_PATH = '/tecnico/qualificacao'
@@ -20,6 +22,8 @@ export default function TecnicoLayout({ children }: { children: ReactNode }) {
   // que aparece depois. Só `false` (modelo ausente) esconde.
   const { data: temAgenda } = useAgendaDisponivel()
   const agendaDisponivel = temAgenda !== false
+  // Aquece o cache do grupo (vale offline): decide edição em /cliente e o sync.
+  useHasGroup(SURVEY_GROUP)
 
   // Refresca `lastUserId` uma vez por montagem do layout (todo entra em
   // /tecnico/qualificacao/*, este layout persiste por baixo). Sem isso, só a

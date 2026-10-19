@@ -105,3 +105,32 @@ from . import test_os_por_grupo
 # Escopo por equipamento como tabela única — camada de agregação
 from . import test_scope_table
 from . import test_scope_render
+
+# Relatório Final de Qualificação — P1 (16.0.8.0.0): modelo + dados de campo + ciclos
+from . import test_relatorio_model
+
+# Relatório final — P2 (16.0.8.1.0): biblioteca de certificados
+from . import test_relatorio_certificados
+
+# Relatório Final — P3: template, blocos, anexos, aprovações
+from . import test_relatorio_template
+from . import test_relatorio_corpo_report
+
+# Relatório Final — P4 (montagem do PDF, emissão, verificação, portal)
+from . import test_relatorio_pdf
+from . import test_relatorio_emissao
+from . import test_relatorio_build_job
+
+# Relatório Final P5 — varredura (regras + IA) + gate de emissão
+from . import test_relatorio_gate
+from . import test_relatorio_rules
+from . import test_relatorio_ai
+
+# Relatório Final P6 — preencher leituras de IB em lote
+from . import test_leitura_ib_lote
+
+# Editor de blocos — Task 1: biblioteca de blocos prontos (afr.relatorio.snippet)
+from . import test_relatorio_editor
+
+# Template/procedimento por cliente/equipamento — Task 1 (16.0.8.9.0)
+from . import test_template_procedimento_cliente

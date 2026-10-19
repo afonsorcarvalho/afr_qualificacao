@@ -9,11 +9,46 @@ F10.5 (16.0.5.4.0):
   qualifs) para a aba dedicada da view de Qualificação.
 NÃO edita o módulo engc_os (terceiro) — tudo via _inherit.
 """
-from odoo import api, fields, models
+from odoo import _, api, fields, models
+from odoo.exceptions import ValidationError
 
 
 class EngcEquipment(models.Model):
     _inherit = "engc.equipment"
+
+    afr_procedimento_id = fields.Many2one(
+        comodel_name="afr.qualificacao.procedimento",
+        string="Procedimento de Qualificação",
+        domain=(
+            "[('active', '=', True), ('company_id', 'in', [company_id, False]), "
+            "'|', ('equipment_category_id', '=', False), "
+            "('equipment_category_id', '=', category_id)]"
+        ),
+        help=(
+            "Procedimento específico deste equipamento — tem prioridade "
+            "sobre o procedimento do cliente e sobre o padrão da categoria "
+            "na resolução automática (afr.qualificacao.procedimento."
+            "_resolve_for_equipment)."
+        ),
+    )
+
+    @api.constrains("afr_procedimento_id", "category_id")
+    def _check_afr_procedimento_category(self):
+        for equip in self:
+            proc = equip.afr_procedimento_id
+            if proc and proc.equipment_category_id and proc.equipment_category_id != equip.category_id:
+                raise ValidationError(
+                    _(
+                        "O procedimento '%(proc)s' é específico da categoria "
+                        "'%(proc_cat)s', incompatível com a categoria do "
+                        "equipamento '%(equip)s' ('%(equip_cat)s')."
+                    ) % {
+                        "proc": proc.name,
+                        "proc_cat": proc.equipment_category_id.name,
+                        "equip": equip.display_name,
+                        "equip_cat": equip.category_id.name if equip.category_id else _("(sem categoria)"),
+                    }
+                )
 
     # --- relaxa required (mantém demais atributos do campo original) ---
     means_of_aquisition_id = fields.Many2one(

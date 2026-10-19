@@ -13,7 +13,7 @@ from odoo.exceptions import UserError, ValidationError
 
 class AfrQualificacaoOsRelatorio(models.Model):
     _name = "afr.qualificacao.os.relatorio"
-    _description = "Relatório parcial de OS de qualificação"
+    _description = "Relatório de campo de OS de qualificação"
     _inherit = ["mail.thread", "afr.qualificacao.manager.guard.mixin"]
     _order = "data_inicio desc, id desc"
 

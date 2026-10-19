@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_relatorio_template_tree" model="ir.ui.view">
+        <field name="name">afr.relatorio.template.tree</field>
+        <field name="model">afr.relatorio.template</field>
+        <field name="arch" type="xml">
+            <tree string="Templates de Relatório">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="equipment_category_ids" widget="many2many_tags"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_relatorio_template_form" model="ir.ui.view">
+        <field name="name">afr.relatorio.template.form</field>
+        <field name="model">afr.relatorio.template</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="equipment_category_ids" widget="many2many_tags"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Blocos do texto" name="template_blocos">
+                            <field name="line_ids">
+                                <tree editable="bottom">
+                                    <field name="template_id" invisible="1"/>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="display_number" string="Nº" readonly="1"/>
+                                    <field name="show_number" widget="boolean_toggle"/>
+                                    <field name="show_title" widget="boolean_toggle"/>
+                                    <field name="title" placeholder="(usa nome da seção / rótulo do tipo)"/>
+                                    <field name="block_kind"/>
+                                    <field name="anexo_code" optional="show"/>
+                                    <field name="parent_id"
+                                           domain="[('template_id','=',parent.id),('id','!=',id)]"
+                                           options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="display_label" string="Conteúdo" readonly="1"/>
+                                    <field name="section_id" optional="hide"
+                                           domain="[('document_type', '=', 'report')]"
+                                           attrs="{'required': [('block_kind', '=', 'static')]}"
+                                           options="{'no_create': True, 'no_create_edit': True}"/>
+                                    <field name="page_break" widget="boolean_toggle"/>
+                                    <button name="action_edit_template_line" type="object"
+                                            string="Editar" icon="fa-pencil" class="btn-link"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Checklist padrão" name="template_checklist">
+                            <field name="checklist_line_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="grupo"/>
+                                    <field name="descricao"/>
+                                </tree>
+                            </field>
+                        </page>
+                        <page string="Anexos padrão" name="template_anexos">
+                            <field name="anexo_line_ids">
+                                <tree editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="code"/>
+                                    <field name="title"/>
+                                    <field name="slot_kind"/>
+                                    <field name="collect_sections" optional="show"/>
+                                    <field name="cert_roles" optional="show"/>
+                                    <field name="included_default" widget="boolean_toggle"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_relatorio_template_line_form" model="ir.ui.view">
+        <field name="name">afr.relatorio.template.line.form</field>
+        <field name="model">afr.relatorio.template.line</field>
+        <field name="arch" type="xml">
+            <form string="Linha do Template de Relatório">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="template_id" readonly="1"/>
+                            <field name="block_kind"/>
+                            <field name="title"/>
+                            <field name="anexo_code"/>
+                            <field name="parent_id"
+                                   domain="[('template_id','=',template_id),('id','!=',id)]"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="show_number"/>
+                            <field name="show_title"/>
+                            <field name="page_break"/>
+                            <field name="section_id" domain="[('document_type', '=', 'report')]"
+                                   attrs="{'required': [('block_kind','=','static')]}"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button string="Salvar e Fechar" class="btn-primary" special="save"/>
+                    <button string="Descartar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_relatorio_template" model="ir.actions.act_window">
+        <field name="name">Templates de Relatório</field>
+        <field name="res_model">afr.relatorio.template</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <record id="action_relatorio_section" model="ir.actions.act_window">
+        <field name="name">Blocos de Relatório</field>
+        <field name="res_model">afr.proposal.section</field>
+        <field name="view_mode">tree,form</field>
+        <field name="domain">[('document_type', '=', 'report')]</field>
+        <field name="context">{'default_document_type': 'report'}</field>
+    </record>
+
+    <menuitem id="menu_afr_relatorio_config"
+              name="Relatório Final"
+              parent="menu_afr_qualificacao_config"
+              sequence="85"
+              groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+    <menuitem id="menu_afr_relatorio_template"
+              name="Templates de Relatório"
+              parent="menu_afr_relatorio_config"
+              action="afr_qualificacao.action_relatorio_template"
+              sequence="10"
+              groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+    <menuitem id="menu_afr_relatorio_section"
+              name="Blocos de Relatório"
+              parent="menu_afr_relatorio_config"
+              action="afr_qualificacao.action_relatorio_section"
+              sequence="20"
+              groups="afr_qualificacao.group_afr_qualificacao_manager"/>
+</odoo>
