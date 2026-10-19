@@ -72,12 +72,14 @@ function opsFor(key: string): Promise<OutboxEntry[]> {
 }
 
 /**
- * Edição de registro que já tem upsert `pendente` (não enviado): funde os
+ * Edição de registro que já tem upsert `pendente` nunca enviado: funde os
  * campos na op existente (mantém o `base_write_date` original). Devolve false
  * se não há op a fundir (então o chamador enfileira uma nova).
  */
 async function coalesce(key: string, kind: SurveyOpKind, diff: Rec): Promise<boolean> {
-  const pend = (await opsFor(key)).filter((o) => o.kind === kind && o.state === 'pendente')
+  // Só op NUNCA enviada: uma já entregue a `push` pode estar gravada no servidor
+  // (timeout, resposta perdida, app recarregado) e o replay ignoraria o payload.
+  const pend = (await opsFor(key)).filter((o) => o.kind === kind && o.state === 'pendente' && !o.sent)
   if (!pend.length) return false
   const last = pend.reduce((a, b) => (b.createdAt > a.createdAt ? b : a))
   await getDb().outbox.update(last.op_uuid, { payload: { ...last.payload, ...diff } })

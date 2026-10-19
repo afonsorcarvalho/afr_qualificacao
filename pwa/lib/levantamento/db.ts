@@ -58,6 +58,12 @@ export interface OutboxEntry extends SurveyOp {
   attempts: number
   createdAt: number
   error?: string
+  /**
+   * Já foi entregue a `push` alguma vez (nunca volta a false). O servidor pode
+   * ter gravado a op mesmo sem confirmação, e replay do mesmo `op_uuid` devolve
+   * o resultado guardado ignorando o payload: não se funde edição nela.
+   */
+  sent?: boolean
 }
 
 export interface CatalogEntry {

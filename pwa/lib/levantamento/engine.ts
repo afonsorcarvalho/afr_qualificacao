@@ -212,10 +212,19 @@ export async function drain(push: PushFn, d: LevantamentoDB = getDb()): Promise<
   draining = true
   let batch: OutboxEntry[] = []
   try {
-    batch = limitBatch(await d.outbox.where('state').equals('pendente').sortBy('createdAt'))
+    // Seleção e marcação na MESMA transação: uma edição fundida (coalesce) entre
+    // ler o lote e marcá-lo iria para a outbox mas não para o fio — e sumiria no `done`.
+    batch = await d.transaction('rw', d.outbox, async () => {
+      const sel = limitBatch(await d.outbox.where('state').equals('pendente').sortBy('createdAt'))
+      for (const e of sel) {
+        e.state = 'enviando'
+        e.sent = true
+        await d.outbox.put(e)
+      }
+      return sel
+    })
     if (!batch.length) return { sent: 0, failed: 0 }
     const ids = batch.map((e) => e.op_uuid)
-    await d.outbox.where('op_uuid').anyOf(ids).modify({ state: 'enviando' })
 
     let resp: PushResponse
     try {
