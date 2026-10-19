@@ -31,7 +31,7 @@ CERT_EMAIL="${CERT_EMAIL:-}"
 APPLY=0
 [ "${1:-}" = "--apply" ] && APPLY=1
 
-# Foto de celular passa fácil de 1MB, e o proxy `/api/odoo` a repassa em
+# Foto de celular passa fácil de 1MB, e o proxy `/app/api/odoo` a repassa em
 # base64 (+33%). O default de 1MB do nginx devolveria 413 no meio da coleta,
 # em campo, depois do técnico já ter tirado a foto.
 MAX_BODY="25m"
@@ -110,7 +110,7 @@ server {
         # `Connection: upgrade` em toda requisição é header errado de graça.
     }
 
-    location = /sw.js {
+    location ~ ^/app/(sw\.js|workbox-[a-z0-9]+\.js)$ {
         proxy_pass http://$PWA_UPSTREAM;
         proxy_set_header Host \$host;
         add_header Cache-Control "no-cache, no-store, must-revalidate";
@@ -154,7 +154,7 @@ $PWA_HOST {
     request_body {
         max_size $MAX_BODY
     }
-    header /sw.js Cache-Control "no-cache, no-store, must-revalidate"
+    header /app/sw.js Cache-Control "no-cache, no-store, must-revalidate"
     reverse_proxy $PWA_UPSTREAM
 }
 EOF
@@ -220,10 +220,10 @@ esac
 
 echo
 ok "pronto. Confira de fora:"
-echo "  curl -sSI https://$PWA_HOST/ | head -3"
-echo "  curl -sS  https://$PWA_HOST/manifest.json | head -5   # 200 SEM sessão"
+echo "  curl -sSI https://$PWA_HOST/app/login | head -3"
+echo "  curl -sS  https://$PWA_HOST/app/manifest.json | head -5   # 200 SEM sessão"
 echo
 echo "Depois, num CELULAR de verdade (é o Bloco E do checklist, que nunca rodou):"
-echo "  1. abrir https://$PWA_HOST, conferir o convite de instalar"
+echo "  1. abrir https://$PWA_HOST/app/login, conferir o convite de instalar"
 echo "  2. instalar, abrir pelo ícone, logar"
 echo "  3. ativar modo avião e navegar — a casca do app tem que carregar"

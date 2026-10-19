@@ -14,7 +14,7 @@ contrato RPC (`action_start_daily_relatorio`, `action_done`,
 npm ci
 cp .env.example .env.local     # config básica (Odoo)
 # opcional: IA (auto-resumo/ditado/revisão) e chat de agendamento — ver .env.local.example
-npm run dev                    # http://localhost:3010
+npm run dev                    # http://localhost:3010/app
 ```
 
 A URL do Odoo não é variável de ambiente: é digitada na tela de login e
@@ -67,13 +67,16 @@ HTTPS não há instalação no aparelho nem uso offline — e uma página HTTPS
 não pode chamar uma API HTTP (conteúdo misto). Ver
 `deploy/setup-pwa-proxy.sh`.
 
-O service worker é registrado com escopo `/` e isso é seguro mesmo em origem
-compartilhada com o Odoo: o cache de páginas (`pages`), RSC e imagens só casa
-rotas do app (`/cliente`, `/levantamento`, `/tecnico` e subpaths, `/login`;
-imagens só de `/_next/` e `/icons/`) — ver `lib/pwa/swRoutes.mjs`. Páginas do
-Odoo (`/web`, `/odoo`, website) nunca são cacheadas. **Rota nova do app deve
-ser adicionada tanto ao Apache quanto às regexes de `swRoutes.mjs`.**
-`NEXT_PUBLIC_SW_SCOPE` restringe o escopo se preciso.
+O app inteiro é servido sob o basePath `/app` (`next.config.mjs`; helper
+`lib/basePath.ts`). Em origem compartilhada com o Odoo o proxy precisa de uma
+única regra, para sempre: `ProxyPass /app http://127.0.0.1:3010/app`
+(snippet pronto em `deploy/apache-labquali-app.conf`, com os redirects
+301 de `/tecnico`, `/login` e `/cliente` para `/app/...`). Rota nova do app
+não exige mexer no Apache. O service worker é `/app/sw.js` com escopo `/app/`
+e o cache de páginas, RSC e imagens só casa `/app/...` (ver
+`lib/pwa/swRoutes.mjs`); `/app/api/` é sempre NetworkOnly. Páginas do Odoo
+(`/web`, `/odoo`, website) nunca são cacheadas. URLs: `/app/login`,
+`/app/tecnico/qualificacao`, `/app/cliente`.
 
 Sem `OPENROUTER_API_KEY` exportada no ambiente do host, o `docker-compose.yml`
 sobe o container com a variável vazia: as features de IA (auto-resumo,
