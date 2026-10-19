@@ -605,11 +605,21 @@ export async function retryRecord(key: string, recordKind?: RecordKind): Promise
       const rec = await tableOf(node.kind).get(node.key)
       const create = isTmp(node.key) ? ops[0] : undefined
       for (const o of erros) {
-        const patch: Partial<OutboxEntry> = { state: 'pendente', attempts: 0, error: undefined }
-        if (rec && create && o.op_uuid === create.op_uuid && o.kind === CREATE_KIND[node.kind]) {
-          patch.payload = { ...o.payload, ...createPayload(node.kind, rec) }
+        const next: OutboxEntry = {
+          ...o,
+          // O backend guarda o erro terminal por op_uuid e o repete num replay:
+          // uuid novo é o que faz o servidor reprocessar a op.
+          op_uuid: crypto.randomUUID(),
+          state: 'pendente',
+          attempts: 0,
+          error: undefined,
+          sent: undefined,
         }
-        await d.outbox.update(o.op_uuid, patch)
+        if (rec && create && o.op_uuid === create.op_uuid && o.kind === CREATE_KIND[node.kind]) {
+          next.payload = { ...o.payload, ...createPayload(node.kind, rec) }
+        }
+        await d.outbox.delete(o.op_uuid)
+        await d.outbox.add(next)
         n++
       }
       if (rec) await tableOf(node.kind).update(node.key, { sync: 'pendente', syncError: undefined })

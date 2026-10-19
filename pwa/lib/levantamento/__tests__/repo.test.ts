@@ -349,6 +349,29 @@ describe('retryRecord / discardRecord', () => {
     expect((await db.cycles.get(ck))!.sync).toBe('pendente')
   })
 
+  it('Reenviar dá op_uuid novo às ops em erro (mesmo payload/ref, original apagada, ordem mantida)', async () => {
+    const pk = await createPartner({ name: 'Novo' })
+    const ek = await saveEquipment(null, pk, { category_id: 3, marca_id: 4, model: 'M' })
+    const ck = await saveCycle(null, ek, { temperature: 121 })
+    await failAll('boom')
+    await db.outbox.toCollection().modify({ sent: true })
+    const antes = (await ops()).filter((o) => o.kind !== 'partner.create')
+    await retryRecord(ek)
+    const depois = (await ops()).filter((o) => o.kind !== 'partner.create')
+    expect(depois).toHaveLength(antes.length)
+    depois.forEach((o, i) => {
+      expect(o.op_uuid).not.toBe(antes[i].op_uuid)
+      expect(o.kind).toBe(antes[i].kind)
+      expect(o.ref).toBe(antes[i].ref)
+      expect(o.createdAt).toBe(antes[i].createdAt)
+      expect(o).toMatchObject({ state: 'pendente', attempts: 0 })
+      expect(o.error).toBeUndefined()
+      expect(o.sent).toBeFalsy()
+    })
+    for (const o of antes) expect(await db.outbox.get(o.op_uuid)).toBeUndefined()
+    expect(ck).toBeTruthy()
+  })
+
   it('Reenviar no cliente tmp alcança equipamentos dependentes', async () => {
     const pk = await createPartner({ name: 'Novo', contact_name: 'Zé' })
     await saveEquipment(null, pk, { category_id: 3, marca_id: 4, model: 'M' })

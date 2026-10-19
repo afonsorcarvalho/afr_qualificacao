@@ -6,7 +6,7 @@ vi.mock('@/lib/odoo/levantamento', () => ({ pullPartner: vi.fn(), pullCatalog: v
 import { db } from '../db'
 import { drain, type PushFn, type PushResponse, type SurveyOp } from '../engine'
 import { _resetBootFlagForTests, startSurveySync } from '../loop'
-import { saveCycle, saveEquipment } from '../repo'
+import { retryRecord, saveCycle, saveEquipment } from '../repo'
 
 /**
  * Servidor falso com o contrato real do backend: idempotente por `op_uuid`
@@ -113,5 +113,36 @@ describe('edição de ciclo cuja criação já chegou ao servidor sem confirmaç
       // loop parado antes de enviar? garante estado pendente para o resto do cenário
       await db.outbox.toCollection().modify({ state: 'pendente' })
     })
+  })
+})
+
+describe('Reenviar após erro persistido no servidor', () => {
+  it('o servidor repete o erro guardado para o mesmo op_uuid; o retry usa uuid novo e é reprocessado', async () => {
+    const storedErr = new Set<string>()
+    const processed: string[] = []
+    let falha = true
+    const push: PushFn = async (ops) => ({
+      results: ops.map((op) => {
+        if (storedErr.has(op.op_uuid)) return { op_uuid: op.op_uuid, state: 'error' as const, error: 'boom' }
+        processed.push(op.op_uuid)
+        if (falha) {
+          storedErr.add(op.op_uuid)
+          return { op_uuid: op.op_uuid, state: 'error' as const, error: 'boom' }
+        }
+        return { op_uuid: op.op_uuid, state: 'done' as const, id: 900, error: false as const, write_date: '2026-10-19 10:00:00' }
+      }),
+      idmap: {},
+    }) as PushResponse
+    const ek = await saveEquipment(null, '7', EQ)
+    await drain(push)
+    const [erro] = await db.outbox.toArray()
+    expect(erro.state).toBe('erro')
+    falha = false // o problema do servidor foi corrigido
+    await retryRecord(ek)
+    const [novo] = await db.outbox.toArray()
+    expect(novo.op_uuid).not.toBe(erro.op_uuid)
+    await drain(push)
+    expect(processed).toEqual([erro.op_uuid, novo.op_uuid])
+    expect(await db.outbox.count()).toBe(0)
   })
 })

@@ -269,8 +269,10 @@ describe('FichaPage', () => {
     fireEvent.click(within(ciclo).getByRole('button', { name: /erro de envio/ }))
     expect(within(ciclo).getByText('Ciclo inválido')).toBeInTheDocument()
     fireEvent.click(within(ciclo).getByRole('button', { name: 'Reenviar' }))
-    await waitFor(async () => expect((await db.outbox.get('u1'))!.state).toBe('pendente'))
-    expect((await db.outbox.get('u1'))!.attempts).toBe(0)
+    await waitFor(async () => expect((await db.outbox.toArray())[0].state).toBe('pendente'))
+    const [reenviada] = await db.outbox.toArray()
+    expect(reenviada.attempts).toBe(0)
+    expect(reenviada.op_uuid).not.toBe('u1') // uuid novo: o servidor guarda o erro por op_uuid
     await waitFor(async () => expect((await db.cycles.get('50'))!.sync).toBe('pendente'))
 
     const foto = await screen.findByRole('button', { name: /erro de envio da foto \(Plaqueta\)/ })
