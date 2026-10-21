@@ -118,6 +118,30 @@
         </field>
     </record>
 
+    <!-- Task 9 (16.0.9.1.0) — lista editável dos equipamentos do cliente
+         (smart button do parceiro): cadastro em linha, estilo planilha. -->
+    <record id="view_engc_equipment_client_editable_tree" model="ir.ui.view">
+        <field name="name">engc.equipment.client.editable.tree</field>
+        <field name="model">engc.equipment</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <tree string="Equipamentos do cliente" editable="bottom">
+                <field name="tag" string="TAG"/>
+                <field name="category_id"/>
+                <field name="marca_id"/>
+                <field name="model"/>
+                <field name="serial_number" string="Nº de série"/>
+                <field name="location_id" string="Local"/>
+                <field name="apelido" string="Apelido"/>
+                <field name="client_id" invisible="1"/>
+                <field name="company_id" invisible="1"/>
+                <button name="action_open_afr_equipment_form" type="object"
+                        string="Abrir ficha" icon="fa-external-link"
+                        title="Abrir ficha completa"/>
+            </tree>
+        </field>
+    </record>
+
     <record id="view_engc_equipment_qualif_search" model="ir.ui.view">
         <field name="name">engc.equipment.qualif.search</field>
         <field name="model">engc.equipment</field>

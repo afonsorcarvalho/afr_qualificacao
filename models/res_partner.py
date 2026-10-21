@@ -178,16 +178,21 @@ class ResPartner(models.Model):
 
     def action_view_afr_equipments(self):
         self.ensure_one()
+        # Task 9: lista editável inline (cadastro estilo planilha) sobre o
+        # parceiro comercial — contato filho cai nos equipamentos da empresa.
+        partner = self.commercial_partner_id
+        tree = self.env.ref("afr_qualificacao.view_engc_equipment_client_editable_tree")
+        form = self.env.ref("afr_qualificacao.view_engc_equipment_qualif_form")
         return {
             "type": "ir.actions.act_window",
             "name": "Equipamentos",
             "res_model": "engc.equipment",
             "view_mode": "tree,form",
-            "domain": [("client_id", "=", self.id)],
+            "views": [(tree.id, "tree"), (form.id, "form")],
+            "domain": [("client_id", "=", partner.id)],
             "context": {
-                "default_client_id": self.id,
+                "default_client_id": partner.id,
                 "form_view_ref": "afr_qualificacao.view_engc_equipment_qualif_form",
-                "tree_view_ref": "afr_qualificacao.view_engc_equipment_qualif_tree",
                 "search_default_group_category": 0,
             },
             "help": """<p class="o_view_nocontent_smiling_face">
