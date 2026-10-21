@@ -146,3 +146,4 @@ from . import test_configurator_client_template
 from . import test_save_client_template
 from . import test_save_client_default_from_so
 from . import test_reajuste
+from . import test_copiar_padroes

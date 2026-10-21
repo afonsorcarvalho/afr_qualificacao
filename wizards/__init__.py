@@ -8,3 +8,4 @@ from . import leitura_ib_lote_wizard  # F11 P6 (16.0.8.4.1) — leituras de IB e
 from . import relatorio_template_wizard  # 16.0.8.9.0 — template ao gerar Relatórios Finais
 from . import client_default_confirm  # 16.0.9.0.3 — confirmar substituição do padrão do cliente
 from . import reajuste_wizard  # 16.0.9.0.4 — reajuste dos preços combinados
+from . import copiar_padroes_wizard  # 16.0.9.0.7 — copiar padrões de outro cliente

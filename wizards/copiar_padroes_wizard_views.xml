@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_afr_copiar_padroes_wizard_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.copiar.padroes.wizard.form</field>
+        <field name="model">afr.qualificacao.copiar.padroes.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Copiar padrões de outro cliente">
+                <group>
+                    <group>
+                        <field name="partner_id" readonly="1" force_save="1"/>
+                        <field name="source_partner_id"
+                               options="{'no_create': True, 'no_open': True}"/>
+                    </group>
+                </group>
+                <div class="text-muted"
+                     attrs="{'invisible': [('source_partner_id', '!=', False)]}">
+                    Escolha o cliente de origem para ver os padrões que podem ser copiados.
+                </div>
+                <field name="line_ids" nolabel="1"
+                       attrs="{'invisible': [('source_partner_id', '=', False)]}">
+                    <tree create="0" delete="0" editable="bottom">
+                        <field name="copiar"/>
+                        <field name="template_id" string="Pacote" readonly="1" force_save="1"/>
+                        <field name="equipment_category_id" string="Categoria"/>
+                        <field name="price_base"/>
+                        <field name="estimated_days"/>
+                        <field name="aviso" class="text-warning"/>
+                        <field name="existente_id" invisible="1" force_save="1"/>
+                        <field name="currency_id" invisible="1"/>
+                    </tree>
+                </field>
+                <div class="text-muted">
+                    Copia o pacote, o preço e o tempo combinados. Onde o destino
+                    já tem padrão da mesma categoria, ele é substituído. O cliente
+                    de origem não é alterado e cotações já emitidas não mudam.
+                </div>
+                <footer>
+                    <button name="action_copy" type="object"
+                            string="Copiar padrões" class="btn-primary"
+                            attrs="{'invisible': [('source_partner_id', '=', False)]}"
+                            confirm="Copiar os padrões marcados? Os que já existem no destino serão substituídos."/>
+                    <button string="Cancelar" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

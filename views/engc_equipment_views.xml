@@ -282,6 +282,11 @@
                             <field name="active" string="Ativo" widget="boolean_toggle"/>
                         </tree>
                     </field>
+                    <div class="mb-3" groups="afr_qualificacao.group_afr_qualificacao_manager">
+                        <button name="action_afr_copiar_padroes_wizard" type="object"
+                                string="Copiar padrões de outro cliente"
+                                class="btn-secondary" icon="fa-clone"/>
+                    </div>
                     <separator string="Reajuste anual"/>
                     <group>
                         <group>

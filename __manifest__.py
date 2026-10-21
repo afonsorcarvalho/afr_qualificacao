@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.9.0.6",
+    "version": "16.0.9.0.7",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -269,6 +269,7 @@
         "wizards/relatorio_template_wizard_views.xml",
         "wizards/client_default_confirm_views.xml",
         "wizards/reajuste_wizard_views.xml",
+        "wizards/copiar_padroes_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
         # Editor de blocos Task 1 — biblioteca de blocos prontos (seed antes

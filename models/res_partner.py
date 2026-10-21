@@ -88,6 +88,24 @@ class ResPartner(models.Model):
             raise UserError(_(
                 "Apenas gestores podem reajustar os preços combinados."))
 
+    def _check_afr_copiar_manager(self):
+        if not self.env.user.has_group(
+                "afr_qualificacao.group_afr_qualificacao_manager"):
+            raise UserError(_(
+                "Apenas gestores podem copiar padrões de outro cliente."))
+
+    def action_afr_copiar_padroes_wizard(self):
+        self.ensure_one()
+        self._check_afr_copiar_manager()
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Copiar padrões de outro cliente"),
+            "res_model": "afr.qualificacao.copiar.padroes.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {"default_partner_id": self.commercial_partner_id.id},
+        }
+
     def action_afr_reajuste_wizard(self):
         self.ensure_one()
         self._check_afr_reajuste_manager()
