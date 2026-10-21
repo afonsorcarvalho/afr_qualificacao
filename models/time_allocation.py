@@ -39,6 +39,13 @@ def allocate_hours(target_hours, weights, step=0.25):
         math.floor(target_hours * w / total_w / step + 0.5) * step
         for w in ws
     ]
+    # Linha com peso > 0 nunca sai com 0 h (qty 0 a tiraria de todo rateio
+    # seguinte). Só quando o alvo comporta 1 step por linha com peso.
+    positive = [i for i in range(n) if ws[i] > 0]
+    if target_hours >= step * len(positive):
+        for i in positive:
+            if shares[i] < step:
+                shares[i] = step
     residual = target_hours - sum(shares)
     biggest = max(range(n), key=lambda i: ws[i])
     shares[biggest] += residual

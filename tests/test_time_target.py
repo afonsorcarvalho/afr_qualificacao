@@ -33,6 +33,17 @@ class TestTimeAllocation(TransactionCase):
     def test_empty(self):
         self.assertEqual(allocate_hours(6.0, []), [])
 
+    def test_small_positive_weight_never_rounded_to_zero(self):
+        # Linha com horas > 0 não pode sair com 0 h: viraria qty 0 e cairia
+        # fora de todo rateio seguinte (_rateio_base_lines filtra qty > 0).
+        res = allocate_hours(16.0, [15.9, 0.1])
+        self.assertEqual(res, [15.75, 0.25])
+
+    def test_min_step_skipped_when_target_too_small(self):
+        # Alvo menor que 1 step por linha: não há como garantir o mínimo.
+        res = allocate_hours(0.25, [1.0, 1.0])
+        self.assertAlmostEqual(sum(res), 0.25, places=6)
+
 
 @tagged("post_install", "-at_install")
 class TestEquipmentTimeTarget(AfrQualificacaoTestCommon):
