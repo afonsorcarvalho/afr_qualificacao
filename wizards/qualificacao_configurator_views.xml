@@ -43,7 +43,7 @@
                             <form>
                                 <header>
                                     <button name="action_save_as_client_default"
-                                            string="Gravar como padrão deste cliente"
+                                            string="Tornar padrão cliente"
                                             type="object"
                                             class="btn-primary"
                                             groups="afr_qualificacao.group_afr_qualificacao_manager"
@@ -160,7 +160,7 @@
                                        attrs="{'invisible': [('template_origin', '=', 'none')]}"/>
                                 <button name="action_save_as_client_default"
                                         type="object" icon="fa-star"
-                                        title="Gravar como padrão deste cliente"
+                                        title="Tornar padrão cliente"
                                         groups="afr_qualificacao.group_afr_qualificacao_manager"
                                         attrs="{'invisible': ['|', ('id', '=', False), ('equipment_id', '=', False)]}"/>
                             </tree>
@@ -221,7 +221,7 @@
                                            attrs="{'invisible': [('template_origin', '=', 'none')]}"/>
                                     <button name="action_save_as_client_default"
                                             type="object" icon="fa-star"
-                                            string="Gravar como padrão"
+                                            string="Tornar padrão cliente"
                                             class="btn-link"/>
                                 </tree>
                             </field>

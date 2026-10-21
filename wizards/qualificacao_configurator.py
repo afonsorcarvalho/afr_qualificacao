@@ -58,7 +58,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     )
     # Espelho só-leitura das linhas na etapa Revisão: lá as linhas já estão
     # gravadas (a troca de etapa salva o wizard), então o botão de linha
-    # "Gravar como padrão deste cliente" funciona — na etapa Escopo a linha
+    # "Tornar padrão cliente" funciona — na etapa Escopo a linha
     # recém-criada é virtual e o Odoo bloqueia botões de linha.
     review_equipment_line_ids = fields.Many2many(
         comodel_name="afr.qualificacao.configurator.equipment",
@@ -734,18 +734,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             and (l.equipment_target_days > 0 or l.equipment_target_price > 0)
         ):
             # Nunca bloqueia o apply: base não rateável (preço zerado,
-            # desconto, sem linhas) → mantém o alvo gravado (seção fica em
-            # "drift") e o user resolve na cotação.
-            try:
-                with self.env.cr.savepoint():
-                    if section.equipment_target_days > 0:
-                        section._apply_equipment_time_target()
-                    else:
-                        section._apply_equipment_target()
-            except UserError as err:
-                self.env.invalidate_all()
-                _logger.info("Rateio de alvos pulado (%s): %s",
-                             section.equipment_id.display_name, err)
+            # desconto, sem linhas) → mantém o alvo gravado e registra o
+            # motivo (equipment_target_issue); o user resolve na cotação.
+            section._auto_apply_equipment_targets()
         # F8.2 — aplica o template e semeia blocos da proposta (idempotente —
         # preserva blocos já montados/editados no form do SO).
         if self.proposal_template_id:
@@ -1074,7 +1065,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
 
     # ------------------------------------------------------------------
     # Escopo -> template (compartilhado por "Salvar como Template" e
-    # "Gravar como padrão deste cliente")
+    # "Tornar padrão cliente")
     # ------------------------------------------------------------------
     def _template_scope_vals(self):
         """Valores de `config.template` que espelham o escopo desta linha."""
@@ -1158,8 +1149,8 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             if not template.exists() or existing != template:
                 raise UserError(_(
                     "O padrão deste cliente mudou desde que a confirmação "
-                    "foi aberta. Feche e clique em \"Gravar como padrão "
-                    "deste cliente\" novamente."))
+                    "foi aberta. Feche e clique em \"Tornar padrão "
+                    "cliente\" novamente."))
         if price is None:
             price, days = self._client_default_targets()
         vals = self._template_scope_vals()
@@ -1198,7 +1189,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         }, tpl
 
     def action_save_as_client_default(self):
-        """Botão "Gravar como padrão deste cliente"."""
+        """Botão "Tornar padrão cliente"."""
         self.ensure_one()
         return self._save_client_default_flow()
 

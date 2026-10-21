@@ -590,7 +590,7 @@ class SaleOrderLine(models.Model):
         return {"exact": True, "achieved": 0.0}
 
     def action_save_as_client_default(self):
-        """Botão "Gravar como padrão deste cliente" na seção do equipamento.
+        """Botão "Tornar padrão cliente" na seção do equipamento.
 
         Funciona em qualquer estado da cotação. O escopo é reconstruído das
         linhas managed pela mesma leitura do configurador
@@ -641,6 +641,88 @@ class SaleOrderLine(models.Model):
                 "sticky": False,
             },
         }
+
+    # ------------------------------------------------------------------
+    # Task 11 — aplicação automática dos alvos ao gravar na própria linha
+    # ------------------------------------------------------------------
+    _TARGET_KEYS = ("equipment_target_price", "equipment_target_days")
+    _NO_AUTOAPPLY = "afr_no_target_autoapply"
+
+    equipment_target_issue = fields.Char(
+        string="Motivo",
+        copy=False,
+        readonly=True,
+        help="Por que o preço/tempo combinado não pôde ser aplicado.",
+    )
+    equipment_apply_state = fields.Selection(
+        selection=[
+            ("none", "Sem alvo"),
+            ("ok", "Aplicado"),
+            ("drift", "Diferente do combinado"),
+            ("issue", "Não aplicado"),
+        ],
+        compute="_compute_equipment_apply_state",
+        string="Situação",
+    )
+
+    @api.depends("equipment_target_state", "equipment_time_state",
+                 "equipment_target_issue")
+    def _compute_equipment_apply_state(self):
+        for line in self:
+            states = {line.equipment_target_state, line.equipment_time_state}
+            if states == {"none"}:
+                line.equipment_apply_state = "none"
+            elif line.equipment_target_issue:
+                line.equipment_apply_state = "issue"
+            elif "drift" in states:
+                line.equipment_apply_state = "drift"
+            else:
+                line.equipment_apply_state = "ok"
+
+    def write(self, vals):
+        res = super().write(vals)
+        if (not self.env.context.get(self._NO_AUTOAPPLY)
+                and any(k in vals for k in self._TARGET_KEYS)):
+            for section in self.filtered(
+                lambda l: l.display_type == "line_section"
+                and l.equipment_id
+                and l.order_id.state in ("draft", "sent")
+            ):
+                section._auto_apply_equipment_targets()
+        return res
+
+    def _auto_apply_equipment_targets(self):
+        """Tempo (se houver) e depois preço; nunca levanta.
+
+        Falha de pré-condição (desconto, base zerada/vazia) mantém o alvo
+        digitado, desfaz qualquer write parcial (savepoint) e grava o motivo
+        em `equipment_target_issue`. Sucesso limpa o motivo.
+        """
+        self.ensure_one()
+        sec = self.with_context(**{self._NO_AUTOAPPLY: True})
+        issue = False
+        res = {"exact": True, "achieved": 0.0}
+        if sec.equipment_target_days > 0 or sec.equipment_target_price > 0:
+            try:
+                with self.env.cr.savepoint():
+                    if sec.equipment_target_days > 0:
+                        res = sec._apply_equipment_time_target()
+                    else:
+                        res = sec._apply_equipment_target()
+            except UserError as err:
+                self.env.invalidate_all()
+                issue = err.args[0] if err.args else str(err)
+        if (sec.equipment_target_issue or False) != issue:
+            sec.equipment_target_issue = issue
+        return res if not issue else None
+
+    def action_reapply_equipment_targets(self):
+        """Botão "Reaplicar" da coluna Situação."""
+        self.ensure_one()
+        # Sempre True: o form recarrega e mostra a Situação/Motivo.
+        self._auto_apply_equipment_targets()
+        return True
+
 
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",

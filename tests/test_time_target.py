@@ -60,7 +60,8 @@ class TestEquipmentTimeTarget(AfrQualificacaoTestCommon):
 
     def test_hours_and_state(self):
         so = self._so()
-        section = self._section(so, self.equip1)
+        section = self._section(so, self.equip1).with_context(
+            afr_no_target_autoapply=True)
         self._cycle_line(so, self.equip1, 3, 2.0, 100.0)  # 6h
         self.assertEqual(section.equipment_time_state, "none")
         section.equipment_target_days = 1.5

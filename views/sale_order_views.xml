@@ -13,14 +13,6 @@
                         type="object"
                         class="oe_highlight"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('partner_id','=',False)]}"/>
-                <button name="action_apply_all_equipment_targets"
-                        string="Aplicar Preços Combinados"
-                        type="object"
-                        attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
-                <button name="action_apply_all_equipment_time_targets"
-                        string="Aplicar Tempos Combinados"
-                        type="object"
-                        attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
                 <button name="action_open_generate_os_wizard"
                         string="Gerar OS de Qualificação"
                         type="object"
@@ -120,24 +112,23 @@
                                        widget="monetary"/>
                                 <field name="equipment_target_delta" string="Diferença"
                                        widget="monetary" readonly="1" optional="hide"/>
-                                <button name="action_apply_equipment_target"
-                                        type="object" string="Aplicar preço"
-                                        icon="fa-balance-scale"
-                                        attrs="{'invisible': ['|', ('equipment_target_state','!=','drift'), ('parent.state','not in',['draft','sent'])]}"/>
                                 <field name="equipment_current_hours" string="Horas atuais"
                                        widget="float_time" readonly="1" optional="hide"/>
                                 <field name="equipment_target_days" string="Tempo combinado (dias)"/>
-                                <field name="equipment_time_state" string="Tempo" readonly="1"
+                                <field name="equipment_apply_state" string="Situação" readonly="1" width="170px"
                                        widget="badge"
-                                       decoration-success="equipment_time_state == 'ok'"
-                                       decoration-warning="equipment_time_state == 'drift'"
-                                       attrs="{'invisible': [('equipment_time_state','=','none')]}"/>
-                                <button name="action_apply_equipment_time_target"
-                                        type="object" string="Aplicar tempo"
-                                        icon="fa-clock-o"
-                                        attrs="{'invisible': ['|', ('equipment_time_state','!=','drift'), ('parent.state','not in',['draft','sent'])]}"/>
+                                       decoration-success="equipment_apply_state == 'ok'"
+                                       decoration-warning="equipment_apply_state == 'drift'"
+                                       decoration-danger="equipment_apply_state == 'issue'"
+                                       attrs="{'invisible': [('equipment_apply_state','=','none')]}"/>
+                                <field name="equipment_target_issue" string="Motivo" readonly="1"
+                                       optional="show"/>
+                                <button name="action_reapply_equipment_targets"
+                                        type="object" string="Reaplicar"
+                                        icon="fa-refresh" class="btn-link"
+                                        attrs="{'invisible': ['|', ('equipment_apply_state','not in',['drift','issue']), ('parent.state','not in',['draft','sent'])]}"/>
                                 <button name="action_save_as_client_default"
-                                        type="object" string="Gravar como padrão deste cliente"
+                                        type="object" string="Tornar padrão cliente"
                                         icon="fa-bookmark"
                                         groups="afr_qualificacao.group_afr_qualificacao_manager"/>
                             </tree>

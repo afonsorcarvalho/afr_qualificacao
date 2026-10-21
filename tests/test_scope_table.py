@@ -311,7 +311,7 @@ class TestScopeTable(AfrQualificacaoTestCommon):
 
     def test_unit_price_falls_back_when_target_drifts(self):
         so = self._full_so()
-        self.section.equipment_target_price = 1.0  # desviado de propósito
+        self.section.with_context(afr_no_target_autoapply=True).equipment_target_price = 1.0  # desviado de propósito
         self.assertEqual(self.section.equipment_target_state, "drift")
         table = so._qualif_scope_table(self.equip1)
         self.assertAlmostEqual(table["footer"]["unit_price"],
