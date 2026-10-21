@@ -1282,8 +1282,9 @@ class SaleOrder(models.Model):
     def action_apply_all_equipment_time_targets(self):
         """Aplica o tempo combinado em todos os equipamentos fora do tempo.
 
-        Uma section com falha (sem linhas) não derruba as demais —
-        `_apply_equipment_time_target` só levanta antes de qualquer write.
+        Cada section roda num savepoint: se falhar (sem linhas, desconto,
+        base zerada no re-rateio de preço), tudo o que ela escreveu volta
+        atrás e as demais seguem.
         """
         self.ensure_one()
         falhas = []
@@ -1291,7 +1292,8 @@ class SaleOrder(models.Model):
             if section.equipment_time_state != "drift":
                 continue
             try:
-                section._apply_equipment_time_target()
+                with self.env.cr.savepoint():
+                    section._apply_equipment_time_target()
             except UserError as exc:
                 falhas.append("%s: %s" % (
                     section.equipment_id.display_name or "",

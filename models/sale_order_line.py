@@ -412,6 +412,29 @@ class SaleOrderLine(models.Model):
             ) == 0
             line.equipment_target_state = "ok" if same else "drift"
 
+    def _check_equipment_target_base(self, base):
+        """Pré-condições do rateio de preço (levanta antes de qualquer write)."""
+        self.ensure_one()
+        if not base:
+            raise UserError(_(
+                "Nenhuma linha elegível ao rateio para %s. Gere as linhas de "
+                "qualificação antes de definir o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if float_is_zero(sum(base.mapped("price_subtotal")),
+                          precision_digits=2):
+            raise UserError(_(
+                "As linhas de %s estão com preço zerado — defina os preços "
+                "base antes de ratear."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if any(not float_is_zero(l.discount, precision_digits=2)
+               for l in base):
+            raise UserError(_(
+                "As linhas de %s têm desconto por linha — o rateio não "
+                "suporta desconto (o preço rateado já é o preço final). "
+                "Zere o desconto das linhas do equipamento antes de definir "
+                "o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+
     def _apply_equipment_target(self):
         """Ratea equipment_target_price entre as linhas do equipamento.
 
@@ -432,25 +455,7 @@ class SaleOrderLine(models.Model):
             return {"exact": True, "achieved": 0.0}
 
         base = self._rateio_base_lines()
-        if not base:
-            raise UserError(_(
-                "Nenhuma linha elegível ao rateio para %s. Gere as linhas de "
-                "qualificação antes de definir o preço-alvo."
-            ) % (self.equipment_id.display_name or _("equipamento")))
-        if float_is_zero(sum(base.mapped("price_subtotal")),
-                          precision_digits=2):
-            raise UserError(_(
-                "As linhas de %s estão com preço zerado — defina os preços "
-                "base antes de ratear."
-            ) % (self.equipment_id.display_name or _("equipamento")))
-        if any(not float_is_zero(l.discount, precision_digits=2)
-               for l in base):
-            raise UserError(_(
-                "As linhas de %s têm desconto por linha — o rateio não "
-                "suporta desconto (o preço rateado já é o preço final). "
-                "Zere o desconto das linhas do equipamento antes de definir "
-                "o preço-alvo."
-            ) % (self.equipment_id.display_name or _("equipamento")))
+        self._check_equipment_target_base(base)
 
         pairs = [(l.product_uom_qty, l.price_subtotal) for l in base]
         result = allocate_target(target, pairs)
@@ -519,6 +524,8 @@ class SaleOrderLine(models.Model):
         "order_id.order_line.equipment_id",
         "order_id.order_line.estimated_hours",
         "order_id.order_line.qualif_cycle_qty",
+        "order_id.order_line.cycle_type_id",
+        "order_id.order_line.malha_type_id",
         "order_id.order_line.product_uom_qty",
         "order_id.order_line.is_proposal_optional",
         "order_id.order_line.part01_declined",
@@ -564,6 +571,10 @@ class SaleOrderLine(models.Model):
                 "Nenhuma linha elegível para %s. Gere as linhas de "
                 "qualificação antes de definir o tempo combinado."
             ) % (self.equipment_id.display_name or _("equipamento")))
+        if self.equipment_target_price > 0:
+            # Valida o rateio de preço ANTES de mexer nas horas: um erro
+            # depois do write deixaria a section meio aplicada.
+            self._check_equipment_target_base(base)
         target = self.equipment_target_days * (self.work_hours_per_day or 8.0)
         hours = allocate_hours(target, [self._time_weight(l) for l in base])
         for line, h in zip(base, hours):

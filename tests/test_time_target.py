@@ -116,3 +116,68 @@ class TestEquipmentTimeTarget(AfrQualificacaoTestCommon):
         section.equipment_target_days = 1.0
         so.action_apply_all_equipment_time_targets()
         self.assertEqual(section.equipment_time_state, "ok")
+
+    def _qs_line(self, so, equip, hours, price):
+        return self.env["sale.order.line"].create({
+            "order_id": so.id, "product_id": self.product_qs.id,
+            "name": "QS", "is_qualificacao_managed": True,
+            "qualification_type": "software", "equipment_id": equip.id,
+            "qualif_cycle_qty": 1, "estimated_hours": hours,
+            "product_uom_qty": 1.0, "price_unit": price,
+        })
+
+    def test_price_target_with_fixed_qty_lines(self):
+        so = self._so()
+        section = self._section(so, self.equip1)
+        self._cycle_line(so, self.equip1, 3, 2.5, 200.0)
+        self._cycle_line(so, self.equip1, 2, 4.1, 300.0)
+        qs = self._qs_line(so, self.equip1, 4.0, 800.0)
+        section.equipment_target_price = 9876.54
+        section._apply_equipment_target()
+        section.equipment_target_days = 3.0
+        section._apply_equipment_time_target()
+        base = section._rateio_base_lines()
+        self.assertEqual(qs.product_uom_qty, 1.0)
+        self.assertEqual(round(sum(base.mapped("price_subtotal")), 2),
+                         9876.54)
+        self.assertEqual(section.equipment_target_state, "ok")
+        self.assertEqual(section.equipment_time_state, "ok")
+
+    def test_apply_all_rolls_back_failing_section(self):
+        so = self._so()
+        bad = self._section(so, self.equip1)
+        bad_line = self._cycle_line(so, self.equip1, 2, 2.0, 100.0)
+        bad_line.discount = 10.0
+        bad.equipment_target_price = 500.0
+        bad.equipment_target_days = 1.0
+        good = self._section(so, self.equip2)
+        good_line = self._cycle_line(so, self.equip2, 2, 2.0, 100.0)
+        good.equipment_target_days = 1.0
+        res = so.action_apply_all_equipment_time_targets()
+        self.assertIsInstance(res, dict)  # notificação da falha
+        self.assertEqual(bad_line.product_uom_qty, 4.0)
+        self.assertEqual(bad_line.estimated_hours, 2.0)
+        self.assertEqual(good_line.product_uom_qty, 8.0)
+        self.assertEqual(good.equipment_time_state, "ok")
+
+    def test_single_apply_raises_before_writing(self):
+        from odoo.exceptions import UserError
+        so = self._so()
+        section = self._section(so, self.equip1)
+        line = self._cycle_line(so, self.equip1, 2, 2.0, 100.0)
+        line.discount = 10.0
+        section.equipment_target_price = 500.0
+        section.equipment_target_days = 1.0
+        with self.assertRaises(UserError):
+            section._apply_equipment_time_target()
+        self.assertEqual(line.product_uom_qty, 4.0)
+
+    def test_cycle_line_zero_cycle_qty(self):
+        so = self._so()
+        section = self._section(so, self.equip1)
+        line = self._cycle_line(so, self.equip1, 0, 0.0, 100.0)
+        line.write({"product_uom_qty": 3.0, "estimated_hours": 3.0})
+        section.equipment_target_days = 0.5
+        section._apply_equipment_time_target()
+        self.assertEqual(line.product_uom_qty, 4.0)
+        self.assertEqual(line.estimated_hours, 4.0)
