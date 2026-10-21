@@ -14,6 +14,7 @@ from odoo.tools import float_compare, float_is_zero, float_round
 from odoo.tools.misc import formatLang
 
 from .price_allocation import allocate_target
+from .time_allocation import allocate_hours
 
 
 class SaleOrderLine(models.Model):
@@ -268,6 +269,34 @@ class SaleOrderLine(models.Model):
         compute="_compute_equipment_target_delta",
         string="Situação do Alvo",
     )
+    equipment_target_days = fields.Float(
+        string="Tempo combinado (dias)",
+        digits=(16, 2),
+        copy=True,
+        help=(
+            "Tempo total combinado para o equipamento, em dias de jornada. "
+            "Ao aplicar, as horas das linhas são redistribuídas "
+            "proporcionalmente (em passos de 0,25 h)."
+        ),
+    )
+    equipment_target_hours = fields.Float(
+        compute="_compute_equipment_time_state",
+        string="Horas combinadas",
+        help="Tempo combinado (dias) × jornada (h/dia).",
+    )
+    equipment_current_hours = fields.Float(
+        compute="_compute_equipment_time_state",
+        string="Horas atuais",
+    )
+    equipment_time_state = fields.Selection(
+        selection=[
+            ("none", "Sem tempo combinado"),
+            ("ok", "No tempo"),
+            ("drift", "Desviado"),
+        ],
+        compute="_compute_equipment_time_state",
+        string="Situação do Tempo",
+    )
     is_rateio_priced = fields.Boolean(
         string="Preço Rateado",
         default=False,
@@ -466,6 +495,104 @@ class SaleOrderLine(models.Model):
                 "message": _(
                     "Fechou em %s — o alvo não é atingível com 2 casas no "
                     "preço unitário. Veja o histórico do pedido."
+                ) % formatLang(self.env, res["achieved"],
+                               currency_obj=self.currency_id),
+                "sticky": False,
+            },
+        }
+
+    @staticmethod
+    def _time_weight(line):
+        """Horas atuais da linha = nº ciclos × horas/ciclo (ciclos ≥ 1).
+
+        Em ciclo/malha a qty já é essa conta (UdM horas) e é a fonte exata:
+        `estimated_hours` tem 2 casas e, com ciclos > 1, horas/ciclo
+        derivadas (ex.: 9,25 / 3) arredondam — multiplicar de volta erraria.
+        """
+        if line.cycle_type_id or line.malha_type_id:
+            return line.product_uom_qty or 0.0
+        return (line.qualif_cycle_qty or 1) * (line.estimated_hours or 0.0)
+
+    @api.depends(
+        "display_type", "equipment_id", "equipment_target_days",
+        "work_hours_per_day",
+        "order_id.order_line.equipment_id",
+        "order_id.order_line.estimated_hours",
+        "order_id.order_line.qualif_cycle_qty",
+        "order_id.order_line.product_uom_qty",
+        "order_id.order_line.is_proposal_optional",
+        "order_id.order_line.part01_declined",
+        "order_id.regular_line_ids.estimated_hours",
+    )
+    def _compute_equipment_time_state(self):
+        for line in self:
+            if line.display_type != "line_section" or not line.equipment_id:
+                line.equipment_target_hours = 0.0
+                line.equipment_current_hours = 0.0
+                line.equipment_time_state = "none"
+                continue
+            current = sum(self._time_weight(l)
+                          for l in line._rateio_base_lines())
+            target = line.equipment_target_days * (
+                line.work_hours_per_day or 8.0)
+            line.equipment_current_hours = current
+            line.equipment_target_hours = target
+            if float_is_zero(target, precision_digits=2):
+                line.equipment_time_state = "none"
+            elif float_compare(current, target, precision_digits=2) == 0:
+                line.equipment_time_state = "ok"
+            else:
+                line.equipment_time_state = "drift"
+
+    def _apply_equipment_time_target(self):
+        """Ratea o tempo combinado entre as linhas do equipamento.
+
+        Tempo primeiro, depois preço: com preço combinado, re-rateia o preço
+        sobre as novas horas e o total do equipamento continua igual ao alvo.
+        Sem preço combinado, o preço por hora é mantido (o total acompanha
+        as horas). Linhas de ciclo/malha têm qty = horas; QI/QS (qty fixa)
+        só têm as horas estimadas ajustadas.
+        """
+        self.ensure_one()
+        if self.equipment_target_days <= 0:
+            if self.equipment_target_days < 0:
+                self.equipment_target_days = 0.0
+            return {"exact": True, "achieved": 0.0}
+        base = self._rateio_base_lines()
+        if not base:
+            raise UserError(_(
+                "Nenhuma linha elegível para %s. Gere as linhas de "
+                "qualificação antes de definir o tempo combinado."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        target = self.equipment_target_days * (self.work_hours_per_day or 8.0)
+        hours = allocate_hours(target, [self._time_weight(l) for l in base])
+        for line, h in zip(base, hours):
+            vals = {"estimated_hours": h / (line.qualif_cycle_qty or 1)}
+            if line.cycle_type_id or line.malha_type_id:
+                vals["product_uom_qty"] = h
+                # Mantém o preço/hora (o compute nativo reprecificaria
+                # pela pricelist ao mudar a qty).
+                vals["price_unit"] = line.price_unit
+            line.write(vals)
+        if self.equipment_target_price:
+            return self._apply_equipment_target()
+        return {"exact": True, "achieved": 0.0}
+
+    def action_apply_equipment_time_target(self):
+        """Botão 'Aplicar tempo' da linha na aba Preços por Equipamento."""
+        self.ensure_one()
+        res = self._apply_equipment_time_target()
+        if res["exact"]:
+            return True
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Rateio aproximado"),
+                "message": _(
+                    "Tempo aplicado; o preço fechou em %s — veja o "
+                    "histórico do pedido."
                 ) % formatLang(self.env, res["achieved"],
                                currency_obj=self.currency_id),
                 "sticky": False,

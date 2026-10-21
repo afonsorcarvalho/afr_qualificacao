@@ -1279,6 +1279,37 @@ class SaleOrder(models.Model):
             "domain": [("id", "in", self.engc_os_ids.ids)],
         }
 
+    def action_apply_all_equipment_time_targets(self):
+        """Aplica o tempo combinado em todos os equipamentos fora do tempo.
+
+        Uma section com falha (sem linhas) não derruba as demais —
+        `_apply_equipment_time_target` só levanta antes de qualquer write.
+        """
+        self.ensure_one()
+        falhas = []
+        for section in self.equipment_target_ids:
+            if section.equipment_time_state != "drift":
+                continue
+            try:
+                section._apply_equipment_time_target()
+            except UserError as exc:
+                falhas.append("%s: %s" % (
+                    section.equipment_id.display_name or "",
+                    exc.args[0] if exc.args else "",
+                ))
+        if not falhas:
+            return True
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Tempo combinado"),
+                "message": "\n".join(falhas),
+                "sticky": False,
+            },
+        }
+
     def action_apply_all_equipment_targets(self):
         """Ratea todos os equipamentos com alvo definido e fora do alvo.
 

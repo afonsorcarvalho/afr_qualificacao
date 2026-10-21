@@ -1,6 +1,7 @@
 """Inicializa os modelos do módulo afr_qualificacao."""
 
 from . import price_allocation  # módulo puro, sem ORM — sem dependências
+from . import time_allocation   # módulo puro, sem ORM — tempo combinado
 from . import qualificacao_security_mixin  # Task 10 — guard 'apenas Gestor' compartilhado
 from . import product_service_mixin
 from . import sensor_kind

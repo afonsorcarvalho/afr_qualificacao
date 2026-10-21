@@ -17,6 +17,10 @@
                         string="Ratear Preços-Alvo"
                         type="object"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
+                <button name="action_apply_all_equipment_time_targets"
+                        string="Aplicar Tempos Combinados"
+                        type="object"
+                        attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
                 <button name="action_open_generate_os_wizard"
                         string="Gerar OS de Qualificação"
                         type="object"
@@ -120,6 +124,18 @@
                                         type="object" string="Ratear"
                                         icon="fa-balance-scale"
                                         attrs="{'invisible': ['|', ('equipment_target_state','=','none'), ('parent.state','not in',['draft','sent'])]}"/>
+                                <field name="equipment_current_hours" string="Horas atuais"
+                                       widget="float_time" readonly="1" optional="hide"/>
+                                <field name="equipment_target_days" string="Tempo combinado (dias)"/>
+                                <field name="equipment_time_state" string="Tempo" readonly="1"
+                                       widget="badge"
+                                       decoration-success="equipment_time_state == 'ok'"
+                                       decoration-warning="equipment_time_state == 'drift'"
+                                       attrs="{'invisible': [('equipment_time_state','=','none')]}"/>
+                                <button name="action_apply_equipment_time_target"
+                                        type="object" string="Aplicar tempo"
+                                        icon="fa-clock-o"
+                                        attrs="{'invisible': ['|', ('equipment_time_state','!=','drift'), ('parent.state','not in',['draft','sent'])]}"/>
                             </tree>
                         </field>
                     </div>

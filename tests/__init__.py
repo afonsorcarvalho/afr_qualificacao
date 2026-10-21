@@ -85,6 +85,9 @@ from . import test_price_allocation
 # Rateio de preço final por equipamento — campos de alvo/desvio na section
 from . import test_equipment_target_price
 
+# Tempo combinado por equipamento
+from . import test_time_target
+
 # Task 12 — fecho da revisão de segurança adversarial (forja de certificado,
 # reversão de estado, action_reopen sem guard, cobertura zero)
 from . import test_certificate_forgery_task12
