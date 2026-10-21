@@ -58,7 +58,15 @@ class AfrQualificacaoReajusteWizard(models.TransientModel):
         aniv = self.partner_id.afr_reajuste_data
         if not aniv:
             return today
-        return date(today.year, aniv.month, 1)
+        Partner = self.env["res.partner"]
+        ref = Partner._afr_aniversario_em(aniv, today.year)
+        if ref > today:
+            ref = Partner._afr_aniversario_em(aniv, today.year - 1)
+        return ref.replace(day=1)
+
+    def _periodo_txt(self):
+        ini, fim = bcb_index.period_12m(self._ref_date())
+        return "%s a %s" % (ini.strftime("%m/%Y"), fim.strftime("%m/%Y"))
 
     def _fetch_index(self):
         """Busca o acumulado no BCB; em falha, entra no modo manual."""
@@ -66,9 +74,7 @@ class AfrQualificacaoReajusteWizard(models.TransientModel):
             if wiz.tipo != "indice" or not wiz.indice:
                 continue
             ref = wiz._ref_date()
-            ini, fim = bcb_index.period_12m(ref)
-            wiz.periodo = "%s a %s" % (ini.strftime("%m/%Y"),
-                                       fim.strftime("%m/%Y"))
+            wiz.periodo = wiz._periodo_txt()
             try:
                 wiz.percentual = bcb_index.accumulated_12m(
                     bcb_index.SERIES[wiz.indice], ref)
@@ -99,6 +105,8 @@ class AfrQualificacaoReajusteWizard(models.TransientModel):
             raise UserError(_("Informe o valor a somar."))
         if self.tipo != "valor" and not self.percentual:
             raise UserError(_("Informe o percentual do reajuste."))
+        if self.tipo == "indice" and not self.periodo:
+            self.periodo = self._periodo_txt()
         lines = []
         for line in self.line_ids:
             tpl = line.template_id

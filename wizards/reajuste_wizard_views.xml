@@ -7,7 +7,7 @@
             <form string="Reajustar preços combinados">
                 <div class="alert alert-warning" role="alert"
                      attrs="{'invisible': ['|', ('bcb_aviso', '=', False), ('tipo', '!=', 'indice')]}">
-                    <field name="bcb_aviso" nolabel="1"/>
+                    <field name="bcb_aviso" nolabel="1" force_save="1"/>
                 </div>
                 <group>
                     <group>
@@ -17,7 +17,7 @@
                     <group>
                         <field name="indice"
                                attrs="{'invisible': [('tipo', '!=', 'indice')], 'required': [('tipo', '=', 'indice')]}"/>
-                        <field name="periodo"
+                        <field name="periodo" force_save="1"
                                attrs="{'invisible': ['|', ('tipo', '!=', 'indice'), ('periodo', '=', False)]}"/>
                         <field name="percentual"
                                attrs="{'invisible': [('tipo', '=', 'valor')]}"/>

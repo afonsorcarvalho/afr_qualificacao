@@ -44,6 +44,11 @@ class TestReajuste(AfrQualificacaoTestCommon):
             "name": "C", "partner_id": cls.other.id,
             "equipment_category_id": cls.category.id,
             "company_id": cls.company.id, "price_base": 500.0})
+        cls.company2 = cls.env["res.company"].create({"name": "Outra Emp T5"})
+        cls.t_co2 = Tpl.create({
+            "name": "D", "partner_id": cls.partner.id,
+            "equipment_category_id": cls.category.id,
+            "company_id": cls.company2.id, "price_base": 900.0})
         cls.t_generic = Tpl.create({
             "name": "G", "equipment_category_id": cls.category.id,
             "company_id": cls.company.id, "price_base": 700.0})
@@ -115,6 +120,7 @@ class TestReajuste(AfrQualificacaoTestCommon):
         self.assertAlmostEqual(self.t2.price_base, 433.33)
         self.assertEqual(self.t_other.price_base, 500.0)
         self.assertEqual(self.t_generic.price_base, 700.0)
+        self.assertEqual(self.t_co2.price_base, 900.0)
         self.assertEqual(so.order_line.price_unit, 77.0)
         hist = self.partner.afr_reajuste_ids
         self.assertEqual(len(hist), 1)
@@ -151,3 +157,33 @@ class TestReajuste(AfrQualificacaoTestCommon):
             ("summary", "=", "Reajustar preços combinados")])
         self.assertEqual(acts.mapped("res_id"), [self.partner.id])
         self.assertEqual(acts.user_id, self.env.ref("base.user_admin"))
+
+    def test_feb29_fires_on_feb28_non_leap(self):
+        self.partner.afr_reajuste_data = date(2024, 2, 29)
+        P = self.env["res.partner"]
+        P._cron_afr_reajuste_activity(today=date(2027, 2, 27))
+        P._cron_afr_reajuste_activity(today=date(2027, 2, 28))
+        P._cron_afr_reajuste_activity(today=date(2027, 3, 1))
+        acts = self.env["mail.activity"].search([
+            ("res_model", "=", "res.partner"), ("res_id", "=", self.partner.id),
+            ("summary", "=", "Reajustar preços combinados")])
+        self.assertEqual(len(acts), 1)
+        self.assertEqual(acts.date_deadline, date(2027, 2, 28))
+
+    def test_confirm_restores_cleared_periodo(self):
+        with patch(GET, return_value=_serie([1.0] * 12)):
+            wiz = self._wiz(tipo="indice", indice="ipca")
+            wiz._fetch_index()
+        wiz.periodo = False
+        wiz.action_confirm()
+        self.assertTrue(self.partner.afr_reajuste_ids.periodo)
+
+    def test_ref_date_most_recent_anniversary(self):
+        today = fields.Date.context_today(self.env.user)
+        wiz = self._wiz(tipo="percentual", percentual=1.0)
+        self.partner.afr_reajuste_data = date(2000, today.month, 1)
+        self.assertEqual(wiz._ref_date(), today.replace(day=1))
+        nxt = today.month % 12 + 1
+        if nxt != 1:  # aniversário ainda não chegou neste ano
+            self.partner.afr_reajuste_data = date(2000, nxt, 1)
+            self.assertEqual(wiz._ref_date(), date(today.year - 1, nxt, 1))

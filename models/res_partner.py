@@ -5,6 +5,9 @@ F10.6 (16.0.5.5.0): botão inteligente no cliente abre a lista de equipamentos
 (view de Qualificação) filtrada por cliente; "Novo" já cria o equipamento
 vinculado a esse cliente (default_client_id).
 """
+import calendar
+from datetime import date
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
@@ -69,7 +72,15 @@ class ResPartner(models.Model):
         self.ensure_one()
         return self.env["afr.qualificacao.config.template"].search([
             ("partner_id", "=", self.commercial_partner_id.id),
+            ("company_id", "=", self.env.company.id),
             ("price_base", ">", 0)])
+
+    @api.model
+    def _afr_aniversario_em(self, aniv, year):
+        """Aniversário no ano `year` (29/02 vira 28/02 fora do bissexto)."""
+        if aniv.month == 2 and aniv.day == 29 and not calendar.isleap(year):
+            return date(year, 2, 28)
+        return aniv.replace(year=year)
 
     def _check_afr_reajuste_manager(self):
         if not self.env.user.has_group(
@@ -94,28 +105,35 @@ class ResPartner(models.Model):
         }
 
     @api.model
-    def _cron_afr_reajuste_activity(self):
-        """Aniversário hoje → atividade de reajuste (sem duplicar aberta)."""
-        today = fields.Date.context_today(self)
-        partners = self.search([("afr_reajuste_data", "!=", False)])
+    def _cron_afr_reajuste_activity(self, today=None):
+        """Aniversário hoje → atividade de reajuste (sem duplicar aberta).
+
+        "Hoje" no fuso do admin (o cron roda como root/UTC); templates
+        avaliados por empresa.
+        """
         admin = self.env.ref("base.user_admin")
+        if today is None:
+            today = fields.Date.context_today(
+                self.with_context(tz=admin.tz or "America/Sao_Paulo"))
         todo = self.env.ref("mail.mail_activity_data_todo")
         Activity = self.env["mail.activity"]
-        for partner in partners:
-            aniv = partner.afr_reajuste_data
-            if (aniv.month, aniv.day) != (today.month, today.day):
-                continue
-            if not partner._afr_reajuste_templates():
-                continue
-            if Activity.search_count([
-                    ("res_model", "=", "res.partner"),
-                    ("res_id", "=", partner.id),
-                    ("summary", "=", REAJUSTE_SUMMARY)]):
-                continue
-            partner.activity_schedule(
-                activity_type_id=todo.id, summary=REAJUSTE_SUMMARY,
-                user_id=(partner.user_id or admin).id,
-                date_deadline=today)
+        partners = self.search([("afr_reajuste_data", "!=", False)])
+        for company in self.env["res.company"].search([]):
+            for partner in partners.with_company(company):
+                aniv = self._afr_aniversario_em(
+                    partner.afr_reajuste_data, today.year)
+                if aniv != today or not partner._afr_reajuste_templates():
+                    continue
+                if Activity.search_count([
+                        ("res_model", "=", "res.partner"),
+                        ("res_id", "=", partner.id),
+                        ("activity_type_id", "=", todo.id),
+                        ("summary", "=", REAJUSTE_SUMMARY)]):
+                    continue
+                partner.activity_schedule(
+                    activity_type_id=todo.id, summary=REAJUSTE_SUMMARY,
+                    user_id=(partner.user_id or admin).id,
+                    date_deadline=today)
 
     @api.constrains("afr_procedimento_ids")
     def _check_afr_procedimento_ids_unique_category(self):
