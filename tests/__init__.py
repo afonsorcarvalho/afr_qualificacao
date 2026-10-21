@@ -85,6 +85,9 @@ from . import test_price_allocation
 # Rateio de preço final por equipamento — campos de alvo/desvio na section
 from . import test_equipment_target_price
 
+# Tempo combinado por equipamento
+from . import test_time_target
+
 # Task 12 — fecho da revisão de segurança adversarial (forja de certificado,
 # reversão de estado, action_reopen sem guard, cobertura zero)
 from . import test_certificate_forgery_task12
@@ -134,3 +137,16 @@ from . import test_relatorio_editor
 
 # Template/procedimento por cliente/equipamento — Task 1 (16.0.8.9.0)
 from . import test_template_procedimento_cliente
+
+# Template de cotação por cliente — Task 1 (16.0.9.0.0)
+from . import test_client_config_template
+
+# Template de cotação por cliente — Task 3 (16.0.9.0.2)
+from . import test_configurator_client_template
+from . import test_save_client_template
+from . import test_save_client_default_from_so
+from . import test_reajuste
+from . import test_copiar_padroes
+from . import test_equipment_relaxed
+from . import test_target_autoapply
+from . import test_wizard_so_parity

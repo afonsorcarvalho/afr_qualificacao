@@ -69,7 +69,7 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         so = self._so()
         section = self._section(so, self.equip1)
         self._cycle_line(so, self.equip1, 3, 2.5, 200.0)  # 7,5h × 200 = 1500
-        section.equipment_target_price = 1200.0
+        section.with_context(afr_no_target_autoapply=True).equipment_target_price = 1200.0  # sem auto-apply
         self.assertEqual(section.equipment_target_state, "drift")
         self.assertEqual(section.equipment_target_delta, 300.0)
 
@@ -238,14 +238,15 @@ class TestEquipmentTargetPrice(AfrQualificacaoTestCommon):
         self.assertEqual(section.equipment_target_state, "drift")
         self.assertEqual(section.equipment_target_delta, 1000.0)
 
-    def test_inexact_posts_message_and_stays_drift(self):
-        """Alvo inatingível: grava a melhor aproximação, avisa, fica drift."""
+    def test_inexact_posts_message_and_counts_as_ok(self):
+        """Alvo inatingível: grava a melhor aproximação e avisa; o resíduo
+        de arredondamento está na tolerância → estado ok (Task 11)."""
         so = self._so()
         section = self._section(so, self.equip1)
         self._cycle_line(so, self.equip1, 1, 3.0, 100.0)  # grade R$ 0,03
         section.equipment_target_price = 1000.01
         section._apply_equipment_target()
-        self.assertEqual(section.equipment_target_state, "drift")
+        self.assertEqual(section.equipment_target_state, "ok")
         self.assertTrue(any(
             "arredondamento" in (m.body or "")
             for m in so.message_ids))

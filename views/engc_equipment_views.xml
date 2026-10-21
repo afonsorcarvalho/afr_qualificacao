@@ -118,6 +118,30 @@
         </field>
     </record>
 
+    <!-- Task 9 (16.0.9.1.0) — lista editável dos equipamentos do cliente
+         (smart button do parceiro): cadastro em linha, estilo planilha. -->
+    <record id="view_engc_equipment_client_editable_tree" model="ir.ui.view">
+        <field name="name">engc.equipment.client.editable.tree</field>
+        <field name="model">engc.equipment</field>
+        <field name="priority">90</field>
+        <field name="arch" type="xml">
+            <tree string="Equipamentos do cliente" editable="bottom">
+                <field name="tag" string="TAG"/>
+                <field name="category_id"/>
+                <field name="marca_id"/>
+                <field name="model"/>
+                <field name="serial_number" string="Nº de série"/>
+                <field name="location_id" string="Local"/>
+                <field name="apelido" string="Apelido"/>
+                <field name="client_id" invisible="1"/>
+                <field name="company_id" invisible="1"/>
+                <button name="action_open_afr_equipment_form" type="object"
+                        string="Abrir ficha" icon="fa-external-link"
+                        title="Abrir ficha completa"/>
+            </tree>
+        </field>
+    </record>
+
     <record id="view_engc_equipment_qualif_search" model="ir.ui.view">
         <field name="name">engc.equipment.qualif.search</field>
         <field name="model">engc.equipment</field>
@@ -250,6 +274,94 @@
                             <field name="equipment_category_id" string="Categoria"/>
                             <field name="is_default" string="Padrão" optional="show"/>
                         </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Template de cotação por cliente (16.0.9.0.0): aba só no contato
+         comercial; groups= pelo mesmo motivo do registro acima. -->
+    <record id="view_partner_form_afr_config_template" model="ir.ui.view">
+        <field name="name">res.partner.form.afr.config.template</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Templates de cotação" name="afr_config_templates"
+                      groups="afr_qualificacao.group_afr_qualificacao_user"
+                      attrs="{'invisible': [('parent_id', '!=', False)]}">
+                    <div class="text-muted mb-2">
+                        Pacotes de qualificação combinados com este cliente.
+                        Na cotação, o equipamento da categoria correspondente
+                        já vem com o pacote, o preço e o tempo combinados.
+                    </div>
+                    <field name="afr_config_template_ids">
+                        <tree>
+                            <field name="name" string="Pacote"/>
+                            <field name="equipment_category_id" string="Categoria"/>
+                            <field name="price_base" string="Preço combinado"/>
+                            <field name="estimated_days" string="Tempo combinado (dias)"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="active" string="Ativo" widget="boolean_toggle"/>
+                        </tree>
+                    </field>
+                    <div class="mb-3" groups="afr_qualificacao.group_afr_qualificacao_manager">
+                        <button name="action_afr_copiar_padroes_wizard" type="object"
+                                string="Copiar padrões de outro cliente"
+                                class="btn-secondary" icon="fa-clone"/>
+                    </div>
+                    <separator string="Reajuste anual"/>
+                    <group>
+                        <group>
+                            <field name="afr_reajuste_data"
+                                   help="Todo ano nesta data o gestor recebe um lembrete para reajustar os preços combinados."/>
+                            <field name="afr_reajuste_indice"
+                                   attrs="{'invisible': [('afr_reajuste_data', '=', False)]}"/>
+                        </group>
+                    </group>
+                    <div class="mb-3" groups="afr_qualificacao.group_afr_qualificacao_manager"
+                         attrs="{'invisible': [('afr_config_template_ids', '=', [])]}">
+                        <button name="action_afr_reajuste_wizard" type="object"
+                                string="Reajustar preços combinados"
+                                class="btn-secondary" icon="fa-line-chart"/>
+                    </div>
+                    <label for="afr_reajuste_ids" string="Histórico de reajustes"
+                           attrs="{'invisible': [('afr_reajuste_ids', '=', [])]}"/>
+                    <field name="afr_reajuste_ids" readonly="1"
+                           attrs="{'invisible': [('afr_reajuste_ids', '=', [])]}">
+                        <tree>
+                            <field name="date"/>
+                            <field name="tipo"/>
+                            <field name="indice"/>
+                            <field name="periodo"/>
+                            <field name="percentual"/>
+                            <field name="valor"/>
+                            <field name="user_id"/>
+                        </tree>
+                        <form>
+                            <group>
+                                <group>
+                                    <field name="date"/>
+                                    <field name="tipo"/>
+                                    <field name="indice"/>
+                                    <field name="periodo"/>
+                                </group>
+                                <group>
+                                    <field name="percentual"/>
+                                    <field name="valor"/>
+                                    <field name="user_id"/>
+                                </group>
+                            </group>
+                            <field name="line_ids">
+                                <tree>
+                                    <field name="template_id"/>
+                                    <field name="equipment_category_id"/>
+                                    <field name="valor_antigo"/>
+                                    <field name="valor_novo"/>
+                                </tree>
+                            </field>
+                        </form>
                     </field>
                 </page>
             </xpath>

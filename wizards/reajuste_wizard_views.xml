@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_afr_reajuste_wizard_form" model="ir.ui.view">
+        <field name="name">afr.qualificacao.reajuste.wizard.form</field>
+        <field name="model">afr.qualificacao.reajuste.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Reajustar preços combinados">
+                <div class="alert alert-warning" role="alert"
+                     attrs="{'invisible': ['|', ('bcb_aviso', '=', False), ('tipo', '!=', 'indice')]}">
+                    <field name="bcb_aviso" nolabel="1" force_save="1"/>
+                </div>
+                <group>
+                    <group>
+                        <field name="partner_id" readonly="1" force_save="1"/>
+                        <field name="tipo" widget="radio"/>
+                    </group>
+                    <group>
+                        <field name="indice"
+                               attrs="{'invisible': [('tipo', '!=', 'indice')], 'required': [('tipo', '=', 'indice')]}"/>
+                        <field name="periodo" force_save="1"
+                               attrs="{'invisible': ['|', ('tipo', '!=', 'indice'), ('periodo', '=', False)]}"/>
+                        <field name="percentual"
+                               attrs="{'invisible': [('tipo', '=', 'valor')]}"/>
+                        <field name="valor"
+                               attrs="{'invisible': [('tipo', '!=', 'valor')]}"/>
+                    </group>
+                </group>
+                <separator string="Prévia"/>
+                <!-- readonly: a prévia não é enviada; create() a refaz a
+                     partir do cliente (template_id é readonly no modelo e,
+                     enviado por lista editável, chegava vazio). -->
+                <field name="line_ids" nolabel="1" readonly="1">
+                    <tree create="0" delete="0">
+                        <field name="template_id" string="Pacote"/>
+                        <field name="equipment_category_id"/>
+                        <field name="antes"/>
+                        <field name="depois"/>
+                        <field name="currency_id" invisible="1"/>
+                    </tree>
+                </field>
+                <div class="text-muted">
+                    Só os preços combinados deste cliente mudam; cotações já
+                    emitidas não são alteradas.
+                </div>
+                <footer>
+                    <button name="action_confirm" type="object"
+                            string="Aplicar reajuste" class="btn-primary"
+                            confirm="Aplicar o reajuste aos preços combinados deste cliente?"/>
+                    <button string="Cancelar" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

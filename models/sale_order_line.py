@@ -14,6 +14,7 @@ from odoo.tools import float_compare, float_is_zero, float_round
 from odoo.tools.misc import formatLang
 
 from .price_allocation import allocate_target
+from .time_allocation import allocate_hours
 
 
 class SaleOrderLine(models.Model):
@@ -268,6 +269,34 @@ class SaleOrderLine(models.Model):
         compute="_compute_equipment_target_delta",
         string="Situação do Alvo",
     )
+    equipment_target_days = fields.Float(
+        string="Tempo combinado (dias)",
+        digits=(16, 2),
+        copy=True,
+        help=(
+            "Tempo total combinado para o equipamento, em dias de jornada. "
+            "Ao aplicar, as horas das linhas são redistribuídas "
+            "proporcionalmente (em passos de 0,25 h)."
+        ),
+    )
+    equipment_target_hours = fields.Float(
+        compute="_compute_equipment_time_state",
+        string="Horas combinadas",
+        help="Tempo combinado (dias) × jornada (h/dia).",
+    )
+    equipment_current_hours = fields.Float(
+        compute="_compute_equipment_time_state",
+        string="Horas atuais",
+    )
+    equipment_time_state = fields.Selection(
+        selection=[
+            ("none", "Sem tempo combinado"),
+            ("ok", "No tempo"),
+            ("drift", "Diferente do combinado"),
+        ],
+        compute="_compute_equipment_time_state",
+        string="Situação do Tempo",
+    )
     is_rateio_priced = fields.Boolean(
         string="Preço Rateado",
         default=False,
@@ -377,11 +406,36 @@ class SaleOrderLine(models.Model):
                 continue
             delta = line.equipment_subtotal - line.equipment_target_price
             line.equipment_target_delta = delta
-            same = float_compare(
-                line.equipment_subtotal, line.equipment_target_price,
-                precision_digits=2,
-            ) == 0
+            # Tolerância = erro máximo de arredondamento do rateio (price_unit
+            # com 2 casas × qty fracionária): Σ 0,005 × qty, mínimo 0,01.
+            tol = max(0.01, sum(
+                0.005 * abs(l.product_uom_qty)
+                for l in line._rateio_base_lines()))
+            same = float_compare(abs(delta), tol, precision_digits=4) <= 0
             line.equipment_target_state = "ok" if same else "drift"
+
+    def _check_equipment_target_base(self, base):
+        """Pré-condições do rateio de preço (levanta antes de qualquer write)."""
+        self.ensure_one()
+        if not base:
+            raise UserError(_(
+                "Nenhuma linha elegível ao rateio para %s. Gere as linhas de "
+                "qualificação antes de definir o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if float_is_zero(sum(base.mapped("price_subtotal")),
+                          precision_digits=2):
+            raise UserError(_(
+                "As linhas de %s estão com preço zerado — defina os preços "
+                "base antes de ratear."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if any(not float_is_zero(l.discount, precision_digits=2)
+               for l in base):
+            raise UserError(_(
+                "As linhas de %s têm desconto por linha — o rateio não "
+                "suporta desconto (o preço rateado já é o preço final). "
+                "Zere o desconto das linhas do equipamento antes de definir "
+                "o preço-alvo."
+            ) % (self.equipment_id.display_name or _("equipamento")))
 
     def _apply_equipment_target(self):
         """Ratea equipment_target_price entre as linhas do equipamento.
@@ -403,25 +457,7 @@ class SaleOrderLine(models.Model):
             return {"exact": True, "achieved": 0.0}
 
         base = self._rateio_base_lines()
-        if not base:
-            raise UserError(_(
-                "Nenhuma linha elegível ao rateio para %s. Gere as linhas de "
-                "qualificação antes de definir o preço-alvo."
-            ) % (self.equipment_id.display_name or _("equipamento")))
-        if float_is_zero(sum(base.mapped("price_subtotal")),
-                          precision_digits=2):
-            raise UserError(_(
-                "As linhas de %s estão com preço zerado — defina os preços "
-                "base antes de ratear."
-            ) % (self.equipment_id.display_name or _("equipamento")))
-        if any(not float_is_zero(l.discount, precision_digits=2)
-               for l in base):
-            raise UserError(_(
-                "As linhas de %s têm desconto por linha — o rateio não "
-                "suporta desconto (o preço rateado já é o preço final). "
-                "Zere o desconto das linhas do equipamento antes de definir "
-                "o preço-alvo."
-            ) % (self.equipment_id.display_name or _("equipamento")))
+        self._check_equipment_target_base(base)
 
         pairs = [(l.product_uom_qty, l.price_subtotal) for l in base]
         result = allocate_target(target, pairs)
@@ -471,6 +507,224 @@ class SaleOrderLine(models.Model):
                 "sticky": False,
             },
         }
+
+    @staticmethod
+    def _time_weight(line):
+        """Horas atuais da linha = nº ciclos × horas/ciclo (ciclos ≥ 1).
+
+        Em ciclo/malha a qty já é essa conta (UdM horas) e é a fonte exata:
+        `estimated_hours` tem 2 casas e, com ciclos > 1, horas/ciclo
+        derivadas (ex.: 9,25 / 3) arredondam — multiplicar de volta erraria.
+        """
+        if line.cycle_type_id or line.malha_type_id:
+            return line.product_uom_qty or 0.0
+        return (line.qualif_cycle_qty or 1) * (line.estimated_hours or 0.0)
+
+    @api.depends(
+        "display_type", "equipment_id", "equipment_target_days",
+        "work_hours_per_day",
+        "order_id.order_line.equipment_id",
+        "order_id.order_line.estimated_hours",
+        "order_id.order_line.qualif_cycle_qty",
+        "order_id.order_line.cycle_type_id",
+        "order_id.order_line.malha_type_id",
+        "order_id.order_line.product_uom_qty",
+        "order_id.order_line.is_proposal_optional",
+        "order_id.order_line.part01_declined",
+        "order_id.regular_line_ids.estimated_hours",
+    )
+    def _compute_equipment_time_state(self):
+        for line in self:
+            if line.display_type != "line_section" or not line.equipment_id:
+                line.equipment_target_hours = 0.0
+                line.equipment_current_hours = 0.0
+                line.equipment_time_state = "none"
+                continue
+            current = sum(self._time_weight(l)
+                          for l in line._rateio_base_lines())
+            target = line.equipment_target_days * (
+                line.work_hours_per_day or 8.0)
+            line.equipment_current_hours = current
+            line.equipment_target_hours = target
+            if float_is_zero(target, precision_digits=2):
+                line.equipment_time_state = "none"
+            elif float_compare(current, target, precision_digits=2) == 0:
+                line.equipment_time_state = "ok"
+            else:
+                line.equipment_time_state = "drift"
+
+    def _apply_equipment_time_target(self):
+        """Ratea o tempo combinado entre as linhas do equipamento.
+
+        Tempo primeiro, depois preço: com preço combinado, re-rateia o preço
+        sobre as novas horas e o total do equipamento continua igual ao alvo.
+        Sem preço combinado, o preço por hora é mantido (o total acompanha
+        as horas). Linhas de ciclo/malha têm qty = horas; QI/QS (qty fixa)
+        só têm as horas estimadas ajustadas.
+        """
+        self.ensure_one()
+        if self.equipment_target_days <= 0:
+            if self.equipment_target_days < 0:
+                self.equipment_target_days = 0.0
+            return {"exact": True, "achieved": 0.0}
+        base = self._rateio_base_lines()
+        if not base:
+            raise UserError(_(
+                "Nenhuma linha elegível para %s. Gere as linhas de "
+                "qualificação antes de definir o tempo combinado."
+            ) % (self.equipment_id.display_name or _("equipamento")))
+        if self.equipment_target_price > 0:
+            # Valida o rateio de preço ANTES de mexer nas horas: um erro
+            # depois do write deixaria a section meio aplicada.
+            self._check_equipment_target_base(base)
+        target = self.equipment_target_days * (self.work_hours_per_day or 8.0)
+        hours = allocate_hours(target, [self._time_weight(l) for l in base])
+        for line, h in zip(base, hours):
+            vals = {"estimated_hours": h / (line.qualif_cycle_qty or 1)}
+            if line.cycle_type_id or line.malha_type_id:
+                vals["product_uom_qty"] = h
+                # Mantém o preço/hora (o compute nativo reprecificaria
+                # pela pricelist ao mudar a qty).
+                vals["price_unit"] = line.price_unit
+            line.write(vals)
+        if self.equipment_target_price:
+            return self._apply_equipment_target()
+        return {"exact": True, "achieved": 0.0}
+
+    def action_save_as_client_default(self):
+        """Botão "Tornar padrão cliente" na seção do equipamento.
+
+        Funciona em qualquer estado da cotação. O escopo é reconstruído das
+        linhas managed pela mesma leitura do configurador
+        (`_load_from_existing_lines`); preço = preço combinado ou total atual
+        da seção; dias = tempo combinado ou horas atuais / jornada.
+        """
+        self.ensure_one()
+        Equip = self.env["afr.qualificacao.configurator.equipment"]
+        Equip._check_client_default_manager()
+        if (self.display_type != "line_section" or not self.equipment_id
+                or not self.is_qualificacao_managed):
+            raise UserError(_(
+                "Use este botão na linha de seção de um equipamento."))
+        wizard = self.env["afr.qualificacao.configurator"].create(
+            {"sale_order_id": self.order_id.id})
+        wizard._load_from_existing_lines()
+        eq_line = wizard.equipment_line_ids.filtered(
+            lambda l: l.equipment_id == self.equipment_id)[:1]
+        if not eq_line:
+            raise UserError(_(
+                "Nenhuma linha de qualificação para %s.")
+                % self.equipment_id.display_name)
+        hpd = self.work_hours_per_day or 8.0
+        eq_line.work_hours_per_day = hpd
+        price = self.equipment_target_price or self.equipment_subtotal
+        days = self.equipment_target_days or (
+            self.equipment_current_hours / hpd)
+        return eq_line._save_client_default_flow(
+            price=price, days=days, return_to_so=True)
+
+    def action_apply_equipment_time_target(self):
+        """Botão 'Aplicar tempo' da linha na aba Preços por Equipamento."""
+        self.ensure_one()
+        res = self._apply_equipment_time_target()
+        if res["exact"]:
+            return True
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "type": "warning",
+                "title": _("Rateio aproximado"),
+                "message": _(
+                    "Tempo aplicado; o preço fechou em %s — veja o "
+                    "histórico do pedido."
+                ) % formatLang(self.env, res["achieved"],
+                               currency_obj=self.currency_id),
+                "sticky": False,
+            },
+        }
+
+    # ------------------------------------------------------------------
+    # Task 11 — aplicação automática dos alvos ao gravar na própria linha
+    # ------------------------------------------------------------------
+    _TARGET_KEYS = ("equipment_target_price", "equipment_target_days")
+    _NO_AUTOAPPLY = "afr_no_target_autoapply"
+
+    equipment_target_issue = fields.Char(
+        string="Motivo",
+        copy=False,
+        readonly=True,
+        help="Por que o preço/tempo combinado não pôde ser aplicado.",
+    )
+    equipment_apply_state = fields.Selection(
+        selection=[
+            ("none", "Sem alvo"),
+            ("ok", "Aplicado"),
+            ("drift", "Diferente"),
+            ("issue", "Não aplicado"),
+        ],
+        compute="_compute_equipment_apply_state",
+        string="Situação",
+    )
+
+    @api.depends("equipment_target_state", "equipment_time_state",
+                 "equipment_target_issue")
+    def _compute_equipment_apply_state(self):
+        for line in self:
+            states = {line.equipment_target_state, line.equipment_time_state}
+            if states == {"none"}:
+                line.equipment_apply_state = "none"
+            elif line.equipment_target_issue:
+                line.equipment_apply_state = "issue"
+            elif "drift" in states:
+                line.equipment_apply_state = "drift"
+            else:
+                line.equipment_apply_state = "ok"
+
+    def write(self, vals):
+        res = super().write(vals)
+        if (not self.env.context.get(self._NO_AUTOAPPLY)
+                and any(k in vals for k in self._TARGET_KEYS)):
+            for section in self.filtered(
+                lambda l: l.display_type == "line_section"
+                and l.equipment_id
+                and l.order_id.state in ("draft", "sent")
+            ):
+                section._auto_apply_equipment_targets()
+        return res
+
+    def _auto_apply_equipment_targets(self):
+        """Tempo (se houver) e depois preço; nunca levanta.
+
+        Falha de pré-condição (desconto, base zerada/vazia) mantém o alvo
+        digitado, desfaz qualquer write parcial (savepoint) e grava o motivo
+        em `equipment_target_issue`. Sucesso limpa o motivo.
+        """
+        self.ensure_one()
+        sec = self.with_context(**{self._NO_AUTOAPPLY: True})
+        issue = False
+        res = {"exact": True, "achieved": 0.0}
+        if sec.equipment_target_days > 0 or sec.equipment_target_price > 0:
+            try:
+                with self.env.cr.savepoint():
+                    if sec.equipment_target_days > 0:
+                        res = sec._apply_equipment_time_target()
+                    else:
+                        res = sec._apply_equipment_target()
+            except UserError as err:
+                self.env.invalidate_all()
+                issue = err.args[0] if err.args else str(err)
+        if (sec.equipment_target_issue or False) != issue:
+            sec.equipment_target_issue = issue
+        return res if not issue else None
+
+    def action_reapply_equipment_targets(self):
+        """Botão "Reaplicar" da coluna Situação."""
+        self.ensure_one()
+        # Sempre True: o form recarrega e mostra a Situação/Motivo.
+        self._auto_apply_equipment_targets()
+        return True
+
 
     config_template_id = fields.Many2one(
         comodel_name="afr.qualificacao.config.template",

@@ -13,10 +13,6 @@
                         type="object"
                         class="oe_highlight"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('partner_id','=',False)]}"/>
-                <button name="action_apply_all_equipment_targets"
-                        string="Ratear Preços-Alvo"
-                        type="object"
-                        attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
                 <button name="action_open_generate_os_wizard"
                         string="Gerar OS de Qualificação"
                         type="object"
@@ -102,7 +98,7 @@
                     <!-- Preço-alvo por equipamento: entre as linhas e os subtotais,
                          para o rateio ficar ao lado do que ele reprecifica. -->
                     <div attrs="{'invisible': [('has_qualif_lines','=',False)]}">
-                        <separator string="Preços por Equipamento"/>
+                        <separator string="Preço e tempo combinados por equipamento"/>
                         <field name="equipment_target_ids" nolabel="1">
                             <tree editable="bottom" create="false" delete="false"
                                   decoration-warning="equipment_target_state == 'drift'"
@@ -110,16 +106,31 @@
                                 <field name="equipment_target_state" invisible="1"/>
                                 <field name="currency_id" invisible="1"/>
                                 <field name="name" string="Equipamento" readonly="1"/>
-                                <field name="equipment_subtotal" string="Base do Rateio"
+                                <field name="equipment_subtotal" string="Preço atual"
                                        widget="monetary" readonly="1"/>
-                                <field name="equipment_target_price" string="Preço-Alvo"
+                                <field name="equipment_target_price" string="Preço combinado"
                                        widget="monetary"/>
-                                <field name="equipment_target_delta" string="Desvio"
-                                       widget="monetary" readonly="1"/>
-                                <button name="action_apply_equipment_target"
-                                        type="object" string="Ratear"
-                                        icon="fa-balance-scale"
-                                        attrs="{'invisible': ['|', ('equipment_target_state','=','none'), ('parent.state','not in',['draft','sent'])]}"/>
+                                <field name="equipment_target_delta" string="Diferença"
+                                       widget="monetary" readonly="1" optional="hide"/>
+                                <field name="equipment_current_hours" string="Horas atuais"
+                                       widget="float_time" readonly="1" optional="hide"/>
+                                <field name="equipment_target_days" string="Tempo combinado (dias)"/>
+                                <field name="equipment_apply_state" string="Situação do combinado" readonly="1"
+                                       widget="badge"
+                                       decoration-success="equipment_apply_state == 'ok'"
+                                       decoration-warning="equipment_apply_state == 'drift'"
+                                       decoration-danger="equipment_apply_state == 'issue'"
+                                       attrs="{'invisible': [('equipment_apply_state','=','none')]}"/>
+                                <field name="equipment_target_issue" string="Motivo" readonly="1"
+                                       optional="show"/>
+                                <button name="action_reapply_equipment_targets"
+                                        type="object" string="Reaplicar"
+                                        icon="fa-refresh" class="btn-link"
+                                        attrs="{'invisible': ['|', ('equipment_apply_state','not in',['drift','issue']), ('parent.state','not in',['draft','sent'])]}"/>
+                                <button name="action_save_as_client_default"
+                                        type="object" string="Tornar padrão cliente"
+                                        icon="fa-bookmark"
+                                        groups="afr_qualificacao.group_afr_qualificacao_manager"/>
                             </tree>
                         </field>
                     </div>

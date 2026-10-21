@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.8.9.5",
+    "version": "16.0.9.1.3",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -230,6 +230,7 @@
         # reais têm templates customizados do cliente com o mesmo code).
         # F9.3 — Email template LabQuali para envio de proposta
         "data/mail_template_proposal.xml",
+        "data/ir_cron_reajuste.xml",
         # Views — config (master data) com actions
         "views/sensor_kind_views.xml",
         "views/standard_views.xml",
@@ -266,6 +267,9 @@
         "wizards/qualificacao_os_generate_wizard_views.xml",
         "wizards/leitura_ib_lote_wizard_views.xml",
         "wizards/relatorio_template_wizard_views.xml",
+        "wizards/client_default_confirm_views.xml",
+        "wizards/reajuste_wizard_views.xml",
+        "wizards/copiar_padroes_wizard_views.xml",
         # Menus (carregar antes de views que referenciam menu_root como parent)
         "views/qualificacao_menus.xml",
         # Editor de blocos Task 1 — biblioteca de blocos prontos (seed antes
