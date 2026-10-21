@@ -88,7 +88,7 @@ class EngcEquipment(models.Model):
          "Série/marca não exigem unicidade."),
     ]
 
-    @api.depends("category_id", "model", "marca_id", "serial_number", "tag")
+    @api.depends("category_id.name", "model", "marca_id.name", "serial_number", "tag")
     def _compute_name(self):
         # Original do engc_os zera o nome se faltar qualquer parte; aqui
         # monta só com as partes presentes, com fallback TAG / id.

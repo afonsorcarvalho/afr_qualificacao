@@ -23,7 +23,7 @@ class TestEquipmentRelaxed(TransactionCase):
         vals = {"category_id": self.categ.id, "marca_id": self.marca.id, "serial_number": "S1", "model": "M"}
         a = self.Equip.create(vals)
         b = self.Equip.create(vals)
-        self.env.cr.flush() if hasattr(self.env.cr, "flush") else self.env.flush_all()
+        self.env.flush_all()
         self.assertNotEqual(a, b)
 
     def test_name_partial_parts(self):
@@ -40,7 +40,7 @@ class TestEquipmentRelaxed(TransactionCase):
 
     def test_partner_action_editable_list(self):
         action = self.contact.action_view_afr_equipments()
-        self.assertEqual(action["domain"], [("client_id", "=", self.partner.id)])
+        self.assertEqual(action["domain"], [("client_id", "child_of", self.partner.id)])
         self.assertEqual(action["context"]["default_client_id"], self.partner.id)
         view = self.env.ref("afr_qualificacao.view_engc_equipment_client_editable_tree")
         self.assertEqual(action["views"][0], (view.id, "tree"))
@@ -48,3 +48,20 @@ class TestEquipmentRelaxed(TransactionCase):
         self.assertIn('editable="bottom"', arch)
         for f in ("tag", "category_id", "marca_id", "model", "serial_number", "location_id", "apelido"):
             self.assertIn('name="%s"' % f, arch)
+
+    def test_constraint_is_noop_check(self):
+        self.env.cr.execute(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conname = 'engc_equipment_serial_marca_company_id_no_uniq'"
+        )
+        self.assertEqual([r[0] for r in self.env.cr.fetchall()], ["CHECK (true)"])
+
+    def test_count_and_list_include_child_contacts(self):
+        a = self.Equip.create({"category_id": self.categ.id, "client_id": self.partner.id})
+        b = self.Equip.create({"category_id": self.categ.id, "client_id": self.contact.id})
+        for p in (self.partner, self.contact):
+            p.invalidate_recordset(["afr_equipment_count"])
+            self.assertEqual(p.afr_equipment_count, 2)
+            found = self.Equip.search(p.action_view_afr_equipments()["domain"])
+            self.assertEqual(found, a | b)
+            self.assertEqual(p.action_view_afr_equipments()["context"]["default_client_id"], self.partner.id)

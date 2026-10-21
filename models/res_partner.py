@@ -171,10 +171,15 @@ class ResPartner(models.Model):
                     )
                 seen.add(key)
 
-    @api.depends("afr_equipment_ids")
+    @api.depends("afr_equipment_ids", "child_ids.afr_equipment_ids")
     def _compute_afr_equipment_count(self):
+        # Mesmo domínio da lista do smart button (empresa + contatos filhos).
+        Equip = self.env["engc.equipment"]
         for partner in self:
-            partner.afr_equipment_count = len(partner.afr_equipment_ids)
+            commercial = partner.commercial_partner_id
+            partner.afr_equipment_count = Equip.search_count(
+                [("client_id", "child_of", commercial.id)]
+            ) if commercial.id else 0
 
     def action_view_afr_equipments(self):
         self.ensure_one()
@@ -189,7 +194,7 @@ class ResPartner(models.Model):
             "res_model": "engc.equipment",
             "view_mode": "tree,form",
             "views": [(tree.id, "tree"), (form.id, "form")],
-            "domain": [("client_id", "=", partner.id)],
+            "domain": [("client_id", "child_of", partner.id)],
             "context": {
                 "default_client_id": partner.id,
                 "form_view_ref": "afr_qualificacao.view_engc_equipment_qualif_form",
