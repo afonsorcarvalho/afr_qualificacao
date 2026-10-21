@@ -187,3 +187,75 @@ class TestConfiguratorClientTemplate(AfrQualificacaoTestCommon):
         bulk.action_apply()
         for line in wiz.equipment_line_ids:
             self.assertTrue(line.do_qs)
+
+    # --- fix round 1 -------------------------------------------------
+    def test_new_equipment_zero_price_does_not_block_apply(self):
+        so = self._so()
+        tpl = self._tpl("cli", partner_id=self.partner.id, price_base=800.0)
+        wiz = self._wiz(so)
+        wiz.equipment_line_ids = [(0, 0, {
+            "equipment_id": self.equip1.id, "config_template_id": tpl.id,
+            "qd_line_ids": [(0, 0, {"cycle_type_id": self.cycle_cmax.id,
+                                    "qty": 2, "unit_price": 0.0})],
+        })]
+        wiz.action_apply()
+        sec = self._section(so, self.equip1)
+        self.assertEqual(sec.equipment_target_price, 800.0)
+        self.assertEqual(sec.equipment_target_state, "drift")
+        self.assertEqual(self._equip_total(so, self.equip1), 0.0)
+
+    def test_reapply_unrateable_base_keeps_target_drift(self):
+        so = self._so()
+        tpl = self._tpl("cli", partner_id=self.partner.id, price_base=800.0)
+        self._apply_new(so, tpl)
+        so.order_line.filtered(
+            lambda l: not l.display_type and l.equipment_id == self.equip1
+        ).write({"price_unit": 0.0})
+        self._wiz(so).action_apply()
+        sec = self._section(so, self.equip1)
+        self.assertEqual(sec.equipment_target_price, 800.0)
+        self.assertEqual(sec.equipment_target_state, "drift")
+
+    def test_duplicate_equipment_blocked(self):
+        from odoo.exceptions import UserError
+        wiz = self._wiz(self._so())
+        with self.assertRaises(UserError):  # ValidationError herda
+            wiz.equipment_line_ids = [
+                (0, 0, {"equipment_id": self.equip1.id, "do_qi": True}),
+                (0, 0, {"equipment_id": self.equip1.id, "do_qs": True}),
+            ]
+            wiz.action_apply()
+
+    def test_bulk_skips_equipment_already_in_parent(self):
+        wiz = self._wiz(self._so())
+        wiz.equipment_line_ids = [(0, 0, {"equipment_id": self.equip1.id,
+                                          "do_qi": True})]
+        self._bulk(wiz).action_apply()
+        self.assertEqual(len(wiz.equipment_line_ids), 2)
+        self.assertEqual(len(wiz.equipment_line_ids.mapped("equipment_id")), 2)
+
+    def test_change_equipment_reresolves_other_category(self):
+        cat2 = self.env["engc.equipment.category"].create({"name": "Cat3-T"})
+        equip3 = self.env["engc.equipment"].create({
+            "client_id": self.partner.id, "category_id": cat2.id,
+            "model": "M3", "serial_number": "TSN-T3",
+            "means_of_aquisition_id": self.means.id,
+            "location_id": self.location.id, "marca_id": self.marca.id,
+        })
+        tpl1 = self._tpl("cli1", partner_id=self.partner.id)
+        tpl3 = self._tpl("cli3", partner_id=self.partner.id,
+                         equipment_category_id=cat2.id)
+        wiz = self._wiz(self._so())
+        line = self._add_with_onchange(wiz, self.equip1)
+        self.assertEqual(line.config_template_id, tpl1)
+        line.equipment_id = equip3
+        line._onchange_equipment_template()
+        self.assertEqual(line.config_template_id, tpl3)
+        # mesma categoria: escolha mantida
+        manual = self._tpl("manual", sequence=50)
+        line2 = self.EquipLine.new({
+            "wizard_id": wiz.id, "equipment_id": self.equip1.id,
+            "config_template_id": manual.id})
+        line2.equipment_id = self.equip2
+        line2._onchange_equipment_template()
+        self.assertEqual(line2.config_template_id, manual)

@@ -16,12 +16,16 @@ manuais avulsas preservadas).
 import re
 from collections import defaultdict
 
+import logging
+
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools.misc import formatLang
 
 
 # F8.4/F8.7 — passos do configurador guiado, em ordem.
+_logger = logging.getLogger(__name__)
+
 _STEP_ORDER = ["escopo", "opcionais", "revisao"]
 
 
@@ -412,6 +416,13 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         self.ensure_one()
         if not self.equipment_line_ids:
             raise UserError(_("Adicione ao menos 1 equipamento."))
+        vistos = set()
+        for eq_line in self.equipment_line_ids:
+            if eq_line.equipment_id.id in vistos:
+                raise UserError(_(
+                    "O equipamento %s aparece mais de uma vez no configurador."
+                ) % eq_line.equipment_id.display_name)
+            vistos.add(eq_line.equipment_id.id)
         # valida cada linha equipment tem ao menos 1 qualif
         for eq_line in self.equipment_line_ids:
             if not (
@@ -704,10 +715,19 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             and l.display_type == "line_section"
             and (l.equipment_target_days > 0 or l.equipment_target_price > 0)
         ):
-            if section.equipment_target_days > 0:
-                section._apply_equipment_time_target()
-            else:
-                section._apply_equipment_target()
+            # Nunca bloqueia o apply: base não rateável (preço zerado,
+            # desconto, sem linhas) → mantém o alvo gravado (seção fica em
+            # "drift") e o user resolve na cotação.
+            try:
+                with self.env.cr.savepoint():
+                    if section.equipment_target_days > 0:
+                        section._apply_equipment_time_target()
+                    else:
+                        section._apply_equipment_target()
+            except UserError as err:
+                self.env.invalidate_all()
+                _logger.info("Rateio de alvos pulado (%s): %s",
+                             section.equipment_id.display_name, err)
         # F8.2 — aplica o template e semeia blocos da proposta (idempotente —
         # preserva blocos já montados/editados no form do SO).
         if self.proposal_template_id:
@@ -871,7 +891,13 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
     @api.onchange("equipment_id")
     def _onchange_equipment_template(self):
         """Sem pacote escolhido: usa o padrão do cliente/categoria."""
-        if self.config_template_id or not self.equipment_id:
+        if not self.equipment_id:
+            return
+        tpl_cat = self.config_template_id.equipment_category_id
+        if tpl_cat and tpl_cat != self.equipment_id.category_id:
+            # Pacote de outra categoria (ex.: equipamento trocado) — re-resolve.
+            self.config_template_id = False
+        if self.config_template_id:
             return
         wiz = self.wizard_id
         tpl, _origin = self.env[
