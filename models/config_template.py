@@ -71,7 +71,20 @@ class AfrQualificacaoConfigTemplate(models.Model):
     # template sugere, comercial ajusta na proposta).
     company_id = fields.Many2one(
         comodel_name="res.company",
+        required=True,
         default=lambda self: self.env.company,
+    )
+    partner_id = fields.Many2one(
+        comodel_name="res.partner",
+        string="Cliente",
+        domain="[('parent_id', '=', False)]",
+        index=True,
+        ondelete="cascade",
+        help=(
+            "Preenchido = padrão exclusivo deste cliente (aplicado "
+            "automaticamente nas cotações dele). Vazio = padrão geral da "
+            "categoria de equipamento."
+        ),
     )
     currency_id = fields.Many2one(
         comodel_name="res.currency",
@@ -98,6 +111,55 @@ class AfrQualificacaoConfigTemplate(models.Model):
     )
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
+
+    @api.constrains("partner_id", "equipment_category_id", "company_id", "active")
+    def _check_unique_client_template(self):
+        """No máximo 1 template ativo por (cliente, categoria, empresa)."""
+        for tpl in self.filtered(lambda t: t.partner_id and t.active):
+            dup = self.search([
+                ("id", "!=", tpl.id),
+                ("partner_id", "=", tpl.partner_id.id),
+                ("equipment_category_id", "=", tpl.equipment_category_id.id or False),
+                ("company_id", "=", tpl.company_id.id),
+            ], limit=1)
+            if dup:
+                raise ValidationError(_(
+                    "'%(partner)s' já tem um template de cotação ativo para "
+                    "a categoria '%(cat)s'. Arquive o anterior ou edite-o."
+                ) % {
+                    "partner": tpl.partner_id.display_name,
+                    "cat": tpl.equipment_category_id.name or _("(todas)"),
+                })
+
+    @api.model
+    def _resolve_for_equipment(self, equipment, partner, company=None):
+        """Template aplicável a `equipment` para o cliente `partner`.
+
+        Ordem: 1) template do cliente (commercial_partner_id) da categoria do
+        equipamento -> 'cliente'; 2) template geral da categoria (sem cliente,
+        menor `sequence`) -> 'categoria'; senão vazio + 'none'. Só templates
+        ativos da empresa `company` (default env.company).
+        """
+        company = company or self.env.company
+        category = equipment.category_id
+        if not category:
+            return self.browse(), "none"
+        base = [
+            ("equipment_category_id", "=", category.id),
+            ("company_id", "=", company.id),
+        ]
+        commercial = partner.commercial_partner_id if partner else None
+        if commercial:
+            tpl = self.search(
+                base + [("partner_id", "=", commercial.id)],
+                order="sequence, id", limit=1)
+            if tpl:
+                return tpl, "cliente"
+        tpl = self.search(
+            base + [("partner_id", "=", False)], order="sequence, id", limit=1)
+        if tpl:
+            return tpl, "categoria"
+        return self.browse(), "none"
 
 
 class AfrQualificacaoConfigTemplateQdPoint(models.Model):

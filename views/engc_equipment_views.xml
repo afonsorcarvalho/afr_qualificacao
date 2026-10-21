@@ -256,4 +256,36 @@
         </field>
     </record>
 
+    <!-- Template de cotação por cliente (16.0.9.0.0): aba só no contato
+         comercial; groups= pelo mesmo motivo do registro acima. -->
+    <record id="view_partner_form_afr_config_template" model="ir.ui.view">
+        <field name="name">res.partner.form.afr.config.template</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Templates de cotação" name="afr_config_templates"
+                      groups="afr_qualificacao.group_afr_qualificacao_user"
+                      attrs="{'invisible': [('parent_id', '!=', False)]}">
+                    <div class="text-muted mb-2">
+                        Pacotes de qualificação combinados com este cliente.
+                        Na cotação, o equipamento da categoria correspondente
+                        já vem com o pacote, o preço e o tempo combinados.
+                    </div>
+                    <field name="afr_config_template_ids"
+                           context="{'default_partner_id': active_id}">
+                        <tree>
+                            <field name="name" string="Template"/>
+                            <field name="equipment_category_id" string="Categoria"/>
+                            <field name="price_base" string="Preço combinado"/>
+                            <field name="estimated_days" string="Tempo combinado (dias)"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="active" string="Ativo" widget="boolean_toggle"/>
+                        </tree>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
 </odoo>

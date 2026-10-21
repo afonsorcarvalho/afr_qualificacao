@@ -8,6 +8,7 @@
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="equipment_category_id"/>
+                <field name="partner_id" string="Cliente" optional="show"/>
                 <field name="do_qi" widget="boolean_toggle"/>
                 <field name="do_qo" widget="boolean_toggle"/>
                 <field name="do_qs" widget="boolean_toggle"/>
@@ -27,6 +28,9 @@
                         <group>
                             <field name="name"/>
                             <field name="equipment_category_id"/>
+                            <field name="partner_id" string="Cliente (opcional)"
+                                   placeholder="Vazio = padrão geral da categoria"
+                                   options="{'no_create': True}"/>
                             <field name="sequence"/>
                         </group>
                         <group>
@@ -37,9 +41,9 @@
                             <field name="active"/>
                         </group>
                         <group string="Sugestão Comercial (Proposta)">
-                            <field name="price_base"/>
+                            <field name="price_base" string="Preço combinado"/>
                             <field name="currency_id" invisible="1"/>
-                            <field name="estimated_days"/>
+                            <field name="estimated_days" string="Tempo combinado (dias)"/>
                             <field name="work_hours_per_day"/>
                         </group>
                     </group>

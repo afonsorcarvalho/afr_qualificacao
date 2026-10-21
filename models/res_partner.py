@@ -44,6 +44,13 @@ class ResPartner(models.Model):
         ),
     )
 
+    afr_config_template_ids = fields.One2many(
+        comodel_name="afr.qualificacao.config.template",
+        inverse_name="partner_id",
+        string="Templates de cotação",
+        context={"active_test": False},
+    )
+
     @api.constrains("afr_procedimento_ids")
     def _check_afr_procedimento_ids_unique_category(self):
         for partner in self:
