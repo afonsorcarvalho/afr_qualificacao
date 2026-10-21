@@ -136,9 +136,13 @@ class AfrQualificacaoReajusteWizard(models.TransientModel):
             Markup("<li>%s: %.2f → %.2f</li>") % (
                 l.template_id.display_name, l.valor_antigo, l.valor_novo)
             for l in hist.line_ids)
-        self.partner_id.message_post(body=Markup(
+        # sudo: o gestor de Qualificação pode não ter direito de escrita em
+        # contatos (exigido pelo chatter); a permissão do reajuste já foi
+        # checada acima. Autor = usuário real.
+        self.partner_id.sudo().message_post(body=Markup(
             "<p>%s %s</p><ul>%s</ul>") % (
-                _("Reajuste dos preços combinados:"), desc, rows))
+                _("Reajuste dos preços combinados:"), desc, rows),
+            author_id=self.env.user.partner_id.id)
         return {"type": "ir.actions.act_window_close"}
 
 

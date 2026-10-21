@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from odoo import fields
 from odoo.exceptions import UserError
-from odoo.tests import tagged
+from odoo.tests import Form, tagged
 
 from .common import AfrQualificacaoTestCommon
 from ..models import bcb_index
@@ -142,6 +142,42 @@ class TestReajuste(AfrQualificacaoTestCommon):
         with self.assertRaisesRegex(UserError, "Apenas gestores"):
             wiz.with_user(user).action_confirm()
         self.assertEqual(self.t1.price_base, 1000.0)
+
+    def test_form_view_save_and_confirm(self):
+        """Pelo form (como o navegador): salvar o wizard não pode falhar
+        por causa das linhas da prévia."""
+        with patch(GET, return_value=_serie([1.0] * 12)):
+            f = Form(self.env["afr.qualificacao.reajuste.wizard"].with_context(
+                default_partner_id=self.partner.id))
+            f.tipo = "percentual"
+            f.percentual = 10.0
+            wiz = f.save()
+        self.assertEqual(wiz.line_ids.template_id, self.t1 | self.t2)
+        wiz.action_confirm()
+        self.assertAlmostEqual(self.t1.price_base, 1100.0)
+
+    def test_manager_user_confirm(self):
+        """Gestor sem superusuário consegue aplicar (caminho de ACL real)."""
+        user = self.env["res.users"].create({
+            "name": "Gestor T5", "login": "gestor_reajuste",
+            "email": "gestor.t5@example.com",
+            "company_id": self.company.id,
+            "company_ids": [(6, 0, [self.company.id])],
+            "groups_id": [(6, 0, [
+                self.env.ref("afr_qualificacao.group_afr_qualificacao_manager").id,
+                self.env.ref("base.group_user").id])]})
+        wiz = self.env["afr.qualificacao.reajuste.wizard"].with_user(
+            user).with_company(self.company).with_context(
+            default_partner_id=self.partner.id).create(
+            {"partner_id": self.partner.id, "tipo": "percentual",
+             "percentual": 10.0})
+        wiz.action_confirm()
+        self.assertAlmostEqual(self.t1.price_base, 1100.0)
+        hist = self.partner.afr_reajuste_ids
+        self.assertEqual(len(hist), 1)
+        self.assertEqual(hist.user_id, user)
+        self.assertEqual(self.partner.message_ids[0].author_id,
+                         user.partner_id)
 
     # --- cron ------------------------------------------------------------
     def test_cron_activity_once(self):

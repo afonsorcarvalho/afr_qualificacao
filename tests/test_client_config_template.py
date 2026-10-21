@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Template de cotação por cliente — Task 1: model, resolver, constraint."""
+from psycopg2 import IntegrityError
+
 from odoo.exceptions import ValidationError
 from odoo.tests import tagged
 from odoo.tools import mute_logger
@@ -103,9 +105,22 @@ class TestClientConfigTemplate(AfrQualificacaoTestCommon):
         self._tpl("b")
 
     def test_company_required(self):
-        with mute_logger("odoo.sql_db"), self.assertRaises(Exception):
+        with mute_logger("odoo.sql_db"), self.assertRaises(IntegrityError):
             with self.env.cr.savepoint():
                 self.Tpl.create({"name": "x", "company_id": False})
+
+    def test_client_template_requires_category(self):
+        with self.assertRaises(ValidationError):
+            self._tpl("nocat", partner_id=self.partner.id,
+                      equipment_category_id=False)
+        self._tpl("generic-nocat", equipment_category_id=False)
+
+    def test_partner_delete_restricted(self):
+        p = self.env["res.partner"].create({"name": "Del CT", "is_company": True})
+        self._tpl("client", partner_id=p.id)
+        with mute_logger("odoo.sql_db"), self.assertRaises(IntegrityError):
+            with self.env.cr.savepoint():
+                p.unlink()
 
     def test_partner_inverse_and_domain(self):
         t = self._tpl("client", partner_id=self.partner.id)

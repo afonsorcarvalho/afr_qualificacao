@@ -292,7 +292,7 @@ class SaleOrderLine(models.Model):
         selection=[
             ("none", "Sem tempo combinado"),
             ("ok", "No tempo"),
-            ("drift", "Desviado"),
+            ("drift", "Diferente do combinado"),
         ],
         compute="_compute_equipment_time_state",
         string="Situação do Tempo",

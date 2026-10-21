@@ -26,21 +26,22 @@
                 <sheet>
                     <group>
                         <group>
-                            <field name="name"/>
-                            <field name="equipment_category_id"/>
-                            <field name="partner_id" string="Cliente (opcional)"
+                            <field name="name" string="Nome"/>
+                            <field name="equipment_category_id"
+                                   attrs="{'required': [('partner_id', '!=', False)]}"/>
+                            <field name="partner_id" string="Padrão deste cliente"
                                    placeholder="Vazio = padrão geral da categoria"
                                    options="{'no_create': True}"/>
-                            <field name="sequence"/>
+                            <field name="sequence" groups="base.group_no_one"/>
                         </group>
                         <group>
                             <field name="do_qi"/>
                             <field name="do_qo"/>
                             <field name="do_qs"/>
                             <field name="company_id" groups="base.group_multi_company"/>
-                            <field name="active"/>
+                            <field name="active" string="Ativo"/>
                         </group>
-                        <group string="Sugestão Comercial (Proposta)">
+                        <group string="Preço e tempo combinados">
                             <field name="price_base" string="Preço combinado"/>
                             <field name="currency_id" invisible="1"/>
                             <field name="estimated_days" string="Tempo combinado (dias)"/>

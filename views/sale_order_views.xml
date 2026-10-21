@@ -14,7 +14,7 @@
                         class="oe_highlight"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('partner_id','=',False)]}"/>
                 <button name="action_apply_all_equipment_targets"
-                        string="Ratear Preços-Alvo"
+                        string="Aplicar Preços Combinados"
                         type="object"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('has_qualif_lines','=',False)]}"/>
                 <button name="action_apply_all_equipment_time_targets"
@@ -106,7 +106,7 @@
                     <!-- Preço-alvo por equipamento: entre as linhas e os subtotais,
                          para o rateio ficar ao lado do que ele reprecifica. -->
                     <div attrs="{'invisible': [('has_qualif_lines','=',False)]}">
-                        <separator string="Preços por Equipamento"/>
+                        <separator string="Preço e tempo combinados por equipamento"/>
                         <field name="equipment_target_ids" nolabel="1">
                             <tree editable="bottom" create="false" delete="false"
                                   decoration-warning="equipment_target_state == 'drift'"
@@ -114,16 +114,16 @@
                                 <field name="equipment_target_state" invisible="1"/>
                                 <field name="currency_id" invisible="1"/>
                                 <field name="name" string="Equipamento" readonly="1"/>
-                                <field name="equipment_subtotal" string="Base do Rateio"
+                                <field name="equipment_subtotal" string="Preço atual"
                                        widget="monetary" readonly="1"/>
-                                <field name="equipment_target_price" string="Preço-Alvo"
+                                <field name="equipment_target_price" string="Preço combinado"
                                        widget="monetary"/>
-                                <field name="equipment_target_delta" string="Desvio"
-                                       widget="monetary" readonly="1"/>
+                                <field name="equipment_target_delta" string="Diferença"
+                                       widget="monetary" readonly="1" optional="hide"/>
                                 <button name="action_apply_equipment_target"
-                                        type="object" string="Ratear"
+                                        type="object" string="Aplicar preço"
                                         icon="fa-balance-scale"
-                                        attrs="{'invisible': ['|', ('equipment_target_state','=','none'), ('parent.state','not in',['draft','sent'])]}"/>
+                                        attrs="{'invisible': ['|', ('equipment_target_state','!=','drift'), ('parent.state','not in',['draft','sent'])]}"/>
                                 <field name="equipment_current_hours" string="Horas atuais"
                                        widget="float_time" readonly="1" optional="hide"/>
                                 <field name="equipment_target_days" string="Tempo combinado (dias)"/>

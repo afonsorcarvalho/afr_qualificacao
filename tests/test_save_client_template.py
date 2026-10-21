@@ -174,6 +174,11 @@ class TestSaveClientTemplate(AfrQualificacaoTestCommon):
         self.assertAlmostEqual(confirm.new_price, 830.0, 2)
         res = confirm.action_confirm()
         self.assertEqual(res["tag"], "display_notification")
+        # volta ao configurador (o diálogo de confirmação o substituiu)
+        self.assertEqual(res["params"]["next"]["res_model"],
+                         "afr.qualificacao.configurator")
+        self.assertEqual(res["params"]["next"]["res_id"], line.wizard_id.id)
+        self.assertEqual(confirm.action_cancel()["res_id"], line.wizard_id.id)
         self.assertEqual(self._client_tpls(), old)
         self.assertAlmostEqual(old.price_base, 830.0, 2)
         self.assertAlmostEqual(old.estimated_days, 2.75, 2)

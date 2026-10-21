@@ -79,7 +79,7 @@ class AfrQualificacaoConfigTemplate(models.Model):
         string="Cliente",
         domain="[('parent_id', '=', False)]",
         index=True,
-        ondelete="cascade",
+        ondelete="restrict",
         help=(
             "Preenchido = padrão exclusivo deste cliente (aplicado "
             "automaticamente nas cotações dele). Vazio = padrão geral da "
@@ -111,6 +111,15 @@ class AfrQualificacaoConfigTemplate(models.Model):
     )
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
+
+    @api.constrains("partner_id", "equipment_category_id")
+    def _check_client_template_category(self):
+        """Template de cliente sempre tem categoria (é por ela que é aplicado)."""
+        for tpl in self:
+            if tpl.partner_id and not tpl.equipment_category_id:
+                raise ValidationError(_(
+                    "Informe a categoria de equipamento: o padrão do cliente "
+                    "é aplicado aos equipamentos dessa categoria."))
 
     @api.constrains("partner_id", "equipment_category_id", "company_id", "active")
     def _check_unique_client_template(self):

@@ -11,7 +11,7 @@
                 </div>
                 <group>
                     <group>
-                        <field name="partner_id"/>
+                        <field name="partner_id" readonly="1" force_save="1"/>
                         <field name="tipo" widget="radio"/>
                     </group>
                     <group>
@@ -26,9 +26,12 @@
                     </group>
                 </group>
                 <separator string="Prévia"/>
-                <field name="line_ids" nolabel="1">
-                    <tree create="0" delete="0" editable="bottom">
-                        <field name="template_id"/>
+                <!-- readonly: a prévia não é enviada; create() a refaz a
+                     partir do cliente (template_id é readonly no modelo e,
+                     enviado por lista editável, chegava vazio). -->
+                <field name="line_ids" nolabel="1" readonly="1">
+                    <tree create="0" delete="0">
+                        <field name="template_id" string="Pacote"/>
                         <field name="equipment_category_id"/>
                         <field name="antes"/>
                         <field name="depois"/>

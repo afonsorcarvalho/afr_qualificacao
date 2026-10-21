@@ -251,12 +251,54 @@
                             <field name="is_default" string="Padrão" optional="show"/>
                         </tree>
                     </field>
-                    <group string="Reajuste anual">
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Template de cotação por cliente (16.0.9.0.0): aba só no contato
+         comercial; groups= pelo mesmo motivo do registro acima. -->
+    <record id="view_partner_form_afr_config_template" model="ir.ui.view">
+        <field name="name">res.partner.form.afr.config.template</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Templates de cotação" name="afr_config_templates"
+                      groups="afr_qualificacao.group_afr_qualificacao_user"
+                      attrs="{'invisible': [('parent_id', '!=', False)]}">
+                    <div class="text-muted mb-2">
+                        Pacotes de qualificação combinados com este cliente.
+                        Na cotação, o equipamento da categoria correspondente
+                        já vem com o pacote, o preço e o tempo combinados.
+                    </div>
+                    <field name="afr_config_template_ids">
+                        <tree>
+                            <field name="name" string="Pacote"/>
+                            <field name="equipment_category_id" string="Categoria"/>
+                            <field name="price_base" string="Preço combinado"/>
+                            <field name="estimated_days" string="Tempo combinado (dias)"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="active" string="Ativo" widget="boolean_toggle"/>
+                        </tree>
+                    </field>
+                    <separator string="Reajuste anual"/>
+                    <group>
                         <group>
-                            <field name="afr_reajuste_data"/>
-                            <field name="afr_reajuste_indice"/>
+                            <field name="afr_reajuste_data"
+                                   help="Todo ano nesta data o gestor recebe um lembrete para reajustar os preços combinados."/>
+                            <field name="afr_reajuste_indice"
+                                   attrs="{'invisible': [('afr_reajuste_data', '=', False)]}"/>
                         </group>
                     </group>
+                    <div class="mb-3" groups="afr_qualificacao.group_afr_qualificacao_manager"
+                         attrs="{'invisible': [('afr_config_template_ids', '=', [])]}">
+                        <button name="action_afr_reajuste_wizard" type="object"
+                                string="Reajustar preços combinados"
+                                class="btn-secondary" icon="fa-line-chart"/>
+                    </div>
+                    <label for="afr_reajuste_ids" string="Histórico de reajustes"
+                           attrs="{'invisible': [('afr_reajuste_ids', '=', [])]}"/>
                     <field name="afr_reajuste_ids" readonly="1"
                            attrs="{'invisible': [('afr_reajuste_ids', '=', [])]}">
                         <tree>
@@ -291,43 +333,6 @@
                                 </tree>
                             </field>
                         </form>
-                    </field>
-                </page>
-            </xpath>
-        </field>
-    </record>
-
-    <!-- Template de cotação por cliente (16.0.9.0.0): aba só no contato
-         comercial; groups= pelo mesmo motivo do registro acima. -->
-    <record id="view_partner_form_afr_config_template" model="ir.ui.view">
-        <field name="name">res.partner.form.afr.config.template</field>
-        <field name="model">res.partner</field>
-        <field name="inherit_id" ref="base.view_partner_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//notebook" position="inside">
-                <page string="Templates de cotação" name="afr_config_templates"
-                      groups="afr_qualificacao.group_afr_qualificacao_user"
-                      attrs="{'invisible': [('parent_id', '!=', False)]}">
-                    <div class="text-muted mb-2">
-                        Pacotes de qualificação combinados com este cliente.
-                        Na cotação, o equipamento da categoria correspondente
-                        já vem com o pacote, o preço e o tempo combinados.
-                    </div>
-                    <div class="mb-2" groups="afr_qualificacao.group_afr_qualificacao_manager">
-                        <button name="action_afr_reajuste_wizard" type="object"
-                                string="Reajustar preços combinados"
-                                class="btn-secondary" icon="fa-line-chart"/>
-                    </div>
-                    <field name="afr_config_template_ids"
-                           context="{'default_partner_id': active_id}">
-                        <tree>
-                            <field name="name" string="Template"/>
-                            <field name="equipment_category_id" string="Categoria"/>
-                            <field name="price_base" string="Preço combinado"/>
-                            <field name="estimated_days" string="Tempo combinado (dias)"/>
-                            <field name="currency_id" invisible="1"/>
-                            <field name="active" string="Ativo" widget="boolean_toggle"/>
-                        </tree>
                     </field>
                 </page>
             </xpath>

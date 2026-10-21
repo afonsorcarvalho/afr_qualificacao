@@ -56,6 +56,15 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         inverse_name="wizard_id",
         string="Equipamentos",
     )
+    # Espelho só-leitura das linhas na etapa Revisão: lá as linhas já estão
+    # gravadas (a troca de etapa salva o wizard), então o botão de linha
+    # "Gravar como padrão deste cliente" funciona — na etapa Escopo a linha
+    # recém-criada é virtual e o Odoo bloqueia botões de linha.
+    review_equipment_line_ids = fields.Many2many(
+        comodel_name="afr.qualificacao.configurator.equipment",
+        compute="_compute_review_equipment_line_ids",
+        string="Equipamentos (revisão)",
+    )
     optional_service_ids = fields.One2many(
         "afr.qualificacao.configurator.optional", "wizard_id",
         string="Serviços Opcionais")
@@ -241,9 +250,13 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
+            "name": _("Configurar Qualificações"),
             "res_model": "afr.qualificacao.configurator",
             "res_id": self.id,
             "view_mode": "form",
+            # `views` explícito: a ação também é usada como `next` de uma
+            # notificação, que o cliente executa sem pré-processar no servidor.
+            "views": [(False, "form")],
             "target": "new",
             "context": {"dialog_size": "extra-large"},
         }
@@ -252,6 +265,11 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         """Move o wizard para `target` e reabre o modal."""
         self.step = target
         return self._reopen()
+
+    @api.depends("equipment_line_ids")
+    def _compute_review_equipment_line_ids(self):
+        for wiz in self:
+            wiz.review_equipment_line_ids = wiz.equipment_line_ids
 
     def action_next_step(self):
         """Avança uma etapa (valida o escopo ao sair da primeira)."""

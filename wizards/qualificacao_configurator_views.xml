@@ -47,13 +47,15 @@
                                             type="object"
                                             class="btn-primary"
                                             groups="afr_qualificacao.group_afr_qualificacao_manager"
-                                            attrs="{'invisible': [('equipment_id', '=', False)]}"
+                                            attrs="{'invisible': ['|', ('id', '=', False), ('equipment_id', '=', False)]}"
                                             help="Usa o escopo, o preço e o tempo desta linha como padrão para as próximas cotações deste cliente com esta categoria de equipamento."/>
                                     <button name="action_duplicate"
                                             string="Duplicar"
                                             type="object"
-                                            class="btn-secondary"/>
+                                            class="btn-secondary"
+                                            attrs="{'invisible': [('id', '=', False)]}"/>
                                 </header>
+                                <field name="id" invisible="1"/>
                                 <sheet>
                                     <group>
                                         <group>
@@ -151,6 +153,16 @@
                                 <field name="currency_id" invisible="1"/>
                                 <field name="subtotal"/>
                                 <field name="estimated_days_total" optional="show"/>
+                                <field name="template_origin" string="Pacote"
+                                       widget="badge"
+                                       decoration-success="template_origin == 'cliente'"
+                                       decoration-info="template_origin == 'categoria'"
+                                       attrs="{'invisible': [('template_origin', '=', 'none')]}"/>
+                                <button name="action_save_as_client_default"
+                                        type="object" icon="fa-star"
+                                        title="Gravar como padrão deste cliente"
+                                        groups="afr_qualificacao.group_afr_qualificacao_manager"
+                                        attrs="{'invisible': ['|', ('id', '=', False), ('equipment_id', '=', False)]}"/>
                             </tree>
                         </field>
                     </div>
@@ -188,6 +200,32 @@
                             Revise o escopo antes de aplicar ao pedido.
                         </p>
                         <field name="review_summary_html" nolabel="1" readonly="1"/>
+                        <div groups="afr_qualificacao.group_afr_qualificacao_manager">
+                            <separator string="Padrão deste cliente"/>
+                            <p class="text-muted">
+                                Gostou do pacote, preço e tempo de um equipamento?
+                                Grave-o como padrão: nas próximas cotações deste
+                                cliente ele já vem preenchido.
+                            </p>
+                            <field name="review_equipment_line_ids" nolabel="1" readonly="1">
+                                <tree create="0" delete="0">
+                                    <field name="equipment_id"/>
+                                    <field name="equipment_category_id"/>
+                                    <field name="currency_id" invisible="1"/>
+                                    <field name="subtotal"/>
+                                    <field name="estimated_days_total"/>
+                                    <field name="template_origin" string="Pacote"
+                                           widget="badge"
+                                           decoration-success="template_origin == 'cliente'"
+                                           decoration-info="template_origin == 'categoria'"
+                                           attrs="{'invisible': [('template_origin', '=', 'none')]}"/>
+                                    <button name="action_save_as_client_default"
+                                            type="object" icon="fa-star"
+                                            string="Gravar como padrão"
+                                            class="btn-link"/>
+                                </tree>
+                            </field>
+                        </div>
                         <separator string="Opcionais Selecionados"
                                    attrs="{'invisible': [('optional_summary_html', 'in', (False, ''))]}"/>
                         <field name="optional_summary_html" nolabel="1" readonly="1"

@@ -41,5 +41,17 @@ class AfrQualificacaoClientDefaultConfirm(models.TransientModel):
         notification, _tpl = self.equipment_line_id._write_client_default(
             template=self.template_id, price=self.new_price,
             days=self.new_days)
-        notification["params"]["next"] = {"type": "ir.actions.act_window_close"}
+        # O Odoo só mantém um modal de ação: este diálogo substituiu o
+        # configurador; ao terminar, reabre-o para o user seguir a cotação.
+        notification["params"]["next"] = self._back_to_configurator()
         return notification
+
+    def _back_to_configurator(self):
+        wizard = self.equipment_line_id.wizard_id
+        if wizard:
+            return wizard._reopen()
+        return {"type": "ir.actions.act_window_close"}
+
+    def action_cancel(self):
+        self.ensure_one()
+        return self._back_to_configurator()
