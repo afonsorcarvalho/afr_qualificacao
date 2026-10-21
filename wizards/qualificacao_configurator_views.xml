@@ -57,6 +57,11 @@
                                             <field name="config_template_id"
                                                    domain="['|',('equipment_category_id','=',equipment_category_id),('equipment_category_id','=',False),('active','=',True)]"
                                                    options="{'no_create': True}"/>
+                                            <field name="template_origin"
+                                                   widget="badge"
+                                                   decoration-success="template_origin == 'cliente'"
+                                                   decoration-info="template_origin == 'categoria'"
+                                                   attrs="{'invisible': [('template_origin', '=', 'none')]}"/>
                                         </group>
                                         <group>
                                             <field name="do_qi"/>
@@ -236,6 +241,9 @@
                         <field name="equipment_ids"
                                widget="many2many_tags"
                                domain="[('client_id','=',partner_id)]"/>
+                    </group>
+                    <group>
+                        <field name="use_partner_template"/>
                     </group>
                     <group string="Qualificações Padrão (aplicadas a todos selecionados)">
                         <field name="do_qi"/>

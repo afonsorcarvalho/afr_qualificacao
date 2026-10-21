@@ -447,6 +447,27 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             and line.equipment_id
             and line.equipment_target_price
         }
+        dias_por_equip = {
+            line.equipment_id.id: line.equipment_target_days
+            for line in so.order_line
+            if line.display_type == "line_section"
+            and line.equipment_id
+            and line.equipment_target_days
+        }
+        # Alvos do template só para equipamento que entra pela 1ª vez na
+        # cotação — num re-apply não repõe alvo zerado pelo user.
+        equips_na_cotacao = set(so.order_line.filtered(
+            lambda l: l.is_qualificacao_managed and l.display_type == "line_section"
+        ).mapped("equipment_id").ids)
+        for eq_line in self.equipment_line_ids:
+            tpl = eq_line.config_template_id
+            eid = eq_line.equipment_id.id
+            if not tpl or eid in equips_na_cotacao:
+                continue
+            if tpl.price_base > 0 and not alvos_por_equip.get(eid):
+                alvos_por_equip[eid] = tpl.price_base
+            if tpl.estimated_days > 0 and not dias_por_equip.get(eid):
+                dias_por_equip[eid] = tpl.estimated_days
         so.order_line.filtered("is_qualificacao_managed").unlink()
 
         TypeConfig = self.env["afr.qualificacao.type.config"]
@@ -472,6 +493,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "price_unit": 0,
                 "work_hours_per_day": eq_line.work_hours_per_day or 8.0,
                 "equipment_target_price": alvos_por_equip.get(equip.id, 0.0),
+                "equipment_target_days": dias_por_equip.get(equip.id, 0.0),
             }))
 
             # QI/QS via type.config (single line, sem ciclos)
@@ -675,6 +697,17 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             new_lines.append((0, 0, vals))
 
         so.write({"order_line": new_lines})
+        # Reaplica os alvos (tempo antes do preço — o rateio de tempo já
+        # reencadeia o de preço quando há preço combinado).
+        for section in so.order_line.filtered(
+            lambda l: l.is_qualificacao_managed
+            and l.display_type == "line_section"
+            and (l.equipment_target_days > 0 or l.equipment_target_price > 0)
+        ):
+            if section.equipment_target_days > 0:
+                section._apply_equipment_time_target()
+            else:
+                section._apply_equipment_target()
         # F8.2 — aplica o template e semeia blocos da proposta (idempotente —
         # preserva blocos já montados/editados no form do SO).
         if self.proposal_template_id:
@@ -813,6 +846,41 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             "ciclos e malhas automaticamente. Editável depois."
         ),
     )
+
+    template_origin = fields.Selection(
+        selection=[
+            ("cliente", "Padrão do cliente"),
+            ("categoria", "Padrão da categoria"),
+            ("none", "Sem padrão"),
+        ],
+        string="Origem do pacote",
+        compute="_compute_template_origin",
+    )
+
+    @api.depends("config_template_id", "config_template_id.partner_id")
+    def _compute_template_origin(self):
+        for line in self:
+            tpl = line.config_template_id
+            if not tpl:
+                line.template_origin = "none"
+            elif tpl.partner_id:
+                line.template_origin = "cliente"
+            else:
+                line.template_origin = "categoria"
+
+    @api.onchange("equipment_id")
+    def _onchange_equipment_template(self):
+        """Sem pacote escolhido: usa o padrão do cliente/categoria."""
+        if self.config_template_id or not self.equipment_id:
+            return
+        wiz = self.wizard_id
+        tpl, _origin = self.env[
+            "afr.qualificacao.config.template"
+        ]._resolve_for_equipment(
+            self.equipment_id, wiz.partner_id, wiz.company_id or None)
+        if tpl:
+            self.config_template_id = tpl
+            self._onchange_config_template()
 
     @api.onchange("config_template_id")
     def _onchange_config_template(self):
@@ -1308,6 +1376,29 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
         inverse_name="bulk_id",
         string="Malhas Calibração",
     )
+    use_partner_template = fields.Boolean(
+        string="Usar padrão do cliente/categoria",
+        compute="_compute_use_partner_template",
+        store=True,
+        readonly=False,
+        help=(
+            "Equipamento com pacote padrão (do cliente ou da categoria) "
+            "recebe esse pacote; os demais recebem a configuração abaixo."
+        ),
+    )
+
+    def _resolve_template(self, equip):
+        wiz = self.parent_wizard_id
+        tpl, _origin = self.env[
+            "afr.qualificacao.config.template"
+        ]._resolve_for_equipment(equip, wiz.partner_id, wiz.company_id or None)
+        return tpl
+
+    @api.depends("equipment_ids")
+    def _compute_use_partner_template(self):
+        for bulk in self:
+            bulk.use_partner_template = any(
+                bulk._resolve_template(e) for e in bulk.equipment_ids)
 
     def action_apply(self):
         """Cria N equipment_lines no parent_wizard com mesma config."""
@@ -1321,6 +1412,15 @@ class AfrQualificacaoConfiguratorBulk(models.TransientModel):
         ).ids
         for equip in self.equipment_ids:
             if equip.id in existing_ids:
+                continue
+            tpl = self.use_partner_template and self._resolve_template(equip)
+            if tpl:
+                line = EquipLine.create({
+                    "wizard_id": self.parent_wizard_id.id,
+                    "equipment_id": equip.id,
+                    "config_template_id": tpl.id,
+                })
+                line._onchange_config_template()
                 continue
             EquipLine.create({
                 "wizard_id": self.parent_wizard_id.id,
