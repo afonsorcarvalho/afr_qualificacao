@@ -136,6 +136,10 @@
                                         type="object" string="Aplicar tempo"
                                         icon="fa-clock-o"
                                         attrs="{'invisible': ['|', ('equipment_time_state','!=','drift'), ('parent.state','not in',['draft','sent'])]}"/>
+                                <button name="action_save_as_client_default"
+                                        type="object" string="Gravar como padrão deste cliente"
+                                        icon="fa-bookmark"
+                                        groups="afr_qualificacao.group_afr_qualificacao_manager"/>
                             </tree>
                         </field>
                     </div>

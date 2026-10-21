@@ -26,6 +26,9 @@ class AfrQualificacaoClientDefaultConfirm(models.TransientModel):
     old_days = fields.Float(string="Tempo atual (dias)", readonly=True)
     new_days = fields.Float(string="Novo tempo (dias)", readonly=True)
     message = fields.Char(compute="_compute_message")
+    # Aberto da linha de seção da cotação: fecha ao terminar (não há
+    # configurador a reabrir).
+    return_to_so = fields.Boolean()
 
     def _compute_message(self):
         for rec in self:
@@ -48,7 +51,7 @@ class AfrQualificacaoClientDefaultConfirm(models.TransientModel):
 
     def _back_to_configurator(self):
         wizard = self.equipment_line_id.wizard_id
-        if wizard:
+        if wizard and not self.return_to_so:
             return wizard._reopen()
         return {"type": "ir.actions.act_window_close"}
 

@@ -589,6 +589,38 @@ class SaleOrderLine(models.Model):
             return self._apply_equipment_target()
         return {"exact": True, "achieved": 0.0}
 
+    def action_save_as_client_default(self):
+        """Botão "Gravar como padrão deste cliente" na seção do equipamento.
+
+        Funciona em qualquer estado da cotação. O escopo é reconstruído das
+        linhas managed pela mesma leitura do configurador
+        (`_load_from_existing_lines`); preço = preço combinado ou total atual
+        da seção; dias = tempo combinado ou horas atuais / jornada.
+        """
+        self.ensure_one()
+        Equip = self.env["afr.qualificacao.configurator.equipment"]
+        Equip._check_client_default_manager()
+        if (self.display_type != "line_section" or not self.equipment_id
+                or not self.is_qualificacao_managed):
+            raise UserError(_(
+                "Use este botão na linha de seção de um equipamento."))
+        wizard = self.env["afr.qualificacao.configurator"].create(
+            {"sale_order_id": self.order_id.id})
+        wizard._load_from_existing_lines()
+        eq_line = wizard.equipment_line_ids.filtered(
+            lambda l: l.equipment_id == self.equipment_id)[:1]
+        if not eq_line:
+            raise UserError(_(
+                "Nenhuma linha de qualificação para %s.")
+                % self.equipment_id.display_name)
+        hpd = self.work_hours_per_day or 8.0
+        eq_line.work_hours_per_day = hpd
+        price = self.equipment_target_price or self.equipment_subtotal
+        days = self.equipment_target_days or (
+            self.equipment_current_hours / hpd)
+        return eq_line._save_client_default_flow(
+            price=price, days=days, return_to_so=True)
+
     def action_apply_equipment_time_target(self):
         """Botão 'Aplicar tempo' da linha na aba Preços por Equipamento."""
         self.ensure_one()

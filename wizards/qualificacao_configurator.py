@@ -1200,12 +1200,25 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
     def action_save_as_client_default(self):
         """Botão "Gravar como padrão deste cliente"."""
         self.ensure_one()
+        return self._save_client_default_flow()
+
+    def _save_client_default_flow(self, price=None, days=None,
+                                  return_to_so=False):
+        """Grava direto ou abre a confirmação (padrão já existente).
+
+        `price`/`days` None → `_client_default_targets()`. `return_to_so`:
+        chamado da linha de seção da cotação — a confirmação fecha em vez
+        de reabrir o configurador.
+        """
+        self.ensure_one()
         self._check_client_default_manager()
         partner, category, _company, existing = self._client_default_context()
+        if price is None:
+            price, days = self._client_default_targets()
         if not existing:
-            return self._write_client_default()[0]
-        price, days = self._client_default_targets()
+            return self._write_client_default(price=price, days=days)[0]
         confirm = self.env["afr.qualificacao.client.default.confirm"].create({
+            "return_to_so": return_to_so,
             "equipment_line_id": self.id,
             "template_id": existing.id,
             "partner_id": partner.id,
