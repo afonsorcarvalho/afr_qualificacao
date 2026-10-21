@@ -251,6 +251,47 @@
                             <field name="is_default" string="Padrão" optional="show"/>
                         </tree>
                     </field>
+                    <group string="Reajuste anual">
+                        <group>
+                            <field name="afr_reajuste_data"/>
+                            <field name="afr_reajuste_indice"/>
+                        </group>
+                    </group>
+                    <field name="afr_reajuste_ids" readonly="1"
+                           attrs="{'invisible': [('afr_reajuste_ids', '=', [])]}">
+                        <tree>
+                            <field name="date"/>
+                            <field name="tipo"/>
+                            <field name="indice"/>
+                            <field name="periodo"/>
+                            <field name="percentual"/>
+                            <field name="valor"/>
+                            <field name="user_id"/>
+                        </tree>
+                        <form>
+                            <group>
+                                <group>
+                                    <field name="date"/>
+                                    <field name="tipo"/>
+                                    <field name="indice"/>
+                                    <field name="periodo"/>
+                                </group>
+                                <group>
+                                    <field name="percentual"/>
+                                    <field name="valor"/>
+                                    <field name="user_id"/>
+                                </group>
+                            </group>
+                            <field name="line_ids">
+                                <tree>
+                                    <field name="template_id"/>
+                                    <field name="equipment_category_id"/>
+                                    <field name="valor_antigo"/>
+                                    <field name="valor_novo"/>
+                                </tree>
+                            </field>
+                        </form>
+                    </field>
                 </page>
             </xpath>
         </field>
@@ -271,6 +312,11 @@
                         Pacotes de qualificação combinados com este cliente.
                         Na cotação, o equipamento da categoria correspondente
                         já vem com o pacote, o preço e o tempo combinados.
+                    </div>
+                    <div class="mb-2" groups="afr_qualificacao.group_afr_qualificacao_manager">
+                        <button name="action_afr_reajuste_wizard" type="object"
+                                string="Reajustar preços combinados"
+                                class="btn-secondary" icon="fa-line-chart"/>
                     </div>
                     <field name="afr_config_template_ids"
                            context="{'default_partner_id': active_id}">

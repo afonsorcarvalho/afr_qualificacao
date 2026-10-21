@@ -42,3 +42,7 @@ dados_sensiveis/
 
 # Worktrees locais de feature (isolamento entre sessões).
 /.worktrees/
+
+# Bytecode Python
+__pycache__/
+*.pyc

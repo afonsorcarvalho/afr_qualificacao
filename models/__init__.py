@@ -53,3 +53,4 @@ from . import relatorio_achado          # Relatório Final P5 (16.0.8.4.0)
 from . import relatorio_verificacao     # P5 — _inherit afr.qualificacao.relatorio
 from . import relatorio_ai              # P5 — revisão assistiva OpenRouter
 from . import relatorio_snippet         # Editor de blocos Task 1 — biblioteca de blocos prontos
+from . import reajuste                  # Task 5 (16.0.9.0.4) — reajuste preços combinados

@@ -6,7 +6,9 @@ F10.6 (16.0.5.5.0): botão inteligente no cliente abre a lista de equipamentos
 vinculado a esse cliente (default_client_id).
 """
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
+
+REAJUSTE_SUMMARY = "Reajustar preços combinados"
 
 
 class ResPartner(models.Model):
@@ -50,6 +52,70 @@ class ResPartner(models.Model):
         string="Templates de cotação",
         context={"active_test": False},
     )
+
+    afr_reajuste_data = fields.Date(
+        string="Aniversário do reajuste",
+        help="Todo ano, neste dia, o responsável recebe uma atividade "
+             "para reajustar os preços combinados.")
+    afr_reajuste_indice = fields.Selection(
+        [("ipca", "IPCA"), ("igpm", "IGP-M"), ("inpc", "INPC")],
+        string="Índice de reajuste", default="ipca")
+    afr_reajuste_ids = fields.One2many(
+        "afr.qualificacao.reajuste", "partner_id",
+        string="Histórico de reajustes")
+
+    def _afr_reajuste_templates(self):
+        """Templates ativos do cliente com preço combinado."""
+        self.ensure_one()
+        return self.env["afr.qualificacao.config.template"].search([
+            ("partner_id", "=", self.commercial_partner_id.id),
+            ("price_base", ">", 0)])
+
+    def _check_afr_reajuste_manager(self):
+        if not self.env.user.has_group(
+                "afr_qualificacao.group_afr_qualificacao_manager"):
+            raise UserError(_(
+                "Apenas gestores podem reajustar os preços combinados."))
+
+    def action_afr_reajuste_wizard(self):
+        self.ensure_one()
+        self._check_afr_reajuste_manager()
+        partner = self.commercial_partner_id
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Reajustar preços combinados"),
+            "res_model": "afr.qualificacao.reajuste.wizard",
+            "view_mode": "form",
+            "target": "new",
+            "context": {
+                "default_partner_id": partner.id,
+                "default_indice": partner.afr_reajuste_indice or "ipca",
+            },
+        }
+
+    @api.model
+    def _cron_afr_reajuste_activity(self):
+        """Aniversário hoje → atividade de reajuste (sem duplicar aberta)."""
+        today = fields.Date.context_today(self)
+        partners = self.search([("afr_reajuste_data", "!=", False)])
+        admin = self.env.ref("base.user_admin")
+        todo = self.env.ref("mail.mail_activity_data_todo")
+        Activity = self.env["mail.activity"]
+        for partner in partners:
+            aniv = partner.afr_reajuste_data
+            if (aniv.month, aniv.day) != (today.month, today.day):
+                continue
+            if not partner._afr_reajuste_templates():
+                continue
+            if Activity.search_count([
+                    ("res_model", "=", "res.partner"),
+                    ("res_id", "=", partner.id),
+                    ("summary", "=", REAJUSTE_SUMMARY)]):
+                continue
+            partner.activity_schedule(
+                activity_type_id=todo.id, summary=REAJUSTE_SUMMARY,
+                user_id=(partner.user_id or admin).id,
+                date_deadline=today)
 
     @api.constrains("afr_procedimento_ids")
     def _check_afr_procedimento_ids_unique_category(self):
