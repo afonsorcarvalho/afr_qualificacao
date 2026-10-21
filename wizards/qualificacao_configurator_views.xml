@@ -46,6 +46,7 @@
                                             string="Gravar como padrão deste cliente"
                                             type="object"
                                             class="btn-primary"
+                                            groups="afr_qualificacao.group_afr_qualificacao_manager"
                                             attrs="{'invisible': [('equipment_id', '=', False)]}"
                                             help="Usa o escopo, o preço e o tempo desta linha como padrão para as próximas cotações deste cliente com esta categoria de equipamento."/>
                                     <button name="action_duplicate"

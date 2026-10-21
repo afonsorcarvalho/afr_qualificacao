@@ -1121,11 +1121,29 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         ], limit=1)
         return partner, category, company, existing
 
-    def _write_client_default(self):
-        """Cria ou atualiza o padrão do cliente a partir desta linha."""
+    def _check_client_default_manager(self):
+        if not self.env.user.has_group(
+                "afr_qualificacao.group_afr_qualificacao_manager"):
+            raise UserError(_(
+                "Apenas gestores podem gravar o padrão do cliente."))
+
+    def _write_client_default(self, template=None, price=None, days=None):
+        """Cria ou atualiza o padrão do cliente a partir desta linha.
+
+        `template`/`price`/`days` (confirmação): grava exatamente o que foi
+        exibido, no template exibido; o escopo vem sempre da linha viva.
+        """
         self.ensure_one()
+        self._check_client_default_manager()
         partner, category, company, existing = self._client_default_context()
-        price, days = self._client_default_targets()
+        if template is not None:
+            if not template.exists() or existing != template:
+                raise UserError(_(
+                    "O padrão deste cliente mudou desde que a confirmação "
+                    "foi aberta. Feche e clique em \"Gravar como padrão "
+                    "deste cliente\" novamente."))
+        if price is None:
+            price, days = self._client_default_targets()
         vals = self._template_scope_vals()
         vals.update({"price_base": price, "estimated_days": days})
         if existing:
@@ -1135,6 +1153,8 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             tpl = existing
         else:
             src = self.config_template_id
+            if src.equipment_category_id != category:
+                src = src.browse()
             vals.update({
                 "name": _("Padrão de %(cat)s — %(partner)s") % {
                     "cat": category.name, "partner": partner.name},
@@ -1152,7 +1172,8 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             "params": {
                 "title": _("Padrão salvo"),
                 "message": _("Padrão de %(cat)s salvo para %(partner)s") % {
-                    "cat": category.name, "partner": partner.name},
+                    "cat": category.name, "partner": partner.name}
+                + ("" if price else _(" (sem preço combinado)")),
                 "type": "success",
                 "sticky": False,
             },
@@ -1161,6 +1182,7 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
     def action_save_as_client_default(self):
         """Botão "Gravar como padrão deste cliente"."""
         self.ensure_one()
+        self._check_client_default_manager()
         partner, category, _company, existing = self._client_default_context()
         if not existing:
             return self._write_client_default()[0]

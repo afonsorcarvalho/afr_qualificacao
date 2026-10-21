@@ -33,9 +33,13 @@ class AfrQualificacaoClientDefaultConfirm(models.TransientModel):
                 "cat": rec.category_id.name or "",
                 "partner": rec.partner_id.name or "",
             }
+            if not rec.new_price:
+                rec.message += _(" Atenção: o novo padrão ficará sem preço combinado.")
 
     def action_confirm(self):
         self.ensure_one()
-        notification, _tpl = self.equipment_line_id._write_client_default()
+        notification, _tpl = self.equipment_line_id._write_client_default(
+            template=self.template_id, price=self.new_price,
+            days=self.new_days)
         notification["params"]["next"] = {"type": "ir.actions.act_window_close"}
         return notification

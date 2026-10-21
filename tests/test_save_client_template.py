@@ -34,6 +34,79 @@ class TestSaveClientTemplate(AfrQualificacaoTestCommon):
         vals.update(kw)
         return self.env["afr.qualificacao.configurator.equipment"].create(vals)
 
+    def _user(self, manager):
+        grp = "afr_qualificacao.group_afr_qualificacao_" + (
+            "manager" if manager else "user")
+        return self.env["res.users"].create({
+            "name": "U %s" % grp, "login": "u_%s_%s" % (grp[-7:], manager),
+            "groups_id": [(6, 0, [self.env.ref(grp).id,
+                                  self.env.ref("base.group_user").id])],
+        })
+
+    def test_non_manager_blocked(self):
+        line = self._line().with_user(self._user(False))
+        with self.assertRaisesRegex(UserError, "Apenas gestores"):
+            line.action_save_as_client_default()
+        self.assertFalse(self._client_tpls())
+
+    def test_manager_allowed(self):
+        line = self._line().with_user(self._user(True))
+        res = line.action_save_as_client_default()
+        self.assertEqual(res["tag"], "display_notification")
+        self.assertEqual(len(self._client_tpls()), 1)
+
+    def test_confirm_non_manager_blocked(self):
+        old = self.Tpl.create({
+            "name": "old", "partner_id": self.partner.id,
+            "equipment_category_id": self.category.id,
+            "company_id": self.company.id})
+        act = self._line().action_save_as_client_default()
+        confirm = self.env[act["res_model"]].browse(act["res_id"])
+        with self.assertRaisesRegex(UserError, "Apenas gestores"):
+            confirm.with_user(self._user(False)).action_confirm()
+        self.assertEqual(old.price_base, 0.0)
+
+    def test_confirm_saves_displayed_values(self):
+        old = self.Tpl.create({
+            "name": "old", "partner_id": self.partner.id,
+            "equipment_category_id": self.category.id,
+            "company_id": self.company.id})
+        line = self._line()
+        act = line.action_save_as_client_default()
+        confirm = self.env[act["res_model"]].browse(act["res_id"])
+        self.assertAlmostEqual(confirm.new_price, 830.0, 2)
+        line.qd_line_ids.unit_price = 999.0  # muda após abrir
+        confirm.action_confirm()
+        self.assertAlmostEqual(old.price_base, 830.0, 2)
+
+    def test_confirm_stale_template_raises(self):
+        old = self.Tpl.create({
+            "name": "old", "partner_id": self.partner.id,
+            "equipment_category_id": self.category.id,
+            "company_id": self.company.id})
+        act = self._line().action_save_as_client_default()
+        confirm = self.env[act["res_model"]].browse(act["res_id"])
+        old.active = False
+        with self.assertRaises(UserError):
+            confirm.action_confirm()
+
+    def test_qd_points_only_from_same_category(self):
+        other = self.env["engc.equipment.category"].create({"name": "Outra"})
+        kind = self.env["afr.qualificacao.sensor.kind"].search([], limit=1)
+        if not kind:
+            return
+        src = self.Tpl.create({
+            "name": "src", "equipment_category_id": other.id,
+            "company_id": self.company.id,
+            "qd_point_ids": [(0, 0, {"sensor_kind_id": kind.id, "points": 5})]})
+        self._line(config_template_id=src.id).action_save_as_client_default()
+        self.assertFalse(self._client_tpls().qd_point_ids)
+
+    def test_zero_price_flagged(self):
+        line = self._line(qd_line_ids=[(5, 0, 0)], calib_line_ids=[(5, 0, 0)])
+        res = line.action_save_as_client_default()
+        self.assertIn("sem preço combinado", res["params"]["message"])
+
     def _client_tpls(self):
         return self.Tpl.search([
             ("partner_id", "=", self.partner.id),
