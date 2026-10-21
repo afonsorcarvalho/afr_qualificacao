@@ -406,10 +406,12 @@ class SaleOrderLine(models.Model):
                 continue
             delta = line.equipment_subtotal - line.equipment_target_price
             line.equipment_target_delta = delta
-            same = float_compare(
-                line.equipment_subtotal, line.equipment_target_price,
-                precision_digits=2,
-            ) == 0
+            # Tolerância = erro máximo de arredondamento do rateio (price_unit
+            # com 2 casas × qty fracionária): Σ 0,005 × qty, mínimo 0,01.
+            tol = max(0.01, sum(
+                0.005 * abs(l.product_uom_qty)
+                for l in line._rateio_base_lines()))
+            same = float_compare(abs(delta), tol, precision_digits=4) <= 0
             line.equipment_target_state = "ok" if same else "drift"
 
     def _check_equipment_target_base(self, base):
@@ -658,7 +660,7 @@ class SaleOrderLine(models.Model):
         selection=[
             ("none", "Sem alvo"),
             ("ok", "Aplicado"),
-            ("drift", "Diferente do combinado"),
+            ("drift", "Diferente"),
             ("issue", "Não aplicado"),
         ],
         compute="_compute_equipment_apply_state",

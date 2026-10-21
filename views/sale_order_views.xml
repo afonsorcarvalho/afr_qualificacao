@@ -115,7 +115,7 @@
                                 <field name="equipment_current_hours" string="Horas atuais"
                                        widget="float_time" readonly="1" optional="hide"/>
                                 <field name="equipment_target_days" string="Tempo combinado (dias)"/>
-                                <field name="equipment_apply_state" string="Situação" readonly="1" width="170px"
+                                <field name="equipment_apply_state" string="Situação do combinado" readonly="1"
                                        widget="badge"
                                        decoration-success="equipment_apply_state == 'ok'"
                                        decoration-warning="equipment_apply_state == 'drift'"

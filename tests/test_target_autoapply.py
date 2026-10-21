@@ -141,3 +141,13 @@ class TestTargetAutoApply(AfrQualificacaoTestCommon):
         so.state = "sale"
         sec.write({"equipment_target_price": 123.0})
         self.assertEqual(self._total(sec), 400.0)
+
+    def test_rounding_residue_counts_as_applied(self):
+        so = self._so()
+        sec = self._section(so, self.equip1)
+        self._cycle_line(so, self.equip1, 3, 2.5, 200.0)  # 7,5h
+        sec.write({"equipment_target_price": 1234.0})
+        self.assertNotEqual(self._total(sec), 1234.0)  # não atingível
+        self.assertLessEqual(abs(self._total(sec) - 1234.0), 0.0375)
+        self.assertEqual(sec.equipment_target_state, "ok")
+        self.assertEqual(sec.equipment_apply_state, "ok")
