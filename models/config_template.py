@@ -35,6 +35,13 @@ class AfrQualificacaoConfigTemplate(models.Model):
     do_qi = fields.Boolean(string="Inclui QI")
     do_qo = fields.Boolean(string="Inclui QO")
     do_qs = fields.Boolean(string="Inclui QS")
+    # Parte 01 (Verificações) — mesmas flags da linha do configurador.
+    qi_part01_declined = fields.Boolean(
+        string="QI Parte 01 não solicitada", default=False)
+    do_qo_part01 = fields.Boolean(
+        string="QO Parte 01 (Verificações)", default=False)
+    qo_part01_declined = fields.Boolean(
+        string="QO Parte 01 não solicitada", default=False)
     qo_line_ids = fields.One2many(
         comodel_name="afr.qualificacao.config.template.qo",
         inverse_name="template_id",

@@ -525,155 +525,10 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 "equipment_target_days": dias_por_equip.get(equip.id, 0.0),
             }))
 
-            # QI/QS via type.config (single line, sem ciclos)
-            for flag, qtype in (
-                ("do_qi", "installation"),
-                ("do_qs", "software"),
-            ):
-                if not eq_line[flag]:
-                    continue
-                cfg = TypeConfig.get_config_for(qtype, so.company_id)
-                if not cfg:
-                    raise UserError(_(
-                        "Sem configuração de produto para tipo %s na empresa %s. "
-                        "Cadastre em Qualificações → Configurações → Tipos."
-                    ) % (qtype, so.company_id.display_name))
-                vals = {
-                    "order_id": so.id,
-                    "product_id": cfg.service_product_id.id,
-                    "product_uom_qty": 1.0,
-                    # QI/QS não são cycle-based: 1 "estudo". qualif_cycle_qty=1
-                    # mantém o cálculo de horas (horas × qualif_cycle_qty) válido.
-                    "qualif_cycle_qty": 1,
-                    "is_qualificacao_managed": True,
-                    "qualification_type": qtype,
-                    "equipment_id": equip.id,
-                }
-                if cfg.default_unit_price:
-                    vals["price_unit"] = cfg.default_unit_price
-                if cfg.estimated_hours:
-                    vals["estimated_hours"] = cfg.estimated_hours
-                if qtype == "installation":
-                    vals["part"] = "01"
-                    # Preço da Parte 01 = preço do variante Parte=01 (price_extra),
-                    # sobrescreve o default_unit_price setado acima.
-                    vals["price_unit"] = cfg.service_product_id.lst_price
-                    if eq_line.qi_part01_declined:
-                        vals["part01_declined"] = True
-                        vals["product_uom_qty"] = 0.0  # não soma ao total
-                new_lines.append((0, 0, vals))
-
-            # QO Parte 01 (Verificações) — 1 execução por equipamento.
-            if eq_line.do_qo_part01:
-                cfg = TypeConfig.get_config_for("operational", so.company_id)
-                if not cfg:
-                    raise UserError(_(
-                        "Sem configuração de produto para QO (operational) na "
-                        "empresa %s."
-                    ) % so.company_id.display_name)
-                qo_p1_vals = {
-                    "order_id": so.id,
-                    "product_id": cfg.service_product_id.id,
-                    "product_uom_qty": 1.0,
-                    "qualif_cycle_qty": 1,
-                    "is_qualificacao_managed": True,
-                    "qualification_type": "operational",
-                    "equipment_id": equip.id,
-                    "part": "01",
-                    "price_unit": cfg.service_product_id.lst_price,
-                }
-                if cfg.estimated_hours:
-                    qo_p1_vals["estimated_hours"] = cfg.estimated_hours
-                if eq_line.qo_part01_declined:
-                    qo_p1_vals["part01_declined"] = True
-                    qo_p1_vals["product_uom_qty"] = 0.0
-                new_lines.append((0, 0, qo_p1_vals))
-
-            # QO — cycle-based: 1 linha por ciclo QO declarado.
-            # product_uom_qty = HORAS (nº ciclos × horas/ciclo, UdM em horas);
-            # qualif_cycle_qty preserva o nº de ciclos (explosão + proposta).
-            for qo in eq_line.qo_line_ids:
-                hours = qo.estimated_hours or qo.cycle_type_id.estimated_hours or 0.0
-                base_name = (
-                    qo.description
-                    or qo.cycle_type_id.product_id.name
-                    or qo.cycle_type_id.name
-                )
-                qo_vals = {
-                    "order_id": so.id,
-                    "product_id": qo.cycle_type_id.product_id.id,
-                    "product_uom_qty": qo.qty * hours,
-                    "qualif_cycle_qty": qo.qty,
-                    "name": _("%s — %d ciclo(s)") % (base_name, qo.qty),
-                    "is_qualificacao_managed": True,
-                    "qualification_type": "operational",
-                    "equipment_id": equip.id,
-                    "cycle_type_id": qo.cycle_type_id.id,
-                    "part": "02",
-                }
-                # Sempre propaga o preço do wizard (autoritativo — pré-preenchido
-                # por onchange/reload). Guard `if unit_price` impedia zerar.
-                qo_vals["price_unit"] = qo.unit_price
-                if hours:
-                    qo_vals["estimated_hours"] = hours
-                qo_vals["temperature"] = qo.temperature or qo.cycle_type_id.temperature or False
-                qo_vals["duration"] = qo.duration or qo.cycle_type_id.duration or False
-                qo_vals["load_type"] = qo.load_type or qo.cycle_type_id.load_type or False
-                new_lines.append((0, 0, qo_vals))
-
-            # QD — 1 linha por cycle_type
-            for qd in eq_line.qd_line_ids:
-                hours = qd.estimated_hours or qd.cycle_type_id.estimated_hours or 0.0
-                base_name = (
-                    qd.description
-                    or qd.cycle_type_id.product_id.name
-                    or qd.cycle_type_id.name
-                )
-                qd_vals = {
-                    "order_id": so.id,
-                    "product_id": qd.cycle_type_id.product_id.id,
-                    "product_uom_qty": qd.qty * hours,
-                    "qualif_cycle_qty": qd.qty,
-                    "name": _("%s — %d ciclo(s)") % (base_name, qd.qty),
-                    "is_qualificacao_managed": True,
-                    "qualification_type": "performance",
-                    "equipment_id": equip.id,
-                    "cycle_type_id": qd.cycle_type_id.id,
-                }
-                # Sempre propaga (ver QO acima).
-                qd_vals["price_unit"] = qd.unit_price
-                if hours:
-                    qd_vals["estimated_hours"] = hours
-                qd_vals["temperature"] = qd.temperature or qd.cycle_type_id.temperature or False
-                qd_vals["duration"] = qd.duration or qd.cycle_type_id.duration or False
-                qd_vals["load_type"] = qd.load_type or qd.cycle_type_id.load_type or False
-                new_lines.append((0, 0, qd_vals))
-
-            # Calib — 1 linha por malha_type
-            for c in eq_line.calib_line_ids:
-                hours = c.estimated_hours or c.malha_type_id.estimated_hours or 0.0
-                base_name = (
-                    c.description
-                    or c.malha_type_id.product_id.name
-                    or c.malha_type_id.name
-                )
-                c_vals = {
-                    "order_id": so.id,
-                    "product_id": c.malha_type_id.product_id.id,
-                    "product_uom_qty": c.qty * hours,
-                    "qualif_cycle_qty": c.qty,
-                    "name": _("%s — %d malha(s)") % (base_name, c.qty),
-                    "is_qualificacao_managed": True,
-                    "qualification_type": "calibration",
-                    "equipment_id": equip.id,
-                    "malha_type_id": c.malha_type_id.id,
-                    "part": "02",
-                }
-                # Sempre propaga (ver QO acima).
-                c_vals["price_unit"] = c.unit_price
-                if hours:
-                    c_vals["estimated_hours"] = hours
-                new_lines.append((0, 0, c_vals))
+            new_lines += [
+                (0, 0, dict(v, order_id=so.id))
+                for v in eq_line._so_line_vals(so.company_id)
+            ]
 
         for opt in self.optional_service_ids:
             price = opt.unit_price or opt.optional_id.product_id.list_price
@@ -917,6 +772,9 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.do_qi = tpl.do_qi
         self.do_qo = tpl.do_qo
         self.do_qs = tpl.do_qs
+        self.qi_part01_declined = tpl.qi_part01_declined
+        self.do_qo_part01 = tpl.do_qo_part01
+        self.qo_part01_declined = tpl.qo_part01_declined
         self.work_hours_per_day = tpl.work_hours_per_day or 8.0
         self.qo_line_ids = [(5, 0, 0)] + [
             (0, 0, {
@@ -991,58 +849,208 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
             for line in tpl.calib_line_ids
         ]
 
-    @api.depends(
-        "do_qi", "do_qs",
-        "qo_line_ids.subtotal",
-        "qd_line_ids.subtotal", "calib_line_ids.subtotal",
-        "equipment_id",
-    )
-    def _compute_subtotal(self):
+    def _so_line_vals(self, company):
+        """Vals das linhas de SO (sem seção/order_id) que `action_apply` cria
+        para este equipamento. Fonte única: os totais do configurador
+        (`_compute_subtotal`/`_compute_estimated_totals`) somam exatamente
+        estas linhas, como a seção da cotação faz."""
+        self.ensure_one()
         TypeConfig = self.env["afr.qualificacao.type.config"]
-        for el in self:
-            total = 0.0
-            # QI/QS via type.config (boolean)
-            for flag, qtype in (
-                ("do_qi", "installation"),
-                ("do_qs", "software"),
-            ):
-                if not el[flag]:
-                    continue
-                cfg = TypeConfig.get_config_for(qtype, el.wizard_id.company_id)
-                if cfg:
-                    total += cfg.default_unit_price or (
-                        cfg.service_product_id.list_price if cfg.service_product_id else 0.0
-                    )
-            total += sum(el.qo_line_ids.mapped("subtotal"))
-            total += sum(el.qd_line_ids.mapped("subtotal"))
-            total += sum(el.calib_line_ids.mapped("subtotal"))
-            el.subtotal = total
+        equip = self.equipment_id
+        new_lines = []
+        # QI/QS via type.config (single line, sem ciclos)
+        for flag, qtype in (
+            ("do_qi", "installation"),
+            ("do_qs", "software"),
+        ):
+            if not self[flag]:
+                continue
+            cfg = TypeConfig.get_config_for(qtype, company)
+            if not cfg:
+                raise UserError(_(
+                    "Sem configuração de produto para tipo %s na empresa %s. "
+                    "Cadastre em Qualificações → Configurações → Tipos."
+                ) % (qtype, company.display_name))
+            vals = {
+                "product_id": cfg.service_product_id.id,
+                "product_uom_qty": 1.0,
+                # QI/QS não são cycle-based: 1 "estudo". qualif_cycle_qty=1
+                # mantém o cálculo de horas (horas × qualif_cycle_qty) válido.
+                "qualif_cycle_qty": 1,
+                "is_qualificacao_managed": True,
+                "qualification_type": qtype,
+                "equipment_id": equip.id,
+            }
+            vals["price_unit"] = cfg._quote_unit_price(
+                part01=(qtype == "installation"))
+            if cfg.estimated_hours:
+                vals["estimated_hours"] = cfg.estimated_hours
+            if qtype == "installation":
+                vals["part"] = "01"
+                if self.qi_part01_declined:
+                    vals["part01_declined"] = True
+                    vals["product_uom_qty"] = 0.0  # não soma ao total
+            new_lines.append(vals)
 
-    @api.depends(
-        "do_qi", "do_qs", "work_hours_per_day",
-        "qo_line_ids.estimated_hours", "qo_line_ids.qty",
-        "qd_line_ids.estimated_hours", "qd_line_ids.qty",
-        "calib_line_ids.estimated_hours", "calib_line_ids.qty",
+        # QO Parte 01 (Verificações) — 1 execução por equipamento.
+        if self.do_qo_part01:
+            cfg = TypeConfig.get_config_for("operational", company)
+            if not cfg:
+                raise UserError(_(
+                    "Sem configuração de produto para QO (operational) na "
+                    "empresa %s."
+                ) % company.display_name)
+            qo_p1_vals = {
+                "product_id": cfg.service_product_id.id,
+                "product_uom_qty": 1.0,
+                "qualif_cycle_qty": 1,
+                "is_qualificacao_managed": True,
+                "qualification_type": "operational",
+                "equipment_id": equip.id,
+                "part": "01",
+                "price_unit": cfg._quote_unit_price(part01=True),
+            }
+            if cfg.estimated_hours:
+                qo_p1_vals["estimated_hours"] = cfg.estimated_hours
+            if self.qo_part01_declined:
+                qo_p1_vals["part01_declined"] = True
+                qo_p1_vals["product_uom_qty"] = 0.0
+            new_lines.append(qo_p1_vals)
+
+        # QO — cycle-based: 1 linha por ciclo QO declarado.
+        # product_uom_qty = HORAS (nº ciclos × horas/ciclo, UdM em horas);
+        # qualif_cycle_qty preserva o nº de ciclos (explosão + proposta).
+        for qo in self.qo_line_ids:
+            hours = qo.estimated_hours or qo.cycle_type_id.estimated_hours or 0.0
+            base_name = (
+                qo.description
+                or qo.cycle_type_id.product_id.name
+                or qo.cycle_type_id.name
+            )
+            qo_vals = {
+                "product_id": qo.cycle_type_id.product_id.id,
+                "product_uom_qty": qo.qty * hours,
+                "qualif_cycle_qty": qo.qty,
+                "name": _("%s — %d ciclo(s)") % (base_name, qo.qty),
+                "is_qualificacao_managed": True,
+                "qualification_type": "operational",
+                "equipment_id": equip.id,
+                "cycle_type_id": qo.cycle_type_id.id,
+                "part": "02",
+            }
+            # Sempre propaga o preço do wizard (autoritativo — pré-preenchido
+            # por onchange/reload). Guard `if unit_price` impedia zerar.
+            qo_vals["price_unit"] = qo.unit_price
+            if hours:
+                qo_vals["estimated_hours"] = hours
+            qo_vals["temperature"] = qo.temperature or qo.cycle_type_id.temperature or False
+            qo_vals["duration"] = qo.duration or qo.cycle_type_id.duration or False
+            qo_vals["load_type"] = qo.load_type or qo.cycle_type_id.load_type or False
+            new_lines.append(qo_vals)
+
+        # QD — 1 linha por cycle_type
+        for qd in self.qd_line_ids:
+            hours = qd.estimated_hours or qd.cycle_type_id.estimated_hours or 0.0
+            base_name = (
+                qd.description
+                or qd.cycle_type_id.product_id.name
+                or qd.cycle_type_id.name
+            )
+            qd_vals = {
+                "product_id": qd.cycle_type_id.product_id.id,
+                "product_uom_qty": qd.qty * hours,
+                "qualif_cycle_qty": qd.qty,
+                "name": _("%s — %d ciclo(s)") % (base_name, qd.qty),
+                "is_qualificacao_managed": True,
+                "qualification_type": "performance",
+                "equipment_id": equip.id,
+                "cycle_type_id": qd.cycle_type_id.id,
+            }
+            # Sempre propaga (ver QO acima).
+            qd_vals["price_unit"] = qd.unit_price
+            if hours:
+                qd_vals["estimated_hours"] = hours
+            qd_vals["temperature"] = qd.temperature or qd.cycle_type_id.temperature or False
+            qd_vals["duration"] = qd.duration or qd.cycle_type_id.duration or False
+            qd_vals["load_type"] = qd.load_type or qd.cycle_type_id.load_type or False
+            new_lines.append(qd_vals)
+
+        # Calib — 1 linha por malha_type
+        for c in self.calib_line_ids:
+            hours = c.estimated_hours or c.malha_type_id.estimated_hours or 0.0
+            base_name = (
+                c.description
+                or c.malha_type_id.product_id.name
+                or c.malha_type_id.name
+            )
+            c_vals = {
+                "product_id": c.malha_type_id.product_id.id,
+                "product_uom_qty": c.qty * hours,
+                "qualif_cycle_qty": c.qty,
+                "name": _("%s — %d malha(s)") % (base_name, c.qty),
+                "is_qualificacao_managed": True,
+                "qualification_type": "calibration",
+                "equipment_id": equip.id,
+                "malha_type_id": c.malha_type_id.id,
+                "part": "02",
+            }
+            # Sempre propaga (ver QO acima).
+            c_vals["price_unit"] = c.unit_price
+            if hours:
+                c_vals["estimated_hours"] = hours
+            new_lines.append(c_vals)
+
+        return new_lines
+
+    @staticmethod
+    def _vals_totals(vals_list):
+        """(preço, horas) como `_rateio_base_lines`/`_time_weight` contam."""
+        price = hours = 0.0
+        for v in vals_list:
+            qty = v.get("product_uom_qty") or 0.0
+            if v.get("part01_declined") or qty <= 0:
+                continue
+            price += (v.get("price_unit") or 0.0) * qty
+            if v.get("cycle_type_id") or v.get("malha_type_id"):
+                hours += qty
+            else:
+                hours += (v.get("qualif_cycle_qty") or 1) * (
+                    v.get("estimated_hours") or 0.0)
+        return price, hours
+
+    _TOTALS_DEPENDS = (
+        "do_qi", "do_qs", "do_qo_part01",
+        "qi_part01_declined", "qo_part01_declined",
+        "equipment_id", "work_hours_per_day",
+        "qo_line_ids.unit_price", "qo_line_ids.qty",
+        "qo_line_ids.estimated_hours", "qo_line_ids.cycle_type_id",
+        "qd_line_ids.unit_price", "qd_line_ids.qty",
+        "qd_line_ids.estimated_hours", "qd_line_ids.cycle_type_id",
+        "calib_line_ids.unit_price", "calib_line_ids.qty",
+        "calib_line_ids.estimated_hours", "calib_line_ids.malha_type_id",
     )
-    def _compute_estimated_totals(self):
-        TypeConfig = self.env["afr.qualificacao.type.config"]
+
+    def _apply_totals(self):
+        """(preço, horas) das linhas que o `action_apply` criará — mesma
+        conta da seção (`equipment_subtotal`/`equipment_current_hours`).
+        Sem type.config o apply levanta erro; aqui só não soma."""
+        self.ensure_one()
+        try:
+            vals = self._so_line_vals(
+                self.wizard_id.company_id or self.env.company)
+        except UserError:
+            return 0.0, 0.0
+        return self._vals_totals(vals)
+
+    @api.depends(*_TOTALS_DEPENDS)
+    def _compute_subtotal(self):
         for el in self:
-            hours = 0.0
-            for flag, qtype in (("do_qi", "installation"), ("do_qs", "software")):
-                if not el[flag]:
-                    continue
-                cfg = TypeConfig.get_config_for(qtype, el.wizard_id.company_id)
-                if cfg:
-                    hours += cfg.estimated_hours or 0.0
-            for line in el.qo_line_ids:
-                h = line.estimated_hours or line.cycle_type_id.estimated_hours
-                hours += (h or 0.0) * (line.qty or 0)
-            for line in el.qd_line_ids:
-                h = line.estimated_hours or line.cycle_type_id.estimated_hours
-                hours += (h or 0.0) * (line.qty or 0)
-            for line in el.calib_line_ids:
-                h = line.estimated_hours or line.malha_type_id.estimated_hours
-                hours += (h or 0.0) * (line.qty or 0)
+            el.subtotal = el._apply_totals()[0]
+
+    @api.depends(*_TOTALS_DEPENDS)
+    def _compute_estimated_totals(self):
+        for el in self:
+            hours = el._apply_totals()[1]
             el.estimated_hours_total = hours
             el.estimated_days_total = (
                 hours / (el.work_hours_per_day or 8.0) if hours else 0.0
@@ -1082,6 +1090,9 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
 
         return {
             "do_qi": self.do_qi, "do_qo": self.do_qo, "do_qs": self.do_qs,
+            "qi_part01_declined": self.qi_part01_declined,
+            "do_qo_part01": self.do_qo_part01,
+            "qo_part01_declined": self.qo_part01_declined,
             "work_hours_per_day": self.work_hours_per_day or 8.0,
             "qo_line_ids": _cycle_cmds(self.qo_line_ids),
             "qd_line_ids": _cycle_cmds(self.qd_line_ids),

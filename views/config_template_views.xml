@@ -38,6 +38,9 @@
                             <field name="do_qi"/>
                             <field name="do_qo"/>
                             <field name="do_qs"/>
+                            <field name="qi_part01_declined" attrs="{'invisible': [('do_qi', '=', False)]}"/>
+                            <field name="do_qo_part01"/>
+                            <field name="qo_part01_declined" attrs="{'invisible': [('do_qo_part01', '=', False)]}"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="active" string="Ativo"/>
                         </group>

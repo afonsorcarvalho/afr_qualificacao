@@ -149,3 +149,4 @@ from . import test_reajuste
 from . import test_copiar_padroes
 from . import test_equipment_relaxed
 from . import test_target_autoapply
+from . import test_wizard_so_parity
