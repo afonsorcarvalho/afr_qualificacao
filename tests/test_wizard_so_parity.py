@@ -161,3 +161,49 @@ class TestWizardSoParity(AfrQualificacaoTestCommon):
         self.assertAlmostEqual(el.estimated_hours_total,
                                sec.equipment_current_hours, 2)
         self.assertAlmostEqual(el.estimated_hours_total, 6.0, 2)
+
+    def _onchange_line(self, tpl):
+        so = self.env["sale.order"].create({"partner_id": self.partner.id})
+        wiz = self.env["afr.qualificacao.configurator"].create(
+            {"sale_order_id": so.id})
+        line = self.env["afr.qualificacao.configurator.equipment"].new({
+            "wizard_id": wiz.id, "equipment_id": self.equip1.id,
+            "qi_part01_declined": True, "do_qo_part01": False,
+            "qo_part01_declined": False})
+        line.config_template_id = tpl
+        line._onchange_config_template()
+        return line
+
+    def _flag_tpl(self, **kw):
+        vals = {"name": "t", "equipment_category_id": self.category.id,
+                "company_id": self.company.id, "do_qi": True,
+                "qi_part01_declined": False, "do_qo_part01": True,
+                "qo_part01_declined": True}
+        vals.update(kw)
+        return self.env["afr.qualificacao.config.template"].create(vals)
+
+    def test_client_template_applies_part01_flags(self):
+        line = self._onchange_line(self._flag_tpl(partner_id=self.partner.id))
+        self.assertFalse(line.qi_part01_declined)
+        self.assertTrue(line.do_qo_part01)
+        self.assertTrue(line.qo_part01_declined)
+
+    def test_category_template_keeps_part01_flags(self):
+        line = self._onchange_line(self._flag_tpl())
+        self.assertTrue(line.qi_part01_declined)
+        self.assertFalse(line.do_qo_part01)
+        self.assertFalse(line.qo_part01_declined)
+
+    def test_client_default_rounds_days(self):
+        # 19,25 h / 8 = 2,40625 → grava 2,41 (precisão da seção).
+        line = self._wiz_line(do_qi=False, do_qo_part01=False,
+                              qo_line_ids=[], calib_line_ids=[],
+                              qd_line_ids=[(0, 0, {
+                                  "cycle_type_id": self.cycle_cmax.id,
+                                  "qty": 1, "unit_price": 10.0,
+                                  "estimated_hours": 19.25})])
+        line.action_save_as_client_default()
+        tpl = self.env["afr.qualificacao.config.template"].search([
+            ("partner_id", "=", self.partner.id),
+            ("equipment_category_id", "=", self.category.id)])
+        self.assertEqual(tpl.estimated_days, 2.41)

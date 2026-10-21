@@ -110,7 +110,6 @@ class AfrQualificacaoTypeConfig(models.Model):
                     % record.service_product_id.display_name
                 )
 
-    @api.model
     def _quote_unit_price(self, part01=False):
         """Preço unitário da linha QI/QO/QS na cotação (fonte única do
         configurador e do `action_apply`).
@@ -124,6 +123,7 @@ class AfrQualificacaoTypeConfig(models.Model):
             return prod.lst_price if prod else 0.0
         return self.default_unit_price or (prod.lst_price if prod else 0.0)
 
+    @api.model
     def get_config_for(self, qualification_type, company=None):
         """Retorna o registro de configuração para o tipo + empresa.
 

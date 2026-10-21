@@ -752,9 +752,12 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         self.do_qi = tpl.do_qi
         self.do_qo = tpl.do_qo
         self.do_qs = tpl.do_qs
-        self.qi_part01_declined = tpl.qi_part01_declined
-        self.do_qo_part01 = tpl.do_qo_part01
-        self.qo_part01_declined = tpl.qo_part01_declined
+        if tpl.partner_id:
+            # Só o padrão do cliente carrega as flags de Parte 01; template
+            # de categoria não mexe nelas.
+            self.qi_part01_declined = tpl.qi_part01_declined
+            self.do_qo_part01 = tpl.do_qo_part01
+            self.qo_part01_declined = tpl.qo_part01_declined
         self.work_hours_per_day = tpl.work_hours_per_day or 8.0
         self.qo_line_ids = [(5, 0, 0)] + [
             (0, 0, {
@@ -1210,7 +1213,11 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         if price is None:
             price, days = self._client_default_targets()
         vals = self._template_scope_vals()
-        vals.update({"price_base": price, "estimated_days": days})
+        vals.update({
+            "price_base": price,
+            # Mesma precisão da seção (equipment_target_days, 2 casas).
+            "estimated_days": float_round(days or 0.0, precision_digits=2),
+        })
         if existing:
             for fname in ("qo_line_ids", "qd_line_ids", "calib_line_ids"):
                 vals[fname] = [(5, 0, 0)] + vals[fname]

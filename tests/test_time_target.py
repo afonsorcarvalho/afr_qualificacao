@@ -39,6 +39,15 @@ class TestTimeAllocation(TransactionCase):
         res = allocate_hours(16.0, [15.9, 0.1])
         self.assertEqual(res, [15.75, 0.25])
 
+    def test_residual_line_never_below_step(self):
+        # Shares arredondam para cima (6 × 0,5 = 3,0 > 2,4): o resíduo
+        # negativo não pode zerar a linha maior nem quebrar a soma.
+        for target, weights in ((2.4, [1.01, 1, 1, 1, 1, 1]),
+                                (3.75, [1.01, 1, 1, 1, 1, 1])):
+            res = allocate_hours(target, weights)
+            self.assertAlmostEqual(sum(res), target, 6)
+            self.assertTrue(all(h >= 0.25 for h in res), res)
+
     def test_min_step_skipped_when_target_too_small(self):
         # Alvo menor que 1 step por linha: não há como garantir o mínimo.
         res = allocate_hours(0.25, [1.0, 1.0])
