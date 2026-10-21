@@ -14,6 +14,8 @@ class TestSaveClientTemplate(AfrQualificacaoTestCommon):
     def setUpClass(cls):
         super().setUpClass()
         cls.Tpl = cls.env["afr.qualificacao.config.template"]
+        cls.env.user.groups_id |= cls.env.ref(
+            "afr_qualificacao.group_afr_qualificacao_manager")
 
     def _line(self, so=None, **kw):
         so = so or self.env["sale.order"].create(
