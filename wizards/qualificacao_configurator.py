@@ -20,7 +20,11 @@ import logging
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
+from odoo.tools import float_is_zero, float_round
 from odoo.tools.misc import formatLang
+
+from ..models.price_allocation import allocate_target
+from ..models.time_allocation import allocate_hours
 
 
 # F8.4/F8.7 — passos do configurador guiado, em ordem.
@@ -469,34 +473,10 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         # diferente de config_template_id: aqui é leitura ao vivo das linhas
         # existentes dentro do próprio action_apply; config_template_id é
         # cacheado antes, em _load_from_existing_lines (equip_template_map).
-        alvos_por_equip = {
-            line.equipment_id.id: line.equipment_target_price
-            for line in so.order_line
-            if line.display_type == "line_section"
-            and line.equipment_id
-            and line.equipment_target_price
-        }
-        dias_por_equip = {
-            line.equipment_id.id: line.equipment_target_days
-            for line in so.order_line
-            if line.display_type == "line_section"
-            and line.equipment_id
-            and line.equipment_target_days
-        }
-        # Alvos do template só para equipamento que entra pela 1ª vez na
-        # cotação — num re-apply não repõe alvo zerado pelo user.
-        equips_na_cotacao = set(so.order_line.filtered(
-            lambda l: l.is_qualificacao_managed and l.display_type == "line_section"
-        ).mapped("equipment_id").ids)
-        for eq_line in self.equipment_line_ids:
-            tpl = eq_line.config_template_id
-            eid = eq_line.equipment_id.id
-            if not tpl or eid in equips_na_cotacao:
-                continue
-            if tpl.price_base > 0 and not alvos_por_equip.get(eid):
-                alvos_por_equip[eid] = tpl.price_base
-            if tpl.estimated_days > 0 and not dias_por_equip.get(eid):
-                dias_por_equip[eid] = tpl.estimated_days
+        alvos = {el.equipment_id.id: el._apply_targets()
+                 for el in self.equipment_line_ids}
+        alvos_por_equip = {k: v[0] for k, v in alvos.items()}
+        dias_por_equip = {k: v[1] for k, v in alvos.items()}
         so.order_line.filtered("is_qualificacao_managed").unlink()
 
         TypeConfig = self.env["afr.qualificacao.type.config"]
@@ -1021,7 +1001,8 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
     _TOTALS_DEPENDS = (
         "do_qi", "do_qs", "do_qo_part01",
         "qi_part01_declined", "qo_part01_declined",
-        "equipment_id", "work_hours_per_day",
+        "equipment_id", "work_hours_per_day", "config_template_id",
+        "wizard_id.sale_order_id",
         "qo_line_ids.unit_price", "qo_line_ids.qty",
         "qo_line_ids.estimated_hours", "qo_line_ids.cycle_type_id",
         "qd_line_ids.unit_price", "qd_line_ids.qty",
@@ -1030,17 +1011,81 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
         "calib_line_ids.estimated_hours", "calib_line_ids.malha_type_id",
     )
 
+    def _apply_targets(self):
+        """(preço, dias) combinados que a seção receberá no `action_apply`.
+
+        Alvos vivos da seção atual na cotação (mantidos em re-apply); para
+        equipamento que entra pela 1ª vez, os do template.
+        """
+        self.ensure_one()
+        so = self.wizard_id.sale_order_id
+        eid = self.equipment_id.id
+        secs = so.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.equipment_id.id == eid)
+        price = (secs.filtered("equipment_target_price")[-1:]
+                 .equipment_target_price or 0.0)
+        days = (secs.filtered("equipment_target_days")[-1:]
+                .equipment_target_days or 0.0)
+        tpl = self.config_template_id
+        if tpl and not secs.filtered("is_qualificacao_managed"):
+            if tpl.price_base > 0 and not price:
+                price = tpl.price_base
+            if tpl.estimated_days > 0 and not days:
+                days = tpl.estimated_days
+        # A seção grava com digits=(16, 2): projeta o valor arredondado.
+        return price, float_round(days, precision_digits=2)
+
+    @classmethod
+    def _base_vals(cls, vals_list):
+        """Linhas que entram no rateio (espelha `_rateio_base_lines`)."""
+        return [v for v in vals_list
+                if not v.get("part01_declined")
+                and (v.get("product_uom_qty") or 0.0) > 0]
+
+    def _project_targets(self, vals_list, price_t, days_t):
+        """Projeta o rateio automático da seção (tempo, depois preço) sobre
+        as vals — mesma regra de `_auto_apply_equipment_targets`: se a
+        pré-condição falha, nada é aplicado (savepoint) e fica o base."""
+        base = [dict(v) for v in self._base_vals(vals_list)]
+        if not base or (price_t <= 0 and days_t <= 0):
+            return self._vals_totals(vals_list)
+
+        def _sub(v):
+            return (v.get("price_unit") or 0.0) * (
+                v.get("product_uom_qty") or 0.0)
+
+        if price_t > 0 and float_is_zero(sum(_sub(v) for v in base),
+                                         precision_digits=2):
+            return self._vals_totals(vals_list)
+        if days_t > 0:
+            target = days_t * (self.work_hours_per_day or 8.0)
+            weights = [self._vals_totals([v])[1] for v in base]
+            for v, h in zip(base, allocate_hours(target, weights)):
+                v["estimated_hours"] = h / (v.get("qualif_cycle_qty") or 1)
+                if v.get("cycle_type_id") or v.get("malha_type_id"):
+                    v["product_uom_qty"] = h
+        if price_t <= 0:
+            return self._vals_totals(base)
+        hours = self._vals_totals(base)[1]
+        base = self._base_vals(base)
+        res = allocate_target(
+            price_t, [(v["product_uom_qty"], _sub(v)) for v in base])
+        return res["achieved"], hours
+
     def _apply_totals(self):
-        """(preço, horas) das linhas que o `action_apply` criará — mesma
-        conta da seção (`equipment_subtotal`/`equipment_current_hours`).
-        Sem type.config o apply levanta erro; aqui só não soma."""
+        """(preço, horas) que a seção terá após o `action_apply`: soma das
+        linhas que ele cria, com o rateio automático do preço/tempo
+        combinados — mesma conta de `equipment_subtotal` /
+        `equipment_current_hours`. Sem type.config o apply levanta erro;
+        aqui só não soma."""
         self.ensure_one()
         try:
             vals = self._so_line_vals(
                 self.wizard_id.company_id or self.env.company)
         except UserError:
             return 0.0, 0.0
-        return self._vals_totals(vals)
+        return self._project_targets(vals, *self._apply_targets())
 
     @api.depends(*_TOTALS_DEPENDS)
     def _compute_subtotal(self):

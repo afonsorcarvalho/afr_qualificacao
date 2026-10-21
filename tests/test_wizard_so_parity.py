@@ -95,10 +95,11 @@ class TestWizardSoParity(AfrQualificacaoTestCommon):
         self.assertEqual(new.config_template_id, tpl)
         self.assertTrue(new.do_qo_part01)
         self.assertTrue(new.qi_part01_declined)
-        # Preço unitário vem do catálogo (template não grava preço por
-        # linha); o preço combinado entra pelo rateio da seção (abaixo).
+        # O wizard projeta o rateio do preço/tempo combinados do template.
+        self.assertAlmostEqual(new.subtotal, tpl.price_base, 2)
+        # A seção guarda os dias com 2 casas (19,25 h / 8 = 2,41 dias).
         self.assertAlmostEqual(new.estimated_hours_total,
-                               line.estimated_hours_total, 2)
+                               round(tpl.estimated_days, 2) * 8.0, 2)
         wiz2.equipment_line_ids = [(0, 0, new._convert_to_write(
             new._cache))]
         wiz2.action_apply()
@@ -115,4 +116,48 @@ class TestWizardSoParity(AfrQualificacaoTestCommon):
             lambda l: l.qualification_type == "operational"
             and l.part == "01" and not l.part01_declined))
         sec2 = self._section(so2)
-        self.assertAlmostEqual(sec2.equipment_subtotal, tpl.price_base, 2)
+        self.assertAlmostEqual(sec2.equipment_subtotal, new.subtotal, 2)
+        self.assertAlmostEqual(sec2.equipment_current_hours,
+                               new.estimated_hours_total, 2)
+
+    def _reload(self, so):
+        wiz = self.env["afr.qualificacao.configurator"].create(
+            {"sale_order_id": so.id})
+        if not wiz.equipment_line_ids:
+            wiz._load_from_existing_lines()
+        return wiz.equipment_line_ids
+
+    def test_reload_with_targets_matches_section(self):
+        line = self._wiz_line()
+        so = line.wizard_id.sale_order_id
+        line.wizard_id.action_apply()
+        sec = self._section(so)
+        sec.write({"equipment_target_price": 2900.0,
+                   "equipment_target_days": 2.0})
+        self.assertAlmostEqual(sec.equipment_subtotal, 2900.0, 2)
+        self.assertAlmostEqual(sec.equipment_current_hours, 16.0, 2)
+        el = self._reload(so)
+        self.assertAlmostEqual(el.subtotal, 2900.0, 2)
+        self.assertAlmostEqual(el.estimated_hours_total, 16.0, 2)
+        # Reaplicar a partir do wizard recarregado mantém a seção.
+        el.wizard_id.action_apply()
+        sec = self._section(so)
+        self.assertAlmostEqual(sec.equipment_subtotal, el.subtotal, 2)
+        self.assertAlmostEqual(sec.equipment_current_hours,
+                               el.estimated_hours_total, 2)
+
+    def test_unrateable_base_shows_base_totals(self):
+        # Base com preço zero: o rateio não aplica, a seção fica no base.
+        line = self._wiz_line(do_qi=False, do_qo_part01=False,
+                              qd_line_ids=[], calib_line_ids=[])
+        line.qo_line_ids.unit_price = 0.0
+        so = line.wizard_id.sale_order_id
+        line.wizard_id.action_apply()
+        sec = self._section(so)
+        sec.write({"equipment_target_price": 500.0,
+                   "equipment_target_days": 3.0})
+        el = self._reload(so)
+        self.assertAlmostEqual(el.subtotal, sec.equipment_subtotal, 2)
+        self.assertAlmostEqual(el.estimated_hours_total,
+                               sec.equipment_current_hours, 2)
+        self.assertAlmostEqual(el.estimated_hours_total, 6.0, 2)
