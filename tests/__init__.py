@@ -143,3 +143,4 @@ from . import test_client_config_template
 
 # Template de cotação por cliente — Task 3 (16.0.9.0.2)
 from . import test_configurator_client_template
+from . import test_save_client_template

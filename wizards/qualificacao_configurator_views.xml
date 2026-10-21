@@ -42,6 +42,12 @@
                         <field name="equipment_line_ids">
                             <form>
                                 <header>
+                                    <button name="action_save_as_client_default"
+                                            string="Gravar como padrão deste cliente"
+                                            type="object"
+                                            class="btn-primary"
+                                            attrs="{'invisible': [('equipment_id', '=', False)]}"
+                                            help="Usa o escopo, o preço e o tempo desta linha como padrão para as próximas cotações deste cliente com esta categoria de equipamento."/>
                                     <button name="action_duplicate"
                                             string="Duplicar"
                                             type="object"

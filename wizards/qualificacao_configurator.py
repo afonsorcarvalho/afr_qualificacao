@@ -760,21 +760,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             raise UserError(_("Sem equipamentos para salvar como template."))
         # Pega primeira equip_line como base (template é genérico — sem equip_id)
         base = self.equipment_line_ids[0]
-        template = self.env["afr.qualificacao.config.template"].create({
+        vals = base._template_scope_vals()
+        vals.update({
             "name": _("Template do orçamento %s") % self.sale_order_id.name,
             "equipment_category_id": base.equipment_category_id.id,
-            "do_qi": base.do_qi,
-            "do_qo": base.do_qo,
-            "do_qs": base.do_qs,
-            "qd_line_ids": [
-                (0, 0, {"cycle_type_id": l.cycle_type_id.id, "qty": l.qty})
-                for l in base.qd_line_ids
-            ],
-            "calib_line_ids": [
-                (0, 0, {"malha_type_id": l.malha_type_id.id, "qty": l.qty})
-                for l in base.calib_line_ids
-            ],
         })
+        template = self.env["afr.qualificacao.config.template"].create(vals)
         return {
             "type": "ir.actions.act_window",
             "name": _("Template Salvo"),
@@ -1062,6 +1053,136 @@ class AfrQualificacaoConfiguratorEquipment(models.TransientModel):
                 raise ValidationError(_(
                     "Equipamento %s já adicionado neste configurador."
                 ) % el.equipment_id.display_name)
+
+    # ------------------------------------------------------------------
+    # Escopo -> template (compartilhado por "Salvar como Template" e
+    # "Gravar como padrão deste cliente")
+    # ------------------------------------------------------------------
+    def _template_scope_vals(self):
+        """Valores de `config.template` que espelham o escopo desta linha."""
+        self.ensure_one()
+
+        def _cycle_cmds(lines):
+            return [(0, 0, {
+                "cycle_type_id": l.cycle_type_id.id, "qty": l.qty,
+                "description": l.description,
+                "estimated_hours": l.estimated_hours,
+                "temperature": l.temperature, "duration": l.duration,
+                "load_type": l.load_type,
+            }) for l in lines]
+
+        return {
+            "do_qi": self.do_qi, "do_qo": self.do_qo, "do_qs": self.do_qs,
+            "work_hours_per_day": self.work_hours_per_day or 8.0,
+            "qo_line_ids": _cycle_cmds(self.qo_line_ids),
+            "qd_line_ids": _cycle_cmds(self.qd_line_ids),
+            "calib_line_ids": [(0, 0, {
+                "malha_type_id": l.malha_type_id.id, "qty": l.qty,
+                "description": l.description,
+                "estimated_hours": l.estimated_hours,
+            }) for l in self.calib_line_ids],
+        }
+
+    def _client_default_targets(self):
+        """(preço combinado, dias combinados) a gravar no padrão do cliente.
+
+        Preço/tempo combinados da seção do equipamento na cotação, se houver
+        (alvo > 0); senão o total atual calculado no configurador
+        (`subtotal`; dias = `estimated_hours_total` / jornada da linha).
+        """
+        self.ensure_one()
+        section = self.wizard_id.sale_order_id.order_line.filtered(
+            lambda l: l.display_type == "line_section"
+            and l.is_qualificacao_managed
+            and l.equipment_id == self.equipment_id)[:1]
+        price = section.equipment_target_price or self.subtotal
+        # Não usa `estimated_days_total` (arredondado a 1 casa no campo).
+        days = section.equipment_target_days or (
+            self.estimated_hours_total / (self.work_hours_per_day or 8.0))
+        return price, days
+
+    def _client_default_context(self):
+        """Valida e devolve (cliente comercial, categoria, empresa, existente)."""
+        self.ensure_one()
+        category = self.equipment_id.category_id
+        if not category:
+            raise UserError(_(
+                "O equipamento %s não tem categoria. Defina a categoria do "
+                "equipamento para gravar o padrão deste cliente."
+            ) % (self.equipment_id.display_name or "?"))
+        partner = self.wizard_id.partner_id.commercial_partner_id
+        if not partner:
+            raise UserError(_("A cotação não tem cliente."))
+        company = self.wizard_id.company_id or self.env.company
+        existing = self.env["afr.qualificacao.config.template"].search([
+            ("partner_id", "=", partner.id),
+            ("equipment_category_id", "=", category.id),
+            ("company_id", "=", company.id),
+        ], limit=1)
+        return partner, category, company, existing
+
+    def _write_client_default(self):
+        """Cria ou atualiza o padrão do cliente a partir desta linha."""
+        self.ensure_one()
+        partner, category, company, existing = self._client_default_context()
+        price, days = self._client_default_targets()
+        vals = self._template_scope_vals()
+        vals.update({"price_base": price, "estimated_days": days})
+        if existing:
+            for fname in ("qo_line_ids", "qd_line_ids", "calib_line_ids"):
+                vals[fname] = [(5, 0, 0)] + vals[fname]
+            existing.write(vals)
+            tpl = existing
+        else:
+            src = self.config_template_id
+            vals.update({
+                "name": _("Padrão de %(cat)s — %(partner)s") % {
+                    "cat": category.name, "partner": partner.name},
+                "partner_id": partner.id,
+                "equipment_category_id": category.id,
+                "company_id": company.id,
+                "qd_point_ids": [(0, 0, {
+                    "sensor_kind_id": p.sensor_kind_id.id, "points": p.points,
+                }) for p in src.qd_point_ids],
+            })
+            tpl = self.env["afr.qualificacao.config.template"].create(vals)
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Padrão salvo"),
+                "message": _("Padrão de %(cat)s salvo para %(partner)s") % {
+                    "cat": category.name, "partner": partner.name},
+                "type": "success",
+                "sticky": False,
+            },
+        }, tpl
+
+    def action_save_as_client_default(self):
+        """Botão "Gravar como padrão deste cliente"."""
+        self.ensure_one()
+        partner, category, _company, existing = self._client_default_context()
+        if not existing:
+            return self._write_client_default()[0]
+        price, days = self._client_default_targets()
+        confirm = self.env["afr.qualificacao.client.default.confirm"].create({
+            "equipment_line_id": self.id,
+            "template_id": existing.id,
+            "partner_id": partner.id,
+            "category_id": category.id,
+            "old_price": existing.price_base,
+            "old_days": existing.estimated_days,
+            "new_price": price,
+            "new_days": days,
+        })
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Substituir o padrão deste cliente?"),
+            "res_model": confirm._name,
+            "res_id": confirm.id,
+            "view_mode": "form",
+            "target": "new",
+        }
 
     def action_duplicate(self):
         """Copia linha para nova com mesmo do_qi/qo/qs + sub-lines, equip vazio."""
