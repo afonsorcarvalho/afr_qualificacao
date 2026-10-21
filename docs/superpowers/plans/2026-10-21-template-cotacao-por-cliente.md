@@ -79,3 +79,20 @@
 - [ ] Review every new/changed view against spec §4.7 (hide advanced fields, labels, badges, top buttons, help text); fix.
 - [ ] Upgrade `qualificacao-dev` (`-u afr_qualificacao`), restart, validate with agent-browser: client tab, configurator auto-apply badge, time/price targets, save as client default, readjust wizard (with BCB live + forced failure). Screenshots to scratchpad.
 - [ ] Commit + push; bump monorepo pointer (agent from monorepo root, only the gitlink).
+
+---
+## Fase 2 (pedidos do user após teste, 2026-10-21)
+
+### Task 7: "Gravar como padrão deste cliente" na linha de seção da cotação
+- Botão na linha de seção do equipamento (sale.order.line seção), qualquer estado do SO, só `group_afr_qualificacao_manager` (groups= + checagem servidor). Escopo reconstruído das linhas managed da seção (mesma lógica de `_load_from_existing_lines`, extrair helper compartilhado), preço = `equipment_target_price` ou total atual da seção; dias = `equipment_target_days` ou horas/jornada. Reusa `_write_client_default` / confirm wizard (substituir com antes/depois). Testes: SO confirmado grava; não-gestor bloqueado; escopo igual ao gravado pelo configurador.
+
+### Task 8: "Copiar padrões de outro cliente"
+- Wizard a partir da aba "Templates de cotação" (só gestor): cliente de origem (parceiro comercial, ≠ destino), lista de categorias da origem com checkbox; para categorias já existentes no destino mostra antes/depois e pede confirmação de substituição. Copia escopo completo + `price_base` + `estimated_days` para templates com `partner_id` = destino, mesma empresa. Testes: copia; substitui; não toca origem; não-gestor bloqueado; outra empresa ignorada.
+
+### Task 9: Equipamentos do cliente — lista editável + regras relaxadas
+- Smart button "Equipamentos" do cliente (views/engc_equipment_views.xml F10.6) abre lista **editável inline** (`editable="bottom"`) com TAG, Categoria, Marca, Modelo, Nº de série, Local, Apelido; criação já com `client_id` do cliente; link para ficha completa.
+- Herança em afr_qualificacao (não alterar engc_os): `marca_id`, `model`, `serial_number` `required=False`; remover `_sql_constraints` `serial_marca_company_id_no_uniq` (override `_sql_constraints` + pre/post-migrate dropando a constraint, guarda se existe); `_compute_name` robusto: junta partes não vazias (categoria, modelo, série, marca); fallback TAG, depois "Equipamento <id>". Bump 16.0.9.1.0. Testes: criar só com categoria; série repetida mesma marca permitida; nome com partes faltando.
+
+### Task 10: Levantamento acompanha (repos afr_qualificacao_levantamento + pwa)
+- Backend `survey_api_push.EQUIPMENT_CREATE_REQUIRED = ("category_id",)`; testes ajustados; bump 16.0.1.0.1.
+- PWA `missingRequired` → só categoria; aviso "Preencha a categoria para enviar"; testes.
