@@ -37,7 +37,7 @@ export const EQUIPMENT_FIELDS = [
 ] as const
 export const CYCLE_FIELDS = ['cycle_type_id', 'temperature', 'duration', 'load_type', 'note'] as const
 /** Obrigatórios para o backend CRIAR um equipamento. */
-export const EQUIPMENT_CREATE_REQUIRED = ['category_id', 'marca_id', 'model'] as const
+export const EQUIPMENT_CREATE_REQUIRED = ['category_id'] as const
 
 const EQUIPMENT_M2O = ['category_id', 'marca_id', 'location_id', 'survey_user_id']
 const CYCLE_M2O = ['cycle_type_id']

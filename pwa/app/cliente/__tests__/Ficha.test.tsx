@@ -118,7 +118,7 @@ describe('FichaPage', () => {
   it('novo: avisa campos faltantes; duas edições rápidas criam um só equipamento e trocam a URL', async () => {
     params = { clienteId: '7', eqId: 'novo' }
     render(<FichaPage />)
-    expect(await screen.findByText('Preencha categoria, marca e modelo para enviar')).toBeInTheDocument()
+    expect(await screen.findByText('Preencha a categoria para enviar')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Modelo'), { target: { value: 'M1' } })
     fireEvent.change(screen.getByLabelText('Número de série'), { target: { value: 'S1' } })
     await waitFor(() => expect(saveEquipment).toHaveBeenCalledTimes(2), { timeout: 2000 })
@@ -126,7 +126,7 @@ describe('FichaPage', () => {
     expect(keys).toEqual([null, 'tmp:new'])
     expect(replace).toHaveBeenCalledTimes(1)
     expect(replace).toHaveBeenCalledWith('/app/cliente?id=7&eq=tmp%3Anew')
-    expect(screen.getByText('Preencha categoria e marca para enviar')).toBeInTheDocument()
+    expect(screen.getByText('Preencha a categoria para enviar')).toBeInTheDocument()
   })
 
   it('tmp reescrito para id real: redireciona para a chave real', async () => {

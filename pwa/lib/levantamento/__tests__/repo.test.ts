@@ -145,22 +145,20 @@ describe('saveEquipment', () => {
     await expect(saveEquipment('100', '7', { bogus: 1 })).rejects.toThrow(/bogus/)
   })
 
-  it('novo equipamento: só enfileira com categoria, marca e modelo; depois envia tudo', async () => {
-    const key = await saveEquipment(null, '7', { name: 'Novo', category_id: 3 })
+  it('novo equipamento: só enfileira com categoria; depois envia tudo', async () => {
+    const key = await saveEquipment(null, '7', { name: 'Novo' })
     expect(key.startsWith('tmp:')).toBe(true)
     expect(await ops()).toHaveLength(0)
-    expect(missingRequired((await db.equipments.get(key))!)).toEqual(['marca_id', 'model'])
-    await saveEquipment(key, '7', { marca_id: 4 })
-    expect(await ops()).toHaveLength(0)
-    await saveEquipment(key, '7', { model: 'X' })
+    expect(missingRequired((await db.equipments.get(key))!)).toEqual(['category_id'])
+    await saveEquipment(key, '7', { category_id: 3 })
     let o = await ops()
     expect(o).toHaveLength(1)
     expect(o[0]).toMatchObject({ kind: 'equipment.upsert', ref: key })
-    expect(o[0].payload).toEqual({ partner_id: 7, name: 'Novo', category_id: 3, marca_id: 4, model: 'X' })
+    expect(o[0].payload).toEqual({ partner_id: 7, name: 'Novo', category_id: 3 })
     await saveEquipment(key, '7', { tag: 'T' })
     o = await ops()
     expect(o).toHaveLength(1) // funde na op de criação ainda pendente
-    expect(o[0].payload).toMatchObject({ model: 'X', tag: 'T' })
+    expect(o[0].payload).toMatchObject({ category_id: 3, tag: 'T' })
     await db.outbox.toCollection().modify({ state: 'enviando' })
     await saveEquipment(key, '7', { tag: 'T2' })
     o = await ops()

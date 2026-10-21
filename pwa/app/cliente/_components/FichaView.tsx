@@ -22,13 +22,8 @@ import { EmptyOffline } from './EmptyOffline'
 import { useCanEditCtx } from './canEdit'
 import { goCliente } from '@/lib/cliente/nav'
 
-const NOMES_OBRIGATORIOS: Record<string, string> = { category_id: 'categoria', marca_id: 'marca', model: 'modelo' }
 const FALLBACK_KIND: Record<string, string> = {
   plaqueta: 'Plaqueta', geral: 'Geral', camara: 'Câmara', porta: 'Porta', termopar: 'Termopar', alimentacao: 'Alimentação',
-}
-
-function listaPt(nomes: string[]): string {
-  return nomes.length < 2 ? nomes.join('') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`
 }
 
 /** Ficha do equipamento: autosave local (IndexedDB), sem botão salvar. */
@@ -178,7 +173,7 @@ export function FichaView({ id: clienteParam, eq: eqParam }: { id: string; eq: s
     }
   }, [cat.selections.survey_kind])
 
-  const faltando = missingRequired(vals).map((f) => NOMES_OBRIGATORIOS[f] ?? f)
+  const faltando = missingRequired(vals)
   const aindaLocal = novo || (keyRef.current?.startsWith('tmp:') ?? false)
   const opts = (items: { id: number; name: string }[]) => items.map((i) => ({ value: String(i.id), label: i.name }))
   const volta = { id: clienteParam }
@@ -210,7 +205,7 @@ export function FichaView({ id: clienteParam, eq: eqParam }: { id: string; eq: s
       )}
       {podeEditar && aindaLocal && faltando.length > 0 && (
         <p role="status" className="rounded-md border border-warn/30 bg-warn-surface p-3 text-sm text-warn">
-          {`Preencha ${listaPt(faltando)} para enviar`}
+          Preencha a categoria para enviar
         </p>
       )}
       {erro && <p role="alert" className="text-sm text-danger">{erro}</p>}
