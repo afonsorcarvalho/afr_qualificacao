@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Serviço usado pela linha "Desconto" materializada pelo desconto geral
+         da cotação (sale.order.qualif_discount_*). invoice_policy=order para
+         a linha negativa ser faturada junto com o pedido (sem produto /
+         política "delivered" ela nunca entraria na fatura). -->
+    <record id="product_desconto_geral" model="product.product">
+        <field name="name">Desconto</field>
+        <field name="type">service</field>
+        <field name="invoice_policy">order</field>
+        <field name="list_price">0.0</field>
+        <field name="sale_ok" eval="False"/>
+        <field name="purchase_ok" eval="False"/>
+    </record>
+</odoo>

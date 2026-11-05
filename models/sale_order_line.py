@@ -44,6 +44,17 @@ class SaleOrderLine(models.Model):
             "re-apply, mas NÃO geram qualificação no confirm do SO."
         ),
     )
+    is_qualif_discount_line = fields.Boolean(
+        string="Linha de Desconto Geral",
+        default=False,
+        copy=False,
+        help=(
+            "Linha negativa 'Desconto' materializada a partir de "
+            "sale.order.qualif_discount_type/value. Gerida só por "
+            "sale.order._qualif_sync_discount_line; fora do escopo, dos "
+            "adicionais e do rateio."
+        ),
+    )
     qualification_type = fields.Selection(
         selection=[
             ("installation", "Instalação (QI)"),
@@ -349,8 +360,11 @@ class SaleOrderLine(models.Model):
         frágil por sorte — uma pricelist with_discount reintroduziria
         desconto numa linha rateada.
         """
+        # A linha de desconto geral também é congelada: o preço dela vem
+        # do sync (-valor), nunca da pricelist do produto "Desconto" (0).
         frozen = self.filtered(
-            lambda l: l._origin.id and l.is_rateio_priced
+            lambda l: l._origin.id
+            and (l.is_rateio_priced or l.is_qualif_discount_line)
         )
         super(SaleOrderLine, self - frozen)._compute_price_unit()
 
@@ -681,8 +695,45 @@ class SaleOrderLine(models.Model):
             else:
                 line.equipment_apply_state = "ok"
 
+    # Campos cuja mudança pode alterar a base do desconto geral (equip_total).
+    _DISCOUNT_BASE_KEYS = frozenset({
+        "price_unit", "product_uom_qty", "discount", "is_proposal_optional",
+        "optional_accepted", "part01_declined", "equipment_id",
+        "is_qualificacao_managed", "display_type", "qualification_type",
+        "equipment_target_price", "tax_id", "product_id", "order_id",
+        "qualif_cycle_qty", "estimated_hours",
+    })
+
+    def _resync_qualif_discount(self):
+        """Re-sincroniza a linha de desconto das SOs (draft/sent) com desconto."""
+        self.mapped("order_id")._qualif_resync_discount()
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        lines = super().create(vals_list)
+        lines.filtered(lambda l: not l.is_qualif_discount_line)\
+            ._resync_qualif_discount()
+        return lines
+
+    def unlink(self):
+        discount_lines = self.filtered("is_qualif_discount_line")
+        if discount_lines and not self.env.context.get("qualif_discount_sync"):
+            for line in discount_lines:
+                order = line.order_id
+                if order.state in ("draft", "sent") and order.qualif_discount_value:
+                    raise UserError(_(
+                        "A linha de Desconto é gerada pelo Desconto geral da "
+                        "cotação. Zere o desconto geral para removê-la."))
+        orders = (self - discount_lines).mapped("order_id")
+        res = super().unlink()
+        orders.exists()._qualif_resync_discount()
+        return res
+
     def write(self, vals):
         res = super().write(vals)
+        if self._DISCOUNT_BASE_KEYS.intersection(vals):
+            self.filtered(lambda l: not l.is_qualif_discount_line)\
+                ._resync_qualif_discount()
         if (not self.env.context.get(self._NO_AUTOAPPLY)
                 and any(k in vals for k in self._TARGET_KEYS)):
             for section in self.filtered(

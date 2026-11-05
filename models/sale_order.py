@@ -18,7 +18,7 @@ from collections import OrderedDict, defaultdict
 from markupsafe import Markup, escape
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from odoo.tools.misc import formatLang
 
 from ._numbering import hierarchical_numbering
@@ -250,6 +250,26 @@ class SaleOrder(models.Model):
             "section_and_note_one2many, que esconde colunas em sections."
         ),
     )
+    # Desconto geral — incide só sobre `equip_total` (Valor total dos Serviços
+    # de Qualificação). Materializado como linha negativa "Desconto".
+    qualif_discount_type = fields.Selection(
+        selection=[("percent", "Percentual (%)"), ("amount", "Valor fixo")],
+        string="Tipo de desconto geral",
+        default="percent",
+        required=True,
+        copy=True,
+    )
+    qualif_discount_value = fields.Float(
+        string="Desconto geral",
+        default=0.0,
+        digits="Product Price",
+        copy=True,
+        help=(
+            "0 = sem desconto. Incide apenas sobre o Valor total dos "
+            "Serviços de Qualificação (não sobre adicionais, despesas, "
+            "pasta ou outros)."
+        ),
+    )
     # F8.2 — Proposta LEGO: template + blocos montáveis por cotação
     proposal_template_id = fields.Many2one(
         comodel_name="afr.proposal.template",
@@ -277,7 +297,118 @@ class SaleOrder(models.Model):
                     )
                     or _("New")
                 )
-        return super().create(vals_list)
+        orders = super().create(vals_list)
+        orders.filtered("qualif_discount_value")._qualif_sync_discount_line(
+            strict=True)
+        return orders
+
+    _QUALIF_DISCOUNT_FIELDS = ("qualif_discount_type", "qualif_discount_value")
+
+    def write(self, vals):
+        touches = any(k in vals for k in self._QUALIF_DISCOUNT_FIELDS)
+        if touches and not self.env.context.get("qualif_discount_sync"):
+            for order in self:
+                if order.state not in ("draft", "sent"):
+                    raise UserError(_(
+                        "O desconto geral só pode ser alterado em cotações "
+                        "(rascunho/enviada)."))
+        res = super().write(vals)
+        if touches:
+            self._qualif_sync_discount_line(strict=True)
+        return res
+
+    @api.constrains("qualif_discount_type", "qualif_discount_value")
+    def _check_qualif_discount_value(self):
+        for order in self:
+            value = order.qualif_discount_value
+            if value < 0:
+                raise ValidationError(_(
+                    "O desconto geral não pode ser negativo."))
+            if order.qualif_discount_type == "percent" and value > 100:
+                raise ValidationError(_(
+                    "O desconto percentual não pode passar de 100%."))
+
+    def _qualif_discount_base(self, scope_tables=None):
+        """Base do desconto: só o Valor total dos Serviços de Qualificação."""
+        self.ensure_one()
+        if scope_tables is None:
+            scope_tables = self._qualif_scope_tables()
+        return sum(t["footer"]["unit_price"] for t in scope_tables)
+
+    def _qualif_discount_target(self, strict=False):
+        """Valor (positivo) do desconto geral, arredondado na moeda.
+
+        `strict=True` (edição dos campos): levanta ValidationError se o
+        desconto fixo passar da base. `strict=False` (re-sync disparado por
+        mudança de linhas): trava na base em vez de levantar — senão apagar
+        linhas (re-apply do configurador) ou baixar preços seria bloqueado.
+        """
+        self.ensure_one()
+        value = self.qualif_discount_value
+        if not value:
+            return 0.0
+        base = self._qualif_discount_base()
+        if self.qualif_discount_type == "percent":
+            amount = base * value / 100.0
+        else:
+            amount = value
+            if strict and self.currency_id.compare_amounts(amount, base) > 0:
+                raise ValidationError(_(
+                    "O desconto (%(desc)s) não pode ser maior que o Valor "
+                    "total dos Serviços de Qualificação (%(base)s).",
+                    desc=formatLang(self.env, amount,
+                                    currency_obj=self.currency_id),
+                    base=formatLang(self.env, base,
+                                    currency_obj=self.currency_id)))
+        amount = min(amount, base)
+        return max(self.currency_id.round(amount), 0.0)
+
+    def _qualif_resync_discount(self):
+        """Re-sync não-estrito, chamado por mudanças em linhas da SO."""
+        if self.env.context.get("qualif_discount_sync"):
+            return
+        orders = self.filtered(
+            lambda o: o.id
+            and o.state in ("draft", "sent")
+            and o.qualif_discount_value
+        )
+        if orders:
+            orders._qualif_sync_discount_line(strict=False)
+
+    def _qualif_sync_discount_line(self, strict=False):
+        """Cria/atualiza/remove a linha negativa "Desconto" (1 por SO)."""
+        Line = self.env["sale.order.line"].with_context(
+            qualif_discount_sync=True)
+        product = self.env.ref(
+            "afr_qualificacao.product_desconto_geral", raise_if_not_found=False)
+        for order in self:
+            if order.state not in ("draft", "sent"):
+                continue
+            lines = order.order_line.filtered("is_qualif_discount_line")
+            amount = order._qualif_discount_target(strict=strict)
+            if order.currency_id.is_zero(amount):
+                if lines:
+                    lines.with_context(qualif_discount_sync=True).unlink()
+                continue
+            vals = {
+                "name": _("Desconto"),
+                "product_uom_qty": 1.0,
+                "price_unit": -amount,
+                "discount": 0.0,
+            }
+            if lines:
+                lines[1:].with_context(qualif_discount_sync=True).unlink()
+                lines[:1].with_context(qualif_discount_sync=True).write(vals)
+            else:
+                vals.update({
+                    "order_id": order.id,
+                    "is_qualif_discount_line": True,
+                    "sequence": 9999,
+                })
+                if product:
+                    vals["product_id"] = product.id
+                    vals["product_uom"] = product.uom_id.id
+                Line.create(vals)
 
     @api.depends("qualificacao_ids")
     def _compute_qualificacao_count(self):
@@ -345,6 +476,8 @@ class SaleOrder(models.Model):
         "regular_line_ids.price_subtotal",
         "optional_line_ids.price_subtotal",
         "optional_line_ids.optional_accepted",
+        "qualif_discount_type",
+        "qualif_discount_value",
         "currency_id",
     )
     def _compute_qualif_subtotals_html(self):
@@ -400,6 +533,10 @@ class SaleOrder(models.Model):
         for line in self.order_line.sorted(key=lambda l: (l.sequence, l.id or 0)):
             if line.display_type or line in in_scope:
                 continue
+            # Linha do desconto geral: vira a linha "Descontos" própria dos
+            # totais (discount_amount), nunca um adicional.
+            if line.is_qualif_discount_line:
+                continue
             # Opcional pendente não pode virar adicional: o filtro de
             # is_zero() abaixo só o exclui via qty=0, um invariante
             # procedural (wizard/onchange/_sync_optional_qty), não uma
@@ -432,7 +569,9 @@ class SaleOrder(models.Model):
         - `equip_total`: soma dos Valores Unitários IMPRESSOS nas tabelas
           de escopo (preço-alvo quando bate, soma real quando desviado).
         - `adicionais`: lista enumerada `[{"name", "amount"}]`.
-        - `residual`: o que sobra. Deve ser zero; quando não for (alvo
+        - `discount_amount`: desconto geral (positivo; 0 = sem desconto),
+          mostrado como linha negativa "Descontos" antes do total geral.
+        - `residual`: o que sobra (descontado o desconto geral). Deve ser zero; quando não for (alvo
           desviado, arredondamento), é impresso como linha "Outros" para
           que nenhum valor do amount_untaxed fique invisível — foi
           exatamente esse o bug C26-06-0005.
@@ -442,11 +581,18 @@ class SaleOrder(models.Model):
         equip_total = sum(t["footer"]["unit_price"] for t in scope_tables)
         adicionais = self._qualif_additional_lines(scope_tables)
         grand_total = self.amount_untaxed
+        # Desconto geral: subtotal (negativo) das linhas is_qualif_discount_line.
+        # Sai do residual — senão o abatimento viraria "Outros" negativo.
+        discount_subtotal = sum(
+            self.order_line.filtered("is_qualif_discount_line")
+            .mapped("price_subtotal"))
         residual = self.currency_id.round(
-            grand_total - equip_total - sum(a["amount"] for a in adicionais))
+            grand_total - discount_subtotal - equip_total
+            - sum(a["amount"] for a in adicionais))
         return {
             "equip_total": equip_total,
             "adicionais": adicionais,
+            "discount_amount": -discount_subtotal,
             "residual": residual,
             "grand_total": grand_total,
         }
@@ -459,8 +605,12 @@ class SaleOrder(models.Model):
         self.ensure_one()
         totals = self._qualif_proposal_totals()
         rows = []
-        breakdown = bool(totals["adicionais"]) or not self.currency_id.is_zero(
-            totals["residual"])
+        has_discount = not self.currency_id.is_zero(totals["discount_amount"])
+        breakdown = (
+            bool(totals["adicionais"])
+            or not self.currency_id.is_zero(totals["residual"])
+            or has_discount
+        )
         if breakdown:
             rows.append((
                 _("Valor total dos Serviços de Qualificação"), totals["equip_total"]))
@@ -468,6 +618,8 @@ class SaleOrder(models.Model):
                 rows.append((adicional["name"], adicional["amount"]))
             if not self.currency_id.is_zero(totals["residual"]):
                 rows.append((_("Outros"), totals["residual"]))
+            if has_discount:
+                rows.append((_("Descontos"), -totals["discount_amount"]))
         body = "".join(
             '<tr><td style="padding:4px 12px;">%s</td>'
             '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'

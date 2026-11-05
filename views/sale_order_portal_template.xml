@@ -231,7 +231,7 @@
                         <table class="lq-total-table">
                             <t t-set="totals" t-value="sale_order._qualif_proposal_totals()"/>
                             <t t-set="tot_breakdown"
-                               t-value="bool(totals['adicionais']) or not sale_order.currency_id.is_zero(totals['residual'])"/>
+                               t-value="bool(totals['adicionais']) or not sale_order.currency_id.is_zero(totals['residual']) or not sale_order.currency_id.is_zero(totals['discount_amount'])"/>
                             <t t-if="tot_breakdown">
                                 <tr>
                                     <td class="lq-tot-label">Valor total dos Serviços de Qualificação</td>
@@ -253,6 +253,13 @@
                                     <td class="lq-tot-label">Outros</td>
                                     <td class="lq-tot-value">
                                         <span t-esc="totals['residual']"
+                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                    </td>
+                                </tr>
+                                <tr t-if="not sale_order.currency_id.is_zero(totals['discount_amount'])">
+                                    <td class="lq-tot-label">Descontos</td>
+                                    <td class="lq-tot-value">
+                                        <span t-esc="-totals['discount_amount']"
                                               t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
                                     </td>
                                 </tr>
