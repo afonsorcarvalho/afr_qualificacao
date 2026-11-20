@@ -1585,6 +1585,7 @@ class SaleOrder(models.Model):
         """
         for order in self:
             order.order_line._sync_optional_qty()
+        self._service_sync_units(force=True)
         return super().action_confirm()
 
     def _pending_qualif_lines(self):

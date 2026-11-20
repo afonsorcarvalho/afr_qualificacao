@@ -70,6 +70,20 @@ class SaleOrderLine(models.Model):
         string="Grupo do Serviço",
         store=True,
     )
+    service_unit_ids = fields.One2many(
+        comodel_name="afr.servico.unidade",
+        inverse_name="line_id",
+        string="Unidades",
+        copy=False,
+    )
+    service_unit_count = fields.Integer(
+        string="Qtd. de Unidades",
+        compute="_compute_service_unit_counts",
+    )
+    service_unit_identified_count = fields.Integer(
+        string="Unidades Identificadas",
+        compute="_compute_service_unit_counts",
+    )
     is_qualif_discount_line = fields.Boolean(
         string="Linha de Desconto Geral",
         default=False,
@@ -745,6 +759,8 @@ class SaleOrderLine(models.Model):
         lines = super().create(vals_list)
         lines.filtered(lambda l: not l.is_qualif_discount_line)\
             ._resync_qualif_discount()
+        lines.filtered("is_service_managed").mapped("order_id")\
+            ._service_sync_units()
         return lines
 
     def unlink(self):
@@ -756,13 +772,24 @@ class SaleOrderLine(models.Model):
                     raise UserError(_(
                         "A linha de Desconto é gerada pelo Desconto geral da "
                         "cotação. Zere o desconto geral para removê-la."))
+        for line in self.filtered("is_service_managed"):
+            line._service_trim_units(0)
         orders = (self - discount_lines).mapped("order_id")
         res = super().unlink()
         orders.exists()._qualif_resync_discount()
         return res
 
     def write(self, vals):
+        qty_changed = "product_uom_qty" in vals
+        if qty_changed:
+            # Reduzir a quantidade remove antes as unidades pendentes (ou
+            # bloqueia); só depois a constraint de unidades <= qty roda.
+            for line in self.filtered("is_service_managed"):
+                line._service_trim_units(vals["product_uom_qty"])
         res = super().write(vals)
+        if qty_changed or "is_service_managed" in vals:
+            self.filtered("is_service_managed").mapped("order_id")\
+                ._service_sync_units()
         if self._DISCOUNT_BASE_KEYS.intersection(vals):
             self.filtered(lambda l: not l.is_qualif_discount_line)\
                 ._resync_qualif_discount()
@@ -897,6 +924,53 @@ class SaleOrderLine(models.Model):
                     "Linha de serviço não pode ser de qualificação nem "
                     "ter equipamento ou tipo de qualificação."
                 ))
+
+    @api.depends("service_unit_ids", "service_unit_ids.is_identified")
+    def _compute_service_unit_counts(self):
+        for line in self:
+            units = line.service_unit_ids
+            line.service_unit_count = len(units)
+            line.service_unit_identified_count = len(
+                units.filtered("is_identified"))
+
+    @api.constrains("product_uom_qty", "service_unit_ids")
+    def _check_service_units_within_qty(self):
+        for line in self:
+            if (
+                line.is_service_managed
+                and len(line.service_unit_ids) > int(line.product_uom_qty)
+            ):
+                raise ValidationError(_(
+                    "A linha %(line)s tem %(units)d unidade(s) cadastrada(s), "
+                    "mais do que a quantidade %(qty)d.",
+                    line=line.name, units=len(line.service_unit_ids),
+                    qty=int(line.product_uom_qty),
+                ))
+
+    def _service_trim_units(self, new_qty):
+        """Ajusta as unidades para caberem em `new_qty` (reduzir quantidade).
+
+        Apaga unidades não identificadas, da de maior número para a menor,
+        até caber. Se as identificadas já excedem `new_qty`, bloqueia: a
+        pessoa remove à mão as unidades que não serão atendidas.
+        """
+        self.ensure_one()
+        keep = int(new_qty)
+        units = self.service_unit_ids
+        excess = len(units) - keep
+        if excess <= 0:
+            return
+        identified = units.filtered("is_identified")
+        if len(identified) > keep:
+            raise UserError(_(
+                "A linha %(line)s tem %(units)d unidade(s) identificada(s). "
+                "Remova as unidades que não serão atendidas antes de reduzir "
+                "a quantidade para %(qty)d.",
+                line=self.name, units=len(identified), qty=keep,
+            ))
+        pending = (units - identified).sorted(
+            key=lambda u: (u.item_number, u.id), reverse=True)
+        pending[:excess].unlink()
 
     @api.model
     def _service_line_vals(

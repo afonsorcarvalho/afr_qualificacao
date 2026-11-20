@@ -159,3 +159,6 @@ from . import test_servico_catalog
 
 # Cotação multi-serviço — Task 2: linhas de serviço
 from . import test_servico_lines
+
+# Cotação multi-serviço — Task 3: unidades numeradas
+from . import test_servico_unidades

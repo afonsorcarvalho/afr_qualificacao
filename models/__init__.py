@@ -23,6 +23,7 @@ from . import qualificacao_procedimento # F3 (16.0.3.2.0)
 from . import qualificacao_collect_item # F3 (16.0.3.2.0)
 from . import qualificacao
 from . import docx_template
+from . import servico_unidade            # Cotação multi-serviço — unidades numeradas
 from . import sale_order_line
 from . import sale_order
 from . import sale_order_servico       # Cotação multi-serviço — helpers do sale.order
