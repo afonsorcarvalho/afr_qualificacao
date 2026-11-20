@@ -95,11 +95,12 @@
             ============================================================= -->
             <t t-set="block_numbers"
                t-value="sale_order._proposal_block_numbering() if sale_order._proposal_visible_blocks() else {}"/>
-            <t t-if="sale_order._proposal_toc_blocks()">
+            <t t-set="toc_blocks" t-value="sale_order._proposal_toc_blocks()"/>
+            <t t-if="toc_blocks">
                 <div class="lq-toc">
                     <div class="lq-section-title">Índice</div>
                     <ul class="lq-toc-list">
-                        <t t-foreach="sale_order._proposal_toc_blocks()" t-as="tb">
+                        <t t-foreach="toc_blocks" t-as="tb">
                             <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
                             <li t-attf-class="lq-toc-item#{' lq-toc-child' if tb.parent_id else ''}">
                                 <a t-attf-href="#lq-anchor-#{tb.id}" class="lq-toc-link">

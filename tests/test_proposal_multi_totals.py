@@ -380,3 +380,61 @@ class TestProposalMultiTotals(AfrServicoTestCommon):
             {"sale_order": order},
         ))
         self.assertIn(title, portal)
+
+    def test_old_template_services_only_numbering_has_no_gap(self):
+        import re
+        from ..models._numbering import hierarchical_numbering
+
+        labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
+        # Com norma no serviço a tabela de normas também imprime (sem norma
+        # ela some do documento, mas segue numerada: vale para qualquer
+        # cotação e não é objeto deste teste).
+        self.svc_seladora.standard_ids = self.env[
+            "afr.qualificacao.standard"].create({
+                "code": "TST-001", "name": "Norma de Teste"})
+        order = self._seeded(self._services_order(labquali))
+        scope = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "equipment_scope")
+        self.assertIn(scope, order._proposal_visible_blocks())
+        self.assertNotIn(scope, order._proposal_chapter_blocks())
+        numbers = order._proposal_block_numbering()
+        self.assertNotIn(scope.id, numbers)
+        roots = sorted(
+            int(n) for bid, n in numbers.items()
+            if n and "." not in n
+        )
+        self.assertTrue(roots)
+        self.assertEqual(roots, list(range(1, len(roots) + 1)))
+
+        html = self._render(order)
+        self.assertEqual(html.count(GRAND_LABEL), 1)
+        toc = re.findall(r'qq-toc-num">\s*([\d.]+)\s*<', html)
+        body = re.findall(r'>([\d.]+)</span> — ', html)
+        self.assertTrue(toc)
+        self.assertEqual(toc, body)
+        self.assertEqual(
+            [n for n in toc if "." not in n],
+            [str(i) for i in range(1, len(roots) + 1)],
+        )
+
+        portal = str(self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": order},
+        ))
+        self.assertEqual(portal.count(GRAND_LABEL), 1)
+        self.assertEqual(
+            re.findall(r'lq-toc-num">\s*([\d.]+)\s*<', portal), toc)
+
+    def test_old_template_qualification_numbering_unchanged(self):
+        from ..models._numbering import hierarchical_numbering
+
+        labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
+        order = self._seeded(self._qualif_order(labquali))
+        scope = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "equipment_scope")
+        self.assertIn(scope, order._proposal_chapter_blocks())
+        self.assertEqual(
+            order._proposal_block_numbering(),
+            hierarchical_numbering(order._proposal_visible_blocks()),
+        )
+        self.assertTrue(order._proposal_block_numbering()[scope.id])

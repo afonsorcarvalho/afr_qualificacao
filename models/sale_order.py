@@ -1285,8 +1285,9 @@ class SaleOrder(models.Model):
     def _proposal_block_numbering(self):
         """Retorna dict {block_id: 'número_hierárquico'} para os blocos visíveis.
 
-        Visível = incluído E aplicável (`_proposal_visible_blocks`); blocos
-        ocultos pela condição não consomem número.
+        Capítulo = visível (incluído E aplicável) que imprime título
+        (`_proposal_chapter_blocks`); blocos ocultos pela condição, ou o
+        escopo vazio de cotação só de serviços, não consomem número.
 
         Ex: {1: '1', 2: '2', 3: '3', 4: '3.1', 5: '3.2', 6: '3.3', 7: '4'}
         Blocos com show_number=False recebem string vazia ''.
@@ -1294,7 +1295,7 @@ class SaleOrder(models.Model):
         Implementação em models/_numbering.py (compartilhada com o relatório final).
         """
         self.ensure_one()
-        return hierarchical_numbering(self._proposal_visible_blocks())
+        return hierarchical_numbering(self._proposal_chapter_blocks())
 
     def _proposal_visible_blocks(self):
         """Blocos que entram no documento: `included` e condição satisfeita.
@@ -1307,19 +1308,28 @@ class SaleOrder(models.Model):
             lambda b: b.included and b._is_applicable()
         )
 
-    def _proposal_toc_blocks(self):
-        """Blocos do índice: visíveis e titulados.
+    def _proposal_chapter_blocks(self):
+        """Blocos que aparecem como capítulo: base da numeração e do índice.
 
-        Fora, o `equipment_scope` de cotação sem qualificação: ele pode ser
-        visível (template antigo, só para emitir os totais), mas não imprime
-        capítulo, então o índice não pode apontar para ele.
+        São os visíveis, menos o `equipment_scope` de cotação sem
+        qualificação: ele pode ser visível (template antigo, só para emitir
+        os totais), mas não imprime capítulo — nem número, nem entrada no
+        índice. `_proposal_visible_blocks` e `_proposal_totals_emitter` não
+        mudam, então os totais saem uma vez, no mesmo lugar. (Filho desse
+        bloco, se existisse, numeraria a partir de 1 sem prefixo, como todo
+        filho de pai fora do conjunto.)
         """
         self.ensure_one()
-        blocks = self._proposal_visible_blocks().filtered("show_title")
+        blocks = self._proposal_visible_blocks()
         if not self.has_qualif_lines:
             blocks = blocks.filtered(
                 lambda b: b.block_kind != "equipment_scope")
         return blocks
+
+    def _proposal_toc_blocks(self):
+        """Blocos do índice: capítulos com título."""
+        self.ensure_one()
+        return self._proposal_chapter_blocks().filtered("show_title")
 
     def _proposal_totals_emitter(self):
         """Bloco que imprime a tabela de totais: vazio ou um registro.
