@@ -45,6 +45,16 @@
                 </button>
             </xpath>
 
+            <!-- Aviso (não bloqueia): grupo de serviço cotado sem capítulo
+                 "Serviços do Grupo" visível na proposta. Topo da folha,
+                 para aparecer em qualquer aba (Linhas, Unidades, Proposta). -->
+            <xpath expr="//sheet/div[@name='button_box']" position="after">
+                <div class="alert alert-warning" role="alert"
+                     attrs="{'invisible': [('service_chapter_warning', '=', False)]}">
+                    <field name="service_chapter_warning" nolabel="1" readonly="1"/>
+                </div>
+            </xpath>
+
             <!-- Esconde page "Order Lines" padrão — substituída pelas 3 abas custom abaixo -->
             <xpath expr="//page[@name='order_lines']" position="attributes">
                 <attribute name="invisible">1</attribute>
@@ -91,11 +101,14 @@
                                    attrs="{'required': [('display_type','=',False)], 'readonly': ['|', ('is_qualif_discount_line','=',True), ('is_service_managed','=',True)]}"/>
                             <field name="service_id" string="Serviço" readonly="1"
                                    optional="show"
-                                   attrs="{'invisible': [('is_service_managed','=',False)]}"/>
+                                   attrs="{'invisible': [('is_service_managed','=',False)],
+                                           'column_invisible': [('parent.has_service_lines','=',False)]}"/>
                             <field name="name" widget="section_and_note_text"
                                    attrs="{'readonly': [('is_qualif_discount_line','=',True)]}"/>
                             <field name="product_uom_qty" optional="show"
                                    attrs="{'readonly': [('is_qualif_discount_line','=',True)]}"/>
+                            <field name="service_unit_progress" optional="show"
+                                   attrs="{'column_invisible': [('parent.has_service_lines','=',False)]}"/>
                             <field name="product_uom"
                                    groups="uom.group_uom" optional="hide"
                                    attrs="{'required': [('display_type','=',False)]}"/>
@@ -197,11 +210,16 @@
                       attrs="{'invisible': [('has_service_lines','=',False)]}">
                     <field name="service_units_summary" readonly="1" nolabel="1"
                            class="fw-bold"/>
-                    <field name="service_unit_ids" nolabel="1">
+                    <field name="service_unit_ids" nolabel="1"
+                           context="{'afr_service_line_short_name': True}">
                         <tree editable="bottom" decoration-success="is_identified">
                             <field name="is_identified" invisible="1"/>
-                            <field name="item_number" string="Item" readonly="1"/>
+                            <field name="item_number" invisible="1"/>
+                            <field name="service_equipment_category_id" invisible="1"/>
+                            <!-- Em branco (não "0") enquanto a unidade não tem número. -->
+                            <field name="item_label" string="Item"/>
                             <field name="line_id" string="Serviço" required="1"
+                                   context="{'afr_service_line_short_name': True}"
                                    domain="[('order_id', '=', parent.id), ('is_service_managed', '=', True)]"
                                    options="{'no_create': True, 'no_open': True}"/>
                             <field name="tag" string="Identificação"/>
@@ -212,7 +230,7 @@
                             <field name="location"/>
                             <field name="range_spec"/>
                             <field name="equipment_id"
-                                   domain="[('client_id', '=', parent.partner_id)]"
+                                   domain="[('client_id', '=', parent.partner_id), ('category_id', '=?', service_equipment_category_id)]"
                                    options="{'no_create': True}"/>
                         </tree>
                     </field>
@@ -246,8 +264,8 @@
                             <field name="block_kind"/>
                             <field name="applies_when"/>
                             <field name="service_group_id"
-                                   attrs="{'invisible': [('applies_when', '!=', 'service_group')],
-                                           'required': [('applies_when', '=', 'service_group')]}"
+                                   attrs="{'invisible': [('applies_when', '!=', 'service_group'), ('block_kind', '!=', 'service_group')],
+                                           'required': ['|', ('applies_when', '=', 'service_group'), ('block_kind', '=', 'service_group')]}"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
                             <field name="hidden_reason" string="Oculto: motivo" readonly="1"/>
                             <field name="parent_id"
@@ -268,8 +286,9 @@
                                     <field name="title"/>
                                     <field name="applies_when"/>
                                     <field name="service_group_id"
-                                           attrs="{'invisible': [('applies_when', '!=', 'service_group')],
-                                                   'required': [('applies_when', '=', 'service_group')]}"/>
+                                           attrs="{'invisible': [('applies_when', '!=', 'service_group'), ('block_kind', '!=', 'service_group')],
+                                                   'required': ['|', ('applies_when', '=', 'service_group'), ('block_kind', '=', 'service_group')]}"
+                                           options="{'no_create': True, 'no_create_edit': True}"/>
                                     <field name="parent_id"/>
                                     <field name="show_number"/>
                                     <field name="show_title"/>

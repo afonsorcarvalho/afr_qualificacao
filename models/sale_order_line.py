@@ -17,6 +17,10 @@ from .price_allocation import allocate_target
 from .time_allocation import allocate_hours
 
 
+# Contexto da aba Unidades da cotação: `name_get` curto da linha de serviço.
+SERVICE_LINE_SHORT_NAME_CTX = "afr_service_line_short_name"
+
+
 class SaleOrderLine(models.Model):
     _inherit = "sale.order.line"
 
@@ -83,6 +87,11 @@ class SaleOrderLine(models.Model):
     service_unit_identified_count = fields.Integer(
         string="Unidades Identificadas",
         compute="_compute_service_unit_counts",
+    )
+    service_unit_progress = fields.Char(
+        string="Unid. identificadas",
+        compute="_compute_service_unit_counts",
+        help="Unidades identificadas / quantidade da linha (ex.: 1/8).",
     )
     is_qualif_discount_line = fields.Boolean(
         string="Linha de Desconto Geral",
@@ -933,13 +942,31 @@ class SaleOrderLine(models.Model):
                     "ter equipamento ou tipo de qualificação."
                 ))
 
-    @api.depends("service_unit_ids", "service_unit_ids.is_identified")
+    @api.depends(
+        "service_unit_ids", "service_unit_ids.is_identified",
+        "is_service_managed", "product_uom_qty",
+    )
     def _compute_service_unit_counts(self):
         for line in self:
             units = line.service_unit_ids
+            identified = len(units.filtered("is_identified"))
             line.service_unit_count = len(units)
-            line.service_unit_identified_count = len(
-                units.filtered("is_identified"))
+            line.service_unit_identified_count = identified
+            # M = quantidade da linha (em rascunho ainda não há unidades).
+            line.service_unit_progress = (
+                "%d/%d" % (identified, int(line.product_uom_qty))
+                if line.is_service_managed else False
+            )
+
+    def name_get(self):
+        """Na aba Unidades (`SERVICE_LINE_SHORT_NAME_CTX`), a linha de serviço
+        aparece só pelo serviço, sem o prefixo "<cotação> - "."""
+        if not self.env.context.get(SERVICE_LINE_SHORT_NAME_CTX):
+            return super().name_get()
+        return [
+            (line.id, line.service_id.name or line.name or "")
+            for line in self
+        ]
 
     def _service_check_qty_value(self, qty):
         """Quantidade de linha de serviço = nº de unidades: inteiro >= 0."""

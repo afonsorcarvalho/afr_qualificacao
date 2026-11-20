@@ -49,6 +49,17 @@ class AfrServicoUnidade(models.Model):
             "0 = ainda sem número."
         ),
     )
+    item_label = fields.Char(
+        string="Item (exibição)",
+        compute="_compute_item_label",
+        help="Número do item para exibição (em branco enquanto sem número).",
+    )
+    service_equipment_category_id = fields.Many2one(
+        comodel_name="engc.equipment.category",
+        related="service_id.equipment_category_id",
+        string="Categoria do Serviço",
+        help="Restringe o equipamento da unidade (vazio = qualquer categoria).",
+    )
     equipment_id = fields.Many2one(
         comodel_name="engc.equipment",
         string="Equipamento",
@@ -67,6 +78,11 @@ class AfrServicoUnidade(models.Model):
         store=True,
         help="Identificada = tem TAG ou número de série.",
     )
+
+    @api.depends("item_number")
+    def _compute_item_label(self):
+        for unit in self:
+            unit.item_label = str(unit.item_number) if unit.item_number else ""
 
     @api.depends("tag", "serial_number")
     def _compute_is_identified(self):

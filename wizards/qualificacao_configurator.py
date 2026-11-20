@@ -26,6 +26,7 @@ from odoo.tools import float_compare, float_is_zero, float_round, html_escape
 from odoo.tools.misc import formatLang
 
 from ..models.price_allocation import allocate_target
+from ..models.sale_order import SERVICE_WORK_HOURS_PER_DAY
 from ..models.time_allocation import allocate_hours
 
 
@@ -148,7 +149,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         "service_line_ids.qty",
         "service_line_ids.estimated_hours",
         "service_line_ids.subtotal",
+        "service_line_ids.group_id",
         "total_estimated",
+        "proposal_template_id",
     )
     def _compute_review_summary_html(self):
         """Resumo da revisão: um equipamento por linha, uma frente de serviço
@@ -184,6 +187,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                         for l in lines),
                     sum(lines.mapped("subtotal")),
                 ))
+            warning = self.env["sale.order"]._service_chapter_warning_text(
+                wiz._service_groups_without_chapter())
+            warning_html = (
+                '<div class="alert alert-warning" role="alert">%s</div>'
+                % html_escape(warning) if warning else ""
+            )
             if not rows:
                 wiz.review_summary_html = (
                     '<p class="text-muted">Sem equipamentos no escopo.</p>'
@@ -198,7 +207,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 % formatLang(self.env, wiz.total_estimated or 0.0,
                              currency_obj=wiz.currency_id)
             )
-            wiz.review_summary_html = (
+            wiz.review_summary_html = warning_html + (
                 '<table style="border-collapse:collapse;width:100%%;'
                 'border:1px solid #ddd;font-size:13px;">'
                 '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
@@ -331,15 +340,48 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     @api.depends(
         "equipment_line_ids.estimated_hours_total",
         "equipment_line_ids.estimated_days_total",
+        "service_line_ids.qty",
+        "service_line_ids.estimated_hours",
     )
     def _compute_wizard_estimated_totals(self):
+        """Horas e dias da revisão: equipamentos + serviços do catálogo
+        (spec 6.6), com a jornada fixa das linhas de serviço."""
         for wiz in self:
+            service_hours = wiz._service_hours_total()
             wiz.estimated_hours_total = sum(
                 wiz.equipment_line_ids.mapped("estimated_hours_total")
-            )
+            ) + service_hours
             wiz.estimated_days_total = sum(
                 wiz.equipment_line_ids.mapped("estimated_days_total")
-            )
+            ) + service_hours / SERVICE_WORK_HOURS_PER_DAY
+
+    def _service_hours_total(self):
+        """Horas dos serviços do passo "Outros serviços" (qtd x horas/un.)."""
+        self.ensure_one()
+        return sum(
+            (line.qty or 0) * (line.estimated_hours or 0.0)
+            for line in self.service_line_ids
+        )
+
+    def _service_groups_without_chapter(self):
+        """Grupos dos serviços do wizard que a proposta não detalharia.
+
+        Cotação com blocos: compara com os blocos `service_group` incluídos
+        (o apply não recarrega blocos). Sem blocos: com as linhas
+        `service_group` do template escolhido no wizard.
+        """
+        self.ensure_one()
+        groups = self.service_line_ids.mapped("group_id")
+        blocks = self.sale_order_id.proposal_block_ids
+        if blocks:
+            covered = blocks.filtered(
+                lambda b: b.included and b.block_kind == "service_group"
+            ).mapped("service_group_id")
+        else:
+            covered = self.proposal_template_id.line_ids.filtered(
+                lambda l: l.block_kind == "service_group"
+            ).mapped("service_group_id")
+        return groups.filtered(lambda g: g not in covered)
 
     @api.depends("equipment_line_ids")
     def _compute_review_counts(self):

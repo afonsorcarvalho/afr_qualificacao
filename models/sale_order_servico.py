@@ -48,6 +48,14 @@ class SaleOrderServico(models.Model):
         compute="_compute_service_units_summary",
         string="Unidades Identificadas",
     )
+    service_chapter_warning = fields.Char(
+        compute="_compute_service_chapter_warning",
+        string="Aviso de Capítulo de Serviço",
+        help=(
+            "Grupos de serviço cotados que a proposta não detalha (sem "
+            "bloco 'Serviços do Grupo' visível). Não bloqueia nada."
+        ),
+    )
 
     def write(self, vals):
         # Salvar o form com "reduzir a quantidade" (aba Linhas) e "apagar a
@@ -250,6 +258,51 @@ class SaleOrderServico(models.Model):
             "days_label": days_label,
             "units": units,
         }
+
+    def _service_groups_without_chapter(self):
+        """Grupos cotados (`_service_groups`) sem bloco `service_group`
+        visível para eles: o serviço não seria detalhado na proposta."""
+        self.ensure_one()
+        chapters = self._proposal_visible_blocks().filtered(
+            lambda b: b.block_kind == "service_group"
+        ).mapped("service_group_id")
+        return self._service_groups().filtered(lambda g: g not in chapters)
+
+    @api.model
+    def _service_chapter_warning_text(self, groups):
+        """Aviso (texto puro) para grupos sem capítulo na proposta; vazio
+        sem grupos. Usado no form da cotação e no passo Revisão."""
+        titles = [group._chapter_title() for group in groups]
+        if not titles:
+            return ""
+        if len(titles) == 1:
+            names = titles[0]
+        else:
+            names = _("%(head)s e %(last)s", head=", ".join(titles[:-1]),
+                      last=titles[-1])
+        return _(
+            "Os serviços de %(groups)s não aparecem detalhados na proposta: "
+            "o template desta cotação não tem capítulo para eles. Troque o "
+            "template e use Recarregar blocos, ou adicione um bloco "
+            "'Serviços do Grupo'.",
+            groups=names,
+        )
+
+    @api.depends(
+        "order_line.is_service_managed",
+        "order_line.service_id",
+        "order_line.display_type",
+        "proposal_block_ids.included",
+        "proposal_block_ids.block_kind",
+        "proposal_block_ids.service_group_id",
+        "proposal_block_ids.applies_when",
+        "proposal_block_ids.parent_id",
+        "has_qualif_lines",
+    )
+    def _compute_service_chapter_warning(self):
+        for order in self:
+            order.service_chapter_warning = order._service_chapter_warning_text(
+                order._service_groups_without_chapter()) or False
 
     def _proposal_cover_subtitle(self):
         """Subtítulo da capa da proposta (PDF e portal).

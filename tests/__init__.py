@@ -183,3 +183,4 @@ from . import test_servico_onchange
 from . import test_proposal_multi_chapters
 from . import test_servico_texts
 from . import test_servico_guards
+from . import test_servico_ui
