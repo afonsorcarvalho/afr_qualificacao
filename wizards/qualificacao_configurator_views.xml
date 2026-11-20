@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- F8.4 — Configurador guiado multi-step (Escopo → Opcionais →
-         Blocos → Revisão). Navegação por step + botões Voltar/Próximo. -->
+    <!-- Configurador guiado multi-step (Escopo → Outros serviços →
+         Opcionais → Revisão). Navegação por step + botões Voltar/Próximo. -->
     <record id="view_qualificacao_configurator_form" model="ir.ui.view">
         <field name="name">afr.qualificacao.configurator.form</field>
         <field name="model">afr.qualificacao.configurator</field>
@@ -9,7 +9,7 @@
             <form string="Configurador de Qualificações">
                 <header>
                     <field name="step" widget="statusbar"
-                           statusbar_visible="escopo,revisao"/>
+                           statusbar_visible="escopo,servicos,opcionais,revisao"/>
                 </header>
                 <sheet>
                     <group>
@@ -167,7 +167,33 @@
                         </field>
                     </div>
 
-                    <!-- ETAPA 2 — OPCIONAIS -->
+                    <!-- ETAPA 2 — OUTROS SERVIÇOS (catálogo afr.servico) -->
+                    <div attrs="{'invisible': [('step', '!=', 'servicos')]}">
+                        <p class="text-muted">
+                            Serviços do catálogo (calibração, NR-13, etc.) que
+                            entram na cotação com quantidade e preço por
+                            unidade. Opcional: a cotação pode ter só serviços.
+                        </p>
+                        <field name="service_line_ids">
+                            <tree editable="bottom">
+                                <field name="service_id" options="{'no_create': True}"/>
+                                <field name="group_id"/>
+                                <field name="qty"/>
+                                <field name="unit_price"/>
+                                <field name="estimated_hours"/>
+                                <field name="currency_id" invisible="1"/>
+                                <field name="subtotal"/>
+                            </tree>
+                        </field>
+                        <group>
+                            <group/>
+                            <group>
+                                <field name="service_subtotal"/>
+                            </group>
+                        </group>
+                    </div>
+
+                    <!-- ETAPA 3 — OPCIONAIS -->
                     <div attrs="{'invisible': [('step', '!=', 'opcionais')]}">
                         <separator string="Serviços Opcionais"/>
                         <field name="optional_service_ids">
@@ -194,7 +220,7 @@
                         </field>
                     </div>
 
-                    <!-- ETAPA 3 — REVISÃO -->
+                    <!-- ETAPA 4 — REVISÃO -->
                     <div attrs="{'invisible': [('step', '!=', 'revisao')]}">
                         <p>
                             Revise o escopo antes de aplicar ao pedido.
@@ -226,6 +252,10 @@
                                 </tree>
                             </field>
                         </div>
+                        <separator string="Outros Serviços"
+                                   attrs="{'invisible': [('service_summary_html', 'in', (False, ''))]}"/>
+                        <field name="service_summary_html" nolabel="1" readonly="1"
+                               attrs="{'invisible': [('service_summary_html', 'in', (False, ''))]}"/>
                         <separator string="Opcionais Selecionados"
                                    attrs="{'invisible': [('optional_summary_html', 'in', (False, ''))]}"/>
                         <field name="optional_summary_html" nolabel="1" readonly="1"
@@ -238,11 +268,14 @@
                                 <field name="estimated_hours_total"/>
                                 <field name="estimated_days_total"/>
                                 <field name="total_estimated"/>
+                                <field name="service_subtotal"
+                                       attrs="{'invisible': [('service_subtotal', '=', 0)]}"/>
                             </group>
                         </group>
                         <p>
                             "Aplicar ao Pedido" recria as linhas de
-                            qualificação. Os blocos de texto da proposta são
+                            qualificação e atualiza as de serviço (sem
+                            apagar as já existentes). Os blocos de texto da proposta são
                             editados no próprio pedido (aba Proposta); serviços
                             opcionais (pasta, viagem, diária) são adicionados
                             como linhas avulsas no pedido.

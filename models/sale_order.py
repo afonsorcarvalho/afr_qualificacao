@@ -1,6 +1,6 @@
 """Extensão de sale.order para fluxo de qualificação quote-first.
 
-- Botão `Configurar Qualificações` no header abre wizard que gera linhas SO
+- Botão `Configurar Serviços` no header abre wizard que gera linhas SO
 - Stat buttons mostram qualificações + OSs geradas
 - Botão `Gerar OS de Qualificação` (SO confirmada) abre wizard que cria 1
   OS por grupo de equipamentos selecionados, materializando
@@ -1373,7 +1373,7 @@ class SaleOrder(models.Model):
         wizard._load_from_existing_lines()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Configurar Qualificações"),
+            "name": _("Configurar Serviços"),
             "res_model": "afr.qualificacao.configurator",
             "res_id": wizard.id,
             "view_mode": "form",

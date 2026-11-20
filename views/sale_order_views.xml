@@ -9,7 +9,7 @@
 
             <xpath expr="//header/button[@name='action_quotation_send']" position="before">
                 <button name="action_open_configurator"
-                        string="Configurar Qualificações"
+                        string="Configurar Serviços"
                         type="object"
                         class="oe_highlight"
                         attrs="{'invisible': ['|', ('state','not in',['draft','sent']), ('partner_id','=',False)]}"/>

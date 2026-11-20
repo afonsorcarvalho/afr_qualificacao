@@ -10,7 +10,9 @@ Atalhos:
 - Template salvo (afr.qualificacao.config.template)
 
 Estratégia Apply: recria-do-zero (apaga linhas managed + recria; linhas
-manuais avulsas preservadas).
+manuais avulsas preservadas). Linhas de serviço do catálogo (passo "Outros
+serviços") são a exceção: upsert por serviço, pois as unidades numeradas
+pendem da linha.
 """
 
 import re
@@ -20,7 +22,7 @@ import logging
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
-from odoo.tools import float_is_zero, float_round
+from odoo.tools import float_compare, float_is_zero, float_round, html_escape
 from odoo.tools.misc import formatLang
 
 from ..models.price_allocation import allocate_target
@@ -30,7 +32,7 @@ from ..models.time_allocation import allocate_hours
 # F8.4/F8.7 — passos do configurador guiado, em ordem.
 _logger = logging.getLogger(__name__)
 
-_STEP_ORDER = ["escopo", "opcionais", "revisao"]
+_STEP_ORDER = ["escopo", "servicos", "opcionais", "revisao"]
 
 
 class AfrQualificacaoConfigurator(models.TransientModel):
@@ -69,6 +71,23 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         compute="_compute_review_equipment_line_ids",
         string="Equipamentos (revisão)",
     )
+    # Cotação multi-serviço — linhas do catálogo `afr.servico` (passo
+    # "Outros serviços"). Aplicadas por upsert em `_apply_service_lines`.
+    service_line_ids = fields.One2many(
+        comodel_name="afr.qualificacao.configurator.service",
+        inverse_name="wizard_id",
+        string="Outros Serviços",
+    )
+    service_subtotal = fields.Monetary(
+        compute="_compute_service_subtotal",
+        currency_field="currency_id",
+        string="Subtotal de Serviços",
+    )
+    service_summary_html = fields.Html(
+        compute="_compute_service_summary_html",
+        string="Resumo de Serviços",
+        sanitize=False,
+    )
     optional_service_ids = fields.One2many(
         "afr.qualificacao.configurator.optional", "wizard_id",
         string="Serviços Opcionais")
@@ -95,8 +114,9 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     step = fields.Selection(
         selection=[
             ("escopo", "1. Escopo"),
-            ("opcionais", "2. Opcionais"),
-            ("revisao", "3. Revisão"),
+            ("servicos", "2. Outros serviços"),
+            ("opcionais", "3. Opcionais"),
+            ("revisao", "4. Revisão"),
         ],
         default="escopo",
         required=True,
@@ -217,6 +237,55 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 '</tr></thead><tbody>%s</tbody></table>'
             ) % "".join(rows)
 
+    @api.depends("service_line_ids.subtotal")
+    def _compute_service_subtotal(self):
+        for wiz in self:
+            wiz.service_subtotal = sum(wiz.service_line_ids.mapped("subtotal"))
+
+    @api.depends(
+        "service_line_ids.service_id", "service_line_ids.qty",
+        "service_line_ids.unit_price", "service_line_ids.subtotal",
+    )
+    def _compute_service_summary_html(self):
+        for wiz in self:
+            if not wiz.service_line_ids:
+                wiz.service_summary_html = ""
+                continue
+            rows = []
+            for sl in wiz.service_line_ids:
+                rows.append(
+                    '<tr><td style="padding:4px 12px;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%d</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s</td>'
+                    '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
+                    % (html_escape(sl.service_id.name or ""),
+                       sl.qty or 0,
+                       formatLang(self.env, sl.unit_price or 0.0,
+                                  currency_obj=wiz.currency_id),
+                       formatLang(self.env, sl.subtotal or 0.0,
+                                  currency_obj=wiz.currency_id))
+                )
+            rows.append(
+                '<tr style="border-top:2px solid #333;">'
+                '<td style="padding:6px 12px;font-weight:bold;">'
+                'TOTAL SERVIÇOS</td><td></td><td></td>'
+                '<td style="padding:6px 12px;text-align:right;'
+                'font-weight:bold;">%s</td></tr>'
+                % formatLang(self.env, wiz.service_subtotal or 0.0,
+                             currency_obj=wiz.currency_id)
+            )
+            wiz.service_summary_html = (
+                '<table style="border-collapse:collapse;width:100%%;'
+                'border:1px solid #ddd;font-size:13px;">'
+                '<thead><tr style="background:#f4f4f4;'
+                'border-bottom:1px solid #ccc;">'
+                '<th style="padding:6px 12px;text-align:left;">Serviço</th>'
+                '<th style="padding:6px 12px;text-align:right;">Qtd</th>'
+                '<th style="padding:6px 12px;text-align:right;">Unitário</th>'
+                '<th style="padding:6px 12px;text-align:right;">Total</th>'
+                '</tr></thead><tbody>%s</tbody></table>'
+            ) % "".join(rows)
+
     @api.depends("equipment_line_ids.subtotal")
     def _compute_total_estimated(self):
         for wiz in self:
@@ -254,7 +323,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         self.ensure_one()
         return {
             "type": "ir.actions.act_window",
-            "name": _("Configurar Qualificações"),
+            "name": _("Configurar Serviços"),
             "res_model": "afr.qualificacao.configurator",
             "res_id": self.id,
             "view_mode": "form",
@@ -276,10 +345,12 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             wiz.review_equipment_line_ids = wiz.equipment_line_ids
 
     def action_next_step(self):
-        """Avança uma etapa (valida o escopo ao sair da primeira)."""
+        """Avança uma etapa.
+
+        A exigência de conteúdo (equipamento ou serviço) é validada no
+        Aplicar: a cotação pode ser só de serviços.
+        """
         self.ensure_one()
-        if self.step == "escopo" and not self.equipment_line_ids:
-            raise UserError(_("Adicione ao menos 1 equipamento antes de avançar."))
         idx = _STEP_ORDER.index(self.step)
         if idx < len(_STEP_ORDER) - 1:
             return self._go_to_step(_STEP_ORDER[idx + 1])
@@ -302,6 +373,16 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         # F8.4 — herda o template de proposta da SO
         self.proposal_template_id = self.sale_order_id.proposal_template_id
         so_lines = self.sale_order_id.order_line
+        # Linhas de serviço do catálogo (não são `is_qualificacao_managed`,
+        # então precisam ser carregadas antes do retorno antecipado abaixo).
+        svc_cmds = [(0, 0, {
+            "service_id": line.service_id.id,
+            "qty": int(line.product_uom_qty),
+            "unit_price": line.price_unit,
+            "estimated_hours": line.estimated_hours,
+        }) for line in self.sale_order_id._service_lines()]
+        if svc_cmds:
+            self.service_line_ids = svc_cmds
         # Equipamentos managed (exclui linhas de opcionais avulsas)
         managed = so_lines.filtered(
             lambda l: l.is_qualificacao_managed and not l.is_proposal_optional
@@ -402,7 +483,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
 
         # Opcionais existentes → repopula as duas secções do step Opcionais.
         opt_lines = so_lines.filtered("is_proposal_optional")
-        svc_cmds, qualif_cmds = [], []
+        opt_svc_cmds, qualif_cmds = [], []
         for line in opt_lines:
             if line.qualification_type:
                 qualif_cmds.append((0, 0, {
@@ -419,14 +500,14 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                     "afr.proposal.optional"].search(
                     [("product_id", "=", line.product_id.id)], limit=1)
                 if opt_catalog:
-                    svc_cmds.append((0, 0, {
+                    opt_svc_cmds.append((0, 0, {
                         "optional_id": opt_catalog.id,
                         "qty": line.optional_qty or line.product_uom_qty or 1.0,
                         "unit_price": line.price_unit,
                         "accepted": line.optional_accepted,
                     }))
-        if svc_cmds:
-            self.optional_service_ids = svc_cmds
+        if opt_svc_cmds:
+            self.optional_service_ids = opt_svc_cmds
         if qualif_cmds:
             self.optional_qualif_ids = qualif_cmds
 
@@ -434,10 +515,16 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     # Apply — recria-do-zero
     # ------------------------------------------------------------------
     def action_apply(self):
-        """Apaga linhas managed do SO e recria conforme matriz do wizard."""
+        """Apaga linhas managed do SO e recria conforme matriz do wizard.
+
+        Linhas de serviço do catálogo não entram no recria-do-zero: são
+        atualizadas por `_apply_service_lines` (a lista de unidades de cada
+        linha pende do registro).
+        """
         self.ensure_one()
-        if not self.equipment_line_ids:
-            raise UserError(_("Adicione ao menos 1 equipamento."))
+        if not self.equipment_line_ids and not self.service_line_ids:
+            raise UserError(_("Adicione ao menos 1 equipamento ou 1 serviço."))
+        self._check_service_lines()
         vistos = set()
         for eq_line in self.equipment_line_ids:
             if eq_line.equipment_id.id in vistos:
@@ -561,6 +648,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             new_lines.append((0, 0, vals))
 
         so.write({"order_line": new_lines})
+        self._apply_service_lines()
         # Reaplica os alvos (tempo antes do preço — o rateio de tempo já
         # reencadeia o de preço quando há preço combinado).
         for section in so.order_line.filtered(
@@ -578,6 +666,83 @@ class AfrQualificacaoConfigurator(models.TransientModel):
             so.proposal_template_id = self.proposal_template_id
         so._seed_proposal_blocks()
         return {"type": "ir.actions.act_window_close"}
+
+    def _check_service_lines(self):
+        """Valida as linhas do passo "Outros serviços" (qtd e duplicidade)."""
+        self.ensure_one()
+        vistos = set()
+        for sl in self.service_line_ids:
+            if (sl.qty or 0) < 1:
+                raise UserError(_(
+                    "A quantidade do serviço %s deve ser ao menos 1."
+                ) % (sl.service_id.display_name or "?"))
+            if sl.service_id.id in vistos:
+                raise UserError(_(
+                    "O serviço %s aparece mais de uma vez."
+                ) % sl.service_id.display_name)
+            vistos.add(sl.service_id.id)
+
+    def _apply_service_lines(self):
+        """Upsert das linhas de serviço do catálogo na cotação.
+
+        Nunca apaga e recria uma linha existente: as unidades numeradas
+        (`afr.servico.unidade`) pendem do registro. Cria as novas, atualiza
+        qtd/preço/horas só quando mudaram e remove as que saíram do wizard
+        (as regras de unidade identificada ficam em `sale.order.line`, e o
+        erro delas propaga). As linhas ficam depois de todas as demais, por
+        grupo e serviço.
+        """
+        self.ensure_one()
+        so = self.sale_order_id
+        Line = self.env["sale.order.line"]
+        price_digits = self.env["decimal.precision"].precision_get(
+            "Product Price")
+
+        wanted = {sl.service_id.id: sl for sl in self.service_line_ids}
+        existing = {}
+        to_unlink = Line
+        for line in so._service_lines():
+            if line.service_id.id in wanted and line.service_id.id not in existing:
+                existing[line.service_id.id] = line
+            else:
+                to_unlink |= line
+        if to_unlink:
+            to_unlink.unlink()
+
+        for service_id, sl in wanted.items():
+            line = existing.get(service_id)
+            if not line:
+                vals = Line._service_line_vals(
+                    sl.service_id, sl.qty,
+                    unit_price=sl.unit_price,
+                    estimated_hours=sl.estimated_hours,
+                )
+                vals["order_id"] = so.id
+                Line.create(vals)
+                continue
+            changes = {}
+            if line.product_uom_qty != sl.qty:
+                changes["product_uom_qty"] = sl.qty
+            if float_compare(line.price_unit, sl.unit_price,
+                             precision_digits=price_digits):
+                changes["price_unit"] = sl.unit_price
+            if float_compare(line.estimated_hours, sl.estimated_hours,
+                             precision_digits=4):
+                changes["estimated_hours"] = sl.estimated_hours
+            if changes:
+                line.write(changes)
+
+        # Depois de todas as linhas de qualificação (e de seções/notas);
+        # a linha de desconto geral (sequence 9999) continua por último.
+        services = so._service_lines()
+        others = so.order_line - services
+        base = max(
+            [l.sequence for l in others if not l.is_qualif_discount_line]
+            + [10]
+        )
+        for idx, line in enumerate(services, start=1):
+            if line.sequence != base + idx:
+                line.sequence = base + idx
 
     # ------------------------------------------------------------------
     # Atalhos
@@ -1914,3 +2079,34 @@ class AfrQualificacaoConfiguratorOptionalQualif(models.TransientModel):
         for line in self:
             if line.malha_type_id:
                 line.estimated_hours = line.malha_type_id.estimated_hours
+
+
+class AfrQualificacaoConfiguratorService(models.TransientModel):
+    """Linha do passo "Outros serviços" (serviço do catálogo `afr.servico`)."""
+
+    _name = "afr.qualificacao.configurator.service"
+    _description = "Serviço do catálogo no configurador"
+
+    wizard_id = fields.Many2one("afr.qualificacao.configurator",
+                                required=True, ondelete="cascade")
+    service_id = fields.Many2one("afr.servico", string="Serviço",
+                                 required=True)
+    group_id = fields.Many2one(related="service_id.group_id",
+                               string="Grupo", readonly=True)
+    qty = fields.Integer(string="Qtd", default=1)
+    unit_price = fields.Monetary(string="Unitário")
+    estimated_hours = fields.Float(string="Horas/un.")
+    subtotal = fields.Monetary(string="Total", compute="_compute_subtotal")
+    currency_id = fields.Many2one(related="wizard_id.currency_id")
+
+    @api.depends("qty", "unit_price")
+    def _compute_subtotal(self):
+        for line in self:
+            line.subtotal = (line.qty or 0) * (line.unit_price or 0.0)
+
+    @api.onchange("service_id")
+    def _onchange_service_id(self):
+        for line in self:
+            if line.service_id:
+                line.unit_price = line.service_id._default_unit_price()
+                line.estimated_hours = line.service_id.estimated_hours

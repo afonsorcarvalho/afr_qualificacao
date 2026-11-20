@@ -30,20 +30,32 @@ class TestConfiguratorSteps(AfrQualificacaoTestCommon):
     def test_wizard_starts_on_escopo(self):
         self.assertEqual(self._wizard().step, "escopo")
 
-    def test_next_step_advances_to_opcionais(self):
-        """F2 — Escopo → Opcionais → Revisão (3 etapas)."""
+    def test_next_step_advances_through_all_steps(self):
+        """Escopo → Outros serviços → Opcionais → Revisão (4 etapas)."""
         wiz = self._wizard()
         self._add_equipment(wiz)
+        wiz.action_next_step()
+        self.assertEqual(wiz.step, "servicos")
         wiz.action_next_step()
         self.assertEqual(wiz.step, "opcionais")
         wiz.action_next_step()
         self.assertEqual(wiz.step, "revisao")
 
-    def test_next_from_escopo_requires_equipment(self):
-        """Avançar do escopo sem equipamento é bloqueado."""
+    def test_next_from_escopo_without_equipment_allowed(self):
+        """Cotação só de serviços: avançar sem equipamento é permitido.
+
+        A exigência "ao menos 1 equipamento ou 1 serviço" passou para o
+        Aplicar.
+        """
+        wiz = self._wizard()
+        wiz.action_next_step()
+        self.assertEqual(wiz.step, "servicos")
+
+    def test_apply_empty_wizard_blocks(self):
+        """Sem equipamento e sem serviço, o Aplicar bloqueia."""
         wiz = self._wizard()
         with self.assertRaises(UserError):
-            wiz.action_next_step()
+            wiz.action_apply()
 
     def test_prev_step_goes_back(self):
         wiz = self._wizard()
@@ -51,12 +63,16 @@ class TestConfiguratorSteps(AfrQualificacaoTestCommon):
         wiz.action_prev_step()
         self.assertEqual(wiz.step, "opcionais")
         wiz.action_prev_step()
+        self.assertEqual(wiz.step, "servicos")
+        wiz.action_prev_step()
         self.assertEqual(wiz.step, "escopo")
 
     def test_full_flow_to_apply_seeds_blocks(self):
-        """Fluxo escopo → opcionais → revisão → aplicar; Aplicar semeia os blocos."""
+        """Fluxo escopo → serviços → opcionais → revisão → aplicar; Aplicar semeia os blocos."""
         wiz = self._wizard()
         self._add_equipment(wiz)
+        wiz.action_next_step()   # → serviços
+        self.assertEqual(wiz.step, "servicos")
         wiz.action_next_step()   # → opcionais
         self.assertEqual(wiz.step, "opcionais")
         wiz.action_next_step()   # → revisão

@@ -162,3 +162,6 @@ from . import test_servico_lines
 
 # Cotação multi-serviço — Task 3: unidades numeradas
 from . import test_servico_unidades
+
+# Cotação multi-serviço — Task 4: passo "Outros serviços" no configurador
+from . import test_servico_configurator
