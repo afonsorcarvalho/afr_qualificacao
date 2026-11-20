@@ -83,7 +83,7 @@
                         PROPOSTA TÉCNICO-COMERCIAL
                     </div>
                     <div class="qq-cover-subtitle">
-                        Qualificação de Equipamentos
+                        <t t-esc="doc._proposal_cover_subtitle()"/>
                     </div>
 
                     <div class="qq-cover-meta">
@@ -117,7 +117,7 @@
                     <!-- Imagem de capa (collage de equipamentos) -->
                     <img class="qq-cover-img"
                          src="/afr_qualificacao/static/img/cover_default.jpg"
-                         alt="LabQuali — Qualificação de Equipamentos"/>
+                         t-attf-alt="LabQuali — #{doc._proposal_cover_subtitle()}"/>
                 </div>
 
                 <!-- ========================================================

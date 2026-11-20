@@ -47,7 +47,7 @@
 
                 <div class="lq-cover-body">
                     <h1 class="lq-cover-title">PROPOSTA TÉCNICO-COMERCIAL</h1>
-                    <div class="lq-cover-subtitle"><em>Qualificação de Equipamentos</em></div>
+                    <div class="lq-cover-subtitle"><em><t t-esc="sale_order._proposal_cover_subtitle()"/></em></div>
 
                     <div class="lq-cover-meta">
                         <table>
@@ -86,7 +86,7 @@
 
                     <img class="lq-cover-img"
                          src="/afr_qualificacao/static/img/cover_default.jpg"
-                         alt="Qualificação de Equipamentos"/>
+                         t-att-alt="sale_order._proposal_cover_subtitle()"/>
                 </div>
             </div>
 

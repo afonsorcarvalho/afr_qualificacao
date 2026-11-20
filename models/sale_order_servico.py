@@ -234,6 +234,18 @@ class SaleOrderServico(models.Model):
             "units": units,
         }
 
+    def _proposal_cover_subtitle(self):
+        """Subtítulo da capa da proposta (PDF e portal).
+
+        "Qualificação de Equipamentos" quando a cotação não tem linhas de
+        serviço (propostas antigas não mudam); senão, as frentes cotadas.
+        """
+        self.ensure_one()
+        if not self.has_service_lines:
+            return _("Qualificação de Equipamentos")
+        return self._proposal_service_titles() or _(
+            "Qualificação de Equipamentos")
+
     def _proposal_service_titles(self):
         """Frentes cotadas, por extenso, para usar nos textos da proposta.
 

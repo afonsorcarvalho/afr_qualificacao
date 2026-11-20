@@ -6,6 +6,8 @@ ele é instalado pela migração 16.0.9.3.0; aqui `setUpClass` chama o mesmo
 instalador (idempotente) para o teste não depender do bump de versão.
 """
 
+import re
+
 from odoo.tests.common import tagged
 
 from ..hooks import _install_proposal_multi_template
@@ -13,6 +15,11 @@ from ..hooks import _install_proposal_multi_template
 from .common_servico import AfrServicoTestCommon
 
 GRAND_LABEL = "Valor Geral da Proposta"
+COVER_DEFAULT = "Qualificação de Equipamentos"
+# Textos de qualificação que não podem aparecer numa cotação só de serviços.
+QUALIF_TEXTS = (
+    COVER_DEFAULT, "Qualificação Térmica", "Qualificação de Instalação",
+)
 
 
 @tagged("afr_qualificacao", "post_install", "-at_install")
@@ -55,6 +62,30 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
         )
         return html.decode() if isinstance(html, bytes) else html
 
+    def _render_portal(self, order):
+        return str(self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": order},
+        ))
+
+    def _qualif_order(self, template):
+        order = self._make_order()
+        order.proposal_template_id = template
+        wiz = self.env["afr.qualificacao.configurator"].create({
+            "sale_order_id": order.id,
+        })
+        self.env["afr.qualificacao.configurator.equipment"].create({
+            "wizard_id": wiz.id,
+            "equipment_id": self.equip1.id,
+            "do_qi": True,
+        })
+        wiz.action_apply()
+        return order
+
+    def _text_only(self, html):
+        """HTML sem data-URIs (logos em base64 dão falso positivo de "QI")."""
+        return re.sub(r"data:[^\"')]+", "", html)
+
     # -- instalação --------------------------------------------------------
 
     def test_template_installed(self):
@@ -77,6 +108,15 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
         )
         children = self.template.line_ids.filtered("parent_id")
         self.assertEqual(len(children), 6)
+        # Metodologia e aceite próprios (as compartilhadas falam de qualificação)
+        by_xmlid = lambda suffix: self.env.ref(
+            "afr_qualificacao.proposal_template_multi_%s" % suffix)
+        self.assertEqual(
+            by_xmlid("m02").section_id,
+            self.env.ref("afr_qualificacao.proposal_section_metodologia_multi"))
+        self.assertEqual(
+            by_xmlid("m24").section_id,
+            self.env.ref("afr_qualificacao.proposal_section_aceite_multi"))
 
     def test_is_default_for_new_quotes(self):
         self.assertEqual(
@@ -191,3 +231,67 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
         self._assert_no_gap(toc, body)
         self.assertIn(title, html)
         self.assertEqual(html.count(GRAND_LABEL), 1)
+
+    # -- textos que citam só o que foi cotado ------------------------------
+
+    def test_services_only_texts_without_qualification(self):
+        order = self._seeded_order()
+        titles = "Calibração de Instrumentos e NR-13"
+        pdf = self._text_only(self._render(order))
+        portal = self._text_only(self._render_portal(order))
+        for label, html in (("pdf", pdf), ("portal", portal)):
+            self.assertIn(titles, html, label)
+            for text in QUALIF_TEXTS:
+                self.assertNotIn(text, html, (label, text))
+            self.assertIsNone(re.search(r"\bQI\b", html), label)
+        self.assertIn(
+            '<div class="qq-cover-subtitle">\n                        '
+            + titles, pdf)
+        self.assertIn(
+            "serviços de Calibração de Instrumentos e NR-13, conforme o escopo",
+            pdf)
+
+    def test_qualif_only_labquali_keeps_texts(self):
+        labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
+        order = self._qualif_order(labquali)
+        self.assertEqual(order._proposal_cover_subtitle(), COVER_DEFAULT)
+        pdf = self._render(order)
+        portal = self._render_portal(order)
+        self.assertIn(COVER_DEFAULT, pdf)
+        self.assertIn(COVER_DEFAULT, portal)
+        for html in (pdf, portal):
+            self.assertIn("A qualificação térmica é parte integrante", html)
+            self.assertIn("serviços de Qualificação Térmica e Calibração", html)
+
+    def test_mixed_cover_subtitle(self):
+        order = self._seeded_order(with_qualif=True)
+        expected = "Qualificação Térmica, Calibração de Instrumentos e NR-13"
+        self.assertEqual(order._proposal_cover_subtitle(), expected)
+        self.assertIn(expected, self._render(order))
+        self.assertIn(expected, self._render_portal(order))
+
+    # -- reapontamento de m02/m24 em bases que já tinham o template --------
+
+    def test_repoint_old_sections(self):
+        line = self.env.ref("afr_qualificacao.proposal_template_multi_m02")
+        old = self.env.ref("afr_qualificacao.proposal_section_metodologia")
+        new = self.env.ref("afr_qualificacao.proposal_section_metodologia_multi")
+        line.section_id = old
+        _install_proposal_multi_template(self.env)
+        self.assertEqual(line.section_id, new)
+        line_aceite = self.env.ref("afr_qualificacao.proposal_template_multi_m24")
+        line_aceite.section_id = self.env.ref("afr_qualificacao.proposal_section_aceite")
+        _install_proposal_multi_template(self.env)
+        self.assertEqual(
+            line_aceite.section_id,
+            self.env.ref("afr_qualificacao.proposal_section_aceite_multi"))
+
+    def test_repoint_leaves_user_edit_untouched(self):
+        line = self.env.ref("afr_qualificacao.proposal_template_multi_m02")
+        custom = self.env["afr.proposal.section"].create({
+            "name": "Metodologia do cliente", "category": "metodologia",
+            "document_type": "proposal",
+        })
+        line.section_id = custom
+        _install_proposal_multi_template(self.env)
+        self.assertEqual(line.section_id, custom)

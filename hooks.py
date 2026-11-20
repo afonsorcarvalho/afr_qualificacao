@@ -47,7 +47,7 @@ PROPOSAL_TEMPLATE_LINES = [
 PROPOSAL_MULTI_TEMPLATE_LINES = [
     ("m01", 10, "static", "proposal_section_objetivo_multi", True, None,
      "always", None, None),
-    ("m02", 20, "static", "proposal_section_metodologia", False, None,
+    ("m02", 20, "static", "proposal_section_metodologia_multi", False, None,
      "always", None, None),
     ("m03", 30, "standards_table", None, False, None,
      "always", None, None),
@@ -92,9 +92,18 @@ PROPOSAL_MULTI_TEMPLATE_LINES = [
      "always", None, None),
     ("m23", 230, "acceptance", None, True, None,
      "always", None, None),
-    ("m24", 240, "static", "proposal_section_aceite", False, None,
+    ("m24", 240, "static", "proposal_section_aceite_multi", False, None,
      "always", None, None),
 ]
+
+
+# Linhas do TPL-MULTI que nasceram apontando para seções compartilhadas com o
+# TPL-LABQUALI (falam de qualificação) e passaram a ter seção própria.
+# {sufixo: (xmlid antigo, xmlid novo)}. Ver `_install_proposal_multi_template`.
+PROPOSAL_MULTI_SECTION_REPOINTS = {
+    "m02": ("proposal_section_metodologia", "proposal_section_metodologia_multi"),
+    "m24": ("proposal_section_aceite", "proposal_section_aceite_multi"),
+}
 
 
 PARTE_01_NAME = "Parte 01"
@@ -587,6 +596,22 @@ def _seed_relatorio_templates(env):
                 by_suffix[suffix].parent_id = by_suffix[parent_suffix].id
 
 
+def _repoint_proposal_multi_sections(env):
+    """Reaponta m02/m24 do TPL-MULTI para as seções próprias do template.
+
+    Só para bases que já tinham o TPL-MULTI com as seções compartilhadas
+    (versão ainda não liberada). Mexe somente na linha que AINDA aponta para
+    a seção antiga exata — edição manual posterior do usuário é preservada.
+    """
+    for suffix, (old_xmlid, new_xmlid) in PROPOSAL_MULTI_SECTION_REPOINTS.items():
+        line = env.ref(f"afr_qualificacao.proposal_template_multi_{suffix}",
+                       raise_if_not_found=False)
+        old = env.ref(f"afr_qualificacao.{old_xmlid}", raise_if_not_found=False)
+        new = env.ref(f"afr_qualificacao.{new_xmlid}", raise_if_not_found=False)
+        if line and old and new and line.section_id == old:
+            line.section_id = new.id
+
+
 def _install_proposal_multi_template(env):
     """Cria o template ‘Proposta Multi-serviço’ (TPL-MULTI), idempotente.
 
@@ -599,6 +624,7 @@ def _install_proposal_multi_template(env):
     """
     if env.ref("afr_qualificacao.proposal_template_multi",
                raise_if_not_found=False):
+        _repoint_proposal_multi_sections(env)
         return
 
     Template = env["afr.proposal.template"]

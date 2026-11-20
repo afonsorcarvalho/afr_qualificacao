@@ -81,4 +81,37 @@
             </div>
         </field>
     </record>
+
+    <!-- Metodologia e Aceite próprios do TPL-MULTI: as seções compartilhadas
+         com o TPL-LABQUALI falam de qualificação mesmo numa cotação só de
+         serviços. A explicação de QI/QO/QD fica no capítulo de qualificação,
+         que só aparece quando há qualificação. -->
+    <record id="proposal_section_metodologia_multi" model="afr.proposal.section">
+        <field name="code">SEC-METODOLOGIA-MULTI</field>
+        <field name="name">Metodologia</field>
+        <field name="category">metodologia</field>
+        <field name="document_type">proposal</field>
+        <field name="sequence">22</field>
+        <field name="body" type="html">
+            <div>
+                <p>A estratégia de execução incorpora metodologias comprovadas,
+                executadas segundo critérios de qualidade e princípios de
+                organização, atendendo aos requisitos normativos e à legislação
+                aplicável a cada processo.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_aceite_multi" model="afr.proposal.section">
+        <field name="code">SEC-ACEITE-MULTI</field>
+        <field name="name">Aceite da Proposta</field>
+        <field name="category">aceite</field>
+        <field name="document_type">proposal</field>
+        <field name="sequence">142</field>
+        <field name="body" type="html">
+            <div>
+                <p>Declaro que li, compreendi e concordo com os termos técnicos e comerciais descritos nesta proposta, referente à prestação de serviços de {{ doc._proposal_service_titles() }}, conforme o escopo apresentado. Autorizo {{ company.name }} a iniciar os serviços mediante agendamento prévio.</p>
+            </div>
+        </field>
+    </record>
 </odoo>
