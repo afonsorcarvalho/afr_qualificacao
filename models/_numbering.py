@@ -29,18 +29,26 @@ def sort_key(record):
     return (record.sequence, rec_id)
 
 
-def hierarchical_numbering(records):
+def hierarchical_numbering(records, promote_children_of=()):
     """Retorna {record.id: '1' | '3.1' | '1.1.1' | ''}.
 
     Registros com show_number=False recebem ''. Filho de pai sem número (ou
     de pai fora do conjunto) numera a partir de 1 sem prefixo — comportamento
-    histórico da cotação, mantido sem mudança.
+    histórico da cotação, mantido por padrão.
+
+    `promote_children_of`: ids de pais que ficaram de fora de `records` de
+    propósito; o filho de um deles assume o lugar do pai e numera como raiz,
+    na ordem de `sequence` (a cotação usa isso quando o pai não imprime
+    capítulo). Pai ausente por outro motivo segue a regra histórica.
     """
+    records = list(records)
+    promoted = set(promote_children_of)
     numbers = {}
     root_counter = 0
     child_counters = {}
     for rec in sorted(records, key=sort_key):
-        if not rec.parent_id:
+        is_root = not rec.parent_id or rec.parent_id.id in promoted
+        if is_root:
             if rec.show_number:
                 root_counter += 1
                 numbers[rec.id] = str(root_counter)

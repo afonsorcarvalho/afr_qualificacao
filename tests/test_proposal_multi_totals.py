@@ -435,17 +435,22 @@ class TestProposalMultiTotals(AfrServicoTestCommon):
         self.assertIn(scope, order._proposal_chapter_blocks())
         self.assertTrue(order._proposal_block_numbering()[scope.id])
 
-        # Sem normas, a tabela de normas (que não imprime) sai da numeração;
-        # o resto segue a numeração de sempre.
+        # Sem normas e sem opcionais, os blocos que não imprimem saem da
+        # numeração (e seus filhos assumem o lugar do pai); o resto segue a
+        # numeração de sempre.
         self.assertFalse(order.qualif_standard_ids)
         visible = order._proposal_visible_blocks()
         self.assertEqual(
             order._proposal_block_numbering(),
-            hierarchical_numbering(visible.filtered(
-                lambda b: b.block_kind != "standards_table")),
+            hierarchical_numbering(
+                visible.filtered(lambda b: b.block_kind not in (
+                    "standards_table", "optionals")),
+                promote_children_of=(
+                    order._proposal_non_chapter_blocks().ids),
+            ),
         )
 
-        # Com norma, a numeração é exatamente a de todos os visíveis.
+        # Com norma (sem opcionais) só o bloco de opcionais vazio sai.
         self.svc_seladora.standard_ids = self.env[
             "afr.qualificacao.standard"].create({
                 "code": "TST-001", "name": "Norma de Teste"})
@@ -453,5 +458,10 @@ class TestProposalMultiTotals(AfrServicoTestCommon):
         self.assertTrue(order.qualif_standard_ids)
         self.assertEqual(
             order._proposal_block_numbering(),
-            hierarchical_numbering(order._proposal_visible_blocks()),
+            hierarchical_numbering(
+                order._proposal_visible_blocks().filtered(
+                    lambda b: b.block_kind != "optionals"),
+                promote_children_of=(
+                    order._proposal_non_chapter_blocks().ids),
+            ),
         )

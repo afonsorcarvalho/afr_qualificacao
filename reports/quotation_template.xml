@@ -141,7 +141,7 @@
                         <ul class="qq-toc-list">
                             <t t-foreach="toc_blocks" t-as="tb">
                                 <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
-                                <li t-attf-class="qq-toc-item#{' qq-toc-child' if tb.parent_id else ''}">
+                                <li t-attf-class="qq-toc-item#{' qq-toc-child' if doc._proposal_is_child(tb) else ''}">
                                     <a t-attf-href="#qq-anchor-#{tb.id}" class="qq-toc-link">
                                         <span class="qq-toc-num" t-if="tb_num"><t t-esc="tb_num"/></span>
                                         <span class="qq-toc-title" t-esc="tb.title or tb.display_name"/>
@@ -166,7 +166,7 @@
                            t-value="'qq-section' if block.page_break else 'qq-section qq-section-cont'"/>
                         <!-- F9.1 — número hierárquico e flag de filho para indent -->
                         <t t-set="blk_num" t-value="block_numbers.get(block.id, '')"/>
-                        <t t-set="is_child" t-value="bool(block.parent_id)"/>
+                        <t t-set="is_child" t-value="doc._proposal_is_child(block)"/>
                         <!-- F9.2 — anchor interno para links do TOC.
                              IMPORTANTE: WebKit (wkhtmltopdf) REMOVE âncoras vazias.
                              Conteúdo &#160; (nbsp) impede remoção. Ref:

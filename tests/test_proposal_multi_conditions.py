@@ -214,3 +214,132 @@ class TestProposalMultiConditions(AfrServicoTestCommon):
         wiz.action_apply()
         self.assertTrue(order.has_qualif_lines)
         self.assertEqual(block_c.display_number, "3")
+
+    # -- Task 9 (fix 2): capítulos que não imprimem ------------------------
+
+    def _numbers_template(self, kinds):
+        """Template: A static, `kinds` (bloco, pai?) e D static.
+
+        `kinds`: lista de (chave, block_kind, parent_key|None, section_key).
+        """
+        tpl = self.env["afr.proposal.template"].create({
+            "name": "Tpl Capitulos Teste",
+        })
+        lines = {}
+        for index, (key, kind, parent, sec) in enumerate(kinds):
+            vals = {
+                "template_id": tpl.id,
+                "sequence": (index + 1) * 10,
+                "block_kind": kind,
+            }
+            if sec:
+                vals["section_id"] = self.sec[sec].id
+            if parent:
+                vals["parent_id"] = lines[parent].id
+            lines[key] = self.env["afr.proposal.template.line"].create(vals)
+        return tpl
+
+    def _chapters_order(self, tpl):
+        order = self._make_order()
+        self._add_service(order, self.svc_seladora, 2)
+        order.proposal_template_id = tpl
+        order._seed_proposal_blocks()
+        return order
+
+    def _printed(self, order):
+        import re
+        html = self._render(order)
+        toc = re.findall(r'qq-toc-num">\s*([\d.]+)\s*<', html)
+        body = re.findall(r'>([\d.]+)</span> — ', html)
+        return html, toc, body
+
+    def test_child_of_dropped_parent_becomes_chapter(self):
+        tpl = self._numbers_template([
+            ("A", "static", None, "A"),
+            ("B", "standards_table", None, None),
+            ("C", "static", "B", "C"),
+            ("D", "static", None, "D"),
+        ])
+        order = self._chapters_order(tpl)
+        block_a, block_c, block_d = (
+            self._block(order, k) for k in ("A", "C", "D"))
+        block_b = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "standards_table")
+        self.assertFalse(order.qualif_standard_ids)
+
+        numbers = order._proposal_block_numbering()
+        self.assertEqual(
+            [numbers.get(b.id) for b in (block_a, block_c, block_d)],
+            ["1", "2", "3"])
+        self.assertNotIn(block_b.id, numbers)
+        self.assertFalse(order._proposal_is_child(block_c))
+        html, toc, body = self._printed(order)
+        self.assertEqual(toc, ["1", "2", "3"])
+        self.assertEqual(body, toc)
+        self.assertNotIn('class="qq-section-title qq-section-title-child"', html)
+        self.assertNotIn("qq-toc-item qq-toc-child", html)
+
+    def test_child_of_standards_table_with_norm_is_numbered_below(self):
+        tpl = self._numbers_template([
+            ("A", "static", None, "A"),
+            ("B", "standards_table", None, None),
+            ("C", "static", "B", "C"),
+            ("D", "static", None, "D"),
+        ])
+        self.svc_seladora.standard_ids = self.env[
+            "afr.qualificacao.standard"].create({
+                "code": "TST-001", "name": "Norma de Teste"})
+        order = self._chapters_order(tpl)
+        block_b = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "standards_table")
+        numbers = order._proposal_block_numbering()
+        self.assertEqual(
+            [numbers[self._block(order, "A").id], numbers[block_b.id],
+             numbers[self._block(order, "C").id],
+             numbers[self._block(order, "D").id]],
+            ["1", "2", "2.1", "3"])
+        self.assertTrue(order._proposal_is_child(self._block(order, "C")))
+        html, toc, body = self._printed(order)
+        self.assertEqual(toc, ["1", "2", "2.1", "3"])
+        self.assertEqual(body, toc)
+        self.assertIn('class="qq-section-title qq-section-title-child"', html)
+        self.assertIn("qq-toc-item qq-toc-child", html)
+
+    def test_optionals_block_numbered_only_with_optional_lines(self):
+        tpl = self._numbers_template([
+            ("A", "static", None, "A"),
+            ("O", "optionals", None, None),
+            ("D", "static", None, "D"),
+        ])
+        order = self._chapters_order(tpl)
+        block_o = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "optionals")
+        self.assertIn(block_o, order._proposal_visible_blocks())
+        self.assertNotIn(block_o, order._proposal_chapter_blocks())
+        numbers = order._proposal_block_numbering()
+        self.assertEqual(numbers[self._block(order, "A").id], "1")
+        self.assertEqual(numbers[self._block(order, "D").id], "2")
+        self.assertNotIn(block_o.id, numbers)
+        html, toc, body = self._printed(order)
+        self.assertEqual(toc, ["1", "2"])
+        self.assertEqual(body, toc)
+        self.assertNotIn("Serviços Opcionais", html)
+
+        product = self.env["product.product"].create({
+            "name": "Test Pasta", "type": "service", "list_price": 150.0,
+        })
+        optional = self.env["sale.order.line"].create({
+            "order_id": order.id, "product_id": product.id,
+            "name": "Opcional Pasta", "product_uom_qty": 1.0,
+            "price_unit": 150.0, "is_proposal_optional": True,
+            "optional_accepted": False, "optional_qty": 1.0,
+        })
+        optional._sync_optional_qty()
+        self.assertIn(block_o, order._proposal_chapter_blocks())
+        numbers = order._proposal_block_numbering()
+        self.assertEqual(numbers[block_o.id], "2")
+        self.assertEqual(numbers[self._block(order, "D").id], "3")
+        html, toc, body = self._printed(order)
+        self.assertEqual(toc, ["1", "2", "3"])
+        self.assertEqual(body, toc)
+        self.assertIn("Serviços Opcionais", html)

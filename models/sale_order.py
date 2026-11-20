@@ -1295,7 +1295,10 @@ class SaleOrder(models.Model):
         Implementação em models/_numbering.py (compartilhada com o relatório final).
         """
         self.ensure_one()
-        return hierarchical_numbering(self._proposal_chapter_blocks())
+        return hierarchical_numbering(
+            self._proposal_chapter_blocks(),
+            promote_children_of=self._proposal_non_chapter_blocks().ids,
+        )
 
     def _proposal_visible_blocks(self):
         """Blocos que entram no documento: `included` e condição satisfeita.
@@ -1316,12 +1319,15 @@ class SaleOrder(models.Model):
         - `equipment_scope` sem qualificação: pode ser visível (template
           antigo, só para emitir os totais), mas sem equipamento não há
           escopo a imprimir;
-        - `standards_table` sem normas a listar: o bloco se omite inteiro.
+        - `standards_table` sem normas a listar: o bloco se omite inteiro;
+        - `optionals` sem linha opcional: idem (`_proposal_optional_lines`).
+
+        (`schedule` sem linhas continua capítulo: imprime o título.)
 
         `_proposal_visible_blocks` e `_proposal_totals_emitter` não mudam,
-        então os totais saem uma vez, no mesmo lugar. (Filho de um bloco
-        excluído, se existisse, numeraria a partir de 1 sem prefixo, como
-        todo filho de pai fora do conjunto.)
+        então os totais saem uma vez, no mesmo lugar. Filho de um bloco
+        excluído assume o lugar do pai (ver `_proposal_non_chapter_blocks`,
+        `_proposal_is_child` e `hierarchical_numbering`).
         """
         self.ensure_one()
         skipped = set()
@@ -1329,10 +1335,34 @@ class SaleOrder(models.Model):
             skipped.add("equipment_scope")
         if not self.qualif_standard_ids:
             skipped.add("standards_table")
+        if not self._proposal_optional_lines():
+            skipped.add("optionals")
         blocks = self._proposal_visible_blocks()
         if skipped:
             blocks = blocks.filtered(lambda b: b.block_kind not in skipped)
         return blocks
+
+    def _proposal_non_chapter_blocks(self):
+        """Visíveis que não imprimem capítulo (`_proposal_chapter_blocks`)."""
+        self.ensure_one()
+        return self._proposal_visible_blocks() - self._proposal_chapter_blocks()
+
+    def _proposal_optional_lines(self):
+        """Linhas opcionais que o bloco `optionals` imprime (PDF e portal)."""
+        self.ensure_one()
+        return self.order_line.filtered("is_proposal_optional")
+
+    def _proposal_is_child(self, block):
+        """True se `block` imprime como subcapítulo (recuado, com pai numerado).
+
+        Pai visível que não é capítulo (ex.: tabela de normas sem normas)
+        deixa o filho como capítulo de topo; a numeração segue a mesma regra
+        (`_proposal_block_numbering`).
+        """
+        self.ensure_one()
+        return bool(block.parent_id) and (
+            block.parent_id not in self._proposal_non_chapter_blocks()
+        )
 
     def _proposal_toc_blocks(self):
         """Blocos do índice: capítulos com título."""

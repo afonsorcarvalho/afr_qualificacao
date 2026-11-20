@@ -102,7 +102,7 @@
                     <ul class="lq-toc-list">
                         <t t-foreach="toc_blocks" t-as="tb">
                             <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
-                            <li t-attf-class="lq-toc-item#{' lq-toc-child' if tb.parent_id else ''}">
+                            <li t-attf-class="lq-toc-item#{' lq-toc-child' if sale_order._proposal_is_child(tb) else ''}">
                                 <a t-attf-href="#lq-anchor-#{tb.id}" class="lq-toc-link">
                                     <span class="lq-toc-num" t-if="tb_num">
                                         <t t-esc="tb_num"/>
@@ -123,7 +123,7 @@
 
             <t t-foreach="sale_order._proposal_visible_blocks()" t-as="block">
                 <t t-set="blk_num" t-value="block_numbers.get(block.id, '')"/>
-                <t t-set="is_child" t-value="bool(block.parent_id)"/>
+                <t t-set="is_child" t-value="sale_order._proposal_is_child(block)"/>
                 <a t-attf-id="lq-anchor-#{block.id}" class="lq-anchor">&#160;</a>
 
                 <!-- Bloco de texto estático -->
@@ -428,7 +428,7 @@
                 <!-- Serviços opcionais -->
                 <t t-if="block.block_kind == 'optionals'">
                     <t t-set="opt_lines"
-                       t-value="sale_order.order_line.filtered('is_proposal_optional')"/>
+                       t-value="sale_order._proposal_optional_lines()"/>
                     <section class="lq-section" t-if="opt_lines">
                         <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
                              t-if="block.show_title">

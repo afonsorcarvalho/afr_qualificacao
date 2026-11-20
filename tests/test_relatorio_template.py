@@ -78,6 +78,35 @@ class TestHierarchicalNumbering(TransactionCase):
     def test_empty(self):
         self.assertEqual(hierarchical_numbering([]), {})
 
+    def _orphan_tree(self):
+        gone = _rec(99, 25)  # pai que não está no conjunto
+        a = _rec(1, 10)
+        c = _rec(3, 30, parent=gone)
+        grandchild = _rec(4, 35, parent=c)
+        d = _rec(2, 40)
+        return [d, grandchild, c, a]
+
+    def test_orphan_child_default_numbers_from_one(self):
+        """Padrão (relatório final): filho de pai ausente numera de 1."""
+        self.assertEqual(
+            hierarchical_numbering(self._orphan_tree()),
+            {1: "1", 3: "1", 4: "1.1", 2: "2"},
+        )
+
+    def test_promote_children_of(self):
+        """Cotação: filho de pai que não imprime assume o lugar dele."""
+        self.assertEqual(
+            hierarchical_numbering(
+                self._orphan_tree(), promote_children_of=[99]),
+            {1: "1", 3: "2", 4: "2.1", 2: "3"},
+        )
+        # Pai ausente que não está na lista: regra histórica.
+        self.assertEqual(
+            hierarchical_numbering(
+                self._orphan_tree(), promote_children_of=[1234]),
+            {1: "1", 3: "1", 4: "1.1", 2: "2"},
+        )
+
 
 class TestNumberingParity(AfrQualificacaoTestCommon):
     """Cotação (template + blocos) mantém exatamente a numeração antiga."""
