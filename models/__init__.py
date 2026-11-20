@@ -25,6 +25,7 @@ from . import qualificacao
 from . import docx_template
 from . import sale_order_line
 from . import sale_order
+from . import sale_order_servico       # Cotação multi-serviço — helpers do sale.order
 from . import sale_order_form_panels
 from . import engc_os
 from . import res_config_settings        # F4 (16.0.3.3.0)

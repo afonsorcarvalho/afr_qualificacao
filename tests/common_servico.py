@@ -58,3 +58,12 @@ class AfrServicoTestCommon(AfrQualificacaoTestCommon):
         return cls.env["sale.order"].create({
             "partner_id": (partner or cls.partner).id,
         })
+
+    @classmethod
+    def _add_service(cls, order, service, qty, unit_price=None):
+        """Cria uma linha de serviço (via `_service_line_vals`) em `order`."""
+        vals = cls.env["sale.order.line"]._service_line_vals(
+            service, qty, unit_price=unit_price,
+        )
+        vals["order_id"] = order.id
+        return cls.env["sale.order.line"].create(vals)

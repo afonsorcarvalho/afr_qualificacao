@@ -156,3 +156,6 @@ from . import test_qualif_discount
 
 # Cotação multi-serviço — Task 1: catálogo de serviços
 from . import test_servico_catalog
+
+# Cotação multi-serviço — Task 2: linhas de serviço
+from . import test_servico_lines

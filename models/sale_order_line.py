@@ -44,6 +44,32 @@ class SaleOrderLine(models.Model):
             "re-apply, mas NÃO geram qualificação no confirm do SO."
         ),
     )
+    # Linha de serviço do catálogo (cotação multi-serviço). Diferente da linha
+    # de qualificação: product_uom_qty = nº de unidades, price_unit = preço
+    # por unidade, estimated_hours = horas por unidade. Nunca é
+    # is_qualificacao_managed nem carrega equipamento/tipo de qualificação.
+    service_id = fields.Many2one(
+        comodel_name="afr.servico",
+        string="Serviço",
+        ondelete="restrict",
+        copy=True,
+        help="Serviço do catálogo cotado por unidade nesta linha.",
+    )
+    is_service_managed = fields.Boolean(
+        string="Gerenciado por Serviço",
+        default=False,
+        copy=True,
+        help=(
+            "Marca linhas de serviço do catálogo (afr.servico) cotadas por "
+            "unidade. Não gera qualificação nem usa equipamento."
+        ),
+    )
+    service_group_id = fields.Many2one(
+        comodel_name="afr.servico.grupo",
+        related="service_id.group_id",
+        string="Grupo do Serviço",
+        store=True,
+    )
     is_qualif_discount_line = fields.Boolean(
         string="Linha de Desconto Geral",
         default=False,
@@ -362,9 +388,15 @@ class SaleOrderLine(models.Model):
         """
         # A linha de desconto geral também é congelada: o preço dela vem
         # do sync (-valor), nunca da pricelist do produto "Desconto" (0).
+        # Linha de serviço também: price_unit é o preço por unidade do
+        # catálogo (ou o negociado), não pode voltar à tabela ao mudar a qty.
         frozen = self.filtered(
             lambda l: l._origin.id
-            and (l.is_rateio_priced or l.is_qualif_discount_line)
+            and (
+                l.is_rateio_priced
+                or l.is_qualif_discount_line
+                or l.is_service_managed
+            )
         )
         super(SaleOrderLine, self - frozen)._compute_price_unit()
 
@@ -840,6 +872,64 @@ class SaleOrderLine(models.Model):
                 raise ValidationError(_(
                     "Calibração requer Tipo de Malha na linha."
                 ))
+
+    @api.constrains(
+        "is_service_managed",
+        "service_id",
+        "is_qualificacao_managed",
+        "equipment_id",
+        "qualification_type",
+    )
+    def _check_service_line_consistency(self):
+        for line in self:
+            if not line.is_service_managed:
+                continue
+            if not line.service_id:
+                raise ValidationError(_(
+                    "Linha de serviço requer um serviço do catálogo."
+                ))
+            if (
+                line.is_qualificacao_managed
+                or line.equipment_id
+                or line.qualification_type
+            ):
+                raise ValidationError(_(
+                    "Linha de serviço não pode ser de qualificação nem "
+                    "ter equipamento ou tipo de qualificação."
+                ))
+
+    @api.model
+    def _service_line_vals(
+        self, service, qty, unit_price=None, estimated_hours=None,
+    ):
+        """Vals de uma linha de serviço (sem `order_id`).
+
+        `qty` = nº de unidades; `unit_price`/`estimated_hours` default vêm
+        do catálogo (`service._default_unit_price()` / `estimated_hours`).
+        """
+        service.ensure_one()
+        return {
+            "product_id": service.product_id.id,
+            "name": service.name,
+            "service_id": service.id,
+            "is_service_managed": True,
+            "product_uom_qty": qty,
+            "price_unit": (
+                service._default_unit_price()
+                if unit_price is None else unit_price
+            ),
+            "estimated_hours": (
+                service.estimated_hours
+                if estimated_hours is None else estimated_hours
+            ),
+        }
+
+    def _service_hours(self):
+        """Horas da linha de serviço: unidades x horas por unidade."""
+        self.ensure_one()
+        if not self.is_service_managed:
+            return 0.0
+        return self.product_uom_qty * self.estimated_hours
 
     @api.onchange("product_id")
     def _onchange_product_id_clear_qualif_meta(self):
