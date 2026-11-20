@@ -28,6 +28,7 @@
                             <field name="code"/>
                             <field name="chapter_title"/>
                             <field name="unit_label"/>
+                            <field name="unit_label_plural"/>
                         </group>
                         <group>
                             <field name="sequence"/>

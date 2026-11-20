@@ -50,7 +50,7 @@
                         <p style="margin:0 0 20px 0;">
                             É com satisfação que apresentamos nossa
                             <strong style="color:#0A3D62;">Proposta Técnico-Comercial</strong>
-                            para os serviços de Qualificação de Equipamentos solicitados,
+                            para os serviços de <t t-out="object._proposal_cover_subtitle()"/> solicitados,
                             elaborada em conformidade com os requisitos do seu processo.
                         </p>
 

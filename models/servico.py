@@ -34,6 +34,14 @@ class AfrServicoGrupo(models.Model):
         default="unidade",
         help="Como a unidade cotada é chamada (ex.: instrumento, equipamento).",
     )
+    unit_label_plural = fields.Char(
+        string="Rótulo da Unidade (plural)",
+        translate=True,
+        help=(
+            "Plural do rótulo, usado em \"Relação de …\" na proposta (ex.: "
+            "exaustores). Vazio = rótulo + \"s\"."
+        ),
+    )
     service_ids = fields.One2many(
         comodel_name="afr.servico",
         inverse_name="group_id",
@@ -44,6 +52,11 @@ class AfrServicoGrupo(models.Model):
         """Título do capítulo na proposta: `chapter_title` ou o nome do grupo."""
         self.ensure_one()
         return self.chapter_title or self.name
+
+    def _unit_label_plural(self):
+        """Plural do rótulo da unidade: `unit_label_plural` ou rótulo + "s"."""
+        self.ensure_one()
+        return self.unit_label_plural or "%ss" % (self.unit_label or "unidade")
 
 
 class AfrServico(models.Model):
@@ -81,7 +94,7 @@ class AfrServico(models.Model):
     )
     estimated_hours = fields.Float(
         string="Horas Estimadas",
-        digits="Product Price",
+        digits=(16, 2),
         help="Horas estimadas por unidade cotada (base do cronograma).",
     )
     scope_description = fields.Text(

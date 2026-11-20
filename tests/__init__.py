@@ -181,3 +181,4 @@ from . import test_proposal_multi_template
 # Cotação multi-serviço — onda final de correções (revisão da branch)
 from . import test_servico_onchange
 from . import test_proposal_multi_chapters
+from . import test_servico_texts

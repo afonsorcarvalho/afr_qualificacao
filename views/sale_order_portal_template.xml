@@ -267,7 +267,7 @@
                                 <table class="table table-sm lq-table">
                                     <thead>
                                         <tr>
-                                            <th>Equipamento</th>
+                                            <th t-esc="'Equipamento / Serviço' if any(not r['equipment'] for r in rows) else 'Equipamento'"/>
                                             <th class="text-end">h/dia</th>
                                             <th class="text-end">Horas</th>
                                             <th class="text-end">Dias úteis</th>
@@ -361,7 +361,7 @@
                             </tr>
                         </table>
                         <t t-if="sg_table['units']">
-                            <p class="mt-3"><strong t-esc="'Relação de %ss' % (block.service_group_id.unit_label or 'unidade')"/></p>
+                            <p class="mt-3"><strong t-esc="'Relação de %s' % block.service_group_id._unit_label_plural()"/></p>
                             <div class="table-responsive">
                                 <table class="table table-sm lq-table">
                                     <thead>

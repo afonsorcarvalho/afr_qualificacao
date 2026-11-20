@@ -10,6 +10,8 @@ manter em data/*.xml com noupdate="1".
 
 import logging
 
+from psycopg2.extras import Json
+
 from odoo import api, SUPERUSER_ID
 
 _logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ PROPOSAL_TEMPLATE_LINES = [
 
 
 # Template multi-serviço "TPL-MULTI" (cotação de qualificação e/ou serviços
-# por unidade). Default das cotações novas (sequence 1); as linhas
+# por unidade). Default das cotações novas (menor sequence); as linhas
 # condicionais fazem a proposta se adaptar ao que foi cotado.
 # Tuple por linha: (xmlid_suffix, sequence, block_kind, section_xmlid|None,
 #                   page_break, parent_xmlid_suffix|None, applies_when,
@@ -597,6 +599,7 @@ def _seed_relatorio_templates(env):
 
 
 def _repoint_proposal_multi_sections(env):
+    # Andaime: só serve a bancos que viram a 16.0.9.3.0 intermediária não liberada.
     """Reaponta m02/m24 do TPL-MULTI para as seções próprias do template.
 
     Só para bases que já tinham o TPL-MULTI com as seções compartilhadas
@@ -612,6 +615,78 @@ def _repoint_proposal_multi_sections(env):
             line.section_id = new.id
 
 
+def _proposal_multi_default_sequence(env):
+    """`sequence` do TPL-MULTI ao criá-lo: abaixo de todos os templates.
+
+    O default das cotações novas é o template de menor `sequence` (empate
+    desfeito por id, que favorece o mais antigo). `min(existentes) - 1`,
+    nunca acima de 1.
+    """
+    lowest = env["afr.proposal.template"].with_context(
+        active_test=False).search([], order="sequence", limit=1)
+    if not lowest:
+        return 1
+    return min(1, lowest.sequence - 1)
+
+
+# I1 — corpo do e-mail da proposta: a frase fixa "Qualificação de
+# Equipamentos" passa a citar o que foi cotado (`_proposal_cover_subtitle`,
+# que devolve a mesma frase em cotação só de qualificação).
+PROPOSAL_MAIL_OLD_PHRASE = (
+    "para os serviços de Qualificação de Equipamentos solicitados")
+PROPOSAL_MAIL_NEW_PHRASE = (
+    'para os serviços de <t t-out="object._proposal_cover_subtitle()"></t>'
+    " solicitados")
+
+# I2 — plural do rótulo da unidade dos grupos semeados (seed `noupdate`).
+SERVICE_GROUP_PLURALS = {
+    "servico_grupo_calibracao": "instrumentos",
+    "servico_grupo_nr13": "equipamentos",
+    "servico_grupo_vazao": "exaustores",
+}
+
+
+def _upgrade_proposal_mail_body(env):
+    """Troca a frase fixa do e-mail da proposta pelo helper, por xmlid.
+
+    O registro é `noupdate`: só muda o corpo que AINDA contém a frase antiga
+    exata, e só essa frase, em cada idioma guardado. Corpo editado pelo
+    usuário de outro jeito fica como está. Devolve True se alterou.
+    """
+    template = env.ref("afr_qualificacao.email_template_proposal_labquali",
+                       raise_if_not_found=False)
+    if not template:
+        return False
+    env.cr.execute(
+        "SELECT body_html FROM mail_template WHERE id = %s", [template.id])
+    row = env.cr.fetchone()
+    value = row and row[0]
+    if not value:
+        return False
+    if isinstance(value, str):
+        value = {"en_US": value}
+    changed = False
+    for lang, body in value.items():
+        if body and PROPOSAL_MAIL_OLD_PHRASE in body:
+            value[lang] = body.replace(
+                PROPOSAL_MAIL_OLD_PHRASE, PROPOSAL_MAIL_NEW_PHRASE)
+            changed = True
+    if changed:
+        env.cr.execute(
+            "UPDATE mail_template SET body_html = %s WHERE id = %s",
+            [Json(value), template.id])
+        template.invalidate_recordset(["body_html"])
+    return changed
+
+
+def _fill_service_group_plurals(env):
+    """Plural do rótulo dos 3 grupos semeados, só onde está vazio."""
+    for xmlid, plural in SERVICE_GROUP_PLURALS.items():
+        group = env.ref(f"afr_qualificacao.{xmlid}", raise_if_not_found=False)
+        if group and not group.unit_label_plural:
+            group.unit_label_plural = plural
+
+
 def _install_proposal_multi_template(env):
     """Cria o template ‘Proposta Multi-serviço’ (TPL-MULTI), idempotente.
 
@@ -620,7 +695,8 @@ def _install_proposal_multi_template(env):
     `noupdate=True` (o usuário edita à vontade; upgrade não recria). Se o
     xmlid do template já resolve, não faz nada. Chamado pelo hook de install
     e pela migração 16.0.9.3.0 (bases existentes). Cotações já criadas não
-    mudam de template — só as novas pegam o default (sequence 1).
+    mudam de template — só as novas pegam o default (menor `sequence`,
+    ver `_proposal_multi_default_sequence`).
     """
     if env.ref("afr_qualificacao.proposal_template_multi",
                raise_if_not_found=False):
@@ -634,7 +710,7 @@ def _install_proposal_multi_template(env):
     template = Template.create({
         "name": "Proposta Multi-serviço",
         "code": "TPL-MULTI",
-        "sequence": 1,
+        "sequence": _proposal_multi_default_sequence(env),
     })
     ImdData.create({
         "name": "proposal_template_multi",

@@ -11,18 +11,21 @@
         <field name="name">Calibração de Instrumentos</field>
         <field name="sequence">10</field>
         <field name="unit_label">instrumento</field>
+        <field name="unit_label_plural">instrumentos</field>
     </record>
 
     <record id="servico_grupo_nr13" model="afr.servico.grupo">
         <field name="name">NR-13</field>
         <field name="sequence">20</field>
         <field name="unit_label">equipamento</field>
+        <field name="unit_label_plural">equipamentos</field>
     </record>
 
     <record id="servico_grupo_vazao" model="afr.servico.grupo">
         <field name="name">Vazão de Exaustores e Trocas de Ar</field>
         <field name="sequence">30</field>
         <field name="unit_label">exaustor</field>
+        <field name="unit_label_plural">exaustores</field>
     </record>
 
     <!-- Produtos de serviço (um por serviço) -->

@@ -485,13 +485,17 @@ class AfrProposalBlock(models.Model):
         rows = order._qualif_schedule_rows()
         if not rows:
             return Markup("<p></p>")
+        first_col = (
+            "Equipamento / Serviço"
+            if any(not r["equipment"] for r in rows) else "Equipamento"
+        )
         body = [Markup(
             "<table class='qq-table'>"
-            "<thead><tr><th>Equipamento</th>"
+            "<thead><tr><th>%s</th>"
             "<th style='text-align:right;'>Horas</th>"
             "<th style='text-align:right;'>h/dia</th>"
             "<th style='text-align:right;'>Dias úteis</th></tr></thead><tbody>"
-        )]
+        ) % first_col]
         total_h = 0.0
         total_d = 0.0
         for r in rows:
@@ -582,7 +586,7 @@ class AfrProposalBlock(models.Model):
                 "<th>Marca / Modelo</th><th>Série</th><th>Local</th></tr>"
                 "</thead><tbody>%s</tbody></table>"
             ) % (
-                escape("Relação de %ss" % (group.unit_label or "unidade")),
+                escape("Relação de %s" % group._unit_label_plural()),
                 units,
             )
         return html

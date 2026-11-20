@@ -2,6 +2,10 @@
 
 from odoo import _, api, fields, models
 
+# Importado depois de `sale_order` (ver models/__init__.py): não muda a ordem
+# das classes `_inherit = "sale.order"`.
+from .sale_order import SERVICE_WORK_HOURS_PER_DAY
+
 
 class SaleOrderServico(models.Model):
     _inherit = "sale.order"
@@ -212,7 +216,7 @@ class SaleOrderServico(models.Model):
             rows.append({
                 "item": index,
                 "line": line,
-                "name": service.name or line.name or "",
+                "name": line.name or service.name or "",
                 "description": service.scope_description or "",
                 "procedure": procedure,
                 "qty": line.product_uom_qty,
@@ -222,9 +226,13 @@ class SaleOrderServico(models.Model):
         hours = sum(line._service_hours() for line in lines)
         days_label = ""
         if hours > 0:
+            # Jornada fixa de 8,0 h/dia, a mesma das linhas de serviço do
+            # cronograma (`_qualif_schedule_rows`). Sem equipamento, a
+            # jornada "do equipamento" seria a de uma seção manual qualquer.
             days_label = self._qualif_days_label(
                 self._qualif_days_from_hours(
-                    hours, self.env["engc.equipment"]))
+                    hours, self.env["engc.equipment"],
+                    work_hours=SERVICE_WORK_HOURS_PER_DAY))
         units = lines.service_unit_ids.filtered("is_identified").sorted(
             key=lambda u: (u.item_number, u.sequence, u._origin.id or 0))
         return {

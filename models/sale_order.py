@@ -23,6 +23,10 @@ from odoo.tools.misc import formatLang
 
 from ._numbering import hierarchical_numbering
 
+# Jornada (h/dia) usada para converter horas de serviço do catálogo em dias,
+# no capítulo do grupo e nas linhas de serviço do cronograma.
+SERVICE_WORK_HOURS_PER_DAY = 8.0
+
 
 # Sufixo "— N ciclo(s)/malha(s)" anexado pelo configurador ao nome da linha.
 _QTY_SUFFIX_RE = re.compile(r"\s+—\s+\d+\s+(?:ciclo|malha)\(s\)$")
@@ -946,14 +950,15 @@ class SaleOrder(models.Model):
             total += (hours or 0.0) * qty
         return total
 
-    def _qualif_days_from_hours(self, hours, equipment):
+    def _qualif_days_from_hours(self, hours, equipment, work_hours=None):
         """Horas → dias de serviço, arredondado PARA CIMA ao próximo 0,5.
 
         3,2 dias → 3,5; 3,6 → 4,0. `round(..., 6)` antes do ceil evita
-        que 3.0000000001 (ruído de float) vire 3,5.
+        que 3.0000000001 (ruído de float) vire 3,5. `work_hours`: jornada
+        explícita (h/dia); default = a do equipamento.
         """
         self.ensure_one()
-        wh = self._qualif_work_hours_per_day(equipment) or 8.0
+        wh = work_hours or self._qualif_work_hours_per_day(equipment) or 8.0
         return math.ceil(round((hours / wh) * 2, 6)) / 2.0
 
     def _qualif_days_label(self, days):
@@ -1161,8 +1166,8 @@ class SaleOrder(models.Model):
                 "equipment": False,
                 "label": group._chapter_title(),
                 "hours": hours,
-                "work_hours_per_day": 8.0,
-                "days": hours / 8.0,
+                "work_hours_per_day": SERVICE_WORK_HOURS_PER_DAY,
+                "days": hours / SERVICE_WORK_HOURS_PER_DAY,
             })
         return rows
 

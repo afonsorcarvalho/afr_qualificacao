@@ -61,7 +61,7 @@
                                 </table>
                                 <t t-if="sg_table['units']">
                                     <div class="qq-scope-subtitle">
-                                        <strong t-esc="'Relação de %ss' % (block.service_group_id.unit_label or 'unidade')"/>
+                                        <strong t-esc="'Relação de %s' % block.service_group_id._unit_label_plural()"/>
                                     </div>
                                     <table class="qq-table">
                                         <tr>

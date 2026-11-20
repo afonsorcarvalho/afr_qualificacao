@@ -139,10 +139,12 @@ class TestProposalMultiServiceGroup(AfrServicoTestCommon):
         self.assertTrue(block)
         self.assertIn(block, order._proposal_visible_blocks())
         html = self._render(order)
-        # O capítulo vazio não imprime tabela nem subtotal (o título ainda
-        # consta no índice, que lista todo bloco visível).
+        # O capítulo vazio não imprime tabela nem subtotal, nem entra no
+        # índice ou na numeração (`_prints_chapter`).
         self.assertNotIn("Subtotal NR-13", html)
         self.assertNotIn("Valor Unitário", html)
+        self.assertNotIn(block, order._proposal_toc_blocks())
+        self.assertFalse(order._proposal_block_numbering().get(block.id))
 
     def test_render_portal(self):
         order = self._calib_order(qty=3, price=111.0)
