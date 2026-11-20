@@ -177,3 +177,6 @@ from . import test_proposal_multi_service_group
 
 # Cotação multi-serviço — Task 8: template TPL-MULTI e textos
 from . import test_proposal_multi_template
+
+# Cotação multi-serviço — onda final de correções (revisão da branch)
+from . import test_servico_onchange

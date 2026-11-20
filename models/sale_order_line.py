@@ -996,7 +996,7 @@ class SaleOrderLine(models.Model):
                 line=self.name, units=len(identified), qty=keep,
             ))
         pending = (units - identified).sorted(
-            key=lambda u: (u.item_number, u.id), reverse=True)
+            key=lambda u: (u.item_number, u._origin.id or 0), reverse=True)
         pending[:excess].unlink()
 
     @api.model

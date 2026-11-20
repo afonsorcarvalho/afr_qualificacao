@@ -145,7 +145,7 @@ class SaleOrderServico(models.Model):
             )
             for line in lines:
                 for unit in line.service_unit_ids.sorted(
-                    key=lambda u: (u.sequence, u.id)
+                    key=lambda u: (u.sequence, u._origin.id or 0)
                 ):
                     if not unit.item_number:
                         last += 1
@@ -164,12 +164,14 @@ class SaleOrderServico(models.Model):
             and not l.display_type
             and (not group or l.service_group_id == group)
         )
+        # `_origin.id or 0`, nunca `l.id`: no onchange do form as linhas são
+        # virtuais e `NewId` não se compara com `<` (TypeError no empate).
         return lines.sorted(
             key=lambda l: (
                 l.service_group_id.sequence,
-                l.service_group_id.id,
+                l.service_group_id._origin.id or 0,
                 l.service_id.sequence,
-                l.id,
+                l._origin.id or 0,
             )
         )
 
@@ -181,7 +183,7 @@ class SaleOrderServico(models.Model):
         """
         self.ensure_one()
         return self._service_lines().mapped("service_group_id").sorted(
-            key=lambda g: (g.sequence, g.id)
+            key=lambda g: (g.sequence, g._origin.id or 0)
         )
 
     def _service_group_table(self, group):
@@ -224,7 +226,7 @@ class SaleOrderServico(models.Model):
                 self._qualif_days_from_hours(
                     hours, self.env["engc.equipment"]))
         units = lines.service_unit_ids.filtered("is_identified").sorted(
-            key=lambda u: (u.item_number, u.sequence, u.id))
+            key=lambda u: (u.item_number, u.sequence, u._origin.id or 0))
         return {
             "group": group,
             "rows": rows,
