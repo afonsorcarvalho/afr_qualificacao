@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="qq_block_sales_items">
-                            <t t-set="sale_lines" t-value="doc.order_line.filtered(lambda l: not l.display_type and not l.is_proposal_optional)"/>
-                            <div t-att-class="sec_class" t-if="sale_lines">
+                            <t t-set="sale_lines" t-value="doc._proposal_sales_item_lines()"/>
+                            <div t-att-class="sec_class" t-if="block._prints_chapter()">
                                 <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
                                      t-if="block.show_title">
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>

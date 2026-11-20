@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="qq_block_standards_table">
-                            <div t-att-class="sec_class" t-if="doc.qualif_standard_ids">
+                            <div t-att-class="sec_class" t-if="block._prints_chapter()">
                                 <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
                                      t-if="block.show_title">
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>

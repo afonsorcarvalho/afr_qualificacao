@@ -6,7 +6,7 @@
          snapshot HTML). Sem linhas do grupo, não imprime nada. -->
     <template id="qq_block_service_group">
                             <t t-set="sg_table" t-value="doc._service_group_table(block.service_group_id) if block.service_group_id else {'rows': []}"/>
-                            <div t-att-class="sec_class" t-if="sg_table['rows']">
+                            <div t-att-class="sec_class" t-if="block._prints_chapter()">
                                 <t t-set="sg_title" t-value="block.service_group_id._chapter_title()"/>
                                 <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
                                      t-if="block.show_title">

@@ -222,9 +222,11 @@
 
                     </t>
                     <!-- Sem emissor de totais (nenhum bloco `financial` nem
-                         `equipment_scope` visível): a tabela sai depois do
-                         último bloco, para o total nunca faltar. -->
-                    <t t-if="not doc._proposal_totals_emitter() and doc.is_managed_quote">
+                         `equipment_scope` visível) e sem bloco `sales_items`
+                         que já feche com o próprio total: a tabela sai
+                         depois do último bloco, para o total nunca faltar
+                         (`_proposal_trailing_totals`, mesma regra do portal). -->
+                    <t t-if="doc._proposal_trailing_totals()">
                         <div class="qq-section qq-section-cont">
                             <t t-call="afr_qualificacao.qq_totals_table"/>
                         </div>

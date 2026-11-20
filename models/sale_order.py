@@ -1314,33 +1314,21 @@ class SaleOrder(models.Model):
     def _proposal_chapter_blocks(self):
         """Blocos que aparecem como capítulo: base da numeração e do índice.
 
-        São os visíveis, menos os que não imprimem capítulo nesta cotação:
+        São os visíveis que imprimem capítulo nesta cotação
+        (`afr.proposal.block._prints_chapter`, a mesma regra do `t-if` dos
+        templates de bloco). Ex.: `equipment_scope` sem qualificação,
+        `standards_table` sem normas, `service_group` sem linhas do grupo ou
+        um segundo `financial` não consomem número.
 
-        - `equipment_scope` sem qualificação: pode ser visível (template
-          antigo, só para emitir os totais), mas sem equipamento não há
-          escopo a imprimir;
-        - `standards_table` sem normas a listar: o bloco se omite inteiro;
-        - `optionals` sem linha opcional: idem (`_proposal_optional_lines`).
-
-        (`schedule` sem linhas continua capítulo: imprime o título.)
-
-        `_proposal_visible_blocks` e `_proposal_totals_emitter` não mudam,
-        então os totais saem uma vez, no mesmo lugar. Filho de um bloco
-        excluído assume o lugar do pai (ver `_proposal_non_chapter_blocks`,
-        `_proposal_is_child` e `hierarchical_numbering`).
+        `_proposal_visible_blocks` e `_proposal_totals_emitter` não dependem
+        deste conjunto, então os totais saem uma vez, no mesmo lugar. Filho
+        de um bloco excluído assume o lugar do pai (ver
+        `_proposal_non_chapter_blocks`, `_proposal_is_child` e
+        `hierarchical_numbering`).
         """
         self.ensure_one()
-        skipped = set()
-        if not self.has_qualif_lines:
-            skipped.add("equipment_scope")
-        if not self.qualif_standard_ids:
-            skipped.add("standards_table")
-        if not self._proposal_optional_lines():
-            skipped.add("optionals")
-        blocks = self._proposal_visible_blocks()
-        if skipped:
-            blocks = blocks.filtered(lambda b: b.block_kind not in skipped)
-        return blocks
+        return self._proposal_visible_blocks().filtered(
+            lambda b: b._prints_chapter())
 
     def _proposal_non_chapter_blocks(self):
         """Visíveis que não imprimem capítulo (`_proposal_chapter_blocks`)."""
@@ -1351,6 +1339,27 @@ class SaleOrder(models.Model):
         """Linhas opcionais que o bloco `optionals` imprime (PDF e portal)."""
         self.ensure_one()
         return self.order_line.filtered("is_proposal_optional")
+
+    def _proposal_sales_item_lines(self):
+        """Linhas que o bloco `sales_items` lista (PDF e portal): todas as
+        não opcionais e não visuais."""
+        self.ensure_one()
+        return self.order_line.filtered(
+            lambda l: not l.display_type and not l.is_proposal_optional)
+
+    def _proposal_trailing_totals(self):
+        """True se a tabela de totais sai depois do último bloco (PDF e portal).
+
+        Só em cotação gerenciada sem emissor de totais
+        (`_proposal_totals_emitter`) e sem bloco `sales_items` que imprima:
+        esse bloco já fecha com o próprio "Subtotal / TOTAL GERAL", e a
+        tabela extra repetiria o total (TPL-VENDA-CALIB).
+        """
+        self.ensure_one()
+        if not self.is_managed_quote or self._proposal_totals_emitter():
+            return False
+        return not self._proposal_visible_blocks().filtered(
+            lambda b: b.block_kind == "sales_items" and b._prints_chapter())
 
     def _proposal_is_child(self, block):
         """True se `block` imprime como subcapítulo (recuado, com pai numerado).

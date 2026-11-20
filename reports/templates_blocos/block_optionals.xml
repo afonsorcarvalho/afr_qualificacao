@@ -2,7 +2,7 @@
 <odoo>
     <template id="qq_block_optionals">
                             <t t-set="opt_lines" t-value="doc._proposal_optional_lines()"/>
-                            <div t-att-class="sec_class" t-if="opt_lines">
+                            <div t-att-class="sec_class" t-if="block._prints_chapter()">
                                 <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
                                      t-if="block.show_title">
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>

@@ -160,6 +160,41 @@ class AfrProposalBlock(models.Model):
             ok = self.parent_id._is_applicable()
         return ok
 
+    def _prints_chapter(self):
+        """True se o bloco, quando visível, imprime um capítulo nesta cotação.
+
+        Fonte única de "este bloco tem conteúdo a imprimir": a numeração e
+        os dois índices (`sale.order._proposal_chapter_blocks`) e o `t-if`
+        do wrapper dos templates de bloco (PDF e portal) consultam este
+        método, para que nenhum bloco ganhe número sem imprimir nada.
+
+        - `equipment_scope`: só com qualificação (sem ela o bloco pode
+          continuar visível para emitir os totais, sem título);
+        - `standards_table`: só com normas a listar;
+        - `optionals`: só com linhas opcionais;
+        - `service_group`: só com linhas de serviço do grupo;
+        - `financial`: só o emissor de totais (um segundo bloco não imprime);
+        - `sales_items`: só com linhas de venda a listar;
+        - demais (`static`, `schedule`, `acceptance`): sempre.
+        """
+        self.ensure_one()
+        order = self.sale_order_id
+        kind = self.block_kind
+        if kind == "equipment_scope":
+            return bool(order.has_qualif_lines)
+        if kind == "standards_table":
+            return bool(order.qualif_standard_ids)
+        if kind == "optionals":
+            return bool(order._proposal_optional_lines())
+        if kind == "service_group":
+            return bool(self.service_group_id) and bool(
+                order._service_lines(self.service_group_id))
+        if kind == "financial":
+            return self == order._proposal_totals_emitter()
+        if kind == "sales_items":
+            return bool(order._proposal_sales_item_lines())
+        return True
+
     # Gatilhos comuns de tudo que depende da condição do bloco.
     _APPLICABLE_DEPENDS = (
         "applies_when", "service_group_id", "parent_id", "sale_order_id",

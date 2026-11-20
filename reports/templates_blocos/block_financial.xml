@@ -6,7 +6,7 @@
          duplica a tabela. -->
     <template id="qq_block_financial">
                             <div t-att-class="sec_class"
-                                 t-if="block == doc._proposal_totals_emitter()">
+                                 t-if="block._prints_chapter()">
                                 <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
                                      t-if="block.show_title">
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>

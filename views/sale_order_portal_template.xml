@@ -243,7 +243,7 @@
                 <!-- Resumo financeiro: tabela de totais (só o emissor) -->
                 <t t-if="block.block_kind == 'financial'">
                     <section class="lq-section"
-                             t-if="block == sale_order._proposal_totals_emitter()">
+                             t-if="block._prints_chapter()">
                         <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
                              t-if="block.show_title">
                             <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
@@ -303,7 +303,7 @@
                 <t t-if="block.block_kind == 'service_group'">
                     <t t-set="sg_table"
                        t-value="sale_order._service_group_table(block.service_group_id) if block.service_group_id else {'rows': []}"/>
-                    <section class="lq-section" t-if="sg_table['rows']">
+                    <section class="lq-section" t-if="block._prints_chapter()">
                         <t t-set="sg_title" t-value="block.service_group_id._chapter_title()"/>
                         <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
                              t-if="block.show_title">
@@ -394,7 +394,7 @@
 
                 <!-- Normas -->
                 <t t-if="block.block_kind == 'standards_table'">
-                    <section class="lq-section" t-if="sale_order.qualif_standard_ids">
+                    <section class="lq-section" t-if="block._prints_chapter()">
                         <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
                              t-if="block.show_title">
                             <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
@@ -429,7 +429,7 @@
                 <t t-if="block.block_kind == 'optionals'">
                     <t t-set="opt_lines"
                        t-value="sale_order._proposal_optional_lines()"/>
-                    <section class="lq-section" t-if="opt_lines">
+                    <section class="lq-section" t-if="block._prints_chapter()">
                         <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
                              t-if="block.show_title">
                             <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
@@ -492,6 +492,76 @@
                     </section>
                 </t>
 
+                <!-- Tabela de itens de venda (Venda + Calibração). Cópia do
+                     `qq_block_sales_items` do PDF: fecha com o próprio
+                     total, por isso suprime a tabela de totais do fim
+                     (`_proposal_trailing_totals`). -->
+                <t t-if="block.block_kind == 'sales_items'">
+                    <t t-set="sale_lines" t-value="sale_order._proposal_sales_item_lines()"/>
+                    <section class="lq-section" t-if="block._prints_chapter()">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Equipamentos a serem Calibrados'"/>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm lq-table">
+                                <thead>
+                                    <tr>
+                                        <th>Descrição</th>
+                                        <th>Quant.</th>
+                                        <th class="text-end">Valor Unitário</th>
+                                        <th class="text-end">Valor Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="sale_lines" t-as="sl">
+                                        <tr>
+                                            <td t-esc="sl.name"/>
+                                            <td>
+                                                <span t-esc="int(sl.product_uom_qty) if sl.product_uom_qty == int(sl.product_uom_qty) else sl.product_uom_qty"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <span t-esc="sl.price_unit"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <span t-esc="sl.price_subtotal"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                        <t t-set="vc_subtotal" t-value="sum(sale_lines.mapped('price_subtotal'))"/>
+                        <t t-set="vc_total" t-value="sum(sale_lines.mapped('price_total'))"/>
+                        <table class="lq-total-table">
+                            <tr>
+                                <td class="lq-tot-label">Subtotal:</td>
+                                <td class="lq-tot-value">
+                                    <span t-esc="vc_subtotal"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="lq-tot-label">Impostos:</td>
+                                <td class="lq-tot-value">
+                                    <span t-esc="vc_total - vc_subtotal"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr class="lq-total-grand">
+                                <td class="lq-tot-label">TOTAL GERAL:</td>
+                                <td class="lq-tot-value">
+                                    <span t-esc="vc_total"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                        </table>
+                    </section>
+                </t>
+
                 <!-- Aceite -->
                 <t t-if="block.block_kind == 'acceptance'">
                     <section class="lq-section lq-acceptance">
@@ -510,9 +580,11 @@
             </t>
 
             <!-- Sem emissor de totais (nenhum bloco `financial` nem
-                 `equipment_scope` visível): tabela depois do último bloco. -->
+                 `equipment_scope` visível) e sem `sales_items` que feche com o
+                 próprio total: tabela depois do último bloco
+                 (`_proposal_trailing_totals`, mesma regra do PDF). -->
             <section class="lq-section"
-                     t-if="not sale_order._proposal_totals_emitter()">
+                     t-if="sale_order._proposal_trailing_totals()">
                 <t t-call="afr_qualificacao.sale_order_online_totals"/>
             </section>
         </div>
