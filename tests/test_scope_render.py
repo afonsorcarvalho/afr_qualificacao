@@ -141,16 +141,18 @@ class TestScopeHtmlBlock(TestScopeTable):
         self.assertEqual(block.block_kind, "static")
         self.assertIn("Previsão de", str(block.body))
 
-    def test_html_scope_always_emits_totals_exactly_once(self):
-        """O snapshot do escopo sempre imprime o total geral, uma única vez.
+    def test_html_scope_snapshot_has_no_totals_table(self):
+        """O snapshot do escopo não carrega a tabela de totais.
 
-        Não há mais bloco de Resumo Financeiro separado nem guard
-        anti-duplicação: `_html_equipment_scope` é o único emissor de
-        totais, incondicional.
+        Os totais são ao vivo e saem pelo emissor (`_proposal_totals_emitter`
+        / fim dos blocos); congelá-los no `body` duplicaria a tabela depois
+        de `action_edit_block` (ver TestProposalMultiTotals).
         """
         so = self._full_so()
         html = str(self._block(so)._html_equipment_scope(so))
-        self.assertEqual(html.count("Valor Geral da Proposta"), 1)
+        self.assertNotIn("Valor Geral da Proposta", html)
+        self.assertNotIn("qq-total-table", html)
+        self.assertNotIn("border-top:2px solid #333", html)
 
     def test_html_scope_carries_the_pdf_css_classes(self):
         """Snapshot é reaproveitado sob o mesmo CSS do PDF — classes têm de bater."""

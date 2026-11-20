@@ -375,9 +375,10 @@ class AfrProposalBlock(models.Model):
                 "<table class='qq-scope-table'>"
                 "<thead>%s</thead><tbody>%s</tbody></table></div>"
             ) % (head_row, body_rows))
-        # Totais no fim do escopo. Emitido sempre, uma única vez — não há
-        # mais bloco de Resumo Financeiro separado (ver F8.2x).
-        parts.append(order._qualif_grand_total_html())
+        # SEM tabela de totais: o snapshot congela só o escopo. Os totais são
+        # sempre ao vivo, impressos pelo emissor (`_proposal_totals_emitter`:
+        # bloco `financial` ou o fim da lista de blocos). Congelá-los aqui
+        # duplicaria a tabela (e deixaria uma cópia desatualizada).
         return Markup("").join(parts) or Markup("<p></p>")
 
     def _html_scope_cell(self, row):

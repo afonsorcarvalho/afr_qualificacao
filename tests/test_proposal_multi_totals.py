@@ -277,6 +277,45 @@ class TestProposalMultiTotals(AfrServicoTestCommon):
             html.index('id="qq-anchor-%s"' % scope.id),
         )
 
+    def _freeze_scope(self, order):
+        """`action_edit_block` no escopo: snapshot vira bloco `static`."""
+        scope = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "equipment_scope")
+        self.assertEqual(len(scope), 1)
+        scope.action_edit_block()
+        self.assertEqual(scope.block_kind, "static")
+        self.assertNotIn(GRAND_LABEL, str(scope.body))
+        return scope
+
+    def test_totals_once_after_scope_block_frozen(self):
+        """Escopo editado (static) não duplica nem congela os totais."""
+        # (a) template antigo (sem `financial`): totais ao fim dos blocos
+        labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
+        order = self._seeded(self._qualif_order(labquali))
+        self._manual_line(order, "Despesas de viagem", 500.0)
+        self._freeze_scope(order)
+        self.assertFalse(order._proposal_totals_emitter())
+        self.assertEqual(self._render(order).count(GRAND_LABEL), 1)
+
+        # (c) portal, mesmo cenário
+        html = str(self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": order},
+        ))
+        self.assertEqual(html.count(GRAND_LABEL), 1)
+        self.assertIn("Despesas de viagem", html)
+
+        # (b) template com `financial`: o bloco financeiro é o emissor
+        tpl = self._template(["equipment_scope", "financial"])
+        order = self._qualif_order(tpl)
+        self._manual_line(order, "Despesas de viagem", 500.0)
+        self._seeded(order)
+        self._freeze_scope(order)
+        self.assertEqual(order._proposal_totals_emitter().block_kind, "financial")
+        html = self._render(order)
+        self.assertEqual(html.count(GRAND_LABEL), 1)
+        self.assertIn("Despesas de viagem", html)
+
     def test_portal_prints_totals_once(self):
         qweb = self.env["ir.qweb"]
         labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
