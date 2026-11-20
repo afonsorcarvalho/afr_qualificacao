@@ -1311,19 +1311,27 @@ class SaleOrder(models.Model):
     def _proposal_chapter_blocks(self):
         """Blocos que aparecem como capítulo: base da numeração e do índice.
 
-        São os visíveis, menos o `equipment_scope` de cotação sem
-        qualificação: ele pode ser visível (template antigo, só para emitir
-        os totais), mas não imprime capítulo — nem número, nem entrada no
-        índice. `_proposal_visible_blocks` e `_proposal_totals_emitter` não
-        mudam, então os totais saem uma vez, no mesmo lugar. (Filho desse
-        bloco, se existisse, numeraria a partir de 1 sem prefixo, como todo
-        filho de pai fora do conjunto.)
+        São os visíveis, menos os que não imprimem capítulo nesta cotação:
+
+        - `equipment_scope` sem qualificação: pode ser visível (template
+          antigo, só para emitir os totais), mas sem equipamento não há
+          escopo a imprimir;
+        - `standards_table` sem normas a listar: o bloco se omite inteiro.
+
+        `_proposal_visible_blocks` e `_proposal_totals_emitter` não mudam,
+        então os totais saem uma vez, no mesmo lugar. (Filho de um bloco
+        excluído, se existisse, numeraria a partir de 1 sem prefixo, como
+        todo filho de pai fora do conjunto.)
         """
         self.ensure_one()
-        blocks = self._proposal_visible_blocks()
+        skipped = set()
         if not self.has_qualif_lines:
-            blocks = blocks.filtered(
-                lambda b: b.block_kind != "equipment_scope")
+            skipped.add("equipment_scope")
+        if not self.qualif_standard_ids:
+            skipped.add("standards_table")
+        blocks = self._proposal_visible_blocks()
+        if skipped:
+            blocks = blocks.filtered(lambda b: b.block_kind not in skipped)
         return blocks
 
     def _proposal_toc_blocks(self):

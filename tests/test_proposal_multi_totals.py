@@ -433,8 +433,25 @@ class TestProposalMultiTotals(AfrServicoTestCommon):
         scope = order.proposal_block_ids.filtered(
             lambda b: b.block_kind == "equipment_scope")
         self.assertIn(scope, order._proposal_chapter_blocks())
+        self.assertTrue(order._proposal_block_numbering()[scope.id])
+
+        # Sem normas, a tabela de normas (que não imprime) sai da numeração;
+        # o resto segue a numeração de sempre.
+        self.assertFalse(order.qualif_standard_ids)
+        visible = order._proposal_visible_blocks()
+        self.assertEqual(
+            order._proposal_block_numbering(),
+            hierarchical_numbering(visible.filtered(
+                lambda b: b.block_kind != "standards_table")),
+        )
+
+        # Com norma, a numeração é exatamente a de todos os visíveis.
+        self.svc_seladora.standard_ids = self.env[
+            "afr.qualificacao.standard"].create({
+                "code": "TST-001", "name": "Norma de Teste"})
+        self._add_service(order, self.svc_seladora, 1)
+        self.assertTrue(order.qualif_standard_ids)
         self.assertEqual(
             order._proposal_block_numbering(),
             hierarchical_numbering(order._proposal_visible_blocks()),
         )
-        self.assertTrue(order._proposal_block_numbering()[scope.id])

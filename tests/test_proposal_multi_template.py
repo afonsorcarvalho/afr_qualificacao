@@ -144,3 +144,50 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
         for xmlid in ("proposal_section_grp_nr13", "proposal_section_grp_vazao"):
             body = self.env.ref("afr_qualificacao.%s" % xmlid).body
             self.assertIn("[REVISAR — texto provisório]", body)
+
+    # -- numeração sem buraco (capítulos que não imprimem) ----------------
+
+    def _printed_numbers(self, order):
+        import re
+        html = self._render(order)
+        toc = re.findall(r'qq-toc-num">\s*([\d.]+)\s*<', html)
+        body = re.findall(r'>([\d.]+)</span> — ', html)
+        return html, toc, body
+
+    def _assert_no_gap(self, toc, body):
+        self.assertTrue(toc)
+        self.assertEqual(toc, body)
+        roots = [n for n in toc if "." not in n]
+        self.assertEqual(roots, [str(i) for i in range(1, len(roots) + 1)])
+
+    def test_services_only_numbering_without_norms_has_no_gap(self):
+        order = self._seeded_order()
+        self.assertFalse(order.qualif_standard_ids)
+        standards = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "standards_table")
+        self.assertEqual(len(standards), 1)
+        self.assertTrue(standards._is_applicable())
+        self.assertNotIn(standards, order._proposal_chapter_blocks())
+        self.assertNotIn(standards.id, order._proposal_block_numbering())
+        title = standards.title or "Normas Aplicáveis"
+
+        html, toc, body = self._printed_numbers(order)
+        self._assert_no_gap(toc, body)
+        self.assertNotIn(title, html)
+        self.assertEqual(html.count(GRAND_LABEL), 1)
+
+    def test_services_only_numbering_with_norm_has_no_gap(self):
+        order = self._seeded_order()
+        standard = self.env["afr.qualificacao.standard"].create({
+            "code": "TST-001", "name": "Norma de Teste"})
+        self.seeded_calib.standard_ids = standard
+        order.invalidate_recordset()
+        standards = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "standards_table")
+        self.assertIn(standards, order._proposal_chapter_blocks())
+        title = standards.title or "Normas Aplicáveis"
+
+        html, toc, body = self._printed_numbers(order)
+        self._assert_no_gap(toc, body)
+        self.assertIn(title, html)
+        self.assertEqual(html.count(GRAND_LABEL), 1)
