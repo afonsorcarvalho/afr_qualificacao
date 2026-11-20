@@ -306,6 +306,7 @@
         "reports/templates_blocos/block_standards_table.xml",
         "reports/templates_blocos/block_optionals.xml",
         "reports/templates_blocos/block_sales_items.xml",
+        "reports/templates_blocos/block_service_group.xml",
         "reports/templates_blocos/block_acceptance.xml",
         "reports/quotation_template.xml",
         # Relatório Final P3 — corpo QWeb (sub-templates antes do report)

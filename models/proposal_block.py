@@ -161,13 +161,16 @@ class AfrProposalBlock(models.Model):
                 bool(block.sale_order_id) and block._is_applicable()
             )
 
-    @api.constrains("applies_when", "service_group_id")
+    @api.constrains("applies_when", "block_kind", "service_group_id")
     def _check_applies_when_group(self):
         for record in self:
-            if record.applies_when == "service_group" and not record.service_group_id:
+            if (
+                "service_group" in (record.applies_when, record.block_kind)
+                and not record.service_group_id
+            ):
                 raise ValidationError(
-                    _("Informe o Grupo de Serviço quando o bloco se aplica "
-                      "a um grupo de serviço.")
+                    _("Informe o Grupo de Serviço quando o bloco é do tipo "
+                      "Serviços do Grupo ou se aplica a um grupo de serviço.")
                 )
 
     @api.depends("title", "section_id", "block_kind")
@@ -316,6 +319,7 @@ class AfrProposalBlock(models.Model):
         builder = {
             "equipment_scope": self._html_equipment_scope,
             "schedule": self._html_schedule,
+            "service_group": self._html_service_group,
             "standards_table": self._html_standards,
             "optionals": self._html_optionals,
             "acceptance": self._html_acceptance,
@@ -429,7 +433,7 @@ class AfrProposalBlock(models.Model):
                 "<td style='text-align:right;'>%.1f</td>"
                 "<td style='text-align:right;'>%.2f</td></tr>"
             ) % (
-                escape(r["equipment"].display_name or ""),
+                escape(r.get("label") or r["equipment"].display_name or ""),
                 r["hours"], r["work_hours_per_day"], r["days"],
             ))
             total_h += r["hours"]
@@ -443,6 +447,82 @@ class AfrProposalBlock(models.Model):
             "</table>"
         ) % (total_h, total_d))
         return Markup("").join(body)
+
+    def _html_service_group(self, order):
+        """Snapshot HTML do capítulo de serviço (tabela + relação de unidades).
+
+        Mesmos dados do QWeb `qq_block_service_group` e do portal
+        (`_service_group_table`). Congela só a tabela do capítulo.
+        """
+        group = self.service_group_id
+        table = order._service_group_table(group) if group else None
+        if not table or not table["rows"]:
+            return Markup("<p></p>")
+        rows = Markup("").join(
+            Markup(
+                "<tr><td>%s</td><td><strong>%s</strong>%s%s</td><td>%s</td>"
+                "<td style='text-align:right;'>%s</td>"
+                "<td style='text-align:right;'>%s</td></tr>"
+            ) % (
+                row["item"],
+                escape(row["name"]),
+                Markup("<br/><small>%s</small>") % escape(row["description"])
+                if row["description"] else Markup(""),
+                Markup("<br/><small>Procedimento: %s</small>")
+                % escape(row["procedure"])
+                if row["procedure"] else Markup(""),
+                self._plain_qty(row["qty"]),
+                escape(self._money(order, row["price_unit"])),
+                escape(self._money(order, row["subtotal"])),
+            )
+            for row in table["rows"]
+        )
+        html = Markup(
+            "<table class='qq-table'><thead><tr><th>Item</th><th>Serviço</th>"
+            "<th>Qtd</th><th style='text-align:right;'>Valor Unitário</th>"
+            "<th style='text-align:right;'>Valor Total</th></tr></thead>"
+            "<tbody>%s</tbody></table>"
+            "<p style='text-align:right;'><strong>%s</strong> %s</p>"
+        ) % (
+            rows,
+            escape("Subtotal %s:" % group._chapter_title()),
+            escape(self._money(order, table["subtotal"])),
+        )
+        if table["days_label"]:
+            html += Markup("<p style='text-align:right;'>%s</p>") % escape(
+                table["days_label"])
+        if table["units"]:
+            units = Markup("").join(
+                Markup(
+                    "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td>"
+                    "<td>%s</td><td>%s</td></tr>"
+                ) % (
+                    unit.item_number or "—",
+                    escape(unit.tag or ""),
+                    escape(unit.description or ""),
+                    escape(" / ".join(
+                        v for v in (unit.marca, unit.model) if v)),
+                    escape(unit.serial_number or ""),
+                    escape(unit.location or ""),
+                )
+                for unit in table["units"]
+            )
+            html += Markup(
+                "<p><strong>%s</strong></p>"
+                "<table class='qq-table'><thead><tr><th>Item</th>"
+                "<th>Identificação</th><th>Descrição</th>"
+                "<th>Marca / Modelo</th><th>Série</th><th>Local</th></tr>"
+                "</thead><tbody>%s</tbody></table>"
+            ) % (
+                escape("Relação de %ss" % (group.unit_label or "unidade")),
+                units,
+            )
+        return html
+
+    @staticmethod
+    def _plain_qty(qty):
+        """Quantidade sem casas quando inteira (8, não 8.0)."""
+        return int(qty) if qty == int(qty) else qty
 
     def _html_standards(self, order):
         rows = Markup("").join(

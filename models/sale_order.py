@@ -683,12 +683,19 @@ class SaleOrder(models.Model):
         "order_line.display_type",
         "order_line.cycle_type_id.standard_ids",
         "order_line.malha_type_id.standard_ids",
+        "order_line.is_service_managed",
+        "order_line.service_id.standard_ids",
     )
     def _compute_qualif_standard_ids(self):
         for order in self:
             standards = self.env["afr.qualificacao.standard"]
             for line in order.order_line:
-                if not line.is_qualificacao_managed or line.display_type:
+                if line.display_type:
+                    continue
+                if line.is_service_managed:
+                    standards |= line.service_id.standard_ids
+                    continue
+                if not line.is_qualificacao_managed:
                     continue
                 if line.cycle_type_id:
                     standards |= line.cycle_type_id.standard_ids
@@ -845,7 +852,8 @@ class SaleOrder(models.Model):
         """F8.14 — soma horas estimadas das qualif lines do SO.
 
         Override `sale.order.line.estimated_hours` prevalece; fallback
-        cycle_type/malha_type/type.config.estimated_hours.
+        cycle_type/malha_type/type.config.estimated_hours. Sem `equipment`
+        (total da cotação), soma também as horas das linhas de serviço.
         """
         self.ensure_one()
         TypeConfig = self.env["afr.qualificacao.type.config"]
@@ -869,6 +877,10 @@ class SaleOrder(models.Model):
                     if cfg:
                         hours = cfg.estimated_hours
             total += (hours or 0.0) * (line.qualif_cycle_qty or int(line.product_uom_qty or 0))
+        if equipment is None:
+            total += sum(
+                line._service_hours() for line in self._service_lines()
+            )
         return total
 
     def _qualif_work_hours_per_day(self, equipment):
@@ -1140,6 +1152,17 @@ class SaleOrder(models.Model):
                 "hours": hours,
                 "work_hours_per_day": wh,
                 "days": hours / wh if hours else 0.0,
+            })
+        for group in self._service_groups():
+            hours = sum(
+                line._service_hours() for line in self._service_lines(group)
+            )
+            rows.append({
+                "equipment": False,
+                "label": group._chapter_title(),
+                "hours": hours,
+                "work_hours_per_day": 8.0,
+                "days": hours / 8.0,
             })
         return rows
 

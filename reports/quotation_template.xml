@@ -209,6 +209,11 @@
                             <t t-call="afr_qualificacao.qq_block_sales_items"/>
                         </t>
 
+                        <!-- Capítulo de uma família de serviço -->
+                        <t t-if="block.block_kind == 'service_group'">
+                            <t t-call="afr_qualificacao.qq_block_service_group"/>
+                        </t>
+
                         <!-- Aceite -->
                         <t t-if="block.block_kind == 'acceptance'">
                             <t t-call="afr_qualificacao.qq_block_acceptance"/>

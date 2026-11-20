@@ -139,3 +139,70 @@ class SaleOrderServico(models.Model):
         return self._service_lines().mapped("service_group_id").sorted(
             key=lambda g: (g.sequence, g.id)
         )
+
+    def _service_group_table(self, group):
+        """Dados do capítulo de um grupo de serviço (fonte única de impressão).
+
+        PDF, portal e snapshot HTML do bloco `service_group` partem deste
+        dict para não divergirem:
+
+        - `rows`: uma por linha de serviço do grupo (`item` = 1..n na
+          tabela), com `qty` = unidades e `subtotal` = valor da linha;
+        - `subtotal`/`hours`: soma das linhas e horas (unidades x horas por
+          unidade);
+        - `days_label`: previsão de dias de serviço (vazio sem horas);
+        - `units`: só as unidades identificadas (TAG ou série), por número
+          de item.
+        """
+        self.ensure_one()
+        lines = self._service_lines(group)
+        rows = []
+        for index, line in enumerate(lines, start=1):
+            service = line.service_id
+            procedure = service.procedure_code or ""
+            if procedure and service.procedure_revision:
+                procedure = "%s rev. %s" % (
+                    procedure, service.procedure_revision)
+            rows.append({
+                "item": index,
+                "line": line,
+                "name": service.name or line.name or "",
+                "description": service.scope_description or "",
+                "procedure": procedure,
+                "qty": line.product_uom_qty,
+                "price_unit": line.price_unit,
+                "subtotal": line.price_subtotal,
+            })
+        hours = sum(line._service_hours() for line in lines)
+        days_label = ""
+        if hours > 0:
+            days_label = self._qualif_days_label(
+                self._qualif_days_from_hours(
+                    hours, self.env["engc.equipment"]))
+        units = lines.service_unit_ids.filtered("is_identified").sorted(
+            key=lambda u: (u.item_number, u.sequence, u.id))
+        return {
+            "group": group,
+            "rows": rows,
+            "subtotal": sum(row["subtotal"] for row in rows),
+            "hours": hours,
+            "days_label": days_label,
+            "units": units,
+        }
+
+    def _proposal_service_titles(self):
+        """Frentes cotadas, por extenso, para usar nos textos da proposta.
+
+        "Qualificação Térmica" (se há qualificação) mais o título do
+        capítulo de cada grupo de serviço, unidos por vírgula e " e " antes
+        do último. Vazio se a cotação não tem nenhum dos dois.
+        """
+        self.ensure_one()
+        titles = []
+        if self.has_qualif_lines:
+            titles.append(_("Qualificação Térmica"))
+        titles += [group._chapter_title() for group in self._service_groups()]
+        if len(titles) < 2:
+            return "".join(titles)
+        return _("%(head)s e %(last)s", head=", ".join(titles[:-1]),
+                 last=titles[-1])

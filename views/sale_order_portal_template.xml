@@ -271,7 +271,7 @@
                                     <tbody>
                                         <t t-foreach="rows" t-as="r">
                                             <tr>
-                                                <td t-esc="r['equipment'].display_name"/>
+                                                <td t-esc="r.get('label') or r['equipment'].display_name"/>
                                                 <td class="text-end" t-esc="'%.1f' % r['work_hours_per_day']"/>
                                                 <td class="text-end" t-esc="'%.1f' % r['hours']"/>
                                                 <td class="text-end" t-esc="'%.1f' % r['days']"/>
@@ -288,6 +288,99 @@
                                             <td class="text-end"><strong t-esc="'%.1f' % total_d"/></td>
                                         </tr>
                                     </tfoot>
+                                </table>
+                            </div>
+                        </t>
+                    </section>
+                </t>
+
+                <!-- Capítulo de uma família de serviço -->
+                <t t-if="block.block_kind == 'service_group'">
+                    <t t-set="sg_table"
+                       t-value="sale_order._service_group_table(block.service_group_id) if block.service_group_id else {'rows': []}"/>
+                    <section class="lq-section" t-if="sg_table['rows']">
+                        <t t-set="sg_title" t-value="block.service_group_id._chapter_title()"/>
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or sg_title"/>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm lq-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 7%;">Item</th>
+                                        <th>Serviço</th>
+                                        <th style="width: 8%;">Qtd</th>
+                                        <th class="text-end">Valor Unitário</th>
+                                        <th class="text-end">Valor Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="sg_table['rows']" t-as="sg_row">
+                                        <tr>
+                                            <td t-esc="sg_row['item']"/>
+                                            <td>
+                                                <strong t-esc="sg_row['name']"/>
+                                                <div t-if="sg_row['description']" class="small">
+                                                    <span t-esc="sg_row['description']"/>
+                                                </div>
+                                                <div t-if="sg_row['procedure']" class="small">
+                                                    Procedimento: <span t-esc="sg_row['procedure']"/>
+                                                </div>
+                                            </td>
+                                            <td t-esc="int(sg_row['qty']) if sg_row['qty'] == int(sg_row['qty']) else sg_row['qty']"/>
+                                            <td class="text-end">
+                                                <span t-esc="sg_row['price_unit']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                            <td class="text-end">
+                                                <span t-esc="sg_row['subtotal']"
+                                                      t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                            </td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </div>
+                        <table class="lq-total-table">
+                            <tr>
+                                <td class="lq-tot-label" t-esc="'Subtotal %s:' % sg_title"/>
+                                <td class="lq-tot-value">
+                                    <span t-esc="sg_table['subtotal']"
+                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                                </td>
+                            </tr>
+                            <tr t-if="sg_table['days_label']">
+                                <td class="lq-tot-label" colspan="2" t-esc="sg_table['days_label']"/>
+                            </tr>
+                        </table>
+                        <t t-if="sg_table['units']">
+                            <p class="mt-3"><strong t-esc="'Relação de %ss' % (block.service_group_id.unit_label or 'unidade')"/></p>
+                            <div class="table-responsive">
+                                <table class="table table-sm lq-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 7%;">Item</th>
+                                            <th>Identificação</th>
+                                            <th>Descrição</th>
+                                            <th>Marca / Modelo</th>
+                                            <th>Série</th>
+                                            <th>Local</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="sg_table['units']" t-as="sg_unit">
+                                            <tr>
+                                                <td t-esc="sg_unit.item_number or '—'"/>
+                                                <td t-esc="sg_unit.tag or ''"/>
+                                                <td t-esc="sg_unit.description or ''"/>
+                                                <td t-esc="' / '.join(v for v in (sg_unit.marca, sg_unit.model) if v)"/>
+                                                <td t-esc="sg_unit.serial_number or ''"/>
+                                                <td t-esc="sg_unit.location or ''"/>
+                                            </tr>
+                                        </t>
+                                    </tbody>
                                 </table>
                             </div>
                         </t>

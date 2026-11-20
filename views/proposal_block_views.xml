@@ -27,8 +27,8 @@
                             <field name="title"/>
                             <field name="applies_when"/>
                             <field name="service_group_id"
-                                   attrs="{'invisible': [('applies_when', '!=', 'service_group')],
-                                           'required': [('applies_when', '=', 'service_group')]}"
+                                   attrs="{'invisible': [('applies_when', '!=', 'service_group'), ('block_kind', '!=', 'service_group')],
+                                           'required': ['|', ('applies_when', '=', 'service_group'), ('block_kind', '=', 'service_group')]}"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
                         </group>
                         <group>

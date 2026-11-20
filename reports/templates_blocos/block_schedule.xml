@@ -21,7 +21,7 @@
                                         <tbody>
                                             <t t-foreach="rows" t-as="r">
                                                 <tr>
-                                                    <td t-esc="r['equipment'].display_name"/>
+                                                    <td t-esc="r.get('label') or r['equipment'].display_name"/>
                                                     <td style="text-align: right;" t-esc="'%.1f' % r['work_hours_per_day']"/>
                                                     <td style="text-align: right;" t-esc="'%.1f' % r['hours']"/>
                                                     <td style="text-align: right;" t-esc="'%.1f' % r['days']"/>

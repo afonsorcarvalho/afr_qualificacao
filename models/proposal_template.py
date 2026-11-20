@@ -29,6 +29,7 @@ PROPOSAL_BLOCK_KINDS = [
     ("financial", "Resumo Financeiro"),
     ("optionals", "Serviços Opcionais"),
     ("sales_items", "Tabela de Itens (Venda + Calibração)"),
+    ("service_group", "Serviços do Grupo"),
     ("acceptance", "Aceite / Assinatura"),
 ]
 
@@ -224,13 +225,16 @@ class AfrProposalTemplateLine(models.Model):
                     _("Bloco de texto exige uma Seção de Texto selecionada.")
                 )
 
-    @api.constrains("applies_when", "service_group_id")
+    @api.constrains("applies_when", "block_kind", "service_group_id")
     def _check_applies_when_group(self):
         for record in self:
-            if record.applies_when == "service_group" and not record.service_group_id:
+            if (
+                "service_group" in (record.applies_when, record.block_kind)
+                and not record.service_group_id
+            ):
                 raise ValidationError(
-                    _("Informe o Grupo de Serviço quando o bloco se aplica "
-                      "a um grupo de serviço.")
+                    _("Informe o Grupo de Serviço quando o bloco é do tipo "
+                      "Serviços do Grupo ou se aplica a um grupo de serviço.")
                 )
 
     def name_get(self):

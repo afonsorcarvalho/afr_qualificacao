@@ -171,3 +171,6 @@ from . import test_proposal_multi_conditions
 
 # Cotação multi-serviço — Task 6: resumo financeiro e emissor único de totais
 from . import test_proposal_multi_totals
+
+# Cotação multi-serviço — Task 7: bloco service_group, normas, horas e títulos
+from . import test_proposal_multi_service_group
