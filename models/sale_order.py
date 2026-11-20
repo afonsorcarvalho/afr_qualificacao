@@ -463,6 +463,8 @@ class SaleOrder(models.Model):
 
     @api.depends(
         "order_line.is_qualificacao_managed",
+        "order_line.is_service_managed",
+        "order_line.service_group_id",
         "order_line.equipment_id",
         "order_line.display_type",
         "order_line.price_subtotal",
@@ -490,14 +492,15 @@ class SaleOrder(models.Model):
         nesta task — o opcional aceito agora aparece como adicional no
         próprio banner de total, evitando duplicidade.
 
-        Vazio se a SO não tem qualif_lines.
+        Vazio se a SO não é gerenciada (sem linhas de qualificação nem de
+        serviço). Cotação só de serviço não tem resumo por equipamento: o
+        banner sai mesmo assim.
         """
         for order in self:
-            if not order.has_qualif_lines:
+            if not order.is_managed_quote:
                 order.qualif_subtotals_html = False
                 continue
-            summary = order._qualif_equipment_summary()
-            if not summary:
+            if order.has_qualif_lines and not order._qualif_equipment_summary():
                 order.qualif_subtotals_html = False
                 continue
             order.qualif_subtotals_html = str(order._qualif_grand_total_html())
@@ -532,6 +535,10 @@ class SaleOrder(models.Model):
         out = []
         for line in self.order_line.sorted(key=lambda l: (l.sequence, l.id or 0)):
             if line.display_type or line in in_scope:
+                continue
+            # Linha de serviço: já tem linha própria (por grupo) nos totais
+            # — ver `service_groups` em `_qualif_proposal_totals`.
+            if line.is_service_managed:
                 continue
             # Linha do desconto geral: vira a linha "Descontos" própria dos
             # totais (discount_amount), nunca um adicional.
@@ -568,6 +575,8 @@ class SaleOrder(models.Model):
 
         - `equip_total`: soma dos Valores Unitários IMPRESSOS nas tabelas
           de escopo (preço-alvo quando bate, soma real quando desviado).
+        - `service_groups`: um item por grupo de serviço com valor ≠ 0,
+          `[{"group", "name", "amount"}]` (nome = título do capítulo).
         - `adicionais`: lista enumerada `[{"name", "amount"}]`.
         - `discount_amount`: desconto geral (positivo; 0 = sem desconto),
           mostrado como linha negativa "Descontos" antes do total geral.
@@ -580,6 +589,16 @@ class SaleOrder(models.Model):
         scope_tables = self._qualif_scope_tables()
         equip_total = sum(t["footer"]["unit_price"] for t in scope_tables)
         adicionais = self._qualif_additional_lines(scope_tables)
+        service_groups = []
+        for group in self._service_groups():
+            amount = sum(self._service_lines(group).mapped("price_subtotal"))
+            if self.currency_id.is_zero(amount):
+                continue
+            service_groups.append({
+                "group": group,
+                "name": group._chapter_title(),
+                "amount": amount,
+            })
         grand_total = self.amount_untaxed
         # Desconto geral: subtotal (negativo) das linhas is_qualif_discount_line.
         # Sai do residual — senão o abatimento viraria "Outros" negativo.
@@ -588,47 +607,65 @@ class SaleOrder(models.Model):
             .mapped("price_subtotal"))
         residual = self.currency_id.round(
             grand_total - discount_subtotal - equip_total
+            - sum(g["amount"] for g in service_groups)
             - sum(a["amount"] for a in adicionais))
         return {
             "equip_total": equip_total,
+            "service_groups": service_groups,
             "adicionais": adicionais,
             "discount_amount": -discount_subtotal,
             "residual": residual,
             "grand_total": grand_total,
         }
 
-    def _qualif_grand_total_html(self):
-        """Banner de totais do form + base do bloco de totais do PDF.
+    def _qualif_total_rows(self):
+        """Linhas do resumo de totais — fonte única do PDF, portal e banner.
 
-        Sem adicionais nem residual, imprime só a linha do total geral.
+        `[(rótulo, valor)]` na ordem: qualificação (só se a cotação tem
+        linhas de qualificação), um capítulo por grupo de serviço,
+        adicionais, "Outros" (residual ≠ 0) e "Descontos" (negativo). A
+        linha final "Valor Geral da Proposta" (= `amount_untaxed`) NÃO está
+        aqui: quem imprime a acrescenta.
+
+        Devolve `[]` quando o resultado teria uma única linha — o resumo só
+        repetiria o total geral, então imprime só ele.
         """
         self.ensure_one()
         totals = self._qualif_proposal_totals()
+        currency = self.currency_id
         rows = []
-        has_discount = not self.currency_id.is_zero(totals["discount_amount"])
-        breakdown = (
-            bool(totals["adicionais"])
-            or not self.currency_id.is_zero(totals["residual"])
-            or has_discount
-        )
-        if breakdown:
+        if self.has_qualif_lines:
             rows.append((
-                _("Valor total dos Serviços de Qualificação"), totals["equip_total"]))
-            for adicional in totals["adicionais"]:
-                rows.append((adicional["name"], adicional["amount"]))
-            if not self.currency_id.is_zero(totals["residual"]):
-                rows.append((_("Outros"), totals["residual"]))
-            if has_discount:
-                rows.append((_("Descontos"), -totals["discount_amount"]))
+                _("Valor total dos Serviços de Qualificação"),
+                totals["equip_total"],
+            ))
+        for service_group in totals["service_groups"]:
+            rows.append((service_group["name"], service_group["amount"]))
+        for adicional in totals["adicionais"]:
+            rows.append((adicional["name"], adicional["amount"]))
+        if not currency.is_zero(totals["residual"]):
+            rows.append((_("Outros"), totals["residual"]))
+        if not currency.is_zero(totals["discount_amount"]):
+            rows.append((_("Descontos"), -totals["discount_amount"]))
+        return rows if len(rows) > 1 else []
+
+    def _qualif_grand_total_html(self):
+        """Banner de totais do form.
+
+        Linhas do resumo vêm de `_qualif_total_rows()` (mesma fonte do PDF e
+        do portal); sem breakdown, imprime só a linha do total geral.
+        """
+        self.ensure_one()
+        grand_total = self.amount_untaxed
         body = "".join(
             '<tr><td style="padding:4px 12px;">%s</td>'
             '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
             % (escape(name), escape(formatLang(
                 self.env, value, currency_obj=self.currency_id)))
-            for name, value in rows
+            for name, value in self._qualif_total_rows()
         )
         grand_str = formatLang(
-            self.env, totals["grand_total"], currency_obj=self.currency_id)
+            self.env, grand_total, currency_obj=self.currency_id)
         return Markup(
             '<div style="margin-top:12px;width:100%%;">'
             '<table style="border-collapse:collapse;width:100%%;'
@@ -1247,6 +1284,23 @@ class SaleOrder(models.Model):
             lambda b: b.included and b._is_applicable()
         )
 
+    def _proposal_totals_emitter(self):
+        """Bloco que imprime a tabela de totais: vazio ou um registro.
+
+        O primeiro bloco visível `financial`; senão o primeiro visível
+        `equipment_scope` (templates antigos, sem bloco financeiro); senão
+        vazio — aí quem renderiza imprime a tabela depois do último bloco.
+        Única regra de "onde saem os totais": PDF e portal só imprimem no
+        bloco devolvido aqui, então a tabela sai exatamente uma vez.
+        """
+        self.ensure_one()
+        visible = self._proposal_visible_blocks()
+        for kind in ("financial", "equipment_scope"):
+            candidates = visible.filtered(lambda b, k=kind: b.block_kind == k)
+            if candidates:
+                return candidates[:1]
+        return visible.browse()
+
     def action_reload_proposal_blocks(self):
         """Apaga blocos atuais e recarrega do template (descarta edições)."""
         self.ensure_one()
@@ -1255,7 +1309,9 @@ class SaleOrder(models.Model):
         return True
 
     def _find_mail_template(self):
-        """F9.3: override — usa template LabQuali quando SO tem linhas de qualificação.
+        """F9.3: override — usa template LabQuali quando a SO é gerenciada.
+
+        Gerenciada = linhas de qualificação ou de serviço (`is_managed_quote`).
 
         Demais SOs caem no template padrão Odoo (sale.email_template_edi_sale).
         Confirmation/done seguem fluxo padrão também.
@@ -1264,7 +1320,7 @@ class SaleOrder(models.Model):
         if (
             not self.env.context.get('proforma')
             and self.state not in ('sale', 'done')
-            and self.has_qualif_lines
+            and self.is_managed_quote
         ):
             tmpl = self.env.ref(
                 'afr_qualificacao.email_template_proposal_labquali',

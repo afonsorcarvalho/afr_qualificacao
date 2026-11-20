@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Bloco "Resumo Financeiro": seção própria com a tabela de totais.
+         Só imprime quando é o emissor de totais da proposta (o primeiro
+         bloco `financial` visível); um segundo bloco `financial` não
+         duplica a tabela. -->
+    <template id="qq_block_financial">
+                            <div t-att-class="sec_class"
+                                 t-if="block == doc._proposal_totals_emitter()">
+                                <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
+                                     t-if="block.show_title">
+                                    <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                                    <span t-esc="block.title or 'Resumo Financeiro'"/>
+                                </div>
+                                <t t-call="afr_qualificacao.qq_totals_table"/>
+                            </div>
+    </template>
+</odoo>

@@ -168,3 +168,6 @@ from . import test_servico_configurator
 
 # Cotação multi-serviço — Task 5: blocos condicionais da proposta
 from . import test_proposal_multi_conditions
+
+# Cotação multi-serviço — Task 6: resumo financeiro e emissor único de totais
+from . import test_proposal_multi_totals

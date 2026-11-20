@@ -4,10 +4,11 @@
         Inherit do template padrão Odoo `sale.report_saleorder_document`.
 
         Estratégia (preserva fallback Odoo):
-        1. Adiciona `t-if="not (doc.has_qualif_lines or doc._proposal_visible_blocks())"`
+        1. Adiciona `t-if="not (doc.is_managed_quote or visible_blocks)"`
            no <div class="page"> original — esconde quando SO tem linhas de
-           qualificação OU blocos de proposta incluídos.
-        2. Insere novo <div class="page" t-if="doc.has_qualif_lines or doc._proposal_visible_blocks()">
+           qualificação/serviço (`is_managed_quote`) OU blocos de proposta
+           visíveis. `visible_blocks` é calculado uma vez por documento.
+        2. Insere novo <div class="page" t-if="doc.is_managed_quote or visible_blocks">
            antes, com layout dedicado (capa + sumário + descritivo + escopo +
            normas + resumo financeiro + condições + aceite).
 
@@ -21,12 +22,15 @@
 
         <!-- Condiciona o div page original — fallback Odoo padrão -->
         <xpath expr="//div[hasclass('page')]" position="attributes">
-            <attribute name="t-if">not (doc.has_qualif_lines or doc._proposal_visible_blocks())</attribute>
+            <attribute name="t-if">not (doc.is_managed_quote or visible_blocks)</attribute>
         </xpath>
 
         <!-- Insere novo div page com layout dedicado -->
         <xpath expr="//div[hasclass('page')]" position="before">
-            <div class="page qq-page" t-if="doc.has_qualif_lines or doc._proposal_visible_blocks()">
+            <!-- Blocos visíveis (incluídos E aplicáveis), uma única vez por
+                 documento: condição da página, numeração, TOC e laço. -->
+            <t t-set="visible_blocks" t-value="doc._proposal_visible_blocks()"/>
+            <div class="page qq-page" t-if="doc.is_managed_quote or visible_blocks">
                 <!-- F9.2: remove base href tag from web.minimal_layout.
                      wkhtmltopdf respects base tag; with it, "#anchor" hrefs
                      resolve to absolute URLs, breaking internal PDF links.
@@ -123,18 +127,18 @@
                 <t t-set="type_descs" t-value="doc._qualif_type_descriptions()"/>
 
                 <!-- F9.1 — numeração hierárquica {block_id: 'N' | 'N.M' | ''} -->
-                <t t-set="block_numbers" t-value="doc._proposal_block_numbering() if doc._proposal_visible_blocks() else {}"/>
+                <t t-set="block_numbers" t-value="doc._proposal_block_numbering() if visible_blocks else {}"/>
 
                 <!-- ========================================================
                      F9.2 — ÍNDICE (TOC) — após capa, antes dos blocos
                      Links internos ancorados em qq-anchor-#{block.id}.
                      Apenas blocos com show_title=True aparecem no índice.
                 ========================================================= -->
-                <t t-if="doc._proposal_visible_blocks().filtered('show_title')">
+                <t t-if="visible_blocks.filtered('show_title')">
                     <div class="qq-section qq-toc">
                         <div class="qq-section-title">Índice</div>
                         <ul class="qq-toc-list">
-                            <t t-foreach="doc._proposal_visible_blocks().filtered('show_title')" t-as="tb">
+                            <t t-foreach="visible_blocks.filtered('show_title')" t-as="tb">
                                 <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
                                 <li t-attf-class="qq-toc-item#{' qq-toc-child' if tb.parent_id else ''}">
                                     <a t-attf-href="#qq-anchor-#{tb.id}" class="qq-toc-link">
@@ -152,8 +156,8 @@
                      cotação (proposal_block_ids, incluídos, ordenados).
                      Fallback para o layout fixo quando a SO não tem blocos.
                 ========================================================= -->
-                <t t-if="doc._proposal_visible_blocks()">
-                    <t t-foreach="doc._proposal_visible_blocks()" t-as="block">
+                <t t-if="visible_blocks">
+                    <t t-foreach="visible_blocks" t-as="block">
 
                         <!-- F8.6 — quebra de página por bloco (page_break).
                              Sem quebra → classe qq-section-cont (continua). -->
@@ -178,6 +182,11 @@
                         <!-- Escopo por equipamento -->
                         <t t-if="block.block_kind == 'equipment_scope'">
                             <t t-call="afr_qualificacao.qq_block_equipment_scope"/>
+                        </t>
+
+                        <!-- Resumo financeiro: tabela de totais (só o emissor) -->
+                        <t t-if="block.block_kind == 'financial'">
+                            <t t-call="afr_qualificacao.qq_block_financial"/>
                         </t>
 
                         <!-- F8.14 — Bloco Cronograma (template-opcional) -->
@@ -205,6 +214,14 @@
                             <t t-call="afr_qualificacao.qq_block_acceptance"/>
                         </t>
 
+                    </t>
+                    <!-- Sem emissor de totais (nenhum bloco `financial` nem
+                         `equipment_scope` visível): a tabela sai depois do
+                         último bloco, para o total nunca faltar. -->
+                    <t t-if="not doc._proposal_totals_emitter() and doc.is_managed_quote">
+                        <div class="qq-section qq-section-cont">
+                            <t t-call="afr_qualificacao.qq_totals_table"/>
+                        </div>
                     </t>
                 </t>
                 <t t-else="">

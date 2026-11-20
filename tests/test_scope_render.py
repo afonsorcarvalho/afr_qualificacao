@@ -74,22 +74,17 @@ class TestScopePdfRender(TestScopeTable):
         self.assertEqual(html.count("Valor Geral da Proposta"), 1)
 
     def test_pdf_materialized_financial_block_is_a_no_op(self):
-        """Cotação antiga com bloco `financial` materializado (todo o parque
-        labquali, até a migração 16.0.7.0.0 rodar) não pode duplicar o total:
-        o bloco `financial` não tem mais nenhum ramo de CONTEÚDO em
-        `quotation_template.xml` (nenhum `qq_block_*` é chamado para ele), e
-        a tabela de totais do fim do escopo continua sendo a única fonte de
-        totais — sem um segundo painel de "Resumo Financeiro".
+        """Cotação com bloco `financial` materializado não duplica o total.
 
-        NOTA: o bloco ainda aparece como entrada fantasma no Índice (TOC) —
-        `doc.proposal_block_ids.filtered(lambda b: b.included and
-        b.show_title)` lista todo bloco incluído com título, sem filtrar por
-        `block_kind`, então "Resumo Financeiro" (rótulo de
-        `PROPOSAL_BLOCK_KINDS`) aparece como link morto e consome um número
-        na numeração hierárquica. Esse é exatamente o "buraco" que a
-        migração 16.0.7.0.0 resolve ao apagar os blocos materializados
-        `financial`/`cycle_specs` — aqui testamos apenas que não há
-        duplicação de CONTEÚDO de totais.
+        Desde a Task 6 (multi-serviço) o bloco `financial` é o EMISSOR de
+        totais (`_proposal_totals_emitter`): quando existe, ele imprime a
+        tabela e o fim do escopo por equipamento deixa de imprimir. Em
+        qualquer caso a tabela sai uma única vez — sem um segundo painel
+        de "Resumo Financeiro".
+
+        NOTA: o bloco aparece no Índice (TOC) com o rótulo de
+        `PROPOSAL_BLOCK_KINDS` ("Resumo Financeiro") e consome um número
+        na numeração hierárquica, como qualquer bloco com título.
         """
         so = self._full_so()
         self.env["afr.proposal.block"].create({

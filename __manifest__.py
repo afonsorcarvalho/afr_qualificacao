@@ -300,6 +300,7 @@
         "reports/templates_blocos/styles.xml",
         "reports/templates_blocos/block_static.xml",
         "reports/templates_blocos/block_totals.xml",
+        "reports/templates_blocos/block_financial.xml",
         "reports/templates_blocos/block_equipment_scope.xml",
         "reports/templates_blocos/block_schedule.xml",
         "reports/templates_blocos/block_standards_table.xml",

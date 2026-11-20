@@ -50,9 +50,12 @@
                 <attribute name="invisible">1</attribute>
             </xpath>
 
-            <!-- has_qualif_lines: campo invisível necessário para o attrs do qualif_subtotals_html -->
+            <!-- has_qualif_lines / is_managed_quote: campos invisíveis dos attrs.
+                 is_managed_quote (qualificação OU serviço) governa os totais;
+                 has_qualif_lines só o que é por equipamento. -->
             <xpath expr="//field[@name='order_line']" position="after">
                 <field name="has_qualif_lines" invisible="1"/>
+                <field name="is_managed_quote" invisible="1"/>
                 <field name="pode_gerar_os" invisible="1"/>
             </xpath>
 
@@ -62,7 +65,7 @@
                        nolabel="1"
                        readonly="1"
                        colspan="2"
-                       attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
+                       attrs="{'invisible': [('is_managed_quote','=',False)]}"/>
             </xpath>
 
             <!-- 3 abas custom inseridas ANTES da page order_lines padrão -->
@@ -151,7 +154,7 @@
                         </group>
                     </group>
                     <field name="qualif_subtotals_html" nolabel="1" readonly="1"
-                           attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
+                           attrs="{'invisible': [('is_managed_quote','=',False)]}"/>
                 </page>
 
                 <page string="Opcionais" name="qualif_opcionais">
@@ -175,7 +178,7 @@
                         </tree>
                     </field>
                     <field name="qualif_subtotals_html" nolabel="1" readonly="1"
-                           attrs="{'invisible': [('has_qualif_lines','=',False)]}"/>
+                           attrs="{'invisible': [('is_managed_quote','=',False)]}"/>
                 </page>
 
                 <page string="Detalhes Técnicos" name="qualif_tecnico"

@@ -2,9 +2,9 @@
 <odoo>
     <!--
         F9.4 — Cotação online LabQuali no portal Odoo.
-        Inherit em sale.sale_order_portal_content: para SO com qualif
-        (has_qualif_lines=True) esconde o conteúdo padrão e renderiza
-        nosso layout (capa + índice + blocos LEGO). Demais SOs caem no
+        Inherit em sale.sale_order_portal_content: para SO gerenciada
+        (is_managed_quote=True: linhas de qualificação ou de serviço)
+        esconde o conteúdo padrão e renderiza nosso layout (capa + índice + blocos LEGO). Demais SOs caem no
         layout padrão Odoo. Botões nativos (Aceitar/Assinar/Pagar) ficam
         no template pai (sale.sale_order_portal_template) e continuam a
         funcionar — não tocamos.
@@ -15,15 +15,15 @@
               name="Cotação Online Qualificação (AFR)">
         <!-- Esconde introdução padrão -->
         <xpath expr="//div[@id='introduction']" position="attributes">
-            <attribute name="t-if">not sale_order.has_qualif_lines</attribute>
+            <attribute name="t-if">not sale_order.is_managed_quote</attribute>
         </xpath>
         <!-- Esconde corpo padrão (div que contém #informations + #details) -->
         <xpath expr="//div[div[@id='informations']]" position="attributes">
-            <attribute name="t-if">not sale_order.has_qualif_lines</attribute>
+            <attribute name="t-if">not sale_order.is_managed_quote</attribute>
         </xpath>
         <!-- Insere nosso conteúdo antes -->
         <xpath expr="//div[@id='introduction']" position="before">
-            <t t-if="sale_order.has_qualif_lines"
+            <t t-if="sale_order.is_managed_quote"
                t-call="afr_qualificacao.sale_order_online_qualif_content"/>
         </xpath>
     </template>
@@ -228,50 +228,23 @@
                                 </table>
                             </div>
                         </t>
-                        <table class="lq-total-table">
-                            <t t-set="totals" t-value="sale_order._qualif_proposal_totals()"/>
-                            <t t-set="tot_breakdown"
-                               t-value="bool(totals['adicionais']) or not sale_order.currency_id.is_zero(totals['residual']) or not sale_order.currency_id.is_zero(totals['discount_amount'])"/>
-                            <t t-if="tot_breakdown">
-                                <tr>
-                                    <td class="lq-tot-label">Valor total dos Serviços de Qualificação</td>
-                                    <td class="lq-tot-value">
-                                        <span t-esc="totals['equip_total']"
-                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                    </td>
-                                </tr>
-                                <t t-foreach="totals['adicionais']" t-as="adic">
-                                    <tr>
-                                        <td class="lq-tot-label" t-esc="adic['name']"/>
-                                        <td class="lq-tot-value">
-                                            <span t-esc="adic['amount']"
-                                                  t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                        </td>
-                                    </tr>
-                                </t>
-                                <tr t-if="not sale_order.currency_id.is_zero(totals['residual'])">
-                                    <td class="lq-tot-label">Outros</td>
-                                    <td class="lq-tot-value">
-                                        <span t-esc="totals['residual']"
-                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                    </td>
-                                </tr>
-                                <tr t-if="not sale_order.currency_id.is_zero(totals['discount_amount'])">
-                                    <td class="lq-tot-label">Descontos</td>
-                                    <td class="lq-tot-value">
-                                        <span t-esc="-totals['discount_amount']"
-                                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                    </td>
-                                </tr>
-                            </t>
-                            <tr class="lq-total-grand">
-                                <td class="lq-tot-label">Valor Geral da Proposta</td>
-                                <td class="lq-tot-value">
-                                    <span t-esc="totals['grand_total']"
-                                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
-                                </td>
-                            </tr>
-                        </table>
+                        <!-- Totais no fim do escopo, só quando este bloco é o
+                             emissor de totais (ver `_proposal_totals_emitter`). -->
+                        <t t-if="block == sale_order._proposal_totals_emitter()"
+                           t-call="afr_qualificacao.sale_order_online_totals"/>
+                    </section>
+                </t>
+
+                <!-- Resumo financeiro: tabela de totais (só o emissor) -->
+                <t t-if="block.block_kind == 'financial'">
+                    <section class="lq-section"
+                             t-if="block == sale_order._proposal_totals_emitter()">
+                        <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
+                             t-if="block.show_title">
+                            <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
+                            <span t-esc="block.title or 'Resumo Financeiro'"/>
+                        </div>
+                        <t t-call="afr_qualificacao.sale_order_online_totals"/>
                     </section>
                 </t>
 
@@ -437,6 +410,37 @@
                 </t>
 
             </t>
+
+            <!-- Sem emissor de totais (nenhum bloco `financial` nem
+                 `equipment_scope` visível): tabela depois do último bloco. -->
+            <section class="lq-section"
+                     t-if="not sale_order._proposal_totals_emitter()">
+                <t t-call="afr_qualificacao.sale_order_online_totals"/>
+            </section>
         </div>
+    </template>
+
+    <!-- Tabela de totais do portal. Linhas de `_qualif_total_rows()` — mesma
+         fonte do PDF (`qq_totals_table`) e do banner do form. -->
+    <template id="sale_order_online_totals"
+              name="Totais Online Qualificação LabQuali">
+        <table class="lq-total-table">
+            <t t-foreach="sale_order._qualif_total_rows()" t-as="trow">
+                <tr>
+                    <td class="lq-tot-label" t-esc="trow[0]"/>
+                    <td class="lq-tot-value">
+                        <span t-esc="trow[1]"
+                              t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                    </td>
+                </tr>
+            </t>
+            <tr class="lq-total-grand">
+                <td class="lq-tot-label">Valor Geral da Proposta</td>
+                <td class="lq-tot-value">
+                    <span t-esc="sale_order.amount_untaxed"
+                          t-options="{'widget': 'monetary', 'display_currency': sale_order.currency_id}"/>
+                </td>
+            </tr>
+        </table>
     </template>
 </odoo>

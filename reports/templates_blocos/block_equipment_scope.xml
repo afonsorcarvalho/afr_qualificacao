@@ -87,11 +87,12 @@
                                         </table>
                                     </div>
                                 </t>
-                                <!-- Totais no fim do escopo. Emitido sempre, uma
-                                     única vez, ao final de todas as tabelas de
-                                     equipamento — não há mais bloco de Resumo
-                                     Financeiro separado (ver F8.2x). -->
-                                <t t-call="afr_qualificacao.qq_totals_table"/>
+                                <!-- Totais no fim do escopo, só quando este bloco é
+                                     o emissor de totais (template sem bloco
+                                     `financial`) — ver `_proposal_totals_emitter`.
+                                     Garante uma única tabela por proposta. -->
+                                <t t-if="block == doc._proposal_totals_emitter()"
+                                   t-call="afr_qualificacao.qq_totals_table"/>
                             </div>
     </template>
 </odoo>
