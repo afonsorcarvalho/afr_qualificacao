@@ -38,6 +38,65 @@ PROPOSAL_TEMPLATE_LINES = [
 ]
 
 
+# Template multi-serviço "TPL-MULTI" (cotação de qualificação e/ou serviços
+# por unidade). Default das cotações novas (sequence 1); as linhas
+# condicionais fazem a proposta se adaptar ao que foi cotado.
+# Tuple por linha: (xmlid_suffix, sequence, block_kind, section_xmlid|None,
+#                   page_break, parent_xmlid_suffix|None, applies_when,
+#                   service_group_xmlid|None, title|None)
+PROPOSAL_MULTI_TEMPLATE_LINES = [
+    ("m01", 10, "static", "proposal_section_objetivo_multi", True, None,
+     "always", None, None),
+    ("m02", 20, "static", "proposal_section_metodologia", False, None,
+     "always", None, None),
+    ("m03", 30, "standards_table", None, False, None,
+     "always", None, None),
+    ("m04", 40, "static", "proposal_section_normas", False, None,
+     "always", None, None),
+    ("m05", 50, "static", "proposal_section_qualif_termica", False, None,
+     "qualification", None, None),
+    ("m06", 60, "static", "proposal_section_qi", False, "m05",
+     "qualification", None, None),
+    ("m07", 70, "static", "proposal_section_qo", False, "m05",
+     "qualification", None, None),
+    ("m08", 80, "static", "proposal_section_qd", False, "m05",
+     "qualification", None, None),
+    ("m09", 90, "static", "proposal_section_validadores", False, None,
+     "qualification", None, None),
+    ("m10", 100, "static", "proposal_section_entregaveis", False, None,
+     "qualification", None, None),
+    ("m11", 110, "equipment_scope", None, True, None,
+     "qualification", None, None),
+    ("m12", 120, "static", "proposal_section_grp_calibracao", True, None,
+     "service_group", "servico_grupo_calibracao", "Calibração de Instrumentos"),
+    ("m13", 130, "service_group", None, False, "m12",
+     "service_group", "servico_grupo_calibracao", "Serviços"),
+    ("m14", 140, "static", "proposal_section_grp_nr13", True, None,
+     "service_group", "servico_grupo_nr13", "NR-13"),
+    ("m15", 150, "service_group", None, False, "m14",
+     "service_group", "servico_grupo_nr13", "Serviços"),
+    ("m16", 160, "static", "proposal_section_grp_vazao", True, None,
+     "service_group", "servico_grupo_vazao",
+     "Vazão de Exaustores e Trocas de Ar"),
+    ("m17", 170, "service_group", None, False, "m16",
+     "service_group", "servico_grupo_vazao", "Serviços"),
+    ("m18", 180, "financial", None, True, None,
+     "always", None, "Resumo Financeiro"),
+    ("m19", 190, "static", "proposal_section_condicoes", False, None,
+     "always", None, None),
+    ("m20", 200, "static", "proposal_section_responsabilidades", True, None,
+     "always", None, None),
+    ("m21", 210, "static", "proposal_section_credenciais", False, None,
+     "always", None, None),
+    ("m22", 220, "static", "sec_dados_cadastrais", False, None,
+     "always", None, None),
+    ("m23", 230, "acceptance", None, True, None,
+     "always", None, None),
+    ("m24", 240, "static", "proposal_section_aceite", False, None,
+     "always", None, None),
+]
+
+
 PARTE_01_NAME = "Parte 01"
 
 # Produtos serviço genéricos por tipo (preço 0; comercial ajusta no
@@ -528,6 +587,77 @@ def _seed_relatorio_templates(env):
                 by_suffix[suffix].parent_id = by_suffix[parent_suffix].id
 
 
+def _install_proposal_multi_template(env):
+    """Cria o template ‘Proposta Multi-serviço’ (TPL-MULTI), idempotente.
+
+    Mesmo padrão de `_install_proposal_template_seed`: xmlid
+    `proposal_template_multi` + `proposal_template_multi_<sufixo>` por linha,
+    `noupdate=True` (o usuário edita à vontade; upgrade não recria). Se o
+    xmlid do template já resolve, não faz nada. Chamado pelo hook de install
+    e pela migração 16.0.9.3.0 (bases existentes). Cotações já criadas não
+    mudam de template — só as novas pegam o default (sequence 1).
+    """
+    if env.ref("afr_qualificacao.proposal_template_multi",
+               raise_if_not_found=False):
+        return
+
+    Template = env["afr.proposal.template"]
+    TemplateLine = env["afr.proposal.template.line"]
+    ImdData = env["ir.model.data"]
+
+    template = Template.create({
+        "name": "Proposta Multi-serviço",
+        "code": "TPL-MULTI",
+        "sequence": 1,
+    })
+    ImdData.create({
+        "name": "proposal_template_multi",
+        "module": "afr_qualificacao",
+        "model": "afr.proposal.template",
+        "res_id": template.id,
+        "noupdate": True,
+    })
+
+    # 1ª passagem: criar todas as linhas sem parent_id
+    suffix_to_line = {}
+    for (suffix, seq, kind, section_xmlid, page_break, _parent,
+         applies_when, group_xmlid, title) in PROPOSAL_MULTI_TEMPLATE_LINES:
+        section = (
+            env.ref(f"afr_qualificacao.{section_xmlid}",
+                    raise_if_not_found=False)
+            if section_xmlid else False
+        )
+        group = (
+            env.ref(f"afr_qualificacao.{group_xmlid}",
+                    raise_if_not_found=False)
+            if group_xmlid else False
+        )
+        line = TemplateLine.create({
+            "template_id": template.id,
+            "sequence": seq,
+            "block_kind": kind,
+            "section_id": section.id if section else False,
+            "page_break": page_break,
+            "applies_when": applies_when,
+            "service_group_id": group.id if group else False,
+            "title": title or False,
+        })
+        ImdData.create({
+            "name": f"proposal_template_multi_{suffix}",
+            "module": "afr_qualificacao",
+            "model": "afr.proposal.template.line",
+            "res_id": line.id,
+            "noupdate": True,
+        })
+        suffix_to_line[suffix] = line
+
+    # 2ª passagem: propagar parent_id (hierarquia)
+    for (suffix, _seq, _kind, _sec, _pb, parent_suffix,
+         *_rest) in PROPOSAL_MULTI_TEMPLATE_LINES:
+        if parent_suffix and parent_suffix in suffix_to_line:
+            suffix_to_line[suffix].parent_id = suffix_to_line[parent_suffix].id
+
+
 def _install_proposal_template_seed(cr, registry):
     """Cria o template default ‘Proposta LabQuali QI/QO/QD’ no install.
 
@@ -543,6 +673,10 @@ def _install_proposal_template_seed(cr, registry):
 
     # Relatório Final (P3) — seções/templates de relatório (idempotente).
     _seed_relatorio_templates(env)
+
+    # Template multi-serviço (default das cotações novas) — idempotente e
+    # antes do return antecipado abaixo, para valer também em reinstalação.
+    _install_proposal_multi_template(env)
 
     template = env.ref(
         "afr_qualificacao.proposal_template_labquali",

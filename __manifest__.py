@@ -226,6 +226,9 @@
         "data/proposal_section_seed.xml",
         "data/proposal_optional_seed.xml",
         "data/proposal_venda_calibracao_seed.xml",
+        # Cotação multi-serviço — textos do TPL-MULTI (o template vem do hook
+        # _install_proposal_multi_template, não de XML; ver NOTA F9.2 acima).
+        "data/proposal_multi_servico_seed.xml",
         # Escopo tabela de ciclos — remoção de financial/optionals do
         # template default em bases já instaladas virou migração one-shot
         # (migrations/16.0.7.0.0/post-migrate.py), não data file: mira o

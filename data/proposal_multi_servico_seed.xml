@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Cotação multi-serviço — textos do template TPL-MULTI.
+        O template em si NÃO é carregado daqui (ver hooks._install_proposal_multi_template);
+        só as seções de texto novas, que o cliente edita sem perder em upgrade.
+        O objetivo cita as frentes cotadas via {{ doc._proposal_service_titles() }}.
+        Os textos de NR-13 e de vazão são RASCUNHOS provisórios, a serem
+        substituídos pelo cliente.
+    -->
+
+    <record id="proposal_section_objetivo_multi" model="afr.proposal.section">
+        <field name="code">SEC-OBJETIVO-MULTI</field>
+        <field name="name">Objetivo</field>
+        <field name="category">objetivo</field>
+        <field name="document_type">proposal</field>
+        <field name="sequence">12</field>
+        <field name="body" type="html">
+            <div>
+                <p>Esta proposta tem por objetivo o fornecimento de serviços de {{ doc._proposal_service_titles() }}.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_grp_calibracao" model="afr.proposal.section">
+        <field name="code">SEC-GRP-CALIB</field>
+        <field name="name">Calibração de Instrumentos</field>
+        <field name="category">tecnico</field>
+        <field name="document_type">proposal</field>
+        <field name="sequence">210</field>
+        <field name="body" type="html">
+            <div>
+                <p><strong>Calibração:</strong> operação que estabelece, sob
+                condições específicas, em uma primeira etapa, uma relação entre os
+                valores e as incertezas de medição fornecidas por padrões e as
+                indicações correspondentes com as incertezas associadas; em uma
+                segunda etapa, utiliza esta informação para estabelecer uma
+                relação visando a obtenção de um resultado de medição a partir de
+                uma indicação. (NBR 16328:2014)</p>
+                <ul>
+                    <li>Serão utilizados Padrões de Medição calibrados e
+                    rastreados à RBC — Rede Brasileira de Calibração / INMETRO;</li>
+                    <li>Os certificados emitidos contêm tabelas com a média dos
+                    valores coletados, a incerteza de medição expandida com nível
+                    de confiança de 95% e o coeficiente de abrangência (K), além
+                    dos dados dos padrões utilizados e cópia de seus respectivos
+                    certificados de calibração;</li>
+                    <li>Será entregue um Certificado de Calibração para cada
+                    instrumento calibrado.</li>
+                </ul>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_grp_nr13" model="afr.proposal.section">
+        <field name="code">SEC-GRP-NR13</field>
+        <field name="name">NR-13</field>
+        <field name="category">tecnico</field>
+        <field name="document_type">proposal</field>
+        <field name="sequence">220</field>
+        <field name="body" type="html">
+            <div>
+                <p>[REVISAR — texto provisório] Esta seção trata dos serviços
+                de NR-13 relacionados na tabela a seguir, cotados por
+                equipamento.</p>
+            </div>
+        </field>
+    </record>
+
+    <record id="proposal_section_grp_vazao" model="afr.proposal.section">
+        <field name="code">SEC-GRP-VAZAO</field>
+        <field name="name">Vazão de Exaustores e Trocas de Ar</field>
+        <field name="category">tecnico</field>
+        <field name="document_type">proposal</field>
+        <field name="sequence">230</field>
+        <field name="body" type="html">
+            <div>
+                <p>[REVISAR — texto provisório] Esta seção trata dos serviços
+                de vazão de exaustores e trocas de ar relacionados na tabela a
+                seguir, cotados por exaustor.</p>
+            </div>
+        </field>
+    </record>
+</odoo>
