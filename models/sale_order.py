@@ -939,9 +939,8 @@ class SaleOrder(models.Model):
                 label = section.name
         block = self.env["afr.proposal.block"]
         if code:
-            block = self.proposal_block_ids.filtered(
-                lambda b: b.included and b.section_id
-                and b.section_id.code == code
+            block = self._proposal_visible_blocks().filtered(
+                lambda b: b.section_id and b.section_id.code == code
             )[:1]
         if not block:
             return _("Conforme descrito no tópico %s") % label
@@ -1210,6 +1209,8 @@ class SaleOrder(models.Model):
                     "page_break": line.page_break,
                     "show_number": line.show_number,
                     "show_title": line.show_title,
+                    "applies_when": line.applies_when,
+                    "service_group_id": line.service_group_id.id or False,
                 })
                 line_to_block[line.id] = block.id
             # 2ª passagem: propagar parent_id
@@ -1222,7 +1223,10 @@ class SaleOrder(models.Model):
                         )
 
     def _proposal_block_numbering(self):
-        """Retorna dict {block_id: 'número_hierárquico'} para todos os blocos incluídos.
+        """Retorna dict {block_id: 'número_hierárquico'} para os blocos visíveis.
+
+        Visível = incluído E aplicável (`_proposal_visible_blocks`); blocos
+        ocultos pela condição não consomem número.
 
         Ex: {1: '1', 2: '2', 3: '3', 4: '3.1', 5: '3.2', 6: '3.3', 7: '4'}
         Blocos com show_number=False recebem string vazia ''.
@@ -1230,7 +1234,18 @@ class SaleOrder(models.Model):
         Implementação em models/_numbering.py (compartilhada com o relatório final).
         """
         self.ensure_one()
-        return hierarchical_numbering(self.proposal_block_ids.filtered("included"))
+        return hierarchical_numbering(self._proposal_visible_blocks())
+
+    def _proposal_visible_blocks(self):
+        """Blocos que entram no documento: `included` e condição satisfeita.
+
+        Ordem do modelo (`sequence, id`). Usado pelo PDF, pelo portal e pela
+        numeração — única fonte da regra de visibilidade.
+        """
+        self.ensure_one()
+        return self.proposal_block_ids.filtered(
+            lambda b: b.included and b._is_applicable()
+        )
 
     def action_reload_proposal_blocks(self):
         """Apaga blocos atuais e recarrega do template (descarta edições)."""

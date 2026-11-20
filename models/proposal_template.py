@@ -32,6 +32,14 @@ PROPOSAL_BLOCK_KINDS = [
     ("acceptance", "Aceite / Assinatura"),
 ]
 
+# Condição de aplicação de um bloco/linha: o capítulo só entra no documento
+# quando a cotação tem o que ele descreve (qualificação ou serviço do grupo).
+PROPOSAL_APPLIES_WHEN = [
+    ("always", "Sempre"),
+    ("qualification", "Quando há qualificação"),
+    ("service_group", "Quando há serviço do grupo"),
+]
+
 
 class AfrProposalTemplate(models.Model):
     """Layout de proposta reutilizável — coleção ordenada de blocos."""
@@ -126,6 +134,22 @@ class AfrProposalTemplateLine(models.Model):
         default=True,
         help="Exibe título no PDF. Desmarque para renderizar só o conteúdo. Propagado ao bloco ao sedar.",
     )
+    applies_when = fields.Selection(
+        selection=PROPOSAL_APPLIES_WHEN,
+        string="Aplica-se",
+        required=True,
+        default="always",
+        help=(
+            "Condição para o bloco entrar na proposta. Propagada ao bloco "
+            "ao sedar. Sub-blocos seguem também a condição do pai."
+        ),
+    )
+    service_group_id = fields.Many2one(
+        comodel_name="afr.servico.grupo",
+        string="Grupo de Serviço",
+        ondelete="restrict",
+        help="Grupo cujo serviço na cotação ativa o bloco (aplica-se = grupo).",
+    )
     # F9.1.x — campos de display (preview UX no editor de template)
     display_label = fields.Char(
         compute="_compute_display_label",
@@ -198,6 +222,15 @@ class AfrProposalTemplateLine(models.Model):
             if record.block_kind == "static" and not record.section_id:
                 raise ValidationError(
                     _("Bloco de texto exige uma Seção de Texto selecionada.")
+                )
+
+    @api.constrains("applies_when", "service_group_id")
+    def _check_applies_when_group(self):
+        for record in self:
+            if record.applies_when == "service_group" and not record.service_group_id:
+                raise ValidationError(
+                    _("Informe o Grupo de Serviço quando o bloco se aplica "
+                      "a um grupo de serviço.")
                 )
 
     def name_get(self):

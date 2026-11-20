@@ -16,7 +16,7 @@ from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools.misc import formatLang
 
-from .proposal_template import PROPOSAL_BLOCK_KINDS
+from .proposal_template import PROPOSAL_APPLIES_WHEN, PROPOSAL_BLOCK_KINDS
 
 
 class AfrProposalBlock(models.Model):
@@ -101,6 +101,28 @@ class AfrProposalBlock(models.Model):
             "apenas o conteúdo, sem cabeçalho."
         ),
     )
+    applies_when = fields.Selection(
+        selection=PROPOSAL_APPLIES_WHEN,
+        string="Aplica-se",
+        required=True,
+        default="always",
+        help=(
+            "Condição para o bloco aparecer na proposta, avaliada contra o "
+            "conteúdo atual da cotação. Sub-blocos seguem também a condição "
+            "do pai."
+        ),
+    )
+    service_group_id = fields.Many2one(
+        comodel_name="afr.servico.grupo",
+        string="Grupo de Serviço",
+        ondelete="restrict",
+        help="Grupo cujo serviço na cotação ativa o bloco (aplica-se = grupo).",
+    )
+    is_applicable = fields.Boolean(
+        compute="_compute_is_applicable",
+        string="Aplicável",
+        help="False quando a condição do bloco (ou do pai) não é satisfeita pela cotação.",
+    )
     # F9.2 — display fields (preview UX no editor da SO + popup parent_id)
     display_label = fields.Char(
         compute="_compute_display_label",
@@ -112,6 +134,41 @@ class AfrProposalBlock(models.Model):
         string="Nº",
         help="Preview do número hierárquico calculado da posição na cotação.",
     )
+
+    def _is_applicable(self):
+        """True se a condição do bloco — e a do pai, se houver — vale na cotação."""
+        self.ensure_one()
+        order = self.sale_order_id
+        if self.applies_when == "qualification":
+            ok = bool(order.has_qualif_lines)
+        elif self.applies_when == "service_group":
+            ok = bool(self.service_group_id) and (
+                self.service_group_id in order._service_groups()
+            )
+        else:
+            ok = True
+        if ok and self.parent_id:
+            ok = self.parent_id._is_applicable()
+        return ok
+
+    @api.depends(
+        "applies_when", "service_group_id", "parent_id", "sale_order_id",
+        "sale_order_id.has_qualif_lines", "sale_order_id.order_line",
+    )
+    def _compute_is_applicable(self):
+        for block in self:
+            block.is_applicable = (
+                bool(block.sale_order_id) and block._is_applicable()
+            )
+
+    @api.constrains("applies_when", "service_group_id")
+    def _check_applies_when_group(self):
+        for record in self:
+            if record.applies_when == "service_group" and not record.service_group_id:
+                raise ValidationError(
+                    _("Informe o Grupo de Serviço quando o bloco se aplica "
+                      "a um grupo de serviço.")
+                )
 
     @api.depends("title", "section_id", "block_kind")
     def _compute_display_label(self):
@@ -129,10 +186,14 @@ class AfrProposalBlock(models.Model):
         "parent_id",
         "show_number",
         "included",
+        "applies_when",
+        "service_group_id",
         "sale_order_id.proposal_block_ids.sequence",
         "sale_order_id.proposal_block_ids.parent_id",
         "sale_order_id.proposal_block_ids.show_number",
         "sale_order_id.proposal_block_ids.included",
+        "sale_order_id.proposal_block_ids.applies_when",
+        "sale_order_id.proposal_block_ids.service_group_id",
     )
     def _compute_display_number(self):
         """Preview da numeração hierárquica por cotação. Reusa

@@ -42,6 +42,11 @@
                             <field name="title"
                                    placeholder="(usa nome da seção / rótulo do tipo)"/>
                             <field name="block_kind"/>
+                            <field name="applies_when"/>
+                            <field name="service_group_id"
+                                   attrs="{'invisible': [('applies_when', '!=', 'service_group')],
+                                           'required': [('applies_when', '=', 'service_group')]}"
+                                   options="{'no_create': True, 'no_create_edit': True}"/>
                             <field name="parent_id"
                                    domain="[('template_id','=',parent.id),('id','!=',id)]"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
@@ -77,6 +82,11 @@
                             <field name="template_id" readonly="1"/>
                             <field name="block_kind"/>
                             <field name="title"/>
+                            <field name="applies_when"/>
+                            <field name="service_group_id"
+                                   attrs="{'invisible': [('applies_when', '!=', 'service_group')],
+                                           'required': [('applies_when', '=', 'service_group')]}"
+                                   options="{'no_create': True, 'no_create_edit': True}"/>
                             <field name="parent_id"
                                    domain="[('template_id','=',template_id),('id','!=',id)]"/>
                         </group>

@@ -94,12 +94,12 @@
                  2. ÍNDICE (TOC) — links nativos do browser
             ============================================================= -->
             <t t-set="block_numbers"
-               t-value="sale_order._proposal_block_numbering() if sale_order.proposal_block_ids.filtered('included') else {}"/>
-            <t t-if="sale_order.proposal_block_ids.filtered(lambda b: b.included and b.show_title)">
+               t-value="sale_order._proposal_block_numbering() if sale_order._proposal_visible_blocks() else {}"/>
+            <t t-if="sale_order._proposal_visible_blocks().filtered('show_title')">
                 <div class="lq-toc">
                     <div class="lq-section-title">Índice</div>
                     <ul class="lq-toc-list">
-                        <t t-foreach="sale_order.proposal_block_ids.filtered(lambda b: b.included and b.show_title)" t-as="tb">
+                        <t t-foreach="sale_order._proposal_visible_blocks().filtered('show_title')" t-as="tb">
                             <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
                             <li t-attf-class="lq-toc-item#{' lq-toc-child' if tb.parent_id else ''}">
                                 <a t-attf-href="#lq-anchor-#{tb.id}" class="lq-toc-link">
@@ -120,7 +120,7 @@
             ============================================================= -->
             <t t-set="type_descs" t-value="sale_order._qualif_type_descriptions()"/>
 
-            <t t-foreach="sale_order.proposal_block_ids.filtered('included')" t-as="block">
+            <t t-foreach="sale_order._proposal_visible_blocks()" t-as="block">
                 <t t-set="blk_num" t-value="block_numbers.get(block.id, '')"/>
                 <t t-set="is_child" t-value="bool(block.parent_id)"/>
                 <a t-attf-id="lq-anchor-#{block.id}" class="lq-anchor">&#160;</a>
