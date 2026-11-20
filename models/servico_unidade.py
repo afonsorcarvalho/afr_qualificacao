@@ -7,7 +7,11 @@ alterado nem reaproveitado (ver `sale.order._service_sync_units`).
 """
 
 from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError
+
+# Chave de contexto do fluxo interno de numeração
+# (`sale.order._service_assign_item_numbers`): só ele grava `item_number`.
+UNIT_NUMBERING_CTX = "afr_servico_unit_numbering"
 
 
 class AfrServicoUnidade(models.Model):
@@ -93,6 +97,12 @@ class AfrServicoUnidade(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if not self.env.context.get(UNIT_NUMBERING_CTX) and any(
+            vals.get("item_number") for vals in vals_list
+        ):
+            raise UserError(_(
+                "O número do item é atribuído pelo sistema na confirmação "
+                "da cotação e não pode ser informado."))
         units = super().create(vals_list)
         # Unidade criada à mão numa cotação já confirmada recebe o próximo
         # número na hora (nas em rascunho, o número sai na confirmação).
@@ -100,6 +110,37 @@ class AfrServicoUnidade(models.Model):
             lambda o: o.state in ("sale", "done")
         )._service_assign_item_numbers()
         return units
+
+    def write(self, vals):
+        """Número do item é identidade (certificado `<proposta>-<item>`).
+
+        Fora do fluxo interno de numeração (`UNIT_NUMBERING_CTX`): o
+        `item_number` não pode ser alterado (nem atribuído à mão), e a
+        unidade já numerada não pode trocar de linha.
+        """
+        if not self.env.context.get(UNIT_NUMBERING_CTX):
+            for unit in self:
+                if (
+                    "item_number" in vals
+                    and (vals["item_number"] or 0) != unit.item_number
+                ):
+                    if unit.item_number:
+                        raise UserError(_(
+                            "O item %(item)d já foi numerado: o número não "
+                            "pode ser alterado.", item=unit.item_number))
+                    raise UserError(_(
+                        "O número do item é atribuído pelo sistema na "
+                        "confirmação da cotação e não pode ser informado."))
+                if (
+                    "line_id" in vals
+                    and unit.item_number
+                    and (vals["line_id"] or False) != unit.line_id.id
+                ):
+                    raise UserError(_(
+                        "O item %(item)d já foi numerado e não pode mudar de "
+                        "linha de serviço. Remova-o e crie uma unidade na "
+                        "outra linha.", item=unit.item_number))
+        return super().write(vals)
 
     @api.constrains("line_id")
     def _check_units_within_qty(self):

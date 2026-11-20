@@ -786,6 +786,9 @@ class SaleOrderLine(models.Model):
             # bloqueia); só depois a constraint de unidades <= qty roda.
             # Unidades que o próprio `vals` apaga já não contam.
             for line in self.filtered("is_service_managed"):
+                # Antes de ajustar as unidades: com qtd inválida (fração,
+                # negativa) o ajuste daria mensagem enganosa.
+                line._service_check_qty_value(vals["product_uom_qty"] or 0)
                 line._service_trim_units(
                     vals["product_uom_qty"],
                     removed=line._service_units_removed_by(
@@ -937,6 +940,22 @@ class SaleOrderLine(models.Model):
             line.service_unit_count = len(units)
             line.service_unit_identified_count = len(
                 units.filtered("is_identified"))
+
+    def _service_check_qty_value(self, qty):
+        """Quantidade de linha de serviço = nº de unidades: inteiro >= 0."""
+        self.ensure_one()
+        if qty < 0 or float_compare(qty, round(qty), precision_digits=6):
+            raise ValidationError(_(
+                "A quantidade da linha de serviço %(line)s é o número de "
+                "unidades: informe um número inteiro, zero ou maior "
+                "(recebido: %(qty)s).",
+                line=self.name, qty=qty,
+            ))
+
+    @api.constrains("product_uom_qty", "is_service_managed")
+    def _check_service_qty_integer(self):
+        for line in self.filtered("is_service_managed"):
+            line._service_check_qty_value(line.product_uom_qty)
 
     @api.constrains("product_uom_qty", "service_unit_ids")
     def _check_service_units_within_qty(self):

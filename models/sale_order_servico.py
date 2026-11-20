@@ -5,6 +5,7 @@ from odoo import _, api, fields, models
 # Importado depois de `sale_order` (ver models/__init__.py): não muda a ordem
 # das classes `_inherit = "sale.order"`.
 from .sale_order import SERVICE_WORK_HOURS_PER_DAY
+from .servico_unidade import UNIT_NUMBERING_CTX
 
 
 class SaleOrderServico(models.Model):
@@ -53,16 +54,21 @@ class SaleOrderServico(models.Model):
         # unidade identificada" (aba Unidades) numa só gravação: as linhas
         # seriam gravadas antes e bloqueariam por unidades que a própria
         # gravação apaga. Por isso as remoções de unidade vão primeiro.
+        # Só o comando 2 (DELETE) é remoção: o inverso `order_id` da unidade
+        # é um related sem `ondelete="cascade"`, então o comando 3 (UNLINK)
+        # não apaga a unidade, tentaria gravar `order_id=False` na linha.
         commands = vals.get("service_unit_ids")
-        if commands and any(c[0] in (2, 3) for c in commands):
-            removals = [c for c in commands if c[0] in (2, 3)]
-            rest = [c for c in commands if c[0] not in (2, 3)]
+        if commands and any(c[0] == 2 for c in commands):
+            removals = [c for c in commands if c[0] == 2]
+            rest = [c for c in commands if c[0] != 2]
             vals = dict(vals)
             if rest:
                 vals["service_unit_ids"] = rest
             else:
                 del vals["service_unit_ids"]
-            super().write({"service_unit_ids": removals})
+            res = super().write({"service_unit_ids": removals})
+            if not vals:
+                return res
         return super().write(vals)
 
     @api.depends("order_line.is_service_managed", "order_line.display_type")
@@ -153,7 +159,8 @@ class SaleOrderServico(models.Model):
                 ):
                     if not unit.item_number:
                         last += 1
-                        unit.item_number = last
+                        unit.with_context(**{
+                            UNIT_NUMBERING_CTX: True}).item_number = last
             if last != order.service_unit_last_number:
                 order.service_unit_last_number = last
 

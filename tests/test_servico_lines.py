@@ -54,8 +54,17 @@ class TestServicoLines(AfrServicoTestCommon):
     def test_service_line_cannot_be_qualif(self):
         order = self._make_order()
         line = self._add_service(order, self.svc_seladora, 2)
-        with self.assertRaises(ValidationError):
-            line.write({"is_qualificacao_managed": True})
+        # Linha de qualificação completa (QI com equipamento): a constraint
+        # antiga de qualificação fica satisfeita, só a de serviço dispara.
+        with self.assertRaises(ValidationError) as caught:
+            line.write({
+                "is_qualificacao_managed": True,
+                "equipment_id": self.equip1.id,
+                "qualification_type": "installation",
+            })
+        self.assertIn(
+            "Linha de serviço não pode ser de qualificação",
+            str(caught.exception))
         with self.assertRaises(ValidationError):
             line.write({"equipment_id": self.equip1.id})
         with self.assertRaises(ValidationError):
