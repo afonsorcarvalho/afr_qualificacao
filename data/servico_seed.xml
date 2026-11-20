@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Cotação multi-serviço — catálogo inicial de serviços cotados por
+        unidade. Um produto de serviço por serviço (list_price 0: o cliente
+        define o preço). noupdate="1": ajustes do cliente sobrevivem ao -u.
+    -->
+
+    <!-- Grupos -->
+    <record id="servico_grupo_calibracao" model="afr.servico.grupo">
+        <field name="name">Calibração de Instrumentos</field>
+        <field name="sequence">10</field>
+        <field name="unit_label">instrumento</field>
+    </record>
+
+    <record id="servico_grupo_nr13" model="afr.servico.grupo">
+        <field name="name">NR-13</field>
+        <field name="sequence">20</field>
+        <field name="unit_label">equipamento</field>
+    </record>
+
+    <record id="servico_grupo_vazao" model="afr.servico.grupo">
+        <field name="name">Vazão de Exaustores e Trocas de Ar</field>
+        <field name="sequence">30</field>
+        <field name="unit_label">exaustor</field>
+    </record>
+
+    <!-- Produtos de serviço (um por serviço) -->
+    <record id="product_servico_calib_sensor_ambiente" model="product.product">
+        <field name="name">Calibração de sensor de ambiente (termo-higrômetro)</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <record id="product_servico_calib_camara_fria" model="product.product">
+        <field name="name">Calibração de câmara frigorífica</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <record id="product_servico_calib_estufa" model="product.product">
+        <field name="name">Calibração de estufa</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <record id="product_servico_calib_incubadora_ib" model="product.product">
+        <field name="name">Calibração de incubadora de indicador biológico</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <record id="product_servico_calib_seladora" model="product.product">
+        <field name="name">Calibração de seladora de papel grau cirúrgico</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <record id="product_servico_nr13_inspecao" model="product.product">
+        <field name="name">Inspeção NR-13</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <record id="product_servico_vazao_exaustor" model="product.product">
+        <field name="name">Verificação de vazão de exaustor e trocas de ar</field>
+        <field name="type">service</field>
+        <field name="detailed_type">service</field>
+        <field name="sale_ok" eval="True"/>
+        <field name="purchase_ok" eval="False"/>
+        <field name="list_price">0.0</field>
+    </record>
+
+    <!-- Serviços -->
+    <record id="servico_calib_sensor_ambiente" model="afr.servico">
+        <field name="name">Calibração de sensor de ambiente (termo-higrômetro)</field>
+        <field name="group_id" ref="servico_grupo_calibracao"/>
+        <field name="product_id" ref="product_servico_calib_sensor_ambiente"/>
+        <field name="sequence">10</field>
+        <field name="procedure_code">QPC-011</field>
+    </record>
+
+    <record id="servico_calib_camara_fria" model="afr.servico">
+        <field name="name">Calibração de câmara frigorífica</field>
+        <field name="group_id" ref="servico_grupo_calibracao"/>
+        <field name="product_id" ref="product_servico_calib_camara_fria"/>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="servico_calib_estufa" model="afr.servico">
+        <field name="name">Calibração de estufa</field>
+        <field name="group_id" ref="servico_grupo_calibracao"/>
+        <field name="product_id" ref="product_servico_calib_estufa"/>
+        <field name="sequence">30</field>
+    </record>
+
+    <record id="servico_calib_incubadora_ib" model="afr.servico">
+        <field name="name">Calibração de incubadora de indicador biológico</field>
+        <field name="group_id" ref="servico_grupo_calibracao"/>
+        <field name="product_id" ref="product_servico_calib_incubadora_ib"/>
+        <field name="sequence">40</field>
+    </record>
+
+    <record id="servico_calib_seladora" model="afr.servico">
+        <field name="name">Calibração de seladora de papel grau cirúrgico</field>
+        <field name="group_id" ref="servico_grupo_calibracao"/>
+        <field name="product_id" ref="product_servico_calib_seladora"/>
+        <field name="sequence">50</field>
+        <field name="procedure_code">QPC-008</field>
+    </record>
+
+    <record id="servico_nr13_inspecao" model="afr.servico">
+        <field name="name">Inspeção NR-13</field>
+        <field name="group_id" ref="servico_grupo_nr13"/>
+        <field name="product_id" ref="product_servico_nr13_inspecao"/>
+        <field name="sequence">10</field>
+    </record>
+
+    <record id="servico_vazao_exaustor" model="afr.servico">
+        <field name="name">Verificação de vazão de exaustor e trocas de ar</field>
+        <field name="group_id" ref="servico_grupo_vazao"/>
+        <field name="product_id" ref="product_servico_vazao_exaustor"/>
+        <field name="sequence">10</field>
+    </record>
+</odoo>

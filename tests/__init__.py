@@ -153,3 +153,6 @@ from . import test_wizard_so_parity
 
 # Desconto geral da cotação (16.0.9.2.0)
 from . import test_qualif_discount
+
+# Cotação multi-serviço — Task 1: catálogo de serviços
+from . import test_servico_catalog

@@ -84,6 +84,24 @@
     />
 
     <menuitem
+        id="menu_afr_qualificacao_servico_grupo"
+        name="Grupos de Serviço"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_servico_grupo"
+        sequence="32"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
+        id="menu_afr_qualificacao_servico"
+        name="Serviços"
+        parent="menu_afr_qualificacao_config"
+        action="afr_qualificacao.action_servico"
+        sequence="34"
+        groups="afr_qualificacao.group_afr_qualificacao_manager"
+    />
+
+    <menuitem
         id="menu_afr_qualificacao_sensor_kind"
         name="Grandezas (Sensor Kinds)"
         parent="menu_afr_qualificacao_config"

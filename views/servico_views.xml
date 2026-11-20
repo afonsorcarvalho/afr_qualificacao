@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Grupo de serviços -->
+    <record id="view_servico_grupo_tree" model="ir.ui.view">
+        <field name="name">afr.servico.grupo.tree</field>
+        <field name="model">afr.servico.grupo</field>
+        <field name="arch" type="xml">
+            <tree string="Grupos de Serviço">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="unit_label"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_servico_grupo_form" model="ir.ui.view">
+        <field name="name">afr.servico.grupo.form</field>
+        <field name="model">afr.servico.grupo</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="chapter_title"/>
+                            <field name="unit_label"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Serviços" name="services">
+                            <field name="service_ids" nolabel="1">
+                                <tree>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="product_id"/>
+                                    <field name="estimated_hours"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_servico_grupo" model="ir.actions.act_window">
+        <field name="name">Grupos de Serviço</field>
+        <field name="res_model">afr.servico.grupo</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Serviço -->
+    <record id="view_servico_tree" model="ir.ui.view">
+        <field name="name">afr.servico.tree</field>
+        <field name="model">afr.servico</field>
+        <field name="arch" type="xml">
+            <tree string="Serviços">
+                <field name="sequence" widget="handle"/>
+                <field name="group_id"/>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="product_id"/>
+                <field name="estimated_hours"/>
+                <field name="procedure_code"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_servico_form" model="ir.ui.view">
+        <field name="name">afr.servico.form</field>
+        <field name="model">afr.servico</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="group_id"/>
+                            <field name="product_id"/>
+                        </group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Proposta" name="proposal">
+                            <group>
+                                <group>
+                                    <field name="estimated_hours"/>
+                                    <field name="equipment_category_id"/>
+                                </group>
+                                <group string="Normas Aplicáveis">
+                                    <field name="standard_ids" nolabel="1"
+                                           widget="many2many_tags"
+                                           options="{'no_create': True, 'no_create_edit': True}"/>
+                                </group>
+                            </group>
+                            <separator string="Escopo"/>
+                            <field name="scope_description" nolabel="1"/>
+                        </page>
+                        <page string="Execução" name="execution">
+                            <group>
+                                <group>
+                                    <field name="procedure_code"/>
+                                    <field name="procedure_revision"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_servico" model="ir.actions.act_window">
+        <field name="name">Serviços</field>
+        <field name="res_model">afr.servico</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

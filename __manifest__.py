@@ -212,6 +212,8 @@
         "data/equipment_category_seed.xml",
         # F8.9 — malhas comuns (Temp/Press/Umidade)
         "data/malha_type_seed.xml",
+        # Cotação multi-serviço — catálogo de serviços (grupos + serviços)
+        "data/servico_seed.xml",
         # F8.8 — ciclos comuns por equipamento (linkados às categorias)
         "data/cycle_type_seed.xml",
         # F8.9 — templates de equipamento prontos (Pacote Autoclave a Vapor)
@@ -237,6 +239,7 @@
         "views/standard_views.xml",
         "views/cycle_type_views.xml",
         "views/malha_type_views.xml",
+        "views/servico_views.xml",
         "views/product_product_views.xml",
         "views/config_template_views.xml",
         # F8.1 — Proposta LEGO: views master data (actions; menus em qualificacao_menus.xml)

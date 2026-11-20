@@ -8,6 +8,7 @@ from . import sensor_kind
 from . import qualificacao_standard
 from . import cycle_type
 from . import malha_type
+from . import servico                    # Cotação multi-serviço — catálogo
 from . import config_template
 from . import proposal_section          # F8.1 (16.0.4.0.0)
 from . import proposal_template         # F8.1 (16.0.4.0.0)
