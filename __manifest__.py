@@ -1,6 +1,6 @@
 {
     "name": "AFR Qualificação",
-    "version": "16.0.9.2.0",
+    "version": "16.0.9.3.0",
     "category": "Maintenance",
     "license": "LGPL-3",
     "author": "AFR Sistemas",
@@ -169,6 +169,12 @@
               leituras em lote" (rascunho, grupo Usuário) abre wizard que
               cria uma leitura por ciclo marcado sem leitura — ciclos que
               já têm leitura são pulados (nunca sobrescritos).
+          F12 (16.0.9.3.0): cotação multi-serviço. Catálogo de serviços
+            (afr.servico / afr.servico.grupo); linhas de cotação gerenciadas
+            por serviço, com unidades numeradas; passo "Outros serviços" no
+            configurador; blocos da proposta condicionais (applies_when);
+            bloco service_group; resumo financeiro multi-serviço; template
+            padrão TPL-MULTI (migração instala em bancos existentes).
 
         Fluxo:
         1. Comercial cria orçamento (sale.order) e abre Configurador
