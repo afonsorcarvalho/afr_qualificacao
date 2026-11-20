@@ -46,3 +46,9 @@ dados_sensiveis/
 # Bytecode Python
 __pycache__/
 *.pyc
+
+# Rascunho de agentes (relatórios, ledger, diffs) e capturas de tela soltas na
+# raiz — material de trabalho local com telas do banco de desenvolvimento.
+.superpowers/
+/*.png
+/docs/superpowers/wiz.png
