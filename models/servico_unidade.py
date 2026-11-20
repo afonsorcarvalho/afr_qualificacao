@@ -71,15 +71,35 @@ class AfrServicoUnidade(models.Model):
 
     @api.onchange("equipment_id")
     def _onchange_equipment_id(self):
+        """Preenche a unidade a partir do equipamento.
+
+        Só sobrescreve o campo que o equipamento tem; o que a pessoa já
+        digitou nunca é apagado por cadastro incompleto.
+        """
         equipment = self.equipment_id
         if not equipment:
             return
-        self.description = equipment.name
-        self.marca = equipment.marca_id.name
-        self.model = equipment.model
-        self.serial_number = equipment.serial_number
-        self.location = equipment.location_id.name
-        self.tag = equipment.tag
+        values = {
+            "description": equipment.name,
+            "marca": equipment.marca_id.name,
+            "model": equipment.model,
+            "serial_number": equipment.serial_number,
+            "location": equipment.location_id.name,
+            "tag": equipment.tag,
+        }
+        for fname, value in values.items():
+            if value:
+                self[fname] = value
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        units = super().create(vals_list)
+        # Unidade criada à mão numa cotação já confirmada recebe o próximo
+        # número na hora (nas em rascunho, o número sai na confirmação).
+        units.order_id.filtered(
+            lambda o: o.state in ("sale", "done")
+        )._service_assign_item_numbers()
+        return units
 
     @api.constrains("line_id")
     def _check_units_within_qty(self):

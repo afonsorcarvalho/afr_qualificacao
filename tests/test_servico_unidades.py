@@ -165,3 +165,144 @@ class TestServicoUnidades(AfrServicoTestCommon):
             order._service_lines().mapped("service_group_id"),
         )
         self.assertEqual(order._service_groups()[0], self.group_calib)
+
+    # -- Task 9: aba de unidades e acabamento ------------------------------
+
+    def test_order_unit_o2m(self):
+        order, sel, nr = self._confirmed_order(3, 1)
+        units = order.service_unit_ids
+        self.assertEqual(
+            units.mapped("item_number"), [1, 2, 3, 4])
+        self.assertEqual(units, sel.service_unit_ids | nr.service_unit_ids)
+
+    def test_order_o2m_unit_with_only_line(self):
+        """Unidade criada só com `line_id` aparece na lista da cotação."""
+        order = self._make_order()
+        line = self._add_service(order, self.svc_seladora, 3)
+        unit = self.env["afr.servico.unidade"].create({"line_id": line.id})
+        self.assertEqual(unit.order_id, order)
+        self.assertEqual(order.service_unit_ids, unit)
+        # Pela aba (comando 0 na O2M da cotação): `order_id` vem do comando.
+        order.write({"service_unit_ids": [
+            (0, 0, {"line_id": line.id, "tag": "TAG-001"}),
+        ]})
+        self.assertEqual(len(order.service_unit_ids), 2)
+        self.assertEqual(len(line.service_unit_ids), 2)
+        self.assertEqual(order.service_units_summary,
+                         "1 de 3 unidades identificadas")
+
+    def test_view_loads(self):
+        view = self.env.ref(
+            "afr_qualificacao.view_sale_order_form_inherit_qualificacao")
+        result = self.env["sale.order"].get_view(view_id=view.id)
+        self.assertIn('name="service_units"', result["arch"])
+        self.assertIn("service_unit_ids", result["arch"])
+        self.assertIn("hidden_reason", result["arch"])
+
+    def test_manual_unit_on_confirmed_gets_number(self):
+        order, sel, nr = self._confirmed_order(3, 1)
+        self.assertEqual(self._numbers(sel), [1, 2, 3])
+        # Apaga a unidade pendente de maior número (4) e uma do meio.
+        nr.service_unit_ids.unlink()
+        sel.service_unit_ids.filtered(lambda u: u.item_number == 2).unlink()
+        self.assertEqual(self._numbers(sel), [1, 3])
+        unit = self.env["afr.servico.unidade"].create({"line_id": sel.id})
+        self.assertEqual(unit.item_number, 5)
+        self.assertEqual(order.service_unit_last_number, 5)
+        # Apagar não completa nada sozinho.
+        unit.unlink()
+        self.assertEqual(len(sel.service_unit_ids), 2)
+
+    def test_manual_unit_on_draft_stays_unnumbered(self):
+        order = self._make_order()
+        line = self._add_service(order, self.svc_seladora, 2)
+        unit = self.env["afr.servico.unidade"].create({"line_id": line.id})
+        self.assertEqual(unit.item_number, 0)
+
+    def test_lower_qty_and_delete_identified_in_same_write(self):
+        order, sel, nr = self._confirmed_order(3, 0)
+        for unit in sel.service_unit_ids:
+            unit.tag = "TAG-%d" % unit.item_number
+        first, second, third = sel.service_unit_ids.sorted("item_number")
+        sel.write({
+            "product_uom_qty": 1,
+            "service_unit_ids": [(2, second.id), (2, third.id)],
+        })
+        self.assertEqual(sel.service_unit_ids, first)
+        self.assertEqual(sel.product_uom_qty, 1)
+
+    def test_lower_qty_still_blocks_when_identified_remain(self):
+        order, sel, nr = self._confirmed_order(3, 0)
+        for unit in sel.service_unit_ids:
+            unit.tag = "TAG-%d" % unit.item_number
+        third = sel.service_unit_ids.filtered(lambda u: u.item_number == 3)
+        with self.assertRaises(UserError):
+            sel.write({
+                "product_uom_qty": 1,
+                "service_unit_ids": [(2, third.id)],
+            })
+        self.assertEqual(len(sel.service_unit_ids), 3)
+        self.assertEqual(sel.product_uom_qty, 3)
+
+    def test_lower_qty_with_clear_all_command(self):
+        """Comando 5 (apagar todas) conta como remoção das unidades."""
+        order, sel, nr = self._confirmed_order(3, 0)
+        for unit in sel.service_unit_ids:
+            unit.tag = "TAG-%d" % unit.item_number
+        sel.write({
+            "product_uom_qty": 1,
+            "service_unit_ids": [(5, 0, 0)],
+        })
+        # As identificadas saíram; a linha (qtd 1) é completada com uma vazia.
+        self.assertEqual(len(sel.service_unit_ids), 1)
+        self.assertFalse(sel.service_unit_ids.is_identified)
+
+    def test_summary_singular(self):
+        order = self._make_order()
+        line = self._add_service(order, self.svc_seladora, 1)
+        self.assertEqual(
+            order.service_units_summary, "0 de 1 unidade identificada")
+        self.env["afr.servico.unidade"].create({
+            "line_id": line.id, "tag": "TAG-001"})
+        self.assertEqual(
+            order.service_units_summary, "1 de 1 unidade identificada")
+        self._add_service(order, self.svc_nr13, 1)
+        self.assertEqual(
+            order.service_units_summary, "1 de 2 unidades identificadas")
+
+    def test_equipment_onchange_keeps_typed_text(self):
+        """Só sobrescreve o campo quando o equipamento tem valor para ele.
+
+        No cadastro só a TAG pode ficar vazia (marca, modelo, série e local
+        são obrigatórios), então ela é o campo que prova a regra.
+        """
+        order = self._make_order()
+        line = self._add_service(order, self.svc_seladora, 2)
+        self.assertFalse(self.equip1.tag)
+        unit = self.env["afr.servico.unidade"].create({
+            "line_id": line.id, "tag": "TAG-001",
+        })
+        unit.equipment_id = self.equip1
+        unit._onchange_equipment_id()
+        self.assertEqual(unit.tag, "TAG-001")
+        self.assertEqual(unit.serial_number, "TSN-001")
+
+        self.equip2.tag = "TAG-002"
+        other = self.env["afr.servico.unidade"].create({
+            "line_id": line.id, "tag": "TAG-DIGITADA",
+        })
+        other.equipment_id = self.equip2
+        other._onchange_equipment_id()
+        self.assertEqual(other.tag, "TAG-002")
+
+    def test_lower_qty_and_delete_identified_order_level(self):
+        """Mesmo save do form da cotação: aba Linhas + aba Unidades."""
+        order, sel, nr = self._confirmed_order(3, 0)
+        for unit in sel.service_unit_ids:
+            unit.tag = "TAG-%d" % unit.item_number
+        first, second, third = sel.service_unit_ids.sorted("item_number")
+        order.write({
+            "order_line": [(1, sel.id, {"product_uom_qty": 1})],
+            "service_unit_ids": [(2, second.id), (2, third.id)],
+        })
+        self.assertEqual(sel.service_unit_ids, first)

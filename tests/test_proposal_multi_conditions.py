@@ -167,3 +167,50 @@ class TestProposalMultiConditions(AfrServicoTestCommon):
         self.assertIn("TituloC", html)
         self.assertNotIn("TituloB", html)
         self.assertNotIn("TituloD", html)
+
+    # -- Task 9: motivo e numeração --------------------------------------
+
+    def test_hidden_reason(self):
+        order = self._services_order()
+        self.assertFalse(self._block(order, "A").hidden_reason)
+        self.assertFalse(self._block(order, "C").hidden_reason)
+        self.assertEqual(
+            self._block(order, "B").hidden_reason,
+            "Sem qualificação na cotação",
+        )
+        self.assertEqual(
+            self._block(order, "D").hidden_reason,
+            "Sem serviço do grupo %s" % self.group_nr13.name,
+        )
+        self.assertEqual(
+            self._block(order, "B1").hidden_reason, "Bloco pai oculto")
+
+    def test_hidden_reason_clears_when_condition_holds(self):
+        order = self._qualif_order()
+        for key in ("A", "B", "B1"):
+            self.assertFalse(self._block(order, key).hidden_reason)
+        self.assertEqual(
+            self._block(order, "C").hidden_reason,
+            "Sem serviço do grupo %s" % self.group_calib.name,
+        )
+
+    def test_display_number_follows_condition(self):
+        order = self._services_order()
+        block_c = self._block(order, "C")
+        self.assertEqual(block_c.display_number, "2")
+        # Entra qualificação: B (2) e B1 (2.1) passam a existir e C vira 3.
+        wiz = self.env["afr.qualificacao.configurator"].create({
+            "sale_order_id": order.id,
+        })
+        wiz._load_from_existing_lines()
+        self.env["afr.qualificacao.configurator.equipment"].create({
+            "wizard_id": wiz.id,
+            "equipment_id": self.equip1.id,
+            "do_qi": True,
+            "qd_line_ids": [
+                (0, 0, {"cycle_type_id": self.cycle_cmax.id, "qty": 1}),
+            ],
+        })
+        wiz.action_apply()
+        self.assertTrue(order.has_qualif_lines)
+        self.assertEqual(block_c.display_number, "3")

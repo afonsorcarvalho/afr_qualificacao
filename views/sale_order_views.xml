@@ -55,6 +55,7 @@
                  has_qualif_lines só o que é por equipamento. -->
             <xpath expr="//field[@name='order_line']" position="after">
                 <field name="has_qualif_lines" invisible="1"/>
+                <field name="has_service_lines" invisible="1"/>
                 <field name="is_managed_quote" invisible="1"/>
                 <field name="pode_gerar_os" invisible="1"/>
             </xpath>
@@ -83,10 +84,14 @@
                             <field name="sequence" widget="handle"/>
                             <field name="display_type" invisible="1"/>
                             <field name="is_qualif_discount_line" invisible="1"/>
+                            <field name="is_service_managed" invisible="1"/>
                             <field name="company_id" invisible="1"/>
                             <field name="product_uom_category_id" invisible="1"/>
                             <field name="product_id"
-                                   attrs="{'required': [('display_type','=',False)], 'readonly': [('is_qualif_discount_line','=',True)]}"/>
+                                   attrs="{'required': [('display_type','=',False)], 'readonly': ['|', ('is_qualif_discount_line','=',True), ('is_service_managed','=',True)]}"/>
+                            <field name="service_id" string="Serviço" readonly="1"
+                                   optional="show"
+                                   attrs="{'invisible': [('is_service_managed','=',False)]}"/>
                             <field name="name" widget="section_and_note_text"
                                    attrs="{'readonly': [('is_qualif_discount_line','=',True)]}"/>
                             <field name="product_uom_qty" optional="show"
@@ -185,6 +190,33 @@
                       attrs="{'invisible': [('has_qualif_lines','=',False)]}">
                     <field name="qualif_tecnico_html" nolabel="1" readonly="1"/>
                 </page>
+
+                <!-- Unidades de cada linha de serviço: numeradas na confirmação,
+                     identificadas aqui (TAG/série ou pelo cadastro). -->
+                <page string="Unidades" name="service_units"
+                      attrs="{'invisible': [('has_service_lines','=',False)]}">
+                    <field name="service_units_summary" readonly="1" nolabel="1"
+                           class="fw-bold"/>
+                    <field name="service_unit_ids" nolabel="1">
+                        <tree editable="bottom" decoration-success="is_identified">
+                            <field name="is_identified" invisible="1"/>
+                            <field name="item_number" string="Item" readonly="1"/>
+                            <field name="line_id" string="Serviço" required="1"
+                                   domain="[('order_id', '=', parent.id), ('is_service_managed', '=', True)]"
+                                   options="{'no_create': True, 'no_open': True}"/>
+                            <field name="tag" string="Identificação"/>
+                            <field name="description"/>
+                            <field name="marca"/>
+                            <field name="model"/>
+                            <field name="serial_number"/>
+                            <field name="location"/>
+                            <field name="range_spec"/>
+                            <field name="equipment_id"
+                                   domain="[('client_id', '=', parent.partner_id)]"
+                                   options="{'no_create': True}"/>
+                        </tree>
+                    </field>
+                </page>
             </xpath>
 
             <!-- F8.2 — Proposta LEGO: aba de montagem de blocos da cotação (ao final) -->
@@ -217,6 +249,7 @@
                                    attrs="{'invisible': [('applies_when', '!=', 'service_group')],
                                            'required': [('applies_when', '=', 'service_group')]}"
                                    options="{'no_create': True, 'no_create_edit': True}"/>
+                            <field name="hidden_reason" string="Oculto: motivo" readonly="1"/>
                             <field name="parent_id"
                                    domain="[('sale_order_id','=',parent.id),('id','!=',id)]"
                                    options="{'no_create': True, 'no_create_edit': True}"/>

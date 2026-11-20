@@ -1307,6 +1307,20 @@ class SaleOrder(models.Model):
             lambda b: b.included and b._is_applicable()
         )
 
+    def _proposal_toc_blocks(self):
+        """Blocos do índice: visíveis e titulados.
+
+        Fora, o `equipment_scope` de cotação sem qualificação: ele pode ser
+        visível (template antigo, só para emitir os totais), mas não imprime
+        capítulo, então o índice não pode apontar para ele.
+        """
+        self.ensure_one()
+        blocks = self._proposal_visible_blocks().filtered("show_title")
+        if not self.has_qualif_lines:
+            blocks = blocks.filtered(
+                lambda b: b.block_kind != "equipment_scope")
+        return blocks
+
     def _proposal_totals_emitter(self):
         """Bloco que imprime a tabela de totais: vazio ou um registro.
 

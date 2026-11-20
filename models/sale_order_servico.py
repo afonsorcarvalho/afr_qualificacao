@@ -29,10 +29,37 @@ class SaleOrderServico(models.Model):
             "cotação. Garante que número apagado nunca seja reaproveitado."
         ),
     )
+    service_unit_ids = fields.One2many(
+        comodel_name="afr.servico.unidade",
+        inverse_name="order_id",
+        string="Unidades de Serviço",
+        help=(
+            "Unidades de todas as linhas de serviço da cotação, por número "
+            "de item. Criar por aqui exige escolher a linha: o `order_id` da "
+            "unidade é derivado dela."
+        ),
+    )
     service_units_summary = fields.Char(
         compute="_compute_service_units_summary",
         string="Unidades Identificadas",
     )
+
+    def write(self, vals):
+        # Salvar o form com "reduzir a quantidade" (aba Linhas) e "apagar a
+        # unidade identificada" (aba Unidades) numa só gravação: as linhas
+        # seriam gravadas antes e bloqueariam por unidades que a própria
+        # gravação apaga. Por isso as remoções de unidade vão primeiro.
+        commands = vals.get("service_unit_ids")
+        if commands and any(c[0] in (2, 3) for c in commands):
+            removals = [c for c in commands if c[0] in (2, 3)]
+            rest = [c for c in commands if c[0] not in (2, 3)]
+            vals = dict(vals)
+            if rest:
+                vals["service_unit_ids"] = rest
+            else:
+                del vals["service_unit_ids"]
+            super().write({"service_unit_ids": removals})
+        return super().write(vals)
 
     @api.depends("order_line.is_service_managed", "order_line.display_type")
     def _compute_has_service_lines(self):
@@ -63,10 +90,13 @@ class SaleOrderServico(models.Model):
                 continue
             total = sum(int(l.product_uom_qty) for l in lines)
             done = sum(l.service_unit_identified_count for l in lines)
-            order.service_units_summary = _(
-                "%(done)d de %(total)d unidades identificadas",
-                done=done, total=total,
+            template = (
+                _("%(done)d de %(total)d unidade identificada")
+                if total == 1
+                else _("%(done)d de %(total)d unidades identificadas")
             )
+            order.service_units_summary = template % {
+                "done": done, "total": total}
 
     def _service_sync_units(self, force=False):
         """Completa e numera as unidades das linhas de serviço.
@@ -95,6 +125,20 @@ class SaleOrderServico(models.Model):
                 missing = int(line.product_uom_qty) - len(line.service_unit_ids)
                 if missing > 0:
                     Unit.create([{"line_id": line.id}] * missing)
+            order._service_assign_item_numbers()
+
+    def _service_assign_item_numbers(self):
+        """Dá número às unidades de serviço sem número (`item_number == 0`).
+
+        Segue a ordem de `_service_lines()` e, na linha, (`sequence`, `id`).
+        O número vem de `service_unit_last_number` (marca d'água que nunca
+        diminui): número atribuído não muda nem é reaproveitado, mesmo que a
+        unidade de maior número tenha sido apagada. Não completa unidades.
+        """
+        for order in self:
+            lines = order._service_lines()
+            if not lines:
+                continue
             last = max(
                 [order.service_unit_last_number]
                 + lines.service_unit_ids.mapped("item_number")

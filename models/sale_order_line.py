@@ -784,8 +784,13 @@ class SaleOrderLine(models.Model):
         if qty_changed:
             # Reduzir a quantidade remove antes as unidades pendentes (ou
             # bloqueia); só depois a constraint de unidades <= qty roda.
+            # Unidades que o próprio `vals` apaga já não contam.
             for line in self.filtered("is_service_managed"):
-                line._service_trim_units(vals["product_uom_qty"])
+                line._service_trim_units(
+                    vals["product_uom_qty"],
+                    removed=line._service_units_removed_by(
+                        vals.get("service_unit_ids")),
+                )
         res = super().write(vals)
         if qty_changed or "is_service_managed" in vals:
             self.filtered("is_service_managed").mapped("order_id")\
@@ -947,16 +952,38 @@ class SaleOrderLine(models.Model):
                     qty=int(line.product_uom_qty),
                 ))
 
-    def _service_trim_units(self, new_qty):
+    def _service_units_removed_by(self, commands):
+        """Unidades da linha que os comandos One2many `commands` apagam.
+
+        Considera (2, id), (3, id), (5,) e (6, _, ids): o que um save de
+        formulário manda junto com a nova quantidade.
+        """
+        self.ensure_one()
+        units = self.service_unit_ids
+        removed = units.browse()
+        for command in commands or []:
+            code = command[0]
+            if code in (2, 3):
+                removed |= units.filtered(lambda u: u.id == command[1])
+            elif code == 5:
+                removed = units
+            elif code == 6:
+                removed = units.filtered(lambda u: u.id not in command[2])
+        return removed
+
+    def _service_trim_units(self, new_qty, removed=None):
         """Ajusta as unidades para caberem em `new_qty` (reduzir quantidade).
 
         Apaga unidades não identificadas, da de maior número para a menor,
         até caber. Se as identificadas já excedem `new_qty`, bloqueia: a
-        pessoa remove à mão as unidades que não serão atendidas.
+        pessoa remove à mão as unidades que não serão atendidas. `removed`:
+        unidades que a mesma gravação já apaga, fora da conta.
         """
         self.ensure_one()
         keep = int(new_qty)
         units = self.service_unit_ids
+        if removed:
+            units -= removed
         excess = len(units) - keep
         if excess <= 0:
             return

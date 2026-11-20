@@ -123,6 +123,11 @@ class AfrProposalBlock(models.Model):
         string="Aplicável",
         help="False quando a condição do bloco (ou do pai) não é satisfeita pela cotação.",
     )
+    hidden_reason = fields.Char(
+        compute="_compute_hidden_reason",
+        string="Motivo",
+        help="Por que o bloco não aparece na proposta (vazio se aplicável).",
+    )
     # F9.2 — display fields (preview UX no editor da SO + popup parent_id)
     display_label = fields.Char(
         compute="_compute_display_label",
@@ -135,31 +140,55 @@ class AfrProposalBlock(models.Model):
         help="Preview do número hierárquico calculado da posição na cotação.",
     )
 
-    def _is_applicable(self):
-        """True se a condição do bloco — e a do pai, se houver — vale na cotação."""
+    def _own_condition_holds(self):
+        """True se a condição própria do bloco vale na cotação (sem o pai)."""
         self.ensure_one()
         order = self.sale_order_id
         if self.applies_when == "qualification":
-            ok = bool(order.has_qualif_lines)
-        elif self.applies_when == "service_group":
-            ok = bool(self.service_group_id) and (
+            return bool(order.has_qualif_lines)
+        if self.applies_when == "service_group":
+            return bool(self.service_group_id) and (
                 self.service_group_id in order._service_groups()
             )
-        else:
-            ok = True
+        return True
+
+    def _is_applicable(self):
+        """True se a condição do bloco — e a do pai, se houver — vale na cotação."""
+        self.ensure_one()
+        ok = self._own_condition_holds()
         if ok and self.parent_id:
             ok = self.parent_id._is_applicable()
         return ok
 
-    @api.depends(
+    # Gatilhos comuns de tudo que depende da condição do bloco.
+    _APPLICABLE_DEPENDS = (
         "applies_when", "service_group_id", "parent_id", "sale_order_id",
         "sale_order_id.has_qualif_lines", "sale_order_id.order_line",
     )
+
+    @api.depends(*_APPLICABLE_DEPENDS)
     def _compute_is_applicable(self):
         for block in self:
             block.is_applicable = (
                 bool(block.sale_order_id) and block._is_applicable()
             )
+
+    @api.depends(*_APPLICABLE_DEPENDS, "service_group_id.name")
+    def _compute_hidden_reason(self):
+        for block in self:
+            reason = ""
+            if block.sale_order_id and not block._is_applicable():
+                if not block._own_condition_holds():
+                    if block.applies_when == "qualification":
+                        reason = _("Sem qualificação na cotação")
+                    else:
+                        reason = _(
+                            "Sem serviço do grupo %s",
+                            block.service_group_id.name or "",
+                        )
+                else:
+                    reason = _("Bloco pai oculto")
+            block.hidden_reason = reason
 
     @api.constrains("applies_when", "block_kind", "service_group_id")
     def _check_applies_when_group(self):
@@ -191,6 +220,10 @@ class AfrProposalBlock(models.Model):
         "included",
         "applies_when",
         "service_group_id",
+        # Mesmos gatilhos de `is_applicable`: a numeração só conta blocos
+        # aplicáveis.
+        "sale_order_id.has_qualif_lines",
+        "sale_order_id.order_line",
         "sale_order_id.proposal_block_ids.sequence",
         "sale_order_id.proposal_block_ids.parent_id",
         "sale_order_id.proposal_block_ids.show_number",

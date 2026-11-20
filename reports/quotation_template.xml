@@ -134,11 +134,11 @@
                      Links internos ancorados em qq-anchor-#{block.id}.
                      Apenas blocos com show_title=True aparecem no índice.
                 ========================================================= -->
-                <t t-if="visible_blocks.filtered('show_title')">
+                <t t-if="doc._proposal_toc_blocks()">
                     <div class="qq-section qq-toc">
                         <div class="qq-section-title">Índice</div>
                         <ul class="qq-toc-list">
-                            <t t-foreach="visible_blocks.filtered('show_title')" t-as="tb">
+                            <t t-foreach="doc._proposal_toc_blocks()" t-as="tb">
                                 <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
                                 <li t-attf-class="qq-toc-item#{' qq-toc-child' if tb.parent_id else ''}">
                                     <a t-attf-href="#qq-anchor-#{tb.id}" class="qq-toc-link">

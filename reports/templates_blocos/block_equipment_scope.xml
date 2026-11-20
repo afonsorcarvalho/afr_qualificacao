@@ -3,11 +3,15 @@
     <template id="qq_block_equipment_scope">
                             <div t-att-class="sec_class">
                                 <div t-attf-class="qq-section-title{{ ' qq-section-title-child' if is_child else '' }}"
-                                     t-if="block.show_title">
+                                     t-if="block.show_title and doc.has_qualif_lines">
                                     <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
                                     <span t-esc="block.title or 'Escopo por Equipamento'"/>
                                 </div>
-                                <t t-set="scope_tables" t-value="doc._qualif_scope_tables()"/>
+                                <!-- Cotação só de serviços sobre template antigo: o
+                                     bloco segue como emissor dos totais, mas sem
+                                     capítulo de escopo (não há equipamento). -->
+                                <t t-set="scope_tables"
+                                   t-value="doc._qualif_scope_tables() if doc.has_qualif_lines else []"/>
                                 <t t-foreach="scope_tables" t-as="st">
                                     <t t-set="equip_letter" t-value="chr(ord('a') + st_index)"/>
                                     <div class="qq-equip-card">

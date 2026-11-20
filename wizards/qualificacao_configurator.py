@@ -144,32 +144,65 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         "equipment_line_ids.equipment_id",
         "equipment_line_ids.estimated_hours_total",
         "equipment_line_ids.subtotal",
+        "service_line_ids.service_id",
+        "service_line_ids.qty",
+        "service_line_ids.estimated_hours",
+        "service_line_ids.subtotal",
+        "total_estimated",
     )
     def _compute_review_summary_html(self):
+        """Resumo da revisão: um equipamento por linha, uma frente de serviço
+        (grupo) por linha e o total geral (equipamentos + serviços)."""
         for wiz in self:
-            rows = []
-            for el in wiz.equipment_line_ids:
-                value = formatLang(
-                    self.env, el.subtotal or 0.0,
-                    currency_obj=wiz.currency_id,
+            def _row(label, hours, value, bold=False):
+                style = "padding:4px 12px;%s" % (
+                    "font-weight:bold;" if bold else "")
+                return (
+                    '<tr><td style="%s">%s</td>'
+                    '<td style="%stext-align:right;">%s</td>'
+                    '<td style="%stext-align:right;">%s</td></tr>'
+                ) % (
+                    style, html_escape(label or ""),
+                    style, ("%s h" % formatLang(self.env, hours, digits=2))
+                    if hours is not None else "",
+                    style, formatLang(
+                        self.env, value or 0.0, currency_obj=wiz.currency_id),
                 )
-                hours = formatLang(self.env, el.estimated_hours_total or 0.0, digits=2)
-                rows.append(
-                    '<tr><td style="padding:4px 12px;">%s</td>'
-                    '<td style="padding:4px 12px;text-align:right;">%s h</td>'
-                    '<td style="padding:4px 12px;text-align:right;">%s</td></tr>'
-                    % (el.equipment_id.display_name or "", hours, value)
-                )
+
+            rows = [
+                _row(el.equipment_id.display_name,
+                     el.estimated_hours_total or 0.0, el.subtotal)
+                for el in wiz.equipment_line_ids
+            ]
+            groups = wiz.service_line_ids.mapped("group_id")
+            for group in groups:
+                lines = wiz.service_line_ids.filtered(
+                    lambda l, g=group: l.group_id == g)
+                rows.append(_row(
+                    group.name,
+                    sum((l.qty or 0) * (l.estimated_hours or 0.0)
+                        for l in lines),
+                    sum(lines.mapped("subtotal")),
+                ))
             if not rows:
                 wiz.review_summary_html = (
                     '<p class="text-muted">Sem equipamentos no escopo.</p>'
                 )
                 continue
+            rows.append(
+                '<tr style="border-top:2px solid #333;">'
+                '<td style="padding:6px 12px;font-weight:bold;">TOTAL</td>'
+                '<td></td>'
+                '<td style="padding:6px 12px;text-align:right;'
+                'font-weight:bold;">%s</td></tr>'
+                % formatLang(self.env, wiz.total_estimated or 0.0,
+                             currency_obj=wiz.currency_id)
+            )
             wiz.review_summary_html = (
                 '<table style="border-collapse:collapse;width:100%%;'
                 'border:1px solid #ddd;font-size:13px;">'
                 '<thead><tr style="background:#f4f4f4;border-bottom:1px solid #ccc;">'
-                '<th style="padding:6px 12px;text-align:left;">Equipamento</th>'
+                '<th style="padding:6px 12px;text-align:left;">Escopo</th>'
                 '<th style="padding:6px 12px;text-align:right;">Horas</th>'
                 '<th style="padding:6px 12px;text-align:right;">Subtotal</th>'
                 '</tr></thead><tbody>%s</tbody></table>'
@@ -286,10 +319,14 @@ class AfrQualificacaoConfigurator(models.TransientModel):
                 '</tr></thead><tbody>%s</tbody></table>'
             ) % "".join(rows)
 
-    @api.depends("equipment_line_ids.subtotal")
+    @api.depends("equipment_line_ids.subtotal", "service_subtotal")
     def _compute_total_estimated(self):
+        """Total geral da revisão: equipamentos de qualificação + serviços."""
         for wiz in self:
-            wiz.total_estimated = sum(wiz.equipment_line_ids.mapped("subtotal"))
+            wiz.total_estimated = (
+                sum(wiz.equipment_line_ids.mapped("subtotal"))
+                + wiz.service_subtotal
+            )
 
     @api.depends(
         "equipment_line_ids.estimated_hours_total",
@@ -2086,13 +2123,15 @@ class AfrQualificacaoConfiguratorService(models.TransientModel):
 
     _name = "afr.qualificacao.configurator.service"
     _description = "Serviço do catálogo no configurador"
+    # Agrupado por grupo de serviço (ordem do grupo), depois pelo serviço.
+    _order = "group_id, service_id, id"
 
     wizard_id = fields.Many2one("afr.qualificacao.configurator",
                                 required=True, ondelete="cascade")
     service_id = fields.Many2one("afr.servico", string="Serviço",
                                  required=True)
     group_id = fields.Many2one(related="service_id.group_id",
-                               string="Grupo", readonly=True)
+                               string="Grupo", readonly=True, store=True)
     qty = fields.Integer(string="Qtd", default=1)
     unit_price = fields.Monetary(string="Unitário")
     estimated_hours = fields.Float(string="Horas/un.")

@@ -213,3 +213,58 @@ class TestServicoConfigurator(AfrServicoTestCommon):
             lambda l: l.is_qualificacao_managed and not l.display_type)
         self.assertTrue(new_qualif)
         self.assertFalse(set(new_qualif.ids) & set(qualif_ids))
+
+    # -- Task 9: revisão e agrupamento ------------------------------------
+
+    def test_review_services_only(self):
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        self._wiz_service(wiz, self.svc_seladora, qty=8)
+        self._wiz_service(wiz, self.svc_nr13, qty=1)
+        html = wiz.review_summary_html
+        self.assertNotIn("Sem equipamentos no escopo", html)
+        self.assertIn("Calibração de Instrumentos", html)
+        self.assertIn("NR-13", html)
+        self.assertEqual(wiz.service_subtotal, 960 + 2400)
+        self.assertEqual(wiz.total_estimated, 960 + 2400)
+
+    def test_review_empty_wizard_message(self):
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        self.assertIn("Sem equipamentos no escopo", wiz.review_summary_html)
+        self.assertEqual(wiz.total_estimated, 0)
+
+    def test_review_total_includes_equipment_and_services(self):
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        self.env["afr.qualificacao.configurator.equipment"].create({
+            "wizard_id": wiz.id,
+            "equipment_id": self.equip1.id,
+            "do_qi": True,
+        })
+        self._wiz_service(wiz, self.svc_seladora, qty=2)
+        equipment_total = sum(wiz.equipment_line_ids.mapped("subtotal"))
+        self.assertGreater(equipment_total, 0)
+        self.assertEqual(wiz.service_subtotal, 240)
+        self.assertEqual(wiz.total_estimated, equipment_total + 240)
+        self.assertIn("Calibração de Instrumentos", wiz.review_summary_html)
+
+    def test_service_lines_ordered_by_group_then_service(self):
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        # Criadas fora de ordem: NR-13 (grupo 20) antes da calibração (10).
+        self._wiz_service(wiz, self.svc_nr13)
+        self._wiz_service(wiz, self.svc_incubadora)
+        self._wiz_service(wiz, self.svc_seladora)
+        wiz.invalidate_recordset()
+        ordered = wiz.service_line_ids.mapped("service_id")
+        self.assertEqual(
+            [s.group_id for s in ordered],
+            [self.group_calib, self.group_calib, self.group_nr13],
+        )
+        self.assertEqual(ordered[2], self.svc_nr13)
+        self.assertEqual(
+            ordered[:2],
+            (self.svc_seladora | self.svc_incubadora).sorted(
+                key=lambda s: (s.sequence, s.name)),
+        )

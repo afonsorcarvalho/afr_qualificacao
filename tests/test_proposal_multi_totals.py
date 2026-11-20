@@ -342,3 +342,41 @@ class TestProposalMultiTotals(AfrServicoTestCommon):
             template,
             self.env.ref("afr_qualificacao.email_template_proposal_labquali"),
         )
+
+    # -- Task 9: escopo vazio em cotação só de serviços --------------------
+
+    def test_old_template_services_only_has_no_empty_scope_heading(self):
+        labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
+        order = self._seeded(self._services_order(labquali))
+        scope = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "equipment_scope")
+        self.assertEqual(len(scope), 1)
+        self.assertTrue(scope._is_applicable())
+        self.assertEqual(order._proposal_totals_emitter(), scope)
+        title = scope.title or "Escopo por Equipamento"
+
+        # PDF
+        html = self._render(order)
+        self.assertNotIn(title, html)
+        self.assertEqual(html.count(GRAND_LABEL), 1)
+
+        # Portal
+        portal = str(self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": order},
+        ))
+        self.assertNotIn(title, portal)
+        self.assertEqual(portal.count(GRAND_LABEL), 1)
+
+    def test_old_template_qualification_keeps_scope_heading(self):
+        labquali = self.env.ref("afr_qualificacao.proposal_template_labquali")
+        order = self._seeded(self._qualif_order(labquali))
+        scope = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "equipment_scope")
+        title = scope.title or "Escopo por Equipamento"
+        self.assertIn(title, self._render(order))
+        portal = str(self.env["ir.qweb"]._render(
+            "afr_qualificacao.sale_order_online_qualif_content",
+            {"sale_order": order},
+        ))
+        self.assertIn(title, portal)

@@ -95,11 +95,11 @@
             ============================================================= -->
             <t t-set="block_numbers"
                t-value="sale_order._proposal_block_numbering() if sale_order._proposal_visible_blocks() else {}"/>
-            <t t-if="sale_order._proposal_visible_blocks().filtered('show_title')">
+            <t t-if="sale_order._proposal_toc_blocks()">
                 <div class="lq-toc">
                     <div class="lq-section-title">Índice</div>
                     <ul class="lq-toc-list">
-                        <t t-foreach="sale_order._proposal_visible_blocks().filtered('show_title')" t-as="tb">
+                        <t t-foreach="sale_order._proposal_toc_blocks()" t-as="tb">
                             <t t-set="tb_num" t-value="block_numbers.get(tb.id, '')"/>
                             <li t-attf-class="lq-toc-item#{' lq-toc-child' if tb.parent_id else ''}">
                                 <a t-attf-href="#lq-anchor-#{tb.id}" class="lq-toc-link">
@@ -142,11 +142,15 @@
                 <t t-if="block.block_kind == 'equipment_scope'">
                     <section class="lq-section">
                         <div t-attf-class="lq-section-title#{' lq-section-title-child' if is_child else ''}"
-                             t-if="block.show_title">
+                             t-if="block.show_title and sale_order.has_qualif_lines">
                             <t t-if="blk_num"><span t-esc="blk_num"/> — </t>
                             <span t-esc="block.title or 'Escopo por Equipamento'"/>
                         </div>
-                        <t t-set="scope_tables" t-value="sale_order._qualif_scope_tables()"/>
+                        <!-- Cotação só de serviços sobre template antigo: o bloco
+                             segue como emissor dos totais, mas sem capítulo de
+                             escopo (não há equipamento). -->
+                        <t t-set="scope_tables"
+                           t-value="sale_order._qualif_scope_tables() if sale_order.has_qualif_lines else []"/>
                         <t t-foreach="scope_tables" t-as="st">
                             <t t-set="equip_letter" t-value="chr(ord('a') + st_index)"/>
                             <div class="lq-equip-card">
