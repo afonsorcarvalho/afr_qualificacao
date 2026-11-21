@@ -67,10 +67,10 @@ class AfrServico(models.Model):
     _description = "Serviço"
     _order = "group_id, sequence, name"
 
-    name = fields.Char(required=True, translate=True)
-    code = fields.Char(help="Código curto do serviço.")
-    sequence = fields.Integer(default=10)
-    active = fields.Boolean(default=True)
+    name = fields.Char(string="Nome", required=True, translate=True)
+    code = fields.Char(string="Código", help="Código curto do serviço.")
+    sequence = fields.Integer(string="Sequência", default=10)
+    active = fields.Boolean(string="Ativo", default=True)
     company_id = fields.Many2one(
         comodel_name="res.company",
         default=lambda self: self.env.company,
@@ -90,7 +90,18 @@ class AfrServico(models.Model):
         string="Produto de Serviço",
         required=True,
         domain=[("type", "=", "service"), ("sale_ok", "=", True)],
-        help="Produto serviço que define o preço unitário do serviço na cotação.",
+        help=(
+            "Produto de serviço faturado. Define o preço unitário quando o "
+            "campo Preço Unitário do serviço está vazio."
+        ),
+    )
+    default_unit_price = fields.Monetary(
+        string="Preço Unitário",
+        currency_field="currency_id",
+        help=(
+            "Preço por unidade sugerido na cotação. Vazio (zero) = usa o "
+            "preço de lista do produto de serviço."
+        ),
     )
     estimated_hours = fields.Float(
         string="Horas Estimadas",
@@ -118,6 +129,6 @@ class AfrServico(models.Model):
     )
 
     def _default_unit_price(self):
-        """Preço unitário sugerido: `list_price` do produto de serviço."""
+        """Preço unitário sugerido: o do serviço; se vazio, o do produto."""
         self.ensure_one()
-        return self.product_id.list_price
+        return self.default_unit_price or self.product_id.list_price

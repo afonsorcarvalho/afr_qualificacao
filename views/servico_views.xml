@@ -64,14 +64,16 @@
         <field name="name">afr.servico.tree</field>
         <field name="model">afr.servico</field>
         <field name="arch" type="xml">
-            <tree string="Serviços">
+            <tree string="Serviços" expand="1">
                 <field name="sequence" widget="handle"/>
                 <field name="group_id"/>
                 <field name="name"/>
                 <field name="code"/>
-                <field name="product_id"/>
+                <field name="currency_id" invisible="1"/>
+                <field name="default_unit_price"/>
                 <field name="estimated_hours"/>
-                <field name="procedure_code"/>
+                <field name="procedure_code" optional="show"/>
+                <field name="product_id" optional="hide"/>
                 <field name="company_id" groups="base.group_multi_company"/>
                 <field name="active" widget="boolean_toggle"/>
             </tree>
@@ -89,6 +91,8 @@
                             <field name="name"/>
                             <field name="code"/>
                             <field name="group_id"/>
+                            <field name="currency_id" invisible="1"/>
+                            <field name="default_unit_price"/>
                             <field name="product_id"/>
                         </group>
                         <group>
@@ -127,9 +131,29 @@
         </field>
     </record>
 
+    <record id="view_servico_search" model="ir.ui.view">
+        <field name="name">afr.servico.search</field>
+        <field name="model">afr.servico</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="code"/>
+                <field name="group_id"/>
+                <filter name="inactive" string="Arquivados"
+                        domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter name="group_by_group" string="Grupo"
+                            context="{'group_by': 'group_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <record id="action_servico" model="ir.actions.act_window">
         <field name="name">Serviços</field>
         <field name="res_model">afr.servico</field>
         <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_servico_search"/>
+        <field name="context">{'search_default_group_by_group': 1}</field>
     </record>
 </odoo>

@@ -12,6 +12,21 @@ class TestServicoCatalog(AfrServicoTestCommon):
     def test_default_unit_price_from_product(self):
         self.assertEqual(self.svc_seladora._default_unit_price(), 120)
 
+    def test_default_unit_price_own_field_wins(self):
+        """Preço do serviço prevalece; vazio volta ao preço do produto."""
+        self.svc_seladora.default_unit_price = 150
+        self.assertEqual(self.svc_seladora._default_unit_price(), 150)
+        line = self.env["sale.order.line"]._service_line_vals(
+            self.svc_seladora, 2)
+        self.assertEqual(line["price_unit"], 150)
+        self.svc_seladora.default_unit_price = 0
+        self.assertEqual(self.svc_seladora._default_unit_price(), 120)
+
+    def test_list_view_shows_price(self):
+        arch = self.env["afr.servico"].get_view(
+            self.env.ref("afr_qualificacao.view_servico_tree").id, "tree")["arch"]
+        self.assertIn('name="default_unit_price"', arch)
+
     def test_chapter_title_falls_back_to_name(self):
         self.assertFalse(self.group_nr13.chapter_title)
         self.assertEqual(self.group_nr13._chapter_title(), "NR-13")
