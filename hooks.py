@@ -14,6 +14,8 @@ from psycopg2.extras import Json
 
 from odoo import api, SUPERUSER_ID
 
+from .proposal_multi_texts import PROPOSAL_MULTI_TEXT_REFRESH
+
 _logger = logging.getLogger(__name__)
 
 
@@ -38,6 +40,11 @@ PROPOSAL_TEMPLATE_LINES = [
     ("l17", 170, "acceptance", None, True, None),
     ("l18", 180, "static", "proposal_section_aceite", False, None),
 ]
+
+
+# Título do capítulo de NR-13 no TPL-MULTI (antes da 16.0.9.3.3: "NR-13").
+PROPOSAL_MULTI_NR13_TITLE = "Inspeção de segurança conforme a NR-13"
+PROPOSAL_MULTI_NR13_OLD_TITLE = "NR-13"
 
 
 # Template multi-serviço "TPL-MULTI" (cotação de qualificação e/ou serviços
@@ -74,7 +81,7 @@ PROPOSAL_MULTI_TEMPLATE_LINES = [
     ("m13", 130, "service_group", None, False, "m12",
      "service_group", "servico_grupo_calibracao", "Serviços"),
     ("m14", 140, "static", "proposal_section_grp_nr13", True, None,
-     "service_group", "servico_grupo_nr13", "NR-13"),
+     "service_group", "servico_grupo_nr13", PROPOSAL_MULTI_NR13_TITLE),
     ("m15", 150, "service_group", None, False, "m14",
      "service_group", "servico_grupo_nr13", "Serviços"),
     ("m16", 160, "static", "proposal_section_grp_vazao", True, None,
@@ -92,11 +99,17 @@ PROPOSAL_MULTI_TEMPLATE_LINES = [
      "always", None, None),
     ("m22", 220, "static", "sec_dados_cadastrais", False, None,
      "always", None, None),
-    ("m23", 230, "acceptance", None, True, None,
+    # Aceite: o texto da declaração vem primeiro (abre a página) e as
+    # assinaturas fecham a proposta logo abaixo, sem título nem número
+    # (PROPOSAL_MULTI_UNTITLED). Os sufixos seguem a ordem histórica.
+    ("m24", 230, "static", "proposal_section_aceite_multi", True, None,
      "always", None, None),
-    ("m24", 240, "static", "proposal_section_aceite_multi", False, None,
+    ("m23", 240, "acceptance", None, False, None,
      "always", None, None),
 ]
+
+# Linhas do TPL-MULTI que imprimem só o conteúdo (sem título e sem número).
+PROPOSAL_MULTI_UNTITLED = {"m23"}
 
 
 # Linhas do TPL-MULTI que nasceram apontando para seções compartilhadas com o
@@ -615,6 +628,110 @@ def _repoint_proposal_multi_sections(env):
             line.section_id = new.id
 
 
+def _refresh_proposal_multi_texts(env):
+    """Troca os textos semeados de NR-13, calibração e aceite do TPL-MULTI.
+
+    As seções são `noupdate` e `body` é traduzível (jsonb por idioma). Em
+    cada idioma guardado, reescreve o corpo só se ele ainda tem o trecho do
+    texto semeado antigo e ainda não tem o do novo — corpo editado pelo
+    usuário fica como está. Devolve os xmlids alterados. Cotações já
+    existentes não mudam: o bloco guarda cópia do texto.
+    """
+    changed = []
+    for xmlid, (new_body, old_mark, new_mark) in PROPOSAL_MULTI_TEXT_REFRESH.items():
+        section = env.ref(f"afr_qualificacao.{xmlid}", raise_if_not_found=False)
+        if not section:
+            continue
+        # Leitura crua do jsonb: grava antes o que o ORM tem pendente.
+        section.flush_recordset(["body"])
+        env.cr.execute(
+            "SELECT body FROM afr_proposal_section WHERE id = %s", [section.id])
+        row = env.cr.fetchone()
+        value = row and row[0]
+        if not value:
+            continue
+        if isinstance(value, str):
+            value = {"en_US": value}
+        touched = False
+        for lang, body in value.items():
+            if body and old_mark in body and new_mark not in body:
+                value[lang] = new_body
+                touched = True
+        if touched:
+            env.cr.execute(
+                "UPDATE afr_proposal_section SET body = %s WHERE id = %s",
+                [Json(value), section.id])
+            section.invalidate_recordset(["body"])
+            changed.append(xmlid)
+    return changed
+
+
+def _retitle_proposal_multi_nr13(env):
+    """Troca o título do capítulo de NR-13 do TPL-MULTI já instalado.
+
+    `title` é traduzível (jsonb por idioma). Muda só os idiomas em que o
+    título ainda é o semeado antigo exato; título editado fica. Devolve True
+    se alterou. Cotações existentes não mudam (bloco guarda cópia).
+    """
+    line = env.ref("afr_qualificacao.proposal_template_multi_m14",
+                   raise_if_not_found=False)
+    if not line:
+        return False
+    line.flush_recordset(["title"])
+    env.cr.execute(
+        "SELECT title FROM afr_proposal_template_line WHERE id = %s", [line.id])
+    row = env.cr.fetchone()
+    value = row and row[0]
+    if not value:
+        return False
+    if isinstance(value, str):
+        value = {"en_US": value}
+    changed = False
+    for lang, title in value.items():
+        if title == PROPOSAL_MULTI_NR13_OLD_TITLE:
+            value[lang] = PROPOSAL_MULTI_NR13_TITLE
+            changed = True
+    if changed:
+        env.cr.execute(
+            "UPDATE afr_proposal_template_line SET title = %s WHERE id = %s",
+            [Json(value), line.id])
+        line.invalidate_recordset(["title"])
+    return changed
+
+
+def _reorder_proposal_multi_acceptance(env):
+    """Põe o texto do aceite antes das assinaturas no TPL-MULTI já instalado.
+
+    Bases que receberam o TPL-MULTI na 16.0.9.3.0 têm as assinaturas (m23)
+    antes da declaração de aceite (m24), cada uma com título próprio. Troca
+    a ordem das duas linhas (sequence e quebra de página) e tira título e
+    número das assinaturas. Só age enquanto as duas linhas estão na ordem
+    original — depois de aplicada, ou se o usuário já reordenou, não faz
+    nada. Cotações existentes não mudam: os blocos delas são cópia; quem
+    quiser a ordem nova recarrega os blocos na cotação.
+    """
+    signature = env.ref("afr_qualificacao.proposal_template_multi_m23",
+                        raise_if_not_found=False)
+    statement = env.ref("afr_qualificacao.proposal_template_multi_m24",
+                        raise_if_not_found=False)
+    if not signature or not statement:
+        return False
+    if signature.block_kind != "acceptance" or statement.block_kind != "static":
+        return False
+    if signature.sequence >= statement.sequence:
+        return False
+    seq_first, seq_last = signature.sequence, statement.sequence
+    break_first, break_last = signature.page_break, statement.page_break
+    statement.write({"sequence": seq_first, "page_break": break_first})
+    signature.write({
+        "sequence": seq_last,
+        "page_break": break_last,
+        "show_title": False,
+        "show_number": False,
+    })
+    return True
+
+
 def _proposal_multi_default_sequence(env):
     """`sequence` do TPL-MULTI ao criá-lo: abaixo de todos os templates.
 
@@ -743,6 +860,8 @@ def _install_proposal_multi_template(env):
             "applies_when": applies_when,
             "service_group_id": group.id if group else False,
             "title": title or False,
+            "show_title": suffix not in PROPOSAL_MULTI_UNTITLED,
+            "show_number": suffix not in PROPOSAL_MULTI_UNTITLED,
         })
         ImdData.create({
             "name": f"proposal_template_multi_{suffix}",

@@ -10,7 +10,13 @@ import re
 
 from odoo.tests.common import tagged
 
-from ..hooks import _install_proposal_multi_template
+from ..hooks import (
+    _install_proposal_multi_template,
+    _refresh_proposal_multi_texts,
+    _reorder_proposal_multi_acceptance,
+    _retitle_proposal_multi_nr13,
+)
+from ..proposal_multi_texts import PROPOSAL_MULTI_TEXT_REFRESH
 
 from .common_servico import AfrServicoTestCommon
 
@@ -159,7 +165,7 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
         order = self._seeded_order()
         titles = order._proposal_visible_blocks().mapped("title")
         self.assertIn("Calibração de Instrumentos", titles)
-        self.assertIn("NR-13", titles)
+        self.assertIn("Inspeção de segurança conforme a NR-13", titles)
         self.assertNotIn("Qualificação Térmica", titles)
         self.assertNotIn("Vazão de Exaustores e Trocas de Ar", titles)
         html = self._render(order)
@@ -181,9 +187,11 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
             self._render(order))
 
     def test_provisional_texts_marked(self):
-        for xmlid in ("proposal_section_grp_nr13", "proposal_section_grp_vazao"):
+        body = self.env.ref("afr_qualificacao.proposal_section_grp_vazao").body
+        self.assertIn("[REVISAR — texto provisório]", body)
+        for xmlid in PROPOSAL_MULTI_TEXT_REFRESH:
             body = self.env.ref("afr_qualificacao.%s" % xmlid).body
-            self.assertIn("[REVISAR — texto provisório]", body)
+            self.assertNotIn("[REVISAR", body)
 
     # -- numeração sem buraco (capítulos que não imprimem) ----------------
 
@@ -295,3 +303,121 @@ class TestProposalMultiTemplate(AfrServicoTestCommon):
         line.section_id = custom
         _install_proposal_multi_template(self.env)
         self.assertEqual(line.section_id, custom)
+
+    # -- aceite: declaração antes das assinaturas, assinaturas sem título --
+
+    def _acceptance_lines(self):
+        return (
+            self.env.ref("afr_qualificacao.proposal_template_multi_m23"),
+            self.env.ref("afr_qualificacao.proposal_template_multi_m24"),
+        )
+
+    def test_acceptance_statement_before_signature(self):
+        signature, statement = self._acceptance_lines()
+        self.assertEqual(signature.block_kind, "acceptance")
+        self.assertLess(statement.sequence, signature.sequence)
+        self.assertEqual(self.template.line_ids.sorted("sequence")[-1], signature)
+        self.assertTrue(statement.page_break)
+        self.assertFalse(signature.page_break)
+        self.assertFalse(signature.show_title)
+        self.assertFalse(signature.show_number)
+        self.assertTrue(statement.show_title)
+
+    def test_acceptance_render_order_and_untitled_signature(self):
+        order = self._seeded_order()
+        html = self._render(order)
+        statement_at = html.index("Declaro que li")
+        signature_at = html.index("Nome, cargo, assinatura e carimbo")
+        self.assertLess(statement_at, signature_at)
+        self.assertNotIn("Aceite / Assinatura", html)
+        # Nenhum título entre a abertura do bloco de assinaturas e as linhas.
+        head = html[html.rindex("qq-signature-block", 0, signature_at):signature_at]
+        self.assertNotIn("qq-section-title", head)
+        block = order.proposal_block_ids.filtered(
+            lambda b: b.block_kind == "acceptance")
+        self.assertEqual(order._proposal_block_numbering()[block.id], "")
+        self.assertNotIn(block, order._proposal_toc_blocks())
+
+    def test_reorder_migrates_old_layout(self):
+        signature, statement = self._acceptance_lines()
+        # Estado da 16.0.9.3.0: assinaturas antes, com título e número.
+        signature.write({"sequence": 230, "page_break": True,
+                         "show_title": True, "show_number": True})
+        statement.write({"sequence": 240, "page_break": False})
+        self.assertTrue(_reorder_proposal_multi_acceptance(self.env))
+        self.assertEqual((statement.sequence, signature.sequence), (230, 240))
+        self.assertTrue(statement.page_break)
+        self.assertFalse(signature.page_break)
+        self.assertFalse(signature.show_title)
+        self.assertFalse(signature.show_number)
+
+    def test_reorder_is_idempotent_and_keeps_user_edit(self):
+        signature, _statement = self._acceptance_lines()
+        self.assertFalse(_reorder_proposal_multi_acceptance(self.env))
+        # Usuário religou o título depois da migração: não é desfeito.
+        signature.show_title = True
+        self.assertFalse(_reorder_proposal_multi_acceptance(self.env))
+        self.assertTrue(signature.show_title)
+
+    # -- textos de NR-13, calibração e aceite (propostas reais) ------------
+
+    @staticmethod
+    def _norm(html):
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html or "")).strip()
+
+    def test_seed_xml_matches_migration_texts(self):
+        """O XML (instalação nova) e a constante (migração) não divergem."""
+        import os
+        import xml.etree.ElementTree as ET
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "data", "proposal_multi_servico_seed.xml")
+        root = ET.parse(path).getroot()
+        for xmlid, (new_body, _old, _new) in PROPOSAL_MULTI_TEXT_REFRESH.items():
+            record = root.find(".//record[@id='%s']" % xmlid)
+            field = record.find("field[@name='body']")
+            xml_html = "".join(ET.tostring(c, encoding="unicode") for c in field)
+            self.assertEqual(self._norm(xml_html), self._norm(new_body), xmlid)
+
+    def test_refresh_rewrites_seeded_and_keeps_edited(self):
+        nr13 = self.env.ref("afr_qualificacao.proposal_section_grp_nr13")
+        aceite = self.env.ref("afr_qualificacao.proposal_section_aceite_multi")
+        nr13.body = "<p>[REVISAR — texto provisório] rascunho antigo</p>"
+        aceite.body = "<p>Aceite redigido pelo cliente.</p>"
+        changed = _refresh_proposal_multi_texts(self.env)
+        self.assertIn("proposal_section_grp_nr13", changed)
+        self.assertNotIn("proposal_section_aceite_multi", changed)
+        self.assertIn("Inspeção Baseada em Risco", nr13.body)
+        self.assertEqual(self._norm(aceite.body), "Aceite redigido pelo cliente.")
+        # Segunda passada não mexe em nada.
+        self.assertEqual(_refresh_proposal_multi_texts(self.env), [])
+
+    def test_acceptance_has_approver_fields_before_signature(self):
+        order = self._seeded_order()
+        html = self._render(order)
+        approver_at = html.index("Dados do responsável pela aprovação")
+        self.assertLess(approver_at, html.index("Nome, cargo, assinatura e carimbo"))
+        self.assertIn("Dados do responsável pelo pagamento", html)
+        self.assertNotIn("{{", html[approver_at - 2000:approver_at + 3000])
+
+    def test_nr13_text_has_no_quote_specific_data(self):
+        body = self._norm(
+            self.env.ref("afr_qualificacao.proposal_section_grp_nr13").body)
+        for leak in ("TAG", "R$", " dias"):
+            self.assertNotIn(leak, body)
+
+    def test_nr13_chapter_title(self):
+        line = self.env.ref("afr_qualificacao.proposal_template_multi_m14")
+        self.assertEqual(line.title, "Inspeção de segurança conforme a NR-13")
+        self.assertIn("Inspeção de segurança conforme a NR-13",
+                      self._render(self._seeded_order()))
+
+    def test_retitle_nr13_migrates_old_and_keeps_edited(self):
+        line = self.env.ref("afr_qualificacao.proposal_template_multi_m14")
+        line.title = "NR-13"
+        self.assertTrue(_retitle_proposal_multi_nr13(self.env))
+        self.assertEqual(line.title, "Inspeção de segurança conforme a NR-13")
+        self.assertFalse(_retitle_proposal_multi_nr13(self.env))
+        line.title = "NR-13 — título do cliente"
+        self.assertFalse(_retitle_proposal_multi_nr13(self.env))
+        self.assertEqual(line.title, "NR-13 — título do cliente")

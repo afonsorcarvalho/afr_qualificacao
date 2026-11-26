@@ -5,8 +5,10 @@
         O template em si NÃO é carregado daqui (ver hooks._install_proposal_multi_template);
         só as seções de texto novas, que o cliente edita sem perder em upgrade.
         O objetivo cita as frentes cotadas via {{ doc._proposal_service_titles() }}.
-        Os textos de NR-13 e de vazão são RASCUNHOS provisórios, a serem
-        substituídos pelo cliente.
+        O texto de vazão ainda é RASCUNHO provisório, a ser substituído pelo
+        cliente. NR-13, calibração e aceite seguem as propostas reais da
+        LabQuali; o HTML é o mesmo de proposal_multi_texts.py (usado pela
+        migração 16.0.9.3.2 — mudar um exige mudar o outro).
     -->
 
     <record id="proposal_section_objetivo_multi" model="afr.proposal.section">
@@ -30,24 +32,13 @@
         <field name="sequence">210</field>
         <field name="body" type="html">
             <div>
-                <p><strong>Calibração:</strong> operação que estabelece, sob
-                condições específicas, em uma primeira etapa, uma relação entre os
-                valores e as incertezas de medição fornecidas por padrões e as
-                indicações correspondentes com as incertezas associadas; em uma
-                segunda etapa, utiliza esta informação para estabelecer uma
-                relação visando a obtenção de um resultado de medição a partir de
-                uma indicação. (NBR 16328:2014)</p>
-                <ul>
-                    <li>Serão utilizados Padrões de Medição calibrados e
-                    rastreados à RBC — Rede Brasileira de Calibração / INMETRO;</li>
-                    <li>Os certificados emitidos contêm tabelas com a média dos
-                    valores coletados, a incerteza de medição expandida com nível
-                    de confiança de 95% e o coeficiente de abrangência (K), além
-                    dos dados dos padrões utilizados e cópia de seus respectivos
-                    certificados de calibração;</li>
-                    <li>Será entregue um Certificado de Calibração para cada
-                    instrumento calibrado.</li>
-                </ul>
+            <p><strong>Calibração:</strong> operação que estabelece, sob condições específicas, em uma primeira etapa, uma relação entre os valores e as incertezas de medição fornecidas por padrões e as indicações correspondentes com as incertezas associadas; em uma segunda etapa, utiliza esta informação para estabelecer uma relação visando a obtenção de um resultado de medição a partir de uma indicação. (NBR 16328:2014)</p>
+            <ul>
+            <li>Serão utilizados Padrões de Medição calibrados e rastreados à RBC — Rede Brasileira de Calibração / INMETRO;</li>
+            <li>Os critérios de aceitação são definidos pelo cliente, de acordo com os seus protocolos de calibração formalizados;</li>
+            <li>Os certificados emitidos contêm tabelas com a média dos valores coletados, a incerteza de medição expandida com nível de confiança de 95% e o coeficiente de abrangência (K), além dos dados dos padrões utilizados e cópia de seus respectivos certificados de calibração;</li>
+            <li>Será entregue um Certificado de Calibração para cada instrumento calibrado.</li>
+            </ul>
             </div>
         </field>
     </record>
@@ -60,9 +51,47 @@
         <field name="sequence">220</field>
         <field name="body" type="html">
             <div>
-                <p>[REVISAR — texto provisório] Esta seção trata dos serviços
-                de NR-13 relacionados na tabela a seguir, cotados por
-                equipamento.</p>
+            <p>Inspeção de segurança de vasos de pressão conforme a NR-13, a ABNT NBR 15417 (vasos de pressão) e a ABNT NBR ISO 31000 (gestão de riscos), executada por Profissional Habilitado nos termos da Decisão Normativa DN 45 do CONFEA/CREA.</p>
+            <p><strong>Vasos de pressão (autoclaves)</strong></p>
+            <ul>
+            <li>Inspeção Baseada em Risco (IBR) do vaso de pressão, avaliando a integridade estrutural e definindo a condição operacional de utilização, com verificação de:
+            <ul>
+            <li>mecanismo das portas deslizantes (guilhotina): sapatas soldadas ou aparafusadas, folgas de deslizamento, linearidade dos movimentos, desgaste das cantoneiras, medidas de projeto, dilatações e empenamentos;</li>
+            <li>mecanismo das portas com fechamento por volante central: hastes de fechamento, fixação nas esferas, aperto dos parafusos-guia, profundidade dos braços além do flange, lubrificação e concentricidade radial;</li>
+            <li>polimento sanitário da câmara interna (rugosidade conforme projeto), para prevenir trincas por corrosão sob tensão em aços inoxidáveis austeníticos AISI série 300;</li>
+            <li>produtos e formas de limpeza da câmara interna (decapagem e passivação), para mitigar o surgimento de pites e a degradação do filme passivo do aço AISI 316L;</li>
+            </ul>
+            </li>
+            <li>Medição de espessura por ultrassom das chapas da câmara interna, nos pontos típicos de desgaste;</li>
+            <li>Ensaio por líquido penetrante nas regiões da câmara interna sujeitas a descontinuidades (dreno e laterais dobradas) e nas linhas de solda da câmara externa;</li>
+            <li>Ensaio de condutividade da água, para definir ações de polimento e limpeza das chapas;</li>
+            <li>Inspeção das válvulas de segurança e dos itens de controle e monitoramento de pressão, quanto à conformidade com a legislação, os requisitos regulatórios e os manuais do fabricante.</li>
+            </ul>
+            <p><strong>Geradores de vapor</strong></p>
+            <ul>
+            <li>Inspeção Baseada em Risco (IBR), avaliando a integridade estrutural e definindo a condição operacional de utilização, com exame visual das luvas e insertos (resistências, controle de nível e segurança);</li>
+            <li>Avaliação dos processos de limpeza adequados à qualidade da água de abastecimento, para a geração de vapor dentro das especificações normativas;</li>
+            <li>Inspeção das válvulas de segurança e dos itens de controle e monitoramento, quanto à conformidade com a legislação, os requisitos regulatórios e os manuais do fabricante.</li>
+            </ul>
+            <p><strong>Área de instalação</strong></p>
+            <ul>
+            <li>Inspeção das instalações conforme os requisitos da NR-13, com relatório de desvios e recomendações para o plano de mitigação de riscos aos usuários, considerando: entradas e saídas da sala onde os vasos estão instalados; condições para manutenção preventiva e corretiva; alimentação de ar e iluminação; iluminação de emergência; planta baixa com a localização do vaso de pressão.</li>
+            </ul>
+            <p><strong>Treinamento do Profissional Capacitado</strong></p>
+            <ul>
+            <li>O engenheiro mecânico que executa a IBR, Profissional Habilitado pela NR-13, treina um profissional do estabelecimento como Profissional Capacitado, para aplicar e manter a documentação gerada na inspeção de segurança;</li>
+            <li>O treinamento cobre os itens normativos da NR-13: procedimentos de partida e parada do vaso de pressão; procedimentos e parâmetros operacionais de rotina; procedimentos para situações de emergência; procedimentos gerais de segurança, saúde e preservação do meio ambiente; uso do Livro de Registros (Livro Preto).</li>
+            </ul>
+            <p><strong>Documentação entregue</strong></p>
+            <ul>
+            <li>Relatório de IBR e prontuário (data sheet) com PMTA, MTA, pressão de teste hidrostático, classe, categoria e grupo do vaso conforme a NR-13 e análise da válvula de segurança;</li>
+            <li>Relatório de medição de espessura das chapas da câmara interna (parte inferior, superior, laterais e portas);</li>
+            <li>Laudo do ensaio por líquido penetrante;</li>
+            <li>Anotação de Responsabilidade Técnica (ART) junto ao CREA;</li>
+            <li>Relatório de classificação da área de instalação, com definição do Profissional Capacitado e recomendações para o plano de mitigação de riscos;</li>
+            <li>Abertura do Livro de Registros (Livro Preto);</li>
+            <li>Certificado de treinamento do Profissional Capacitado.</li>
+            </ul>
             </div>
         </field>
     </record>
@@ -110,7 +139,14 @@
         <field name="sequence">142</field>
         <field name="body" type="html">
             <div>
-                <p>Declaro que li, compreendi e concordo com os termos técnicos e comerciais descritos nesta proposta, referente à prestação de serviços de {{ doc._proposal_service_titles() }}, conforme o escopo apresentado. Autorizo {{ company.name }} a iniciar os serviços mediante agendamento prévio.</p>
+            <p>Declaro que li, compreendi e concordo com os termos técnicos e comerciais descritos nesta proposta, referente à prestação de serviços de {{ doc._proposal_service_titles() }}, conforme o escopo apresentado. Autorizo {{ company.name }} a iniciar os serviços mediante agendamento prévio, respeitando as condições estabelecidas neste documento.</p>
+            <p><strong>Dados do responsável pela aprovação</strong></p>
+            <p>Nome completo: ________________________________ Cargo/Departamento: ____________________<br/>E-mail: ________________________________ Telefone: ____________________<br/>Número do pedido de compra (se aplicável): ________________________________</p>
+            <p><strong>Dados do responsável pelo pagamento</strong></p>
+            <p>Nome: ________________________________ Departamento: ____________________<br/>E-mail: ________________________________ Telefone: ____________________</p>
+            <p><strong>Observações finais</strong></p>
+            <p>Este aceite confirma a concordância integral com o conteúdo desta proposta, incluindo escopo técnico, prazos de execução e de entrega da documentação, forma de fornecimento da documentação, condições comerciais e demais observações. A proposta somente será considerada aprovada após o preenchimento e a assinatura deste aceite.</p>
+            <p>O agendamento dos serviços deve ser feito com antecedência e está sujeito à disponibilidade de agenda. Após a aprovação, {{ company.name }} enviará por e-mail as datas disponíveis para a execução; o cliente deve confirmar a data em até 3 (três) dias úteis, sem o que a data poderá ser oferecida a outros clientes.</p>
             </div>
         </field>
     </record>
