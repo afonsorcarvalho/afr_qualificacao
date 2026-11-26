@@ -59,6 +59,16 @@ class SaleOrderLine(models.Model):
         copy=True,
         help="Serviço do catálogo cotado por unidade nesta linha.",
     )
+    service_description = fields.Text(
+        string="Descrição do Serviço",
+        copy=True,
+        help=(
+            "Texto impresso abaixo do nome do serviço na proposta. Nasce com "
+            "o escopo do catálogo e pode ser trocado na cotação (ex.: "
+            "\"Autoclaves a gás (ETO) – TAGs: C1, C3\"). Vazio = nada abaixo "
+            "do nome."
+        ),
+    )
     is_service_managed = fields.Boolean(
         string="Gerenciado por Serviço",
         default=False,
@@ -1048,17 +1058,23 @@ class SaleOrderLine(models.Model):
     @api.model
     def _service_line_vals(
         self, service, qty, unit_price=None, estimated_hours=None,
+        description=None,
     ):
         """Vals de uma linha de serviço (sem `order_id`).
 
-        `qty` = nº de unidades; `unit_price`/`estimated_hours` default vêm
-        do catálogo (`service._default_unit_price()` / `estimated_hours`).
+        `qty` = nº de unidades; `unit_price`/`estimated_hours`/`description`
+        default vêm do catálogo (`service._default_unit_price()` /
+        `estimated_hours` / `scope_description`).
         """
         service.ensure_one()
         return {
             "product_id": service.product_id.id,
             "name": service.name,
             "service_id": service.id,
+            "service_description": (
+                service.scope_description or False
+                if description is None else description or False
+            ),
             "is_service_managed": True,
             "product_uom_qty": qty,
             "price_unit": (

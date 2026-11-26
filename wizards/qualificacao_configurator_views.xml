@@ -178,6 +178,8 @@
                             <tree editable="bottom">
                                 <field name="service_id" options="{'no_create': True}"/>
                                 <field name="group_id"/>
+                                <field name="description"/>
+                                <field name="sale_line_id" invisible="1"/>
                                 <field name="qty"/>
                                 <field name="unit_price"/>
                                 <field name="estimated_hours"/>

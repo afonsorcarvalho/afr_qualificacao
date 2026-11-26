@@ -232,7 +232,7 @@ class SaleOrderServico(models.Model):
                 "item": index,
                 "line": line,
                 "name": line.name or service.name or "",
-                "description": service.scope_description or "",
+                "description": line.service_description or "",
                 "procedure": procedure,
                 "qty": line.product_uom_qty,
                 "price_unit": line.price_unit,

@@ -114,7 +114,7 @@ class AfrQualificacaoConfigurator(models.TransientModel):
     # blocos editados no form do SO; opcionais adicionados manualmente).
     step = fields.Selection(
         selection=[
-            ("escopo", "1. Escopo"),
+            ("escopo", "1. Qualificação"),
             ("servicos", "2. Outros serviços"),
             ("opcionais", "3. Opcionais"),
             ("revisao", "4. Revisão"),
@@ -456,6 +456,8 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         # então precisam ser carregadas antes do retorno antecipado abaixo).
         svc_cmds = [(0, 0, {
             "service_id": line.service_id.id,
+            "sale_line_id": line.id,
+            "description": line.service_description or False,
             "qty": int(line.product_uom_qty),
             "unit_price": line.price_unit,
             "estimated_hours": line.estimated_hours,
@@ -747,29 +749,30 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         return {"type": "ir.actions.act_window_close"}
 
     def _check_service_lines(self):
-        """Valida as linhas do passo "Outros serviços" (qtd e duplicidade)."""
+        """Valida as linhas do passo "Outros serviços" (quantidade).
+
+        O mesmo serviço pode aparecer em várias linhas (ex.: NR-13 de
+        autoclaves e de geradores, com descrição e preço próprios).
+        """
         self.ensure_one()
-        vistos = set()
         for sl in self.service_line_ids:
             if (sl.qty or 0) < 1:
                 raise UserError(_(
                     "A quantidade do serviço %s deve ser ao menos 1."
                 ) % (sl.service_id.display_name or "?"))
-            if sl.service_id.id in vistos:
-                raise UserError(_(
-                    "O serviço %s aparece mais de uma vez."
-                ) % sl.service_id.display_name)
-            vistos.add(sl.service_id.id)
 
     def _apply_service_lines(self):
         """Upsert das linhas de serviço do catálogo na cotação.
 
-        Nunca apaga e recria uma linha existente: as unidades numeradas
-        (`afr.servico.unidade`) pendem do registro. Cria as novas, atualiza
-        qtd/preço/horas só quando mudaram e remove as que saíram do wizard
-        (as regras de unidade identificada ficam em `sale.order.line`, e o
-        erro delas propaga). As linhas ficam depois de todas as demais, por
-        grupo e serviço.
+        Casa cada linha do wizard com a linha da cotação que ela representa
+        (`sale_line_id`), não pelo serviço: o mesmo serviço pode aparecer
+        em várias linhas. Nunca apaga e recria uma linha existente com o
+        mesmo serviço: as unidades numeradas (`afr.servico.unidade`) pendem
+        do registro. Cria as novas, atualiza qtd/preço/horas/descrição só
+        quando mudaram e remove as que saíram do wizard ou trocaram de
+        serviço (as regras de unidade identificada ficam em
+        `sale.order.line`, e o erro delas propaga). As linhas ficam depois
+        de todas as demais, por grupo e serviço.
         """
         self.ensure_one()
         so = self.sale_order_id
@@ -777,29 +780,32 @@ class AfrQualificacaoConfigurator(models.TransientModel):
         price_digits = self.env["decimal.precision"].precision_get(
             "Product Price")
 
-        wanted = {sl.service_id.id: sl for sl in self.service_line_ids}
-        existing = {}
-        to_unlink = Line
-        for line in so._service_lines():
-            if line.service_id.id in wanted and line.service_id.id not in existing:
-                existing[line.service_id.id] = line
-            else:
-                to_unlink |= line
+        current = so._service_lines()
+        kept = {}
+        for sl in self.service_line_ids:
+            line = sl.sale_line_id
+            if (line in current and line.service_id == sl.service_id
+                    and line.id not in kept):
+                kept[line.id] = sl
+        to_unlink = current.filtered(lambda l: l.id not in kept)
         if to_unlink:
             to_unlink.unlink()
 
-        for service_id, sl in wanted.items():
-            line = existing.get(service_id)
+        for sl in self.service_line_ids:
+            line = sl.sale_line_id if kept.get(sl.sale_line_id.id) == sl else Line
             if not line:
                 vals = Line._service_line_vals(
                     sl.service_id, sl.qty,
                     unit_price=sl.unit_price,
                     estimated_hours=sl.estimated_hours,
+                    description=sl.description or "",
                 )
                 vals["order_id"] = so.id
-                Line.create(vals)
+                sl.sale_line_id = Line.create(vals)
                 continue
             changes = {}
+            if (line.service_description or "") != (sl.description or ""):
+                changes["service_description"] = sl.description or False
             if line.product_uom_qty != sl.qty:
                 changes["product_uom_qty"] = sl.qty
             if float_compare(line.price_unit, sl.unit_price,
@@ -2175,15 +2181,35 @@ class AfrQualificacaoConfiguratorService(models.TransientModel):
     group_id = fields.Many2one(related="service_id.group_id",
                                string="Grupo", readonly=True, store=True)
     qty = fields.Integer(string="Qtd", default=1)
+    description = fields.Text(
+        string="Descrição",
+        help="Impressa abaixo do nome do serviço na proposta. Nasce com o "
+             "escopo do catálogo; pode ser trocada (ex.: TAGs dos equipamentos).",
+    )
     unit_price = fields.Monetary(string="Unitário")
     estimated_hours = fields.Float(string="Horas/un.")
     subtotal = fields.Monetary(string="Total", compute="_compute_subtotal")
     currency_id = fields.Many2one(related="wizard_id.currency_id")
+    # Linha da cotação que esta linha do wizard representa (vazia = nova).
+    # O mesmo serviço pode aparecer em várias linhas, então o upsert de
+    # `_apply_service_lines` casa por esta linha, não pelo serviço.
+    sale_line_id = fields.Many2one("sale.order.line", ondelete="set null")
 
     @api.depends("qty", "unit_price")
     def _compute_subtotal(self):
         for line in self:
             line.subtotal = (line.qty or 0) * (line.unit_price or 0.0)
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        # Linha criada sem passar pela tela (sem onchange): a descrição nasce
+        # com o escopo do catálogo. `description` explícito (mesmo vazio)
+        # é respeitado.
+        for vals in vals_list:
+            if "description" not in vals and vals.get("service_id"):
+                service = self.env["afr.servico"].browse(vals["service_id"])
+                vals["description"] = service.scope_description or False
+        return super().create(vals_list)
 
     @api.onchange("service_id")
     def _onchange_service_id(self):
@@ -2191,3 +2217,4 @@ class AfrQualificacaoConfiguratorService(models.TransientModel):
             if line.service_id:
                 line.unit_price = line.service_id._default_unit_price()
                 line.estimated_hours = line.service_id.estimated_hours
+                line.description = line.service_id.scope_description or False

@@ -77,13 +77,86 @@ class TestServicoConfigurator(AfrServicoTestCommon):
         line.qty = 3
         self.assertEqual(line.subtotal, 540)
 
-    def test_duplicate_service_blocks(self):
+    def test_repeated_service_becomes_separate_lines(self):
+        """Mesmo serviço em duas linhas (ex.: NR-13 de autoclaves e de
+        geradores): duas linhas na cotação, cada uma com descrição e preço."""
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        a = self._wiz_service(wiz, self.svc_seladora, qty=6, unit_price=2000)
+        a.description = "Autoclaves a gás (ETO) – TAGs: A1, A2"
+        b = self._wiz_service(wiz, self.svc_seladora, qty=2, unit_price=1200)
+        b.description = "Geradores de vapor"
+        wiz.action_apply()
+        lines = self._service_lines(order).sorted("id")
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(
+            lines.mapped("service_description"),
+            ["Autoclaves a gás (ETO) – TAGs: A1, A2", "Geradores de vapor"])
+        self.assertEqual(lines.mapped("price_unit"), [2000, 1200])
+        self.assertEqual(lines.mapped("product_uom_qty"), [6, 2])
+
+        # Reabrir e aplicar de novo não funde nem recria as linhas.
+        wiz2 = self._open_wizard(order)
+        self.assertEqual(len(wiz2.service_line_ids), 2)
+        self.assertEqual(
+            sorted(wiz2.service_line_ids.mapped("description")),
+            ["Autoclaves a gás (ETO) – TAGs: A1, A2", "Geradores de vapor"])
+        wiz2.service_line_ids.filtered(
+            lambda l: l.description == "Geradores de vapor").qty = 3
+        wiz2.action_apply()
+        again = self._service_lines(order).sorted("id")
+        self.assertEqual(again, lines)
+        self.assertEqual(again.mapped("product_uom_qty"), [6, 3])
+
+        # Tirar uma das linhas do wizard remove só ela.
+        wiz3 = self._open_wizard(order)
+        wiz3.service_line_ids.filtered(
+            lambda l: l.description == "Geradores de vapor").unlink()
+        wiz3.action_apply()
+        self.assertEqual(self._service_lines(order), lines[0])
+
+    def test_description_defaults_from_catalog_and_can_be_cleared(self):
+        self.svc_seladora.scope_description = "Escopo do catálogo"
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        sl = self._wiz_service(wiz, self.svc_seladora, qty=1)
+        self.assertEqual(sl.description, "Escopo do catálogo")
+        sl.description = False
+        wiz.action_apply()
+        line = self._service_lines(order)
+        self.assertFalse(line.service_description)
+        rows = order._service_group_table(line.service_group_id)["rows"]
+        self.assertEqual(rows[0]["description"], "")
+
+    def test_custom_description_printed_under_name(self):
+        order = self._make_order()
+        wiz = self._open_wizard(order)
+        sl = self._wiz_service(wiz, self.svc_seladora, qty=1)
+        sl.description = "TAGs: X1, X2, X3"
+        wiz.action_apply()
+        line = self._service_lines(order)
+        row = order._service_group_table(line.service_group_id)["rows"][0]
+        self.assertEqual(row["name"], line.name)
+        self.assertEqual(row["description"], "TAGs: X1, X2, X3")
+
+    def test_changing_service_replaces_line(self):
         order = self._make_order()
         wiz = self._open_wizard(order)
         self._wiz_service(wiz, self.svc_seladora, qty=1)
-        self._wiz_service(wiz, self.svc_seladora, qty=2)
-        with self.assertRaises(UserError):
-            wiz.action_apply()
+        wiz.action_apply()
+        old = self._service_lines(order)
+        wiz2 = self._open_wizard(order)
+        wiz2.service_line_ids.service_id = self.svc_incubadora
+        wiz2.action_apply()
+        new = self._service_lines(order)
+        self.assertEqual(len(new), 1)
+        self.assertNotEqual(new, old)
+        self.assertEqual(new.service_id, self.svc_incubadora)
+
+    def test_step_label_is_qualificacao(self):
+        steps = dict(self.env["afr.qualificacao.configurator"]._fields[
+            "step"].selection)
+        self.assertEqual(steps["escopo"], "1. Qualificação")
 
     def test_zero_qty_blocks(self):
         order = self._make_order()
